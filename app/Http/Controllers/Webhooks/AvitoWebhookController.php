@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Webhooks;
 use App\Http\Controllers\Controller;
 use App\Models\IntegrationConnection;
 use App\Models\IntegrationEvent;
+use App\Services\Chat\ChatIngestService;
 use Illuminate\Http\Request;
 
 class AvitoWebhookController extends Controller
@@ -25,7 +26,7 @@ class AvitoWebhookController extends Controller
         if ($token) {
             $connection = IntegrationConnection::query()
                 ->where('provider', 'avito')
-                ->whereIn('status', ['active','error'])
+                ->where('status', 'active')
                 ->where('settings->crm_webhook_token', $token)
                 ->first();
         }
@@ -48,6 +49,12 @@ class AvitoWebhookController extends Controller
 
         if ($connection) {
             $connection->update(['last_synced_at' => now(), 'last_error' => null]);
+
+            try {
+                app(ChatIngestService::class)->ingestFromAvito($connection, $payload);
+            } catch (\Throwable $e) {
+                // ignore
+            }
         }
 
         return response()->json(['ok' => true]);

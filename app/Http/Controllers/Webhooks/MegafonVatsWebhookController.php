@@ -27,8 +27,8 @@ class MegafonVatsWebhookController extends Controller
         if ($token) {
             $connection = IntegrationConnection::query()
                 ->where('provider', 'megafon_vats')
-                ->whereIn('status', ['active','error'])
-                ->where('settings->crm_webhook_token', $token)
+                ->where('status', 'active')
+                ->whereRaw("JSON_EXTRACT(settings, '$.crm_webhook_token') = ?", [$token])
                 ->first();
         }
 

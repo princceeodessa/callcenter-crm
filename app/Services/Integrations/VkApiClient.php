@@ -82,6 +82,7 @@ class VkApiClient
 
     public static function makeSecret(): string
     {
+        // VK secret_key: 1..64; keep url-safe.
         return Str::random(32);
     }
 }

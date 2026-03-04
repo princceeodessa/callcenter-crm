@@ -102,7 +102,14 @@ class DealController extends Controller
 
     public function show(Deal $deal)
     {
-        $deal->load(['contact','stage','responsible','tasks' => fn($q)=>$q->orderBy('status')->orderBy('due_at'),'activities'=>fn($q)=>$q->orderByDesc('id')]);
+        $deal->load([
+            'contact',
+            'stage',
+            'responsible',
+            'tasks' => fn($q) => $q->orderBy('status')->orderBy('due_at'),
+            'activities' => fn($q) => $q->orderByDesc('id'),
+            'conversations' => fn($q) => $q->with('lastMessage')->orderByDesc('last_message_at'),
+        ]);
         $stages = PipelineStage::query()->orderBy('sort')->get();
         return view('deals.show', compact('deal','stages'));
     }

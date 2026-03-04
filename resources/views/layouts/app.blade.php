@@ -16,6 +16,7 @@
             @auth
                 <a class="btn btn-sm btn-outline-light" href="{{ route('deals.kanban') }}">Канбан</a>
                 <a class="btn btn-sm btn-outline-light" href="{{ route('deals.index') }}">Список</a>
+                <a class="btn btn-sm btn-outline-light" href="{{ route('chats.index') }}">Чаты</a>
                 <a class="btn btn-sm btn-outline-light" href="{{ route('settings.integrations.index') }}">Интеграции</a>
                 <a class="btn btn-sm btn-success" href="{{ route('deals.create') }}">+ Сделка</a>
                 <form method="POST" action="{{ route('logout') }}">

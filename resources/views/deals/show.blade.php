@@ -34,6 +34,43 @@
       </div>
     </div>
 
+    <div class="card shadow-sm mb-3">
+      <div class="card-header fw-semibold">Чаты</div>
+      <div class="card-body">
+        @if(($deal->conversations?->count() ?? 0) === 0)
+          <div class="text-muted small">Пока нет связанных диалогов</div>
+        @else
+          <div class="list-group">
+            @foreach($deal->conversations as $c)
+              @php
+                $badge = match($c->channel) {
+                  'vk' => 'VK',
+                  'telegram' => 'TG',
+                  'avito' => 'Avito',
+                  default => strtoupper($c->channel),
+                };
+              @endphp
+              <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-start" href="{{ route('chats.show', $c) }}">
+                <div>
+                  <div class="d-flex align-items-center gap-2">
+                    <span class="badge text-bg-secondary">{{ $badge }}</span>
+                    <span class="fw-semibold">Диалог</span>
+                  </div>
+                  <div class="text-muted small mt-1">{{ \Illuminate\Support\Str::limit($c->lastMessage?->body ?? '—', 80) }}</div>
+                </div>
+                <div class="text-end">
+                  <div class="text-muted small">{{ $c->last_message_at ? $c->last_message_at->format('d.m H:i') : '' }}</div>
+                  @if(($c->unread_count ?? 0) > 0)
+                    <span class="badge text-bg-primary mt-1">{{ $c->unread_count }}</span>
+                  @endif
+                </div>
+              </a>
+            @endforeach
+          </div>
+        @endif
+      </div>
+    </div>
+
     <div class="card shadow-sm">
       <div class="card-header fw-semibold">Задачи / Дела</div>
       <div class="card-body">

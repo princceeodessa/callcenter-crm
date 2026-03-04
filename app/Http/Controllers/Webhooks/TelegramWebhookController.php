@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Webhooks;
 use App\Http\Controllers\Controller;
 use App\Models\IntegrationConnection;
 use App\Models\IntegrationEvent;
+use App\Services\Chat\ChatIngestService;
 use Illuminate\Http\Request;
 
 class TelegramWebhookController extends Controller
@@ -27,7 +28,7 @@ class TelegramWebhookController extends Controller
         if ($token) {
             $connection = IntegrationConnection::query()
                 ->where('provider', 'telegram')
-                ->whereIn('status', ['active','error'])
+                ->where('status', 'active')
                 ->where('settings->crm_webhook_token', $token)
                 ->first();
         }
@@ -36,7 +37,7 @@ class TelegramWebhookController extends Controller
         if (!$connection && $secretHeader) {
             $connection = IntegrationConnection::query()
                 ->where('provider', 'telegram')
-                ->whereIn('status', ['active','error'])
+                ->where('status', 'active')
                 ->where('settings->webhook_secret', $secretHeader)
                 ->first();
         }
@@ -62,6 +63,15 @@ class TelegramWebhookController extends Controller
             'payload' => $payload,
             'received_at' => now(),
         ]);
+
+        if ($connection) {
+            // Build/append messenger conversation.
+            try {
+                app(ChatIngestService::class)->ingestFromTelegram($connection, $payload);
+            } catch (\Throwable $e) {
+                // do not fail webhook
+            }
+        }
 
         if ($connection) {
             $connection->update(['last_synced_at' => now(), 'last_error' => null]);

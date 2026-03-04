@@ -5,6 +5,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DealController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\Settings\IntegrationController;
+use App\Http\Controllers\ChatController;
 use App\Http\Controllers\Webhooks\MegafonVatsWebhookController;
 use App\Http\Controllers\Webhooks\TelegramWebhookController;
 use App\Http\Controllers\Webhooks\VkWebhookController;
@@ -51,4 +52,11 @@ Route::middleware('auth')->group(function () {
     Route::post('/settings/integrations/{provider}/connect', [IntegrationController::class, 'connect'])->name('settings.integrations.connect');
     Route::post('/settings/integrations/{provider}/disconnect', [IntegrationController::class, 'disconnect'])->name('settings.integrations.disconnect');
     Route::post('/settings/integrations/{provider}/test-send', [IntegrationController::class, 'testSend'])->name('settings.integrations.testSend');
+
+    // Chats (Messenger)
+    Route::get('/chats', [ChatController::class, 'index'])->name('chats.index');
+    Route::get('/chats/{conversation}', [ChatController::class, 'show'])->name('chats.show');
+    Route::get('/chats/{conversation}/poll', [ChatController::class, 'poll'])->name('chats.poll');
+    Route::post('/chats/{conversation}/messages', [ChatController::class, 'send'])->name('chats.send');
+    Route::post('/chats/{conversation}/read', [ChatController::class, 'markRead'])->name('chats.read');
 });
