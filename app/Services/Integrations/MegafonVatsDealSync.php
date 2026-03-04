@@ -122,6 +122,9 @@ class MegafonVatsDealSync
 
         $recordingUrl = self::findRecordingUrl($p);
 
+        // MegaFon VATS often provides recording as `link` (may be relative). Convert to absolute when possible.
+        $recordingUrl = self::absolutizeUrl($recordingUrl, $connection->settings['ats_api_base_url'] ?? null);
+
         $parts = [];
         $parts[] = 'Звонок (МегаФон ВАТС)';
         if ($type) $parts[] = 'тип: '.$type;
@@ -202,6 +205,45 @@ class MegafonVatsDealSync
         return $digits;
     }
 
+    private static function absolutizeUrl(?string $url, ?string $baseUrl): ?string
+    {
+        if (!$url) return null;
+        $url = trim($url);
+        if ($url === '') return null;
+
+        // Already absolute
+        if (preg_match('#^https?://#i', $url)) {
+            return $url;
+        }
+
+        if (!$baseUrl) {
+            return $url;
+        }
+
+        $baseUrl = trim($baseUrl);
+        if ($baseUrl === '') return $url;
+
+        $p = parse_url($baseUrl);
+        if (!$p || empty($p['scheme']) || empty($p['host'])) {
+            return $url;
+        }
+
+        $port = isset($p['port']) ? (':'.$p['port']) : '';
+        $prefix = $p['scheme'].'://'.$p['host'].$port;
+
+        // Protocol-relative: //host/path
+        if (str_starts_with($url, '//')) {
+            return $p['scheme'].':'.$url;
+        }
+
+        // Relative path: /path or path
+        if (!str_starts_with($url, '/')) {
+            $url = '/'.$url;
+        }
+
+        return $prefix.$url;
+    }
+
     private static function findRecordingUrl(array $payload): ?string
     {
         $keys = [
@@ -212,6 +254,8 @@ class MegafonVatsDealSync
             'recording',
             'recordLink',
             'record_link',
+            'link',
+            'Link',
             'file',
             'file_url',
             'url',
@@ -220,8 +264,14 @@ class MegafonVatsDealSync
         foreach ($keys as $k) {
             if (!array_key_exists($k, $payload)) continue;
             $v = $payload[$k];
-            if (is_string($v) && preg_match('#^https?://#i', $v)) {
-                return $v;
+            if (is_string($v)) {
+                $v = trim($v);
+                if ($v === '') {
+                    continue;
+                }
+                if (preg_match('#^https?://#i', $v) || str_starts_with($v, '/') || str_starts_with($v, '//')) {
+                    return $v;
+                }
             }
         }
 
