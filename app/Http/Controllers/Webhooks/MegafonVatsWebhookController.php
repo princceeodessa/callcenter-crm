@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\IntegrationConnection;
 use App\Models\IntegrationEvent;
 use Illuminate\Http\Request;
+use App\Services\Integrations\MegafonVatsDealSync;
 
 class MegafonVatsWebhookController extends Controller
 {
@@ -21,29 +22,34 @@ class MegafonVatsWebhookController extends Controller
         // Try to find matching account by token (if configured)
         $token = $request->header('X-Webhook-Token')
             ?? $request->query('token')
-            ?? $request->input('token');
+            ?? $request->input('token')
+            ?? $request->input('crm_token');
 
         $connection = null;
         if ($token) {
             $connection = IntegrationConnection::query()
                 ->where('provider', 'megafon_vats')
                 ->where('status', 'active')
-                ->whereRaw("JSON_EXTRACT(settings, '$.crm_webhook_token') = ?", [$token])
+                ->where('settings->crm_webhook_token', $token)
                 ->first();
         }
 
         $accountId = $connection?->account_id;
 
         // Best-effort event type
-        $eventType = $request->input('event')
-            ?? $request->input('type')
-            ?? $request->header('X-Event-Type');
+        $type = $request->input('type') ?? $request->input('event') ?? $request->header('X-Event-Type');
+        $cmd = $request->input('cmd');
+        $eventType = is_string($cmd) && $cmd !== ''
+            ? (string)($cmd.':'.(is_string($type) ? $type : 'event'))
+            : (is_string($type) ? $type : null);
 
-        $externalId = $request->input('call_id')
+        $externalId = $request->input('callid')
+            ?? $request->input('call_id')
+            ?? $request->input('callId')
             ?? $request->input('id')
             ?? $request->input('uuid');
 
-        IntegrationEvent::create([
+        $event = IntegrationEvent::create([
             'account_id' => $accountId,
             'provider' => 'megafon_vats',
             'direction' => 'in',
@@ -52,6 +58,11 @@ class MegafonVatsWebhookController extends Controller
             'payload' => $request->all(),
             'received_at' => now(),
         ]);
+
+        // Turn call events into deals + activities (idempotent by callid)
+        if ($connection && $accountId) {
+            MegafonVatsDealSync::handle($connection, $event);
+        }
 
         if ($connection) {
             $connection->update(['last_synced_at' => now(), 'last_error' => null]);

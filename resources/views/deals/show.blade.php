@@ -127,7 +127,13 @@
               <div class="fw-semibold">{{ $a->type }}</div>
               <div class="text-muted small">{{ optional($a->created_at)->format('d.m.Y H:i') }}</div>
             </div>
-            <div class="small">{{ $a->body }}</div>
+            <div class="small">{!! nl2br(e($a->body ?? '')) !!}</div>
+            @php($rec = is_array($a->payload ?? null) ? ($a->payload['recording_url'] ?? null) : null)
+            @if(is_string($rec) && $rec !== '')
+              <div class="small mt-1">
+                <a href="{{ $rec }}" target="_blank" rel="noopener">🎧 Запись звонка</a>
+              </div>
+            @endif
           </div>
         @empty
           <div class="text-muted small">Пока нет событий</div>
