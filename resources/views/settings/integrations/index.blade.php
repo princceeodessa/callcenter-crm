@@ -117,6 +117,11 @@
                   <input name="access_token" class="form-control form-control-sm" value="{{ $settings['access_token'] ?? '' }}" required>
                 </div>
 
+                <div class="mb-2">
+                  <label class="form-label small">Confirmation code (если VK просит при подтверждении)</label>
+                  <input name="confirmation_code" class="form-control form-control-sm" value="{{ $settings['confirmation_code'] ?? '' }}" placeholder="например: 775343a4">
+                </div>
+
                 @if(!empty($settings['crm_webhook_token']))
                   <div class="mb-2">
                     <label class="form-label small">Webhook URL</label>
@@ -141,6 +146,11 @@
                 <div class="mb-2">
                   <label class="form-label small">Access token</label>
                   <input name="access_token" class="form-control form-control-sm" value="{{ $settings['access_token'] ?? '' }}" required>
+                </div>
+
+                <div class="mb-2">
+                  <label class="form-label small">Confirmation code (если VK просит при подтверждении)</label>
+                  <input name="confirmation_code" class="form-control form-control-sm" value="{{ $settings['confirmation_code'] ?? '' }}" placeholder="например: 775343a4">
                 </div>
 
                 <div class="mb-2">

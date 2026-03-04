@@ -27,8 +27,8 @@ class TelegramWebhookController extends Controller
         if ($token) {
             $connection = IntegrationConnection::query()
                 ->where('provider', 'telegram')
-                ->where('status', 'active')
-                ->whereRaw("JSON_EXTRACT(settings, '$.crm_webhook_token') = ?", [$token])
+                ->whereIn('status', ['active','error'])
+                ->where('settings->crm_webhook_token', $token)
                 ->first();
         }
 
@@ -36,8 +36,8 @@ class TelegramWebhookController extends Controller
         if (!$connection && $secretHeader) {
             $connection = IntegrationConnection::query()
                 ->where('provider', 'telegram')
-                ->where('status', 'active')
-                ->whereRaw("JSON_EXTRACT(settings, '$.webhook_secret') = ?", [$secretHeader])
+                ->whereIn('status', ['active','error'])
+                ->where('settings->webhook_secret', $secretHeader)
                 ->first();
         }
 

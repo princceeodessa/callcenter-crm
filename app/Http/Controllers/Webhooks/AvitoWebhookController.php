@@ -25,8 +25,8 @@ class AvitoWebhookController extends Controller
         if ($token) {
             $connection = IntegrationConnection::query()
                 ->where('provider', 'avito')
-                ->where('status', 'active')
-                ->whereRaw("JSON_EXTRACT(settings, '$.crm_webhook_token') = ?", [$token])
+                ->whereIn('status', ['active','error'])
+                ->where('settings->crm_webhook_token', $token)
                 ->first();
         }
 
