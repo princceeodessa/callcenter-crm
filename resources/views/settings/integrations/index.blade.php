@@ -82,8 +82,7 @@
 
           @else
             <div class="text-muted small mb-2">
-              Подключим по кнопке: токен/ключи → начинаем принимать события/сообщения.
-              Этот коннектор можно включить позже.
+              Сохрани ключи. Для входящих событий используй webhook URL ниже (если сервис поддерживает webhooks).
             </div>
 
             <form method="POST" action="{{ route('settings.integrations.connect', $p['provider']) }}" class="mb-2">
@@ -94,6 +93,20 @@
                   <label class="form-label small">Bot token</label>
                   <input name="bot_token" class="form-control form-control-sm" value="{{ $settings['bot_token'] ?? '' }}" required>
                 </div>
+
+                @if(!empty($settings['crm_webhook_token']))
+                  <div class="mb-2">
+                    <label class="form-label small">Webhook URL</label>
+                    <input class="form-control form-control-sm" readonly value="{{ url('/webhooks/telegram?token='.($settings['crm_webhook_token'])) }}">
+                  </div>
+                @endif
+
+                @if(!empty($settings['webhook_secret']))
+                  <div class="mb-2">
+                    <label class="form-label small">Webhook secret (Telegram header X-Telegram-Bot-Api-Secret-Token)</label>
+                    <input class="form-control form-control-sm" readonly value="{{ $settings['webhook_secret'] }}">
+                  </div>
+                @endif
               @elseif($p['provider'] === 'vk')
                 <div class="mb-2">
                   <label class="form-label small">ID сообщества</label>
@@ -103,11 +116,44 @@
                   <label class="form-label small">Access token</label>
                   <input name="access_token" class="form-control form-control-sm" value="{{ $settings['access_token'] ?? '' }}" required>
                 </div>
+
+                @if(!empty($settings['crm_webhook_token']))
+                  <div class="mb-2">
+                    <label class="form-label small">Webhook URL</label>
+                    <input class="form-control form-control-sm" readonly value="{{ url('/webhooks/vk?token='.($settings['crm_webhook_token'])) }}">
+                  </div>
+                @endif
+
+                @if(!empty($settings['webhook_secret']))
+                  <div class="mb-2">
+                    <label class="form-label small">Secret для Callback API</label>
+                    <input class="form-control form-control-sm" readonly value="{{ $settings['webhook_secret'] }}">
+                  </div>
+                @endif
+
+                @if(!empty($settings['confirmation_code']))
+                  <div class="mb-2">
+                    <label class="form-label small">Confirmation code</label>
+                    <input class="form-control form-control-sm" readonly value="{{ $settings['confirmation_code'] }}">
+                  </div>
+                @endif
               @elseif($p['provider'] === 'avito')
                 <div class="mb-2">
                   <label class="form-label small">Access token</label>
                   <input name="access_token" class="form-control form-control-sm" value="{{ $settings['access_token'] ?? '' }}" required>
                 </div>
+
+                <div class="mb-2">
+                  <label class="form-label small">User ID (account id) — нужен для Messenger API</label>
+                  <input name="user_id" class="form-control form-control-sm" value="{{ $settings['user_id'] ?? '' }}" placeholder="например: 123456789">
+                </div>
+
+                @if(!empty($settings['crm_webhook_token']))
+                  <div class="mb-2">
+                    <label class="form-label small">Webhook URL (если в Avito включены webhooks)</label>
+                    <input class="form-control form-control-sm" readonly value="{{ url('/webhooks/avito?token='.($settings['crm_webhook_token'])) }}">
+                  </div>
+                @endif
               @endif
 
               <button class="btn btn-sm btn-primary">Сохранить / Подключить</button>

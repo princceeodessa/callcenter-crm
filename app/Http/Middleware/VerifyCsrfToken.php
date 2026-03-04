@@ -6,5 +6,10 @@ use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken as Middleware;
 
 class VerifyCsrfToken extends Middleware
 {
-    protected $except = [];
+    /**
+     * Public webhooks must be CSRF-exempt (external services can't send Laravel CSRF tokens).
+     */
+    protected $except = [
+        'webhooks/*',
+    ];
 }

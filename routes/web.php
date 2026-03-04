@@ -6,10 +6,22 @@ use App\Http\Controllers\DealController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\Settings\IntegrationController;
 use App\Http\Controllers\Webhooks\MegafonVatsWebhookController;
+use App\Http\Controllers\Webhooks\TelegramWebhookController;
+use App\Http\Controllers\Webhooks\VkWebhookController;
+use App\Http\Controllers\Webhooks\AvitoWebhookController;
 
 // Webhooks (public)
 Route::post('/webhooks/megafon/vats', [MegafonVatsWebhookController::class, 'handle'])
     ->name('webhooks.megafon.vats');
+
+Route::post('/webhooks/telegram', [TelegramWebhookController::class, 'handle'])
+    ->name('webhooks.telegram');
+
+Route::post('/webhooks/vk', [VkWebhookController::class, 'handle'])
+    ->name('webhooks.vk');
+
+Route::post('/webhooks/avito', [AvitoWebhookController::class, 'handle'])
+    ->name('webhooks.avito');
 
 Route::get('/', function () {
     return redirect()->route('deals.kanban');
@@ -38,4 +50,5 @@ Route::middleware('auth')->group(function () {
     Route::get('/settings/integrations/{provider}', [IntegrationController::class, 'show'])->name('settings.integrations.show');
     Route::post('/settings/integrations/{provider}/connect', [IntegrationController::class, 'connect'])->name('settings.integrations.connect');
     Route::post('/settings/integrations/{provider}/disconnect', [IntegrationController::class, 'disconnect'])->name('settings.integrations.disconnect');
+    Route::post('/settings/integrations/{provider}/test-send', [IntegrationController::class, 'testSend'])->name('settings.integrations.testSend');
 });

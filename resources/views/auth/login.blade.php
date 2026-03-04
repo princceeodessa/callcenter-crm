@@ -21,7 +21,6 @@
       </div>
     </div>
     <p class="text-muted small mt-3">
-      После <code>php artisan migrate --seed</code> логин: <b>admin@example.com</b> / <b>password</b>.
     </p>
   </div>
 </div>
