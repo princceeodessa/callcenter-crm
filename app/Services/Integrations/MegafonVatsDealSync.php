@@ -11,6 +11,7 @@ use App\Models\Pipeline;
 use App\Models\PipelineStage;
 use App\Models\Task;
 use App\Models\User;
+use App\Models\CallRecording;
 
 class MegafonVatsDealSync
 {
@@ -122,7 +123,7 @@ class MegafonVatsDealSync
 
         $recordingUrl = self::findRecordingUrl($p);
 
-        // MegaFon VATS often provides recording as `link` (may be relative). Convert to absolute when possible.
+        // MegaFon often provides recording as `link` and sometimes relative
         $recordingUrl = self::absolutizeUrl($recordingUrl, $connection->settings['ats_api_base_url'] ?? null);
 
         $parts = [];
@@ -150,6 +151,18 @@ class MegafonVatsDealSync
             'body' => implode(' | ', $parts),
             'payload' => $payload,
         ]);
+
+        // Upsert call recording record (for transcription)
+        if ($callId) {
+            CallRecording::query()->updateOrCreate(
+                ['account_id' => $accountId, 'callid' => (string)$callId],
+                [
+                    'deal_id' => $deal->id,
+                    'recording_url' => $recordingUrl,
+                    'duration_seconds' => is_numeric($duration) ? (int)$duration : null,
+                ]
+            );
+        }
 
         // Optional: create a callback task for missed calls
         if ($status === 'missed') {
@@ -205,45 +218,6 @@ class MegafonVatsDealSync
         return $digits;
     }
 
-    private static function absolutizeUrl(?string $url, ?string $baseUrl): ?string
-    {
-        if (!$url) return null;
-        $url = trim($url);
-        if ($url === '') return null;
-
-        // Already absolute
-        if (preg_match('#^https?://#i', $url)) {
-            return $url;
-        }
-
-        if (!$baseUrl) {
-            return $url;
-        }
-
-        $baseUrl = trim($baseUrl);
-        if ($baseUrl === '') return $url;
-
-        $p = parse_url($baseUrl);
-        if (!$p || empty($p['scheme']) || empty($p['host'])) {
-            return $url;
-        }
-
-        $port = isset($p['port']) ? (':'.$p['port']) : '';
-        $prefix = $p['scheme'].'://'.$p['host'].$port;
-
-        // Protocol-relative: //host/path
-        if (str_starts_with($url, '//')) {
-            return $p['scheme'].':'.$url;
-        }
-
-        // Relative path: /path or path
-        if (!str_starts_with($url, '/')) {
-            $url = '/'.$url;
-        }
-
-        return $prefix.$url;
-    }
-
     private static function findRecordingUrl(array $payload): ?string
     {
         $keys = [
@@ -264,14 +238,11 @@ class MegafonVatsDealSync
         foreach ($keys as $k) {
             if (!array_key_exists($k, $payload)) continue;
             $v = $payload[$k];
-            if (is_string($v)) {
-                $v = trim($v);
-                if ($v === '') {
-                    continue;
-                }
-                if (preg_match('#^https?://#i', $v) || str_starts_with($v, '/') || str_starts_with($v, '//')) {
-                    return $v;
-                }
+            if (!is_string($v)) continue;
+            $v = trim($v);
+            if ($v === '') continue;
+            if (preg_match('#^https?://#i', $v) || str_starts_with($v, '/') || str_starts_with($v, '//')) {
+                return $v;
             }
         }
 
@@ -284,5 +255,27 @@ class MegafonVatsDealSync
         }
 
         return null;
+    }
+
+    private static function absolutizeUrl(?string $url, ?string $baseUrl): ?string
+    {
+        if (!$url) return null;
+        $url = trim($url);
+        if ($url === '') return null;
+        if (preg_match('#^https?://#i', $url)) return $url;
+        if (!$baseUrl) return $url;
+
+        $p = parse_url($baseUrl);
+        if (!$p || empty($p['scheme']) || empty($p['host'])) return $url;
+        $port = isset($p['port']) ? (':'.$p['port']) : '';
+        $prefix = $p['scheme'].'://'.$p['host'].$port;
+
+        if (str_starts_with($url, '//')) {
+            return $p['scheme'].':'.$url;
+        }
+        if (!str_starts_with($url, '/')) {
+            $url = '/'.$url;
+        }
+        return $prefix.$url;
     }
 }

@@ -11,7 +11,7 @@ class Deal extends Model
         'title','contact_id','responsible_user_id',
         'amount','currency',
         'readiness_status','is_unread','has_script_deviation',
-        'closed_at'
+        'closed_at','closed_result','closed_reason','closed_by_user_id'
     ];
 
     protected $casts = [
@@ -19,6 +19,11 @@ class Deal extends Model
         'has_script_deviation' => 'boolean',
         'closed_at' => 'datetime',
     ];
+
+    public function closedBy()
+    {
+        return $this->belongsTo(User::class, 'closed_by_user_id');
+    }
 
     public function contact()
     {
@@ -48,5 +53,10 @@ class Deal extends Model
     public function conversations()
     {
         return $this->hasMany(Conversation::class);
+    }
+
+    public function callRecordings()
+    {
+        return $this->hasMany(CallRecording::class);
     }
 }

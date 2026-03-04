@@ -4,6 +4,8 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DealController;
 use App\Http\Controllers\TaskController;
+use App\Http\Controllers\CallRecordingController;
+use App\Http\Controllers\ReportController;
 use App\Http\Controllers\Settings\IntegrationController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\Webhooks\MegafonVatsWebhookController;
@@ -35,16 +37,21 @@ Route::post('/logout', [AuthController::class, 'logout'])->name('logout')->middl
 Route::middleware('auth')->group(function () {
     Route::get('/deals/kanban', [DealController::class, 'kanban'])->name('deals.kanban');
     Route::get('/deals', [DealController::class, 'index'])->name('deals.index');
+    Route::get('/deals/closed', [DealController::class, 'closed'])->name('deals.closed');
     Route::get('/deals/create', [DealController::class, 'create'])->name('deals.create');
     Route::post('/deals', [DealController::class, 'store'])->name('deals.store');
     Route::get('/deals/{deal}', [DealController::class, 'show'])->name('deals.show');
     Route::post('/deals/{deal}/stage', [DealController::class, 'changeStage'])->name('deals.stage');
+    Route::post('/deals/{deal}/close', [DealController::class, 'close'])->name('deals.close');
 
     // Kanban drag&drop move
     Route::post('/deals/{deal}/move', [DealController::class, 'move'])->name('deals.move');
 
     Route::post('/deals/{deal}/tasks', [TaskController::class, 'store'])->name('tasks.store');
     Route::post('/tasks/{task}/complete', [TaskController::class, 'complete'])->name('tasks.complete');
+
+    // Call recordings
+    Route::post('/recordings/{recording}/transcribe', [CallRecordingController::class, 'transcribe'])->name('recordings.transcribe');
 
     // Settings: integrations
     Route::get('/settings/integrations', [IntegrationController::class, 'index'])->name('settings.integrations.index');
@@ -59,4 +66,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/chats/{conversation}/poll', [ChatController::class, 'poll'])->name('chats.poll');
     Route::post('/chats/{conversation}/messages', [ChatController::class, 'send'])->name('chats.send');
     Route::post('/chats/{conversation}/read', [ChatController::class, 'markRead'])->name('chats.read');
+
+    // Reports
+    Route::get('/reports/monthly', [ReportController::class, 'monthly'])->name('reports.monthly');
 });
