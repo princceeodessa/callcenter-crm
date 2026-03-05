@@ -76,6 +76,7 @@
                             <div class="mt-2 d-flex gap-1 flex-wrap">
                                 @if($deal->is_unread) <span class="badge text-bg-warning">не прочитан</span> @endif
                                 @if($deal->has_script_deviation) <span class="badge text-bg-danger">отклонения</span> @endif
+                                @if(!$deal->is_ready) <span class="badge text-bg-warning">не заполнено</span> @endif
                                 <span class="badge text-bg-secondary">{{ $deal->responsible?->name ?? 'без ответственного' }}</span>
                             </div>
                         </div>

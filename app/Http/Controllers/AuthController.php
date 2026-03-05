@@ -19,6 +19,9 @@ class AuthController extends Controller
             'password' => ['required'],
         ]);
 
+        // Disallow login for disabled users.
+        $data['is_active'] = 1;
+
         if (Auth::attempt($data, true)) {
             $request->session()->regenerate();
             return redirect()->intended(route('deals.kanban'));

@@ -9,6 +9,7 @@ use App\Models\IntegrationConnection;
 use App\Models\Message;
 use App\Models\Pipeline;
 use App\Models\PipelineStage;
+use App\Models\User;
 use Carbon\Carbon;
 
 class ChatIngestService
@@ -125,11 +126,14 @@ class ChatIngestService
             [$pipeline, $stage] = $this->getDefaultPipelineAndStage($accountId);
 
             $title = $this->makeDealTitle($provider, $externalConversationId, $author, $body);
+            $responsibleId = $this->getDefaultResponsibleUserId($accountId);
             $deal = Deal::create([
                 'account_id' => $accountId,
                 'pipeline_id' => $pipeline->id,
                 'stage_id' => $stage->id,
                 'title' => $title,
+                'title_is_custom' => 0,
+                'responsible_user_id' => $responsibleId,
                 'is_unread' => true,
             ]);
 
@@ -231,5 +235,27 @@ class ChatIngestService
             $preview = mb_substr($preview, 0, 40).'…';
         }
         return "Чат {$prov}: {$externalConversationId}".($preview !== '' ? " — {$preview}" : "");
+    }
+
+    private function getDefaultResponsibleUserId(int $accountId): ?int
+    {
+        $admin = User::query()
+            ->where('account_id', $accountId)
+            ->where('is_active', 1)
+            ->where('role', 'admin')
+            ->orderBy('id')
+            ->first();
+
+        if ($admin) {
+            return $admin->id;
+        }
+
+        $any = User::query()
+            ->where('account_id', $accountId)
+            ->where('is_active', 1)
+            ->orderBy('id')
+            ->first();
+
+        return $any?->id;
     }
 }

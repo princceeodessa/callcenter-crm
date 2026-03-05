@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToAccount;
 use Illuminate\Database\Eloquent\Model;
 
 class IntegrationEvent extends Model
 {
+    use BelongsToAccount;
+
     public $timestamps = false;
 
     protected $fillable = [

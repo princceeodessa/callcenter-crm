@@ -2,13 +2,16 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToAccount;
 use Illuminate\Database\Eloquent\Model;
 
 class Deal extends Model
 {
+    use BelongsToAccount;
+
     protected $fillable = [
         'account_id','pipeline_id','stage_id',
-        'title','contact_id','responsible_user_id',
+        'title','title_is_custom','contact_id','responsible_user_id',
         'amount','currency',
         'readiness_status','is_unread','has_script_deviation',
         'closed_at','closed_result','closed_reason','closed_by_user_id'
@@ -18,7 +21,27 @@ class Deal extends Model
         'is_unread' => 'boolean',
         'has_script_deviation' => 'boolean',
         'closed_at' => 'datetime',
+        'title_is_custom' => 'boolean',
     ];
+
+    protected $appends = [
+        'is_ready',
+        'missing_fields',
+    ];
+
+    public function getMissingFieldsAttribute(): array
+    {
+        $missing = [];
+        if (!$this->responsible_user_id) $missing[] = 'responsible';
+        if (!$this->amount || (float)$this->amount <= 0) $missing[] = 'amount';
+        if (!$this->title_is_custom) $missing[] = 'title';
+        return $missing;
+    }
+
+    public function getIsReadyAttribute(): bool
+    {
+        return count($this->missing_fields) === 0;
+    }
 
     public function closedBy()
     {

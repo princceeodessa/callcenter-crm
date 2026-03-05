@@ -3,7 +3,12 @@
 @section('content')
 <div class="d-flex align-items-start justify-content-between mb-3">
   <div>
-    <h4 class="mb-1">{{ $deal->title }} <span class="text-muted">#{{ $deal->id }}</span></h4>
+    <h4 class="mb-1">
+      {{ $deal->title }} <span class="text-muted">#{{ $deal->id }}</span>
+      @if(!$deal->is_ready)
+        <span class="badge text-bg-warning ms-2">не заполнено</span>
+      @endif
+    </h4>
     <div class="text-muted small">
       Клиент: {{ $deal->contact?->name ?? 'Без имени' }}
       @if($deal->contact?->phone) • {{ $deal->contact->phone }} @endif
@@ -36,6 +41,47 @@
         <div class="mb-1"><b>Создано:</b> {{ optional($deal->created_at)->format('d.m.Y H:i') }}</div>
         <div class="mb-1"><b>Сумма:</b> {{ $deal->amount ? number_format($deal->amount,2,',',' ') : '—' }} {{ $deal->currency ?? 'RUB' }}</div>
         <div class="mb-1"><b>Готовность помещения:</b> {{ $deal->readiness_status ?? '—' }}</div>
+
+        @php
+          $missing = collect($deal->missing_fields)->map(fn($f) => match($f) {
+            'title' => 'название сделки',
+            'amount' => 'сумму',
+            'responsible' => 'ответственного',
+            default => $f,
+          })->values()->all();
+        @endphp
+
+        @if(!$deal->is_ready)
+          <div class="alert alert-warning mt-2 mb-2 py-2 small">
+            Рекомендуем заполнить: <b>{{ implode(', ', $missing) }}</b>.
+          </div>
+        @endif
+
+        <hr class="my-2">
+        <div class="fw-semibold mb-2">Заполнение / редактирование</div>
+        <form method="POST" action="{{ route('deals.update', $deal) }}" class="row g-2">
+          @csrf
+          @method('PATCH')
+          <div class="col-12">
+            <label class="form-label mb-1">Название сделки</label>
+            <input name="title" class="form-control form-control-sm" value="{{ $deal->title }}" required>
+          </div>
+          <div class="col-7">
+            <label class="form-label mb-1">Ответственный</label>
+            <select name="responsible_user_id" class="form-select form-select-sm" required>
+              @foreach($users as $u)
+                <option value="{{ $u->id }}" @selected($deal->responsible_user_id === $u->id)>{{ $u->name }}</option>
+              @endforeach
+            </select>
+          </div>
+          <div class="col-5">
+            <label class="form-label mb-1">Сумма (RUB)</label>
+            <input name="amount" type="number" step="0.01" min="0.01" class="form-control form-control-sm" value="{{ $deal->amount ?? '' }}" required>
+          </div>
+          <div class="col-12">
+            <button class="btn btn-sm btn-primary">Сохранить</button>
+          </div>
+        </form>
         @if($deal->closed_at)
           <div class="mt-2">
             <div class="mb-1"><b>Закрыта:</b> {{ $deal->closed_at->format('d.m.Y H:i') }}</div>
@@ -112,8 +158,19 @@
             <textarea name="description" class="form-control form-control-sm" rows="2" placeholder="Комментарий (необязательно)"></textarea>
           </div>
           <div class="mb-2">
-            <input name="due_at" type="datetime-local" class="form-control form-control-sm">
+            <label class="form-label small mb-1">Когда напомнить</label>
+            <input name="due_at" type="datetime-local" class="form-control form-control-sm" required>
           </div>
+
+          <div class="mb-2">
+            <label class="form-label small mb-1">Кому назначить</label>
+            <select name="assigned_user_id" class="form-select form-select-sm" required>
+              @foreach($users as $u)
+                <option value="{{ $u->id }}" @selected(($deal->responsible_user_id ?? auth()->id()) === $u->id)>{{ $u->name }}</option>
+              @endforeach
+            </select>
+          </div>
+
           <button class="btn btn-sm btn-primary">Добавить дело</button>
         </form>
 
@@ -125,6 +182,7 @@
                 <div class="text-muted small">
                   Статус: <b>{{ $task->status }}</b>
                   @if($task->due_at) • до {{ $task->due_at->format('d.m.Y H:i') }} @endif
+                  @if($task->assignedTo) • ответственный: <b>{{ $task->assignedTo->name }}</b> @endif
                 </div>
               </div>
 
@@ -153,7 +211,7 @@
         @forelse($deal->activities as $a)
           <div class="border-bottom pb-2 mb-2">
             <div class="d-flex justify-content-between">
-              <div class="fw-semibold">{{ $a->type }}</div>
+              <div class="fw-semibold">{{ $a->type_label }}</div>
               <div class="text-muted small">{{ optional($a->created_at)->format('d.m.Y H:i') }}</div>
             </div>
             <div class="small">{!! nl2br(e($a->body ?? '')) !!}</div>

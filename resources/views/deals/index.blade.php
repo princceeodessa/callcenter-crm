@@ -33,6 +33,7 @@
               <a href="{{ route('deals.show', $deal) }}">{{ $deal->title }}</a>
               @if($deal->is_unread) <span class="badge text-bg-warning ms-1">не прочитан</span> @endif
               @if($deal->has_script_deviation) <span class="badge text-bg-danger ms-1">отклонения</span> @endif
+              @if(!$deal->is_ready) <span class="badge text-bg-warning ms-1">не заполнено</span> @endif
               @if($deal->closed_at)
                 @php($badge = $deal->closed_result === 'won' ? 'success' : ($deal->closed_result === 'lost' ? 'danger' : 'secondary'))
                 <span class="badge text-bg-{{ $badge }} ms-1">{{ $deal->closed_result ?? 'closed' }}</span>

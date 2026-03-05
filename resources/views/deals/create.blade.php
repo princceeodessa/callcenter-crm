@@ -12,6 +12,18 @@
         <input name="title" class="form-control" placeholder="Напр.: Руслан Горбунов — ВК" required>
       </div>
       <div class="col-md-3">
+        <label class="form-label">Ответственный</label>
+        <select name="responsible_user_id" class="form-select" required>
+          @foreach($users as $u)
+            <option value="{{ $u->id }}" @selected(auth()->id() === $u->id)>{{ $u->name }}</option>
+          @endforeach
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Сумма (RUB)</label>
+        <input name="amount" type="number" step="0.01" min="0.01" class="form-control" placeholder="0" required>
+      </div>
+      <div class="col-md-3">
         <label class="form-label">Имя клиента</label>
         <input name="contact_name" class="form-control" placeholder="Без имени">
       </div>

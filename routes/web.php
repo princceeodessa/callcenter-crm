@@ -6,7 +6,9 @@ use App\Http\Controllers\DealController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\CallRecordingController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\Settings\IntegrationController;
+use App\Http\Controllers\Settings\UserController as SettingsUserController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\Webhooks\MegafonVatsWebhookController;
 use App\Http\Controllers\Webhooks\TelegramWebhookController;
@@ -41,6 +43,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/deals/create', [DealController::class, 'create'])->name('deals.create');
     Route::post('/deals', [DealController::class, 'store'])->name('deals.store');
     Route::get('/deals/{deal}', [DealController::class, 'show'])->name('deals.show');
+    Route::patch('/deals/{deal}', [DealController::class, 'update'])->name('deals.update');
     Route::post('/deals/{deal}/stage', [DealController::class, 'changeStage'])->name('deals.stage');
     Route::post('/deals/{deal}/close', [DealController::class, 'close'])->name('deals.close');
 
@@ -49,6 +52,11 @@ Route::middleware('auth')->group(function () {
 
     Route::post('/deals/{deal}/tasks', [TaskController::class, 'store'])->name('tasks.store');
     Route::post('/tasks/{task}/complete', [TaskController::class, 'complete'])->name('tasks.complete');
+
+    // Notifications
+    Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
+    Route::get('/notifications/poll', [NotificationController::class, 'poll'])->name('notifications.poll');
+    Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
 
     // Call recordings
     Route::post('/recordings/{recording}/transcribe', [CallRecordingController::class, 'transcribe'])->name('recordings.transcribe');
@@ -59,6 +67,17 @@ Route::middleware('auth')->group(function () {
     Route::post('/settings/integrations/{provider}/connect', [IntegrationController::class, 'connect'])->name('settings.integrations.connect');
     Route::post('/settings/integrations/{provider}/disconnect', [IntegrationController::class, 'disconnect'])->name('settings.integrations.disconnect');
     Route::post('/settings/integrations/{provider}/test-send', [IntegrationController::class, 'testSend'])->name('settings.integrations.testSend');
+
+    // Settings: users (admin only)
+    Route::get('/settings/users', [SettingsUserController::class, 'index'])
+        ->middleware('admin')
+        ->name('settings.users.index');
+    Route::post('/settings/users', [SettingsUserController::class, 'store'])
+        ->middleware('admin')
+        ->name('settings.users.store');
+    Route::post('/settings/users/{user}/toggle', [SettingsUserController::class, 'toggleActive'])
+        ->middleware('admin')
+        ->name('settings.users.toggle');
 
     // Chats (Messenger)
     Route::get('/chats', [ChatController::class, 'index'])->name('chats.index');

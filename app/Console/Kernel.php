@@ -9,7 +9,8 @@ class Kernel extends ConsoleKernel
 {
     protected function schedule(Schedule $schedule): void
     {
-        //
+        // Create due task notifications (requires cron to run `php artisan schedule:run`).
+        $schedule->command('tasks:notify-due')->everyMinute();
     }
 
     protected function commands(): void

@@ -8,6 +8,7 @@ use App\Models\PipelineStage;
 use App\Models\DealActivity;
 use App\Models\DealStageHistory;
 use App\Models\CallRecording;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -15,6 +16,7 @@ class DealController extends Controller
 {
     public function index(Request $request)
     {
+        $user = Auth::user();
         $q = $request->string('q')->toString();
         $status = $request->string('status')->toString(); // open|closed|all
 
@@ -24,11 +26,16 @@ class DealController extends Controller
 
         $deals = Deal::query()
             ->with(['contact','stage','responsible'])
+            ->where('account_id', $user->account_id)
             ->when($status === 'open', fn($qq) => $qq->whereNull('closed_at'))
             ->when($status === 'closed', fn($qq) => $qq->whereNotNull('closed_at'))
             ->when($q, function ($query) use ($q) {
-                $query->where('title','like',"%{$q}%")
-                    ->orWhereHas('contact', fn($c) => $c->where('phone','like',"%{$q}%")->orWhere('name','like',"%{$q}%"));
+                // IMPORTANT: wrap OR conditions to avoid leaking rows from other accounts.
+                $query->where(function ($qq) use ($q) {
+                    $qq->where('title', 'like', "%{$q}%")
+                        ->orWhereHas('contact', fn($c) => $c->where('phone','like',"%{$q}%")
+                            ->orWhere('name','like',"%{$q}%"));
+                });
             })
             ->orderByDesc('id')
             ->paginate(25)
@@ -39,12 +46,16 @@ class DealController extends Controller
 
     public function kanban()
     {
+        $user = Auth::user();
+
         $stages = PipelineStage::query()
+            ->where('account_id', $user->account_id)
             ->orderBy('sort')
             ->get();
 
         $dealsByStage = Deal::query()
             ->with(['contact','responsible'])
+            ->where('account_id', $user->account_id)
             ->whereNull('closed_at')
             ->orderByDesc('updated_at')
             ->get()
@@ -55,14 +66,27 @@ class DealController extends Controller
 
     public function create()
     {
-        $stages = PipelineStage::query()->orderBy('sort')->get();
-        return view('deals.create', compact('stages'));
+        $user = Auth::user();
+        $stages = PipelineStage::query()
+            ->where('account_id', $user->account_id)
+            ->orderBy('sort')
+            ->get();
+
+        $users = User::query()
+            ->where('account_id', $user->account_id)
+            ->where('is_active', 1)
+            ->orderBy('name')
+            ->get();
+
+        return view('deals.create', compact('stages','users'));
     }
 
     public function store(Request $request)
     {
         $data = $request->validate([
             'title' => ['required','string','max:255'],
+            'responsible_user_id' => ['required','integer','exists:users,id'],
+            'amount' => ['required','numeric','min:0.01'],
             'contact_name' => ['nullable','string','max:255'],
             'contact_phone' => ['nullable','string','max:32'],
             'stage_id' => ['required','exists:pipeline_stages,id'],
@@ -78,15 +102,25 @@ class DealController extends Controller
             );
         }
 
-        $stage = PipelineStage::findOrFail($data['stage_id']);
+        $stage = PipelineStage::query()
+            ->where('account_id', $user->account_id)
+            ->findOrFail($data['stage_id']);
+
+        $responsible = User::query()
+            ->where('account_id', $user->account_id)
+            ->where('is_active', 1)
+            ->findOrFail((int)$data['responsible_user_id']);
 
         $deal = Deal::create([
             'account_id' => $user->account_id,
             'pipeline_id' => $stage->pipeline_id,
             'stage_id' => $stage->id,
             'title' => $data['title'],
+            'title_is_custom' => 1,
             'contact_id' => $contact?->id,
-            'responsible_user_id' => $user->id,
+            'responsible_user_id' => $responsible->id,
+            'amount' => $data['amount'],
+            'currency' => 'RUB',
         ]);
 
         DealActivity::create([
@@ -109,18 +143,77 @@ class DealController extends Controller
         return redirect()->route('deals.show', $deal);
     }
 
+    public function update(Request $request, Deal $deal)
+    {
+        $user = Auth::user();
+        abort_unless($deal->account_id === $user->account_id, 403);
+
+        $data = $request->validate([
+            'title' => ['required','string','max:255'],
+            'responsible_user_id' => ['required','integer','exists:users,id'],
+            'amount' => ['required','numeric','min:0.01'],
+        ]);
+
+        $responsible = User::query()
+            ->where('account_id', $user->account_id)
+            ->where('is_active', 1)
+            ->findOrFail((int)$data['responsible_user_id']);
+
+        $old = [
+            'title' => $deal->title,
+            'responsible_user_id' => $deal->responsible_user_id,
+            'amount' => $deal->amount,
+        ];
+
+        $deal->title = $data['title'];
+        $deal->title_is_custom = 1;
+        $deal->responsible_user_id = $responsible->id;
+        $deal->amount = $data['amount'];
+        $deal->save();
+
+        DealActivity::create([
+            'account_id' => $user->account_id,
+            'deal_id' => $deal->id,
+            'author_user_id' => $user->id,
+            'type' => 'deal_updated',
+            'body' => 'Данные сделки обновлены',
+            'payload' => [
+                'before' => $old,
+                'after' => [
+                    'title' => $deal->title,
+                    'responsible_user_id' => $deal->responsible_user_id,
+                    'amount' => $deal->amount,
+                ],
+            ],
+        ]);
+
+        return back()->with('status', 'Сделка обновлена');
+    }
+
     public function show(Deal $deal)
     {
+        $user = Auth::user();
+        abort_unless($deal->account_id === $user->account_id, 403);
+
         $deal->load([
             'contact',
             'stage',
             'responsible',
-            'tasks' => fn($q) => $q->orderBy('status')->orderBy('due_at'),
+            'tasks' => fn($q) => $q->with('assignedTo')->orderBy('status')->orderBy('due_at'),
             'activities' => fn($q) => $q->orderByDesc('id'),
             'conversations' => fn($q) => $q->with('lastMessage')->orderByDesc('last_message_at'),
             'callRecordings' => fn($q) => $q->orderByDesc('id'),
         ]);
-        $stages = PipelineStage::query()->orderBy('sort')->get();
+        $stages = PipelineStage::query()
+            ->where('account_id', $user->account_id)
+            ->orderBy('sort')
+            ->get();
+
+        $users = User::query()
+            ->where('account_id', $user->account_id)
+            ->where('is_active', 1)
+            ->orderBy('name')
+            ->get();
 
         // If we have call activities with recording_url but no call_recordings row yet, create it.
         foreach ($deal->activities as $a) {
@@ -142,7 +235,7 @@ class DealController extends Controller
         $recordingsByCallid = $deal->callRecordings
             ->keyBy('callid');
 
-        return view('deals.show', compact('deal','stages','recordingsByCallid'));
+        return view('deals.show', compact('deal','stages','recordingsByCallid','users'));
     }
 
     public function closed(Request $request)
@@ -168,8 +261,12 @@ class DealController extends Controller
             ->whereBetween('closed_at', [$from, $to])
             ->when($result !== 'all', fn($qq) => $qq->where('closed_result', $result))
             ->when($q, function ($query) use ($q) {
-                $query->where('title','like',"%{$q}%")
-                    ->orWhereHas('contact', fn($c) => $c->where('phone','like',"%{$q}%")->orWhere('name','like',"%{$q}%"));
+                // IMPORTANT: wrap OR conditions to avoid leaking rows from other accounts.
+                $query->where(function ($qq) use ($q) {
+                    $qq->where('title','like',"%{$q}%")
+                        ->orWhereHas('contact', fn($c) => $c->where('phone','like',"%{$q}%")
+                            ->orWhere('name','like',"%{$q}%"));
+                });
             })
             ->with(['contact','responsible','stage'])
             ->orderByDesc('closed_at')
@@ -230,11 +327,13 @@ class DealController extends Controller
         ]);
 
         $user = Auth::user();
+        abort_unless($deal->account_id === $user->account_id, 403);
 
         if ($deal->closed_at) {
             return back()->withErrors(['stage_id' => 'Нельзя менять стадию у закрытой сделки']);
         }
         $to = PipelineStage::findOrFail($data['stage_id']);
+        abort_unless($to->account_id === $user->account_id, 403);
         $fromId = $deal->stage_id;
 
         if ($to->pipeline_id !== $deal->pipeline_id) {
@@ -282,6 +381,9 @@ class DealController extends Controller
         }
 
         $to = PipelineStage::findOrFail($data['to_stage_id']);
+        if ($to->account_id !== $user->account_id) {
+            return response()->json(['ok' => false, 'message' => 'Forbidden'], 403);
+        }
         if ($to->pipeline_id !== $deal->pipeline_id) {
             return response()->json(['ok' => false, 'message' => 'Stage pipeline mismatch'], 422);
         }

@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToAccount;
 use Illuminate\Database\Eloquent\Model;
 
 class DealStageHistory extends Model
 {
+    use BelongsToAccount;
+
     protected $table = 'deal_stage_history';
 
     public $timestamps = false;

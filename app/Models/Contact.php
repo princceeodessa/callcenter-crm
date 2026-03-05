@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToAccount;
 use Illuminate\Database\Eloquent\Model;
 
 class Contact extends Model
 {
+    use BelongsToAccount;
+
     protected $fillable = [
         'account_id','name','phone','email'
     ];

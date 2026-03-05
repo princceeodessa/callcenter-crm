@@ -74,13 +74,23 @@ class MegafonVatsDealSync
                 return;
             }
 
-            $responsible = User::query()->where('account_id', $accountId)->orderBy('id')->first();
+            $responsible = User::query()
+                ->where('account_id', $accountId)
+                ->where('is_active', 1)
+                ->where('role', 'admin')
+                ->orderBy('id')
+                ->first();
+
+            if (!$responsible) {
+                $responsible = User::query()->where('account_id', $accountId)->where('is_active', 1)->orderBy('id')->first();
+            }
 
             $deal = Deal::create([
                 'account_id' => $accountId,
                 'pipeline_id' => $stage->pipeline_id,
                 'stage_id' => $stage->id,
                 'title' => 'Звонки: '.$clientPhone,
+                'title_is_custom' => 0,
                 'contact_id' => $contact->id,
                 'responsible_user_id' => $responsible?->id,
                 'is_unread' => true,

@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToAccount;
 use Illuminate\Database\Eloquent\Model;
 
 class CallRecording extends Model
 {
+    use BelongsToAccount;
+
     protected $fillable = [
         'account_id',
         'deal_id',
