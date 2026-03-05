@@ -143,4 +143,19 @@ class AvitoApiClient
             'request_id' => $last?->header('x-request-id'),
         ];
     }
+
+    public function getSelfAccount(): array
+    {
+        // Used to fetch Avito "user_id" (account id) after OAuth.
+        foreach ([
+            '/core/v1/accounts/self',
+            '/core/v1/accounts/self/',
+        ] as $path) {
+            $r = $this->http()->get($this->baseUrl.$path);
+            if ($r->successful()) {
+                return $r->json() ?? [];
+            }
+        }
+        return [];
+    }
 }

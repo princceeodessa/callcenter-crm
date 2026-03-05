@@ -5,6 +5,7 @@ namespace App\Services\Integrations;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Illuminate\Http\UploadedFile;
 
 class TelegramApiClient
 {
@@ -21,10 +22,22 @@ class TelegramApiClient
             ->asJson();
     }
 
+    private function httpMultipart(): PendingRequest
+    {
+        return Http::timeout($this->timeoutSeconds)
+            ->acceptJson();
+    }
+
     private function url(string $method): string
     {
         $token = trim($this->botToken);
         return "https://api.telegram.org/bot{$token}/".ltrim($method, '/');
+    }
+
+    public function fileUrl(string $filePath): string
+    {
+        $token = trim($this->botToken);
+        return "https://api.telegram.org/file/bot{$token}/".ltrim($filePath, '/');
     }
 
     public function getMe(): array
@@ -61,6 +74,48 @@ class TelegramApiClient
         }
 
         $r = $this->http()->post($this->url('sendMessage'), $payload);
+        return $r->json() ?? [];
+    }
+
+    public function getFile(string $fileId): array
+    {
+        $r = $this->http()->get($this->url('getFile'), ['file_id' => $fileId]);
+        return $r->json() ?? [];
+    }
+
+    public function sendPhoto(int|string $chatId, UploadedFile $file, ?string $caption = null): array
+    {
+        $payload = ['chat_id' => $chatId];
+        if ($caption !== null && $caption !== '') {
+            $payload['caption'] = $caption;
+        }
+        $r = $this->httpMultipart()
+            ->attach('photo', file_get_contents($file->getRealPath()), $file->getClientOriginalName() ?: 'photo')
+            ->post($this->url('sendPhoto'), $payload);
+        return $r->json() ?? [];
+    }
+
+    public function sendVideo(int|string $chatId, UploadedFile $file, ?string $caption = null): array
+    {
+        $payload = ['chat_id' => $chatId];
+        if ($caption !== null && $caption !== '') {
+            $payload['caption'] = $caption;
+        }
+        $r = $this->httpMultipart()
+            ->attach('video', file_get_contents($file->getRealPath()), $file->getClientOriginalName() ?: 'video')
+            ->post($this->url('sendVideo'), $payload);
+        return $r->json() ?? [];
+    }
+
+    public function sendDocument(int|string $chatId, UploadedFile $file, ?string $caption = null): array
+    {
+        $payload = ['chat_id' => $chatId];
+        if ($caption !== null && $caption !== '') {
+            $payload['caption'] = $caption;
+        }
+        $r = $this->httpMultipart()
+            ->attach('document', file_get_contents($file->getRealPath()), $file->getClientOriginalName() ?: 'file')
+            ->post($this->url('sendDocument'), $payload);
         return $r->json() ?? [];
     }
 

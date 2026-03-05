@@ -6,7 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\IntegrationConnection;
 use App\Models\IntegrationEvent;
 use App\Services\Chat\ChatIngestService;
+use App\Services\Integrations\AvitoApiClient;
+use App\Services\Integrations\AvitoOAuthService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class AvitoWebhookController extends Controller
 {
@@ -18,6 +21,11 @@ class AvitoWebhookController extends Controller
      */
     public function handle(Request $request)
     {
+        // OAuth redirect (GET): /webhooks/avito?code=...&state=...
+        if ($request->isMethod('get') && is_string($request->query('code')) && is_string($request->query('state'))) {
+            return $this->handleOauthCallback($request);
+        }
+
         $token = $request->query('token')
             ?? $request->header('X-Webhook-Token')
             ?? $request->input('token');
@@ -58,5 +66,94 @@ class AvitoWebhookController extends Controller
         }
 
         return response()->json(['ok' => true]);
+    }
+
+    private function handleOauthCallback(Request $request)
+    {
+        $code = (string)$request->query('code');
+        $state = (string)$request->query('state');
+
+        $conn = IntegrationConnection::query()
+            ->where('provider', 'avito')
+            ->where('settings->oauth_state', $state)
+            ->orderByDesc('id')
+            ->first();
+
+        if (!$conn) {
+            return response('avito_oauth_invalid_state', 400);
+        }
+
+        $settings = $conn->settings ?? [];
+        $clientId = trim((string)($settings['client_id'] ?? ''));
+        $clientSecret = trim((string)($settings['client_secret'] ?? ''));
+        if ($clientId === '' || $clientSecret === '') {
+            $conn->update(['status' => 'error', 'last_error' => 'Avito OAuth: missing client_id/client_secret']);
+            return response('avito_oauth_client_credentials_missing', 500);
+        }
+
+        try {
+            $oauth = app(AvitoOAuthService::class);
+            $redirectUri = url('/webhooks/avito');
+            $tokenResp = $oauth->exchangeCode($clientId, $clientSecret, $code, $redirectUri);
+
+            $accessToken = (string)($tokenResp['access_token'] ?? '');
+            $refreshToken = (string)($tokenResp['refresh_token'] ?? '');
+            $expiresIn = (int)($tokenResp['expires_in'] ?? 0);
+
+            if ($accessToken === '') {
+                $conn->update([
+                    'status' => 'error',
+                    'last_error' => 'Avito OAuth: token exchange failed: '.json_encode($tokenResp, JSON_UNESCAPED_UNICODE),
+                ]);
+                return response('avito_oauth_token_exchange_failed', 500);
+            }
+
+            $settings['access_token'] = $accessToken;
+            if ($refreshToken !== '') {
+                $settings['refresh_token'] = $refreshToken;
+            }
+            if ($expiresIn > 0) {
+                $settings['token_expires_at'] = now()->addSeconds($expiresIn)->toDateTimeString();
+            }
+            unset($settings['oauth_state']);
+
+            // Fetch user_id from /core/v1/accounts/self (needs user:read scope)
+            $av = new AvitoApiClient($accessToken);
+            $self = $av->getSelfAccount();
+            $uid = $self['id']
+                ?? data_get($self, 'account.id')
+                ?? data_get($self, 'result.id')
+                ?? data_get($self, 'data.id');
+            if (is_scalar($uid) && (string)$uid !== '') {
+                $settings['user_id'] = (string)$uid;
+            }
+
+            $settings['crm_webhook_token'] = $settings['crm_webhook_token'] ?? Str::random(40);
+
+            $conn->update([
+                'status' => 'active',
+                'settings' => $settings,
+                'last_error' => null,
+                'last_synced_at' => now(),
+            ]);
+
+            IntegrationEvent::create([
+                'account_id' => $conn->account_id,
+                'provider' => 'avito',
+                'direction' => 'in',
+                'event_type' => 'oauth_connected',
+                'external_id' => null,
+                'payload' => ['self' => $self, 'token' => array_diff_key($tokenResp, ['access_token' => 1, 'refresh_token' => 1])],
+                'received_at' => now(),
+            ]);
+
+            if (auth()->check()) {
+                return redirect()->route('settings.integrations.show', 'avito')->with('status', 'Avito подключено');
+            }
+            return response('ok', 200);
+        } catch (\Throwable $e) {
+            $conn->update(['status' => 'error', 'last_error' => 'Avito OAuth exception: '.$e->getMessage()]);
+            return response('avito_oauth_exception', 500);
+        }
     }
 }

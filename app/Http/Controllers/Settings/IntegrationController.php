@@ -103,11 +103,22 @@ class IntegrationController extends Controller
                 'access_token' => ['required', 'string', 'max:255'],
             ]),
             'avito' => $request->validate([
-                'access_token' => ['required', 'string', 'max:255'],
+                'client_id' => ['nullable', 'string', 'max:255'],
+                'client_secret' => ['nullable', 'string', 'max:255'],
+                'access_token' => ['nullable', 'string', 'max:255'],
+                'refresh_token' => ['nullable', 'string', 'max:255'],
                 'user_id' => ['nullable', 'string', 'max:50'],
             ]),
             default => [],
         };
+
+        if ($provider === 'avito') {
+            $hasToken = !empty(trim((string)($data['access_token'] ?? '')));
+            $hasClient = !empty(trim((string)($data['client_id'] ?? ''))) && !empty(trim((string)($data['client_secret'] ?? '')));
+            if (!$hasToken && !$hasClient) {
+                return back()->withErrors(['access_token' => 'Для Avito укажи либо access_token, либо client_id + client_secret (OAuth).']);
+            }
+        }
 
         $connection = IntegrationConnection::query()
             ->firstOrNew(['account_id' => $accountId, 'provider' => $provider]);
@@ -138,7 +149,10 @@ class IntegrationController extends Controller
             }
         } elseif (in_array($provider, ['vk', 'avito'], true)) {
             foreach ($data as $k => $v) {
-                $settings[$k] = trim($v);
+                if ($v === null) {
+                    continue;
+                }
+                $settings[$k] = is_string($v) ? trim($v) : $v;
             }
 
             // Generate webhook token/secret for providers that may use webhooks
@@ -166,7 +180,7 @@ class IntegrationController extends Controller
         $connection->fill([
             'account_id' => $accountId,
             'provider' => $provider,
-            'status' => 'active',
+            'status' => ($provider === 'avito' && empty($settings['access_token'])) ? 'disabled' : 'active',
             'settings' => $settings,
             'last_error' => $settings['last_setup_error'] ?? null,
         ]);
@@ -174,6 +188,49 @@ class IntegrationController extends Controller
         $connection->save();
 
         return redirect()->route('settings.integrations.index')->with('status', 'Интеграция сохранена.');
+    }
+
+    /**
+     * Start Avito OAuth flow (redirect user to Avito).
+     * Callback will come back to /webhooks/avito (GET) where we finalize token exchange.
+     */
+    public function avitoOauthStart(Request $request)
+    {
+        $accountId = Auth::user()->account_id;
+
+        $connection = IntegrationConnection::query()
+            ->firstOrNew(['account_id' => $accountId, 'provider' => 'avito']);
+
+        $settings = $connection->settings ?? [];
+        $clientId = trim((string)($settings['client_id'] ?? ''));
+        $clientSecret = trim((string)($settings['client_secret'] ?? ''));
+
+        if ($clientId === '' || $clientSecret === '') {
+            return redirect()->route('settings.integrations.show', 'avito')
+                ->withErrors(['client_id' => 'Сначала сохрани client_id и client_secret для Avito']);
+        }
+
+        $settings['crm_webhook_token'] = $settings['crm_webhook_token'] ?? Str::random(40);
+        $settings['oauth_state'] = Str::random(48);
+        $connection->fill([
+            'account_id' => $accountId,
+            'provider' => 'avito',
+            'status' => $connection->status ?: 'disabled',
+            'settings' => $settings,
+        ])->save();
+
+        $redirectUri = url('/webhooks/avito');
+        $scope = urlencode('messenger:read messenger:write user:read');
+        $state = urlencode($settings['oauth_state']);
+
+        $authUrl = 'https://avito.ru/oauth'
+            .'?response_type=code'
+            .'&client_id='.urlencode($clientId)
+            .'&redirect_uri='.urlencode($redirectUri)
+            .'&scope='.$scope
+            .'&state='.$state;
+
+        return redirect()->away($authUrl);
     }
 
     public function testSend(Request $request, string $provider)

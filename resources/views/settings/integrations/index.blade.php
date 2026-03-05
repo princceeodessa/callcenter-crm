@@ -143,18 +143,39 @@
                   </div>
                 @endif
               @elseif($p['provider'] === 'avito')
-                <div class="mb-2">
-                  <label class="form-label small">Access token</label>
-                  <input name="access_token" class="form-control form-control-sm" value="{{ $settings['access_token'] ?? '' }}" required>
+                <div class="alert alert-info small">
+                  <div class="fw-semibold mb-1">Как подключить Avito</div>
+                  <ol class="mb-0">
+                    <li>Сохрани <b>client_id</b> и <b>client_secret</b> (OAuth).</li>
+                    <li>Нажми «Подключить через OAuth» — откроется Авито для авторизации.</li>
+                    <li>После подключения мы сами получим <b>access_token</b> и <b>user_id</b> (нужен для Messenger API).</li>
+                  </ol>
                 </div>
 
                 <div class="mb-2">
-                  <label class="form-label small">Confirmation code (если VK просит при подтверждении)</label>
-                  <input name="confirmation_code" class="form-control form-control-sm" value="{{ $settings['confirmation_code'] ?? '' }}" placeholder="например: 775343a4">
+                  <label class="form-label small">client_id</label>
+                  <input name="client_id" class="form-control form-control-sm" value="{{ $settings['client_id'] ?? '' }}" placeholder="client_id">
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small">client_secret</label>
+                  <input name="client_secret" class="form-control form-control-sm" value="{{ $settings['client_secret'] ?? '' }}" placeholder="client_secret">
                 </div>
 
                 <div class="mb-2">
-                  <label class="form-label small">User ID (account id) — нужен для Messenger API</label>
+                  <label class="form-label small">Redirect URL (зарегистрируй в Авито)</label>
+                  <input class="form-control form-control-sm" readonly value="{{ url('/webhooks/avito') }}">
+                </div>
+
+                <div class="mb-2">
+                  <label class="form-label small">access_token (опционально — если хочешь указать вручную)</label>
+                  <input name="access_token" class="form-control form-control-sm" value="{{ $settings['access_token'] ?? '' }}" placeholder="access_token">
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small">refresh_token (опционально)</label>
+                  <input name="refresh_token" class="form-control form-control-sm" value="{{ $settings['refresh_token'] ?? '' }}" placeholder="refresh_token">
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small">user_id (account id) — заполнится автоматически после OAuth</label>
                   <input name="user_id" class="form-control form-control-sm" value="{{ $settings['user_id'] ?? '' }}" placeholder="например: 123456789">
                 </div>
 
@@ -166,7 +187,12 @@
                 @endif
               @endif
 
-              <button class="btn btn-sm btn-primary">Сохранить / Подключить</button>
+              <div class="d-flex gap-2 flex-wrap">
+                <button class="btn btn-sm btn-primary">Сохранить</button>
+                @if(!empty($settings['client_id']) && !empty($settings['client_secret']))
+                  <a class="btn btn-sm btn-outline-success" href="{{ route('settings.integrations.avito.oauth.start') }}">Подключить через OAuth</a>
+                @endif
+              </div>
 
               @if(($conn->status ?? 'disabled') === 'active')
                 <button class="btn btn-sm btn-outline-danger" form="disconnect-{{ $p['provider'] }}" type="submit" onclick="return confirm('Отключить интеграцию?')">Отключить</button>

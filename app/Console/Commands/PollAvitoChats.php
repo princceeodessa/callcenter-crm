@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\IntegrationConnection;
 use App\Models\IntegrationEvent;
 use App\Services\Integrations\AvitoApiClient;
+use App\Services\Integrations\AvitoOAuthService;
 use Illuminate\Console\Command;
 
 class PollAvitoChats extends Command
@@ -34,6 +35,34 @@ class PollAvitoChats extends Command
             $settings = $conn->settings ?? [];
             $userId = $settings['user_id'] ?? null;
             $token = $settings['access_token'] ?? null;
+
+            // Refresh token if it is close to expiration (best-effort)
+            try {
+                $exp = $settings['token_expires_at'] ?? null;
+                $refreshToken = $settings['refresh_token'] ?? null;
+                $clientId = $settings['client_id'] ?? null;
+                $clientSecret = $settings['client_secret'] ?? null;
+                if ($exp && $refreshToken && $clientId && $clientSecret) {
+                    $expAt = \Carbon\Carbon::parse($exp);
+                    if ($expAt->lessThanOrEqualTo(now()->addSeconds(60))) {
+                        $oauth = app(AvitoOAuthService::class);
+                        $resp = $oauth->refreshToken((string)$clientId, (string)$clientSecret, (string)$refreshToken);
+                        if (!empty($resp['access_token'])) {
+                            $settings['access_token'] = (string)$resp['access_token'];
+                            if (!empty($resp['refresh_token'])) {
+                                $settings['refresh_token'] = (string)$resp['refresh_token'];
+                            }
+                            if (!empty($resp['expires_in'])) {
+                                $settings['token_expires_at'] = now()->addSeconds((int)$resp['expires_in'])->toDateTimeString();
+                            }
+                            $token = $settings['access_token'];
+                            $conn->update(['settings' => $settings]);
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                // ignore token refresh errors
+            }
 
             if (!$userId || !$token) {
                 $this->warn("[account {$conn->account_id}] skipped: missing user_id/access_token");
@@ -80,8 +109,10 @@ class PollAvitoChats extends Command
                     'event_type' => 'last_message',
                     'external_id' => $messageId,
                     'payload' => [
+                        // normalized for ChatIngestService
+                        'chat_id' => $chatId,
                         'chat' => $chat,
-                        'last_message' => $last,
+                        'message' => $last,
                     ],
                     'received_at' => now(),
                 ]);

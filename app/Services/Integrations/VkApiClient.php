@@ -5,6 +5,7 @@ namespace App\Services\Integrations;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Illuminate\Http\UploadedFile;
 
 class VkApiClient
 {
@@ -41,6 +42,125 @@ class VkApiClient
             'random_id' => $randomId ?? random_int(1, PHP_INT_MAX),
             'message' => $text,
         ]);
+    }
+
+    public function sendMessageWithAttachment(int|string $peerId, string $text, string $attachment, ?int $randomId = null): array
+    {
+        return $this->call('messages.send', [
+            'peer_id' => $peerId,
+            'random_id' => $randomId ?? random_int(1, PHP_INT_MAX),
+            'message' => $text,
+            'attachment' => $attachment,
+        ]);
+    }
+
+    public function getMessagesPhotoUploadServer(int|string $peerId): array
+    {
+        return $this->call('photos.getMessagesUploadServer', [
+            'peer_id' => $peerId,
+        ]);
+    }
+
+    public function saveMessagesPhoto(string $photo, int $server, string $hash): array
+    {
+        return $this->call('photos.saveMessagesPhoto', [
+            'photo' => $photo,
+            'server' => $server,
+            'hash' => $hash,
+        ]);
+    }
+
+    public function getMessagesDocUploadServer(int|string $peerId, string $type = 'doc'): array
+    {
+        return $this->call('docs.getMessagesUploadServer', [
+            'peer_id' => $peerId,
+            'type' => $type,
+        ]);
+    }
+
+    public function saveDoc(string $file, string $title): array
+    {
+        return $this->call('docs.save', [
+            'file' => $file,
+            'title' => $title,
+        ]);
+    }
+
+    /**
+     * Upload a photo and return attachment string (photo{owner_id}_{id}_{access_key?}).
+     */
+    public function uploadMessagePhoto(int|string $peerId, UploadedFile $file): array
+    {
+        $serverResp = $this->getMessagesPhotoUploadServer($peerId);
+        $uploadUrl = data_get($serverResp, 'response.upload_url');
+        if (!is_string($uploadUrl) || $uploadUrl === '') {
+            return ['ok' => false, 'error' => $serverResp['error'] ?? 'upload_url_missing', 'raw' => $serverResp];
+        }
+
+        $uploadResp = Http::timeout($this->timeoutSeconds)
+            ->attach('photo', file_get_contents($file->getRealPath()), $file->getClientOriginalName() ?: 'photo')
+            ->post($uploadUrl);
+        $u = $uploadResp->json() ?? [];
+        $photo = $u['photo'] ?? null;
+        $server = $u['server'] ?? null;
+        $hash = $u['hash'] ?? null;
+        if (!is_string($photo) || !is_scalar($server) || !is_string($hash)) {
+            return ['ok' => false, 'error' => 'photo_upload_failed', 'raw' => $u];
+        }
+
+        $saved = $this->saveMessagesPhoto($photo, (int)$server, $hash);
+        $p0 = data_get($saved, 'response.0');
+        if (!is_array($p0)) {
+            return ['ok' => false, 'error' => $saved['error'] ?? 'photo_save_failed', 'raw' => $saved];
+        }
+        $ownerId = $p0['owner_id'] ?? null;
+        $id = $p0['id'] ?? null;
+        $accessKey = $p0['access_key'] ?? null;
+        if (!is_scalar($ownerId) || !is_scalar($id)) {
+            return ['ok' => false, 'error' => 'photo_ids_missing', 'raw' => $p0];
+        }
+        $att = 'photo'.$ownerId.'_'.$id.(is_string($accessKey) && $accessKey !== '' ? '_'.$accessKey : '');
+        return ['ok' => true, 'attachment' => $att, 'raw' => $saved];
+    }
+
+    /**
+     * Upload a document (any file) and return attachment string (doc{owner_id}_{id}_{access_key?}).
+     */
+    public function uploadMessageDoc(int|string $peerId, UploadedFile $file): array
+    {
+        $serverResp = $this->getMessagesDocUploadServer($peerId, 'doc');
+        $uploadUrl = data_get($serverResp, 'response.upload_url');
+        if (!is_string($uploadUrl) || $uploadUrl === '') {
+            return ['ok' => false, 'error' => $serverResp['error'] ?? 'upload_url_missing', 'raw' => $serverResp];
+        }
+
+        $uploadResp = Http::timeout($this->timeoutSeconds)
+            ->attach('file', file_get_contents($file->getRealPath()), $file->getClientOriginalName() ?: 'file')
+            ->post($uploadUrl);
+        $u = $uploadResp->json() ?? [];
+        $vkFile = $u['file'] ?? null;
+        if (!is_string($vkFile) || $vkFile === '') {
+            return ['ok' => false, 'error' => 'doc_upload_failed', 'raw' => $u];
+        }
+
+        $title = $file->getClientOriginalName() ?: 'file';
+        $saved = $this->saveDoc($vkFile, $title);
+        // docs.save returns {response:{doc:{...}}} OR {response:[{...}]}
+        $doc = data_get($saved, 'response.doc');
+        if (!is_array($doc)) {
+            $doc = data_get($saved, 'response.0');
+        }
+        if (!is_array($doc)) {
+            return ['ok' => false, 'error' => $saved['error'] ?? 'doc_save_failed', 'raw' => $saved];
+        }
+        $ownerId = $doc['owner_id'] ?? null;
+        $id = $doc['id'] ?? null;
+        $accessKey = $doc['access_key'] ?? null;
+        if (!is_scalar($ownerId) || !is_scalar($id)) {
+            return ['ok' => false, 'error' => 'doc_ids_missing', 'raw' => $doc];
+        }
+        $att = 'doc'.$ownerId.'_'.$id.(is_string($accessKey) && $accessKey !== '' ? '_'.$accessKey : '');
+        return ['ok' => true, 'attachment' => $att, 'raw' => $saved];
     }
 
     public function getCallbackConfirmationCode(int|string $groupId): array

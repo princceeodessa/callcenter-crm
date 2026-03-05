@@ -14,6 +14,7 @@ use App\Http\Controllers\Webhooks\MegafonVatsWebhookController;
 use App\Http\Controllers\Webhooks\TelegramWebhookController;
 use App\Http\Controllers\Webhooks\VkWebhookController;
 use App\Http\Controllers\Webhooks\AvitoWebhookController;
+use App\Http\Controllers\MediaController;
 
 // Webhooks (public)
 Route::post('/webhooks/megafon/vats', [MegafonVatsWebhookController::class, 'handle'])
@@ -25,7 +26,8 @@ Route::post('/webhooks/telegram', [TelegramWebhookController::class, 'handle'])
 Route::post('/webhooks/vk', [VkWebhookController::class, 'handle'])
     ->name('webhooks.vk');
 
-Route::post('/webhooks/avito', [AvitoWebhookController::class, 'handle'])
+// Avito: POST (events) + GET (OAuth redirect)
+Route::match(['GET','POST'], '/webhooks/avito', [AvitoWebhookController::class, 'handle'])
     ->name('webhooks.avito');
 
 Route::get('/', function () {
@@ -61,12 +63,22 @@ Route::middleware('auth')->group(function () {
     // Call recordings
     Route::post('/recordings/{recording}/transcribe', [CallRecordingController::class, 'transcribe'])->name('recordings.transcribe');
 
-    // Settings: integrations
-    Route::get('/settings/integrations', [IntegrationController::class, 'index'])->name('settings.integrations.index');
-    Route::get('/settings/integrations/{provider}', [IntegrationController::class, 'show'])->name('settings.integrations.show');
-    Route::post('/settings/integrations/{provider}/connect', [IntegrationController::class, 'connect'])->name('settings.integrations.connect');
-    Route::post('/settings/integrations/{provider}/disconnect', [IntegrationController::class, 'disconnect'])->name('settings.integrations.disconnect');
-    Route::post('/settings/integrations/{provider}/test-send', [IntegrationController::class, 'testSend'])->name('settings.integrations.testSend');
+    // Media proxy (Telegram files without exposing bot token)
+    Route::get('/media/telegram/{conversation}/{fileId}', [MediaController::class, 'telegram'])
+        ->name('media.telegram');
+
+    // Settings: integrations (main_operator only)
+    Route::middleware('admin')->group(function () {
+        Route::get('/settings/integrations', [IntegrationController::class, 'index'])->name('settings.integrations.index');
+        Route::get('/settings/integrations/{provider}', [IntegrationController::class, 'show'])->name('settings.integrations.show');
+        Route::post('/settings/integrations/{provider}/connect', [IntegrationController::class, 'connect'])->name('settings.integrations.connect');
+        Route::post('/settings/integrations/{provider}/disconnect', [IntegrationController::class, 'disconnect'])->name('settings.integrations.disconnect');
+        Route::post('/settings/integrations/{provider}/test-send', [IntegrationController::class, 'testSend'])->name('settings.integrations.testSend');
+
+        // Avito OAuth flow (redirect starts here, callback hits /webhooks/avito)
+        Route::get('/settings/integrations/avito/oauth/start', [IntegrationController::class, 'avitoOauthStart'])
+            ->name('settings.integrations.avito.oauth.start');
+    });
 
     // Settings: users (admin only)
     Route::get('/settings/users', [SettingsUserController::class, 'index'])
@@ -86,6 +98,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/chats/{conversation}/messages', [ChatController::class, 'send'])->name('chats.send');
     Route::post('/chats/{conversation}/read', [ChatController::class, 'markRead'])->name('chats.read');
 
-    // Reports
-    Route::get('/reports/monthly', [ReportController::class, 'monthly'])->name('reports.monthly');
+    // Reports (main_operator only)
+    Route::get('/reports/monthly', [ReportController::class, 'monthly'])
+        ->middleware('admin')
+        ->name('reports.monthly');
 });

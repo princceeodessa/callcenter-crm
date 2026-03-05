@@ -35,6 +35,47 @@ class ChatIngestService
             $text = $msg['caption'] ?? null;
         }
         $text = is_string($text) ? $text : '';
+
+        // Media (photo/video/document): keep in payload for rendering.
+        $media = [];
+        if (isset($msg['photo']) && is_array($msg['photo']) && count($msg['photo']) > 0) {
+            $ph = $msg['photo'];
+            $last = end($ph);
+            $fileId = is_array($last) ? ($last['file_id'] ?? null) : null;
+            if (is_string($fileId) && $fileId !== '') {
+                $media[] = ['type' => 'photo', 'file_id' => $fileId];
+                if ($text === '') {
+                    $text = '📷 Фото';
+                }
+            }
+        }
+        if (isset($msg['video']) && is_array($msg['video'])) {
+            $fileId = $msg['video']['file_id'] ?? null;
+            if (is_string($fileId) && $fileId !== '') {
+                $media[] = ['type' => 'video', 'file_id' => $fileId, 'mime' => 'video/mp4'];
+                if ($text === '') {
+                    $text = '🎞 Видео';
+                }
+            }
+        }
+        if (isset($msg['document']) && is_array($msg['document'])) {
+            $fileId = $msg['document']['file_id'] ?? null;
+            if (is_string($fileId) && $fileId !== '') {
+                $media[] = [
+                    'type' => 'document',
+                    'file_id' => $fileId,
+                    'mime' => $msg['document']['mime_type'] ?? null,
+                    'file_name' => $msg['document']['file_name'] ?? null,
+                ];
+                if ($text === '') {
+                    $text = '📎 Файл';
+                }
+            }
+        }
+
+        if (!empty($media)) {
+            $payload['media'] = $media;
+        }
         $sentAt = isset($msg['date']) ? Carbon::createFromTimestamp((int)$msg['date']) : now();
 
         return $this->ingestGeneric(
@@ -66,6 +107,49 @@ class ChatIngestService
         $externalMessageId = $msg['conversation_message_id'] ?? ($msg['id'] ?? null);
         $author = is_scalar($msg['from_id'] ?? null) ? 'vk:'.$msg['from_id'] : 'vk';
         $text = is_string($msg['text'] ?? null) ? $msg['text'] : '';
+
+        // Attachments (photos/docs/videos) for rendering
+        $media = [];
+        $atts = $msg['attachments'] ?? null;
+        if (is_array($atts)) {
+            foreach ($atts as $a) {
+                if (!is_array($a)) continue;
+                $type = $a['type'] ?? null;
+                if ($type === 'photo' && is_array($a['photo'] ?? null)) {
+                    $sizes = $a['photo']['sizes'] ?? [];
+                    $best = null;
+                    if (is_array($sizes)) {
+                        foreach ($sizes as $s) {
+                            if (!is_array($s)) continue;
+                            if (!isset($s['url'])) continue;
+                            $best = $s;
+                        }
+                    }
+                    $url = is_array($best) ? ($best['url'] ?? null) : null;
+                    if (is_string($url) && $url !== '') {
+                        $media[] = ['type' => 'photo', 'url' => $url];
+                        if ($text === '') $text = '📷 Фото';
+                    }
+                }
+                if ($type === 'doc' && is_array($a['doc'] ?? null)) {
+                    $url = $a['doc']['url'] ?? null;
+                    if (is_string($url) && $url !== '') {
+                        $media[] = ['type' => 'document', 'url' => $url, 'title' => $a['doc']['title'] ?? null];
+                        if ($text === '') $text = '📎 Файл';
+                    }
+                }
+                if ($type === 'video' && is_array($a['video'] ?? null)) {
+                    $player = $a['video']['player'] ?? null;
+                    if (is_string($player) && $player !== '') {
+                        $media[] = ['type' => 'video', 'url' => $player];
+                        if ($text === '') $text = '🎞 Видео';
+                    }
+                }
+            }
+        }
+        if (!empty($media)) {
+            $payload['media'] = $media;
+        }
         $sentAt = isset($msg['date']) ? Carbon::createFromTimestamp((int)$msg['date']) : now();
 
         return $this->ingestGeneric(
@@ -83,16 +167,52 @@ class ChatIngestService
     public function ingestFromAvito(IntegrationConnection $connection, array $payload): ?Message
     {
         // Avito payload shape varies by product; best-effort.
-        $chatId = $payload['chat_id'] ?? ($payload['chatId'] ?? data_get($payload, 'chat.id'));
+        // Support both webhook-like payloads and our polling payloads (PollAvitoChats).
+        $chatId = $payload['chat_id']
+            ?? ($payload['chatId'] ?? data_get($payload, 'chat.id'))
+            ?? data_get($payload, 'chat.chat_id');
         if (!is_scalar($chatId)) {
             return null;
         }
 
-        $text = $payload['text'] ?? data_get($payload, 'message.text') ?? data_get($payload, 'content.text');
+        $msg = $payload['message'] ?? ($payload['last_message'] ?? null);
+        if (!is_array($msg)) {
+            $msg = is_array(data_get($payload, 'last_message')) ? data_get($payload, 'last_message') : null;
+        }
+
+        $text = $payload['text']
+            ?? data_get($msg, 'text')
+            ?? data_get($payload, 'message.text')
+            ?? data_get($payload, 'content.text');
         $text = is_string($text) ? $text : '';
-        $externalMessageId = $payload['id'] ?? ($payload['message_id'] ?? data_get($payload, 'message.id'));
-        $authorId = $payload['author_id'] ?? ($payload['user_id'] ?? data_get($payload, 'author.id'));
+
+        $externalMessageId = $payload['id']
+            ?? ($payload['message_id'] ?? data_get($msg, 'id'))
+            ?? data_get($payload, 'message.id');
+
+        $authorId = $payload['author_id']
+            ?? ($payload['user_id'] ?? data_get($msg, 'author_id'))
+            ?? data_get($payload, 'author.id');
         $author = is_scalar($authorId) ? 'avito:'.$authorId : 'avito';
+
+        // Try extract image/video urls if present
+        $media = [];
+        $attachments = data_get($msg, 'attachments') ?? data_get($payload, 'attachments');
+        if (is_array($attachments)) {
+            foreach ($attachments as $a) {
+                if (!is_array($a)) continue;
+                $url = $a['url'] ?? data_get($a, 'image.url') ?? data_get($a, 'video.url');
+                if (is_string($url) && $url !== '') {
+                    $media[] = ['type' => $a['type'] ?? 'file', 'url' => $url];
+                }
+            }
+        }
+        if (!empty($media)) {
+            $payload['media'] = $media;
+            if ($text === '') {
+                $text = '📎 Вложение';
+            }
+        }
 
         return $this->ingestGeneric(
             accountId: $connection->account_id,

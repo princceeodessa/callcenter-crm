@@ -6,6 +6,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ config('app.name') }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     @stack('styles')
 </head>
 <body class="bg-light">
@@ -14,20 +15,26 @@
         <a class="navbar-brand" href="{{ route('deals.kanban') }}">{{ config('app.name') }}</a>
         <div class="d-flex gap-2 flex-wrap">
             @auth
+                @php($isPriv = in_array(auth()->user()?->role, ['admin','main_operator'], true))
                 <a class="btn btn-sm btn-outline-light" href="{{ route('deals.kanban') }}">Канбан</a>
                 <a class="btn btn-sm btn-outline-light" href="{{ route('deals.index') }}">Список</a>
                 <a class="btn btn-sm btn-outline-light" href="{{ route('deals.closed') }}">Завершённые</a>
                 <a class="btn btn-sm btn-outline-light" href="{{ route('chats.index') }}">Чаты</a>
-                <a class="btn btn-sm btn-outline-light" href="{{ route('settings.integrations.index') }}">Интеграции</a>
-                @if(auth()->user()?->role === 'admin')
+                @if($isPriv)
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('settings.integrations.index') }}">Интеграции</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('settings.users.index') }}">Пользователи</a>
                 @endif
-                <a class="btn btn-sm btn-outline-light position-relative" href="{{ route('notifications.index') }}">
-                    🔔 Уведомления
+
+                {{-- Notifications: bright bell icon (always visible) --}}
+                <a class="btn btn-sm btn-warning position-relative" href="{{ route('notifications.index') }}" title="Уведомления" aria-label="Уведомления">
+                    <i class="bi bi-bell-fill"></i>
                     <span id="navNotifBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-danger d-none">0</span>
                 </a>
-                <button type="button" class="btn btn-sm btn-outline-info d-none" id="enableNotifBtn">Включить уведомления</button>
-                <a class="btn btn-sm btn-outline-light" href="{{ route('reports.monthly') }}">Отчёты</a>
+                <button type="button" class="btn btn-sm btn-outline-info d-none" id="enableNotifBtn" title="Системные уведомления">🔊</button>
+
+                @if($isPriv)
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('reports.monthly') }}">Отчёты</a>
+                @endif
                 <a class="btn btn-sm btn-success" href="{{ route('deals.create') }}">+ Сделка</a>
                 <form method="POST" action="{{ route('logout') }}">
                     @csrf
@@ -162,8 +169,11 @@
         if (c > 0) {
             badgeEl.textContent = String(c);
             badgeEl.classList.remove('d-none');
+            // a subtle pulse to make the bell noticeable
+            badgeEl.closest('a')?.classList.add('shadow');
         } else {
             badgeEl.classList.add('d-none');
+            badgeEl.closest('a')?.classList.remove('shadow');
         }
     };
 
