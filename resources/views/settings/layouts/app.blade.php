@@ -16,6 +16,7 @@
         <div class="d-flex gap-2 flex-wrap">
             @auth
                 @php($isPriv = in_array(auth()->user()?->role, ['admin','main_operator'], true))
+                @php($isNc = in_array(auth()->user()?->role, ['admin','main_operator','operator'], true))
                 <a class="btn btn-sm btn-outline-light" href="{{ route('deals.kanban') }}">Канбан</a>
                 <a class="btn btn-sm btn-outline-light" href="{{ route('deals.index') }}">Список</a>
                 <a class="btn btn-sm btn-outline-light" href="{{ route('deals.closed') }}">Завершённые</a>

@@ -24,11 +24,16 @@
                   <td>{{ $u->name }}</td>
                   <td>{{ $u->email }}</td>
                   <td>
-                    @if($u->role === 'admin')
-                      <span class="badge text-bg-primary">admin</span>
-                    @else
-                      <span class="badge text-bg-secondary">operator</span>
-                    @endif
+                    @php
+                      $role = $u->role;
+                      $badgeClass = match($role) {
+                        'admin' => 'text-bg-primary',
+                        'main_operator' => 'text-bg-warning',
+                        'measurer' => 'text-bg-info',
+                        default => 'text-bg-secondary',
+                      };
+                    @endphp
+                    <span class="badge {{ $badgeClass }}">{{ $role }}</span>
                   </td>
                   <td>
                     @if($u->is_active)
@@ -81,7 +86,9 @@
           <div class="mb-2">
             <label class="form-label">Роль</label>
             <select name="role" class="form-select">
-              <option value="operator" selected>operator</option>
+              <option value="operator" selected>operator (колл-центр)</option>
+              <option value="main_operator">main_operator (руководитель)</option>
+              <option value="measurer">measurer (замерщик)</option>
               <option value="admin">admin</option>
             </select>
           </div>

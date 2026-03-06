@@ -16,7 +16,7 @@ class UserController extends Controller
 
         $users = User::query()
             ->where('account_id', $accountId)
-            ->orderByRaw("FIELD(role,'admin','operator')")
+            ->orderByRaw("FIELD(role,'admin','main_operator','operator','measurer')")
             ->orderBy('name')
             ->get();
 
@@ -31,7 +31,7 @@ class UserController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:6'],
-            'role' => ['required', 'in:admin,operator'],
+            'role' => ['required', 'in:admin,main_operator,operator,measurer'],
             'is_active' => ['nullable'],
         ]);
 

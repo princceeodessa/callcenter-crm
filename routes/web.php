@@ -15,6 +15,8 @@ use App\Http\Controllers\Webhooks\TelegramWebhookController;
 use App\Http\Controllers\Webhooks\VkWebhookController;
 use App\Http\Controllers\Webhooks\AvitoWebhookController;
 use App\Http\Controllers\MediaController;
+use App\Http\Controllers\MeasurementController;
+use App\Http\Controllers\NonClosureController;
 
 // Webhooks (public)
 Route::post('/webhooks/megafon/vats', [MegafonVatsWebhookController::class, 'handle'])
@@ -98,8 +100,24 @@ Route::middleware('auth')->group(function () {
     Route::post('/chats/{conversation}/messages', [ChatController::class, 'send'])->name('chats.send');
     Route::post('/chats/{conversation}/read', [ChatController::class, 'markRead'])->name('chats.read');
 
-    // Reports (main_operator only)
+    // Reports (personal for users, aggregated for main_operator/admin)
     Route::get('/reports/monthly', [ReportController::class, 'monthly'])
-        ->middleware('admin')
         ->name('reports.monthly');
+
+    // Measurements calendar (admin + call-center + measurers)
+    Route::middleware('calendar')->group(function () {
+        Route::get('/calendar', [MeasurementController::class, 'index'])->name('calendar.index');
+        Route::get('/calendar/events', [MeasurementController::class, 'events'])->name('calendar.events');
+        Route::post('/calendar/measurements', [MeasurementController::class, 'store'])->name('calendar.store');
+        Route::patch('/calendar/measurements/{measurement}', [MeasurementController::class, 'update'])->name('calendar.update');
+        Route::post('/calendar/measurements/{measurement}/claim', [MeasurementController::class, 'claim'])->name('calendar.claim');
+    });
+
+    // Non-closures table (admin + call-center)
+    Route::middleware('nonclosure')->group(function () {
+        Route::get('/nonclosures', [NonClosureController::class, 'index'])->name('nonclosures.index');
+        Route::post('/nonclosures', [NonClosureController::class, 'store'])->name('nonclosures.store');
+        Route::patch('/nonclosures/{nonclosure}', [NonClosureController::class, 'update'])->name('nonclosures.update');
+        Route::post('/nonclosures/import', [NonClosureController::class, 'import'])->name('nonclosures.import');
+    });
 });

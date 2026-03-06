@@ -12,7 +12,8 @@ class TrustProxies extends Middleware
      *
      * @var array<int, string>|string|null
      */
-    protected $proxies;
+    // Allow correct scheme/host detection behind reverse proxies (e.g. Nginx, Cloudflare).
+    protected $proxies = '*';
 
     /**
      * The headers that should be used to detect proxies.

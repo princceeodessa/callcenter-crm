@@ -35,7 +35,27 @@ class AvitoOAuthService
         ];
 
         $r = $this->http()->post($this->baseUrl.'/token', $payload);
-        return $r->json() ?? ['ok' => false, 'status' => $r->status(), 'body' => $r->body()];
+        $json = $r->json();
+
+        // Some OAuth servers require client credentials via HTTP Basic.
+        if ((!is_array($json) || empty($json['access_token'])) && $r->status() >= 400) {
+            $r2 = Http::timeout($this->timeoutSeconds)
+                ->acceptJson()
+                ->asForm()
+                ->withBasicAuth($clientId, $clientSecret)
+                ->post($this->baseUrl.'/token', [
+                    'grant_type' => 'authorization_code',
+                    'code' => $code,
+                    'redirect_uri' => $redirectUri,
+                ]);
+            $json2 = $r2->json();
+            if (is_array($json2) && !empty($json2['access_token'])) {
+                return $json2;
+            }
+            return $json2 ?? ['ok' => false, 'status' => $r2->status(), 'body' => $r2->body()];
+        }
+
+        return $json ?? ['ok' => false, 'status' => $r->status(), 'body' => $r->body()];
     }
 
     public function refreshToken(string $clientId, string $clientSecret, string $refreshToken): array
@@ -48,6 +68,23 @@ class AvitoOAuthService
         ];
 
         $r = $this->http()->post($this->baseUrl.'/token', $payload);
-        return $r->json() ?? ['ok' => false, 'status' => $r->status(), 'body' => $r->body()];
+        $json = $r->json();
+        if ((!is_array($json) || empty($json['access_token'])) && $r->status() >= 400) {
+            $r2 = Http::timeout($this->timeoutSeconds)
+                ->acceptJson()
+                ->asForm()
+                ->withBasicAuth($clientId, $clientSecret)
+                ->post($this->baseUrl.'/token', [
+                    'grant_type' => 'refresh_token',
+                    'refresh_token' => $refreshToken,
+                ]);
+            $json2 = $r2->json();
+            if (is_array($json2) && !empty($json2['access_token'])) {
+                return $json2;
+            }
+            return $json2 ?? ['ok' => false, 'status' => $r2->status(), 'body' => $r2->body()];
+        }
+
+        return $json ?? ['ok' => false, 'status' => $r->status(), 'body' => $r->body()];
     }
 }

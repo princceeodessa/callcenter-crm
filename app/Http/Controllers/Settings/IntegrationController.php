@@ -219,18 +219,23 @@ class IntegrationController extends Controller
             'settings' => $settings,
         ])->save();
 
-        $redirectUri = url('/webhooks/avito');
-        $scope = urlencode('messenger:read messenger:write user:read');
-        $state = urlencode($settings['oauth_state']);
+        // IMPORTANT: Avito requires redirect_uri in token exchange to match exactly.
+        // We store the exact redirect_uri used here and reuse it in /webhooks/avito callback.
+        $redirectUri = $request->getSchemeAndHttpHost().'/webhooks/avito';
+        $settings['oauth_redirect_uri'] = $redirectUri;
+        $connection->update(['settings' => $settings]);
 
-        $authUrl = 'https://avito.ru/oauth'
-            .'?response_type=code'
-            .'&client_id='.urlencode($clientId)
-            .'&redirect_uri='.urlencode($redirectUri)
-            .'&scope='.$scope
-            .'&state='.$state;
+        $authorizeBase = env('AVITO_OAUTH_AUTHORIZE_URL', 'https://www.avito.ru/oauth');
+        $params = [
+            'response_type' => 'code',
+            'client_id' => $clientId,
+            'redirect_uri' => $redirectUri,
+            // Avito scopes are product-specific; for Messenger we request read/write + user info.
+            'scope' => 'messenger:read messenger:write user:read',
+            'state' => $settings['oauth_state'],
+        ];
 
-        return redirect()->away($authUrl);
+        return redirect()->away(rtrim($authorizeBase, '?').'?'.http_build_query($params));
     }
 
     public function testSend(Request $request, string $provider)

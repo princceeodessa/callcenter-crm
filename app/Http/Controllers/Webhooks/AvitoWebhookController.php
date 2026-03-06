@@ -22,8 +22,16 @@ class AvitoWebhookController extends Controller
     public function handle(Request $request)
     {
         // OAuth redirect (GET): /webhooks/avito?code=...&state=...
-        if ($request->isMethod('get') && is_string($request->query('code')) && is_string($request->query('state'))) {
-            return $this->handleOauthCallback($request);
+        if ($request->isMethod('get')) {
+            if (is_string($request->query('error'))) {
+                // Avito can return an error directly on redirect_uri.
+                $err = (string)$request->query('error');
+                $desc = (string)($request->query('error_description') ?? '');
+                return response('avito_oauth_error: '.$err.($desc ? ' '.$desc : ''), 400);
+            }
+            if (is_string($request->query('code')) && is_string($request->query('state'))) {
+                return $this->handleOauthCallback($request);
+            }
         }
 
         $token = $request->query('token')
@@ -93,7 +101,7 @@ class AvitoWebhookController extends Controller
 
         try {
             $oauth = app(AvitoOAuthService::class);
-            $redirectUri = url('/webhooks/avito');
+            $redirectUri = (string)($settings['oauth_redirect_uri'] ?? $request->url());
             $tokenResp = $oauth->exchangeCode($clientId, $clientSecret, $code, $redirectUri);
 
             $accessToken = (string)($tokenResp['access_token'] ?? '');
@@ -116,6 +124,7 @@ class AvitoWebhookController extends Controller
                 $settings['token_expires_at'] = now()->addSeconds($expiresIn)->toDateTimeString();
             }
             unset($settings['oauth_state']);
+            unset($settings['oauth_redirect_uri']);
 
             // Fetch user_id from /core/v1/accounts/self (needs user:read scope)
             $av = new AvitoApiClient($accessToken);

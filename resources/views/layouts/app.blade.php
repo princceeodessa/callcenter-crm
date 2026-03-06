@@ -16,10 +16,15 @@
         <div class="d-flex gap-2 flex-wrap">
             @auth
                 @php($isPriv = in_array(auth()->user()?->role, ['admin','main_operator'], true))
+                @php($isNc = in_array(auth()->user()?->role, ['admin','main_operator','operator'], true))
                 <a class="btn btn-sm btn-outline-light" href="{{ route('deals.kanban') }}">Канбан</a>
                 <a class="btn btn-sm btn-outline-light" href="{{ route('deals.index') }}">Список</a>
                 <a class="btn btn-sm btn-outline-light" href="{{ route('deals.closed') }}">Завершённые</a>
                 <a class="btn btn-sm btn-outline-light" href="{{ route('chats.index') }}">Чаты</a>
+                <a class="btn btn-sm btn-outline-light" href="{{ route('calendar.index') }}">Календарь</a>
+                @if($isNc)
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('nonclosures.index') }}">Незаключёнки</a>
+                @endif
                 @if($isPriv)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('settings.integrations.index') }}">Интеграции</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('settings.users.index') }}">Пользователи</a>
@@ -32,9 +37,7 @@
                 </a>
                 <button type="button" class="btn btn-sm btn-outline-info d-none" id="enableNotifBtn" title="Системные уведомления">🔊</button>
 
-                @if($isPriv)
-                    <a class="btn btn-sm btn-outline-light" href="{{ route('reports.monthly') }}">Отчёты</a>
-                @endif
+                <a class="btn btn-sm btn-outline-light" href="{{ route('reports.monthly') }}">Отчёты</a>
                 <a class="btn btn-sm btn-success" href="{{ route('deals.create') }}">+ Сделка</a>
                 <form method="POST" action="{{ route('logout') }}">
                     @csrf

@@ -22,6 +22,17 @@ class DealActivity extends Model
         'type_label',
     ];
 
+    public function deal()
+    {
+        return $this->belongsTo(Deal::class);
+    }
+
+    public function author()
+    {
+        return $this->belongsTo(User::class, 'author_user_id');
+    }
+
+
     public function getTypeLabelAttribute(): string
     {
         $type = (string)($this->type ?? '');
