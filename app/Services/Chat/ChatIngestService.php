@@ -2,6 +2,7 @@
 
 namespace App\Services\Chat;
 
+use App\Models\Contact;
 use App\Models\Conversation;
 use App\Models\Deal;
 use App\Models\DealActivity;
@@ -10,6 +11,7 @@ use App\Models\Message;
 use App\Models\Pipeline;
 use App\Models\PipelineStage;
 use App\Models\User;
+use App\Services\Integrations\VkApiClient;
 use Carbon\Carbon;
 
 class ChatIngestService
@@ -30,13 +32,14 @@ class ChatIngestService
         $from = is_array($msg['from'] ?? null) ? $msg['from'] : [];
         $author = trim((string)($from['first_name'] ?? '').' '.(string)($from['last_name'] ?? ''));
         $author = $author !== '' ? $author : (is_scalar($from['id'] ?? null) ? 'tg:'.$from['id'] : 'tg');
+        $leadName = $this->cleanLeadName($author);
+
         $text = $msg['text'] ?? null;
         if (!is_string($text)) {
             $text = $msg['caption'] ?? null;
         }
         $text = is_string($text) ? $text : '';
 
-        // Media (photo/video/document): keep in payload for rendering.
         $media = [];
         if (isset($msg['photo']) && is_array($msg['photo']) && count($msg['photo']) > 0) {
             $ph = $msg['photo'];
@@ -87,6 +90,7 @@ class ChatIngestService
             body: $text,
             payload: $payload,
             sentAt: $sentAt,
+            leadName: $leadName,
         );
     }
 
@@ -104,45 +108,54 @@ class ChatIngestService
         if (!is_scalar($peerId)) {
             return null;
         }
-        $externalMessageId = $msg['conversation_message_id'] ?? ($msg['id'] ?? null);
-        $author = is_scalar($msg['from_id'] ?? null) ? 'vk:'.$msg['from_id'] : 'vk';
-        $text = is_string($msg['text'] ?? null) ? $msg['text'] : '';
 
-        // Attachments (photos/docs/videos) for rendering
+        $externalMessageId = $msg['conversation_message_id'] ?? ($msg['id'] ?? null);
+        $fromId = $msg['from_id'] ?? null;
+        $author = is_scalar($fromId) ? 'vk:'.$fromId : 'vk';
+        $leadName = $this->extractVkLeadName($connection, $payload, $msg);
+        if ($leadName) {
+            $author = $leadName;
+        }
+
+        $text = $msg['text'] ?? null;
+        $text = is_string($text) ? $text : '';
+
         $media = [];
-        $atts = $msg['attachments'] ?? null;
-        if (is_array($atts)) {
-            foreach ($atts as $a) {
-                if (!is_array($a)) continue;
-                $type = $a['type'] ?? null;
-                if ($type === 'photo' && is_array($a['photo'] ?? null)) {
-                    $sizes = $a['photo']['sizes'] ?? [];
-                    $best = null;
-                    if (is_array($sizes)) {
-                        foreach ($sizes as $s) {
-                            if (!is_array($s)) continue;
-                            if (!isset($s['url'])) continue;
-                            $best = $s;
-                        }
-                    }
-                    $url = is_array($best) ? ($best['url'] ?? null) : null;
-                    if (is_string($url) && $url !== '') {
-                        $media[] = ['type' => 'photo', 'url' => $url];
-                        if ($text === '') $text = '📷 Фото';
+        $attachments = is_array($msg['attachments'] ?? null) ? $msg['attachments'] : [];
+        foreach ($attachments as $a) {
+            if (!is_array($a)) {
+                continue;
+            }
+            $type = (string) ($a['type'] ?? '');
+            if ($type === 'photo' && is_array($a['photo'] ?? null)) {
+                $sizes = is_array($a['photo']['sizes'] ?? null) ? $a['photo']['sizes'] : [];
+                $url = null;
+                if (!empty($sizes)) {
+                    usort($sizes, fn($x, $y) => ((int)($y['width'] ?? 0) * (int)($y['height'] ?? 0)) <=> ((int)($x['width'] ?? 0) * (int)($x['height'] ?? 0)));
+                    $url = $sizes[0]['url'] ?? null;
+                }
+                if (is_string($url) && $url !== '') {
+                    $media[] = ['type' => 'photo', 'url' => $url];
+                    if ($text === '') {
+                        $text = '📷 Фото';
                     }
                 }
-                if ($type === 'doc' && is_array($a['doc'] ?? null)) {
-                    $url = $a['doc']['url'] ?? null;
-                    if (is_string($url) && $url !== '') {
-                        $media[] = ['type' => 'document', 'url' => $url, 'title' => $a['doc']['title'] ?? null];
-                        if ($text === '') $text = '📎 Файл';
+            }
+            if ($type === 'doc' && is_array($a['doc'] ?? null)) {
+                $url = $a['doc']['url'] ?? null;
+                if (is_string($url) && $url !== '') {
+                    $media[] = ['type' => 'document', 'url' => $url, 'title' => $a['doc']['title'] ?? null];
+                    if ($text === '') {
+                        $text = '📎 Файл';
                     }
                 }
-                if ($type === 'video' && is_array($a['video'] ?? null)) {
-                    $player = $a['video']['player'] ?? null;
-                    if (is_string($player) && $player !== '') {
-                        $media[] = ['type' => 'video', 'url' => $player];
-                        if ($text === '') $text = '🎞 Видео';
+            }
+            if ($type === 'video' && is_array($a['video'] ?? null)) {
+                $player = $a['video']['player'] ?? null;
+                if (is_string($player) && $player !== '') {
+                    $media[] = ['type' => 'video', 'url' => $player];
+                    if ($text === '') {
+                        $text = '🎞 Видео';
                     }
                 }
             }
@@ -161,13 +174,12 @@ class ChatIngestService
             body: $text,
             payload: $payload,
             sentAt: $sentAt,
+            leadName: $leadName,
         );
     }
 
     public function ingestFromAvito(IntegrationConnection $connection, array $payload): ?Message
     {
-        // Avito payload shape varies by product; best-effort.
-        // Support both webhook-like payloads and our polling payloads (PollAvitoChats).
         $chatId = $payload['chat_id']
             ?? ($payload['chatId'] ?? data_get($payload, 'chat.id'))
             ?? data_get($payload, 'chat.chat_id');
@@ -194,8 +206,11 @@ class ChatIngestService
             ?? ($payload['user_id'] ?? data_get($msg, 'author_id'))
             ?? data_get($payload, 'author.id');
         $author = is_scalar($authorId) ? 'avito:'.$authorId : 'avito';
+        $leadName = $this->extractAvitoLeadName($payload, $msg);
+        if ($leadName) {
+            $author = $leadName;
+        }
 
-        // Try extract image/video urls if present
         $media = [];
         $attachments = data_get($msg, 'attachments') ?? data_get($payload, 'attachments');
         if (is_array($attachments)) {
@@ -223,6 +238,7 @@ class ChatIngestService
             body: $text,
             payload: $payload,
             sentAt: now(),
+            leadName: $leadName,
         );
     }
 
@@ -235,7 +251,10 @@ class ChatIngestService
         string $body,
         array $payload,
         Carbon $sentAt,
+        ?string $leadName = null,
     ): ?Message {
+        $leadName = $this->cleanLeadName($leadName ?? $author);
+
         $conversation = Conversation::query()
             ->where('account_id', $accountId)
             ->where('channel', $provider)
@@ -245,7 +264,7 @@ class ChatIngestService
         if (!$conversation) {
             [$pipeline, $stage] = $this->getDefaultPipelineAndStage($accountId);
 
-            $title = $this->makeDealTitle($provider, $externalConversationId, $author, $body);
+            $title = $this->makeDealTitle($provider, $externalConversationId, $leadName, $author, $body);
             $responsibleId = $this->getDefaultResponsibleUserId($accountId);
             $deal = Deal::create([
                 'account_id' => $accountId,
@@ -265,13 +284,17 @@ class ChatIngestService
                 'status' => 'open',
                 'unread_count' => 0,
                 'last_message_at' => null,
-                'meta' => [
-                    'created_by' => 'webhook',
-                ],
+                'meta' => $this->conversationMeta($provider, $leadName),
             ]);
+        } else {
+            $meta = is_array($conversation->meta) ? $conversation->meta : [];
+            $mergedMeta = array_merge($meta, $this->conversationMeta($provider, $leadName));
+            if ($mergedMeta !== $meta) {
+                $conversation->meta = $mergedMeta;
+                $conversation->save();
+            }
         }
 
-        // Idempotency: avoid duplicates if external message id repeats.
         if ($externalMessageId) {
             $exists = Message::query()
                 ->where('conversation_id', $conversation->id)
@@ -299,7 +322,11 @@ class ChatIngestService
             'last_message_at' => $sentAt,
         ]);
 
-        $conversation->deal()->update(['is_unread' => true]);
+        $deal = $conversation->deal;
+        if ($deal) {
+            $this->syncDealLeadPresentation($deal, $provider, $externalConversationId, $leadName);
+            $deal->update(['is_unread' => true]);
+        }
 
         DealActivity::create([
             'account_id' => $accountId,
@@ -310,6 +337,7 @@ class ChatIngestService
             'payload' => [
                 'provider' => $provider,
                 'author' => $author,
+                'lead_name' => $leadName,
                 'external_conversation_id' => $externalConversationId,
                 'external_message_id' => $externalMessageId,
             ],
@@ -342,19 +370,31 @@ class ChatIngestService
         return [$pipeline, $stage];
     }
 
-    private function makeDealTitle(string $provider, string $externalConversationId, string $author, string $body): string
+    private function makeDealTitle(string $provider, string $externalConversationId, ?string $leadName, string $author, string $body): string
     {
         $prov = match ($provider) {
             'vk' => 'VK',
             'telegram' => 'Telegram',
             'avito' => 'Avito',
+            'megafon_vats' => 'Звонок',
             default => strtoupper($provider),
         };
+
+        if ($leadName) {
+            return $leadName.' — '.$prov;
+        }
+
         $preview = trim(preg_replace('/\s+/', ' ', (string)$body));
         if (mb_strlen($preview) > 40) {
             $preview = mb_substr($preview, 0, 40).'…';
         }
-        return "Чат {$prov}: {$externalConversationId}".($preview !== '' ? " — {$preview}" : "");
+
+        $base = 'Чат '.$prov;
+        if ($preview !== '') {
+            return $base.' — '.$preview;
+        }
+
+        return $base.' #'.$externalConversationId;
     }
 
     private function getDefaultResponsibleUserId(int $accountId): ?int
@@ -377,5 +417,141 @@ class ChatIngestService
             ->first();
 
         return $any?->id;
+    }
+
+    private function conversationMeta(string $provider, ?string $leadName): array
+    {
+        $meta = [
+            'created_by' => 'webhook',
+            'provider' => $provider,
+        ];
+
+        if ($leadName) {
+            $meta['lead_name'] = $leadName;
+            $meta['display_name'] = $leadName;
+        }
+
+        return $meta;
+    }
+
+    private function syncDealLeadPresentation(Deal $deal, string $provider, string $externalConversationId, ?string $leadName): void
+    {
+        $updates = [];
+        if (!$deal->title_is_custom) {
+            $newTitle = $this->makeDealTitle($provider, $externalConversationId, $leadName, $leadName ?? '', '');
+            if ($newTitle !== '' && $deal->title !== $newTitle) {
+                $updates['title'] = $newTitle;
+            }
+        }
+
+        if ($leadName) {
+            if ($deal->contact_id) {
+                $contact = $deal->contact;
+                if ($contact && trim((string) $contact->name) === '') {
+                    $contact->name = $leadName;
+                    $contact->save();
+                }
+            } else {
+                $contact = Contact::create([
+                    'account_id' => $deal->account_id,
+                    'name' => $leadName,
+                    'phone' => null,
+                    'email' => null,
+                ]);
+                $updates['contact_id'] = $contact->id;
+            }
+        }
+
+        if (!empty($updates)) {
+            $deal->update($updates);
+        }
+    }
+
+    private function extractVkLeadName(IntegrationConnection $connection, array $payload, array $msg): ?string
+    {
+        $profiles = is_array($payload['object']['profiles'] ?? null) ? $payload['object']['profiles'] : [];
+        $fromId = $msg['from_id'] ?? null;
+        if (is_scalar($fromId)) {
+            foreach ($profiles as $profile) {
+                if (!is_array($profile)) {
+                    continue;
+                }
+                if ((string) ($profile['id'] ?? '') !== (string) $fromId) {
+                    continue;
+                }
+                $name = trim((string) ($profile['first_name'] ?? '').' '.(string) ($profile['last_name'] ?? ''));
+                if ($this->cleanLeadName($name)) {
+                    return $this->cleanLeadName($name);
+                }
+            }
+        }
+
+        if (!is_scalar($fromId) || (int) $fromId <= 0) {
+            return null;
+        }
+
+        $token = trim((string) ($connection->settings['access_token'] ?? ''));
+        if ($token === '') {
+            return null;
+        }
+
+        try {
+            $vk = new VkApiClient($token);
+            $resp = $vk->usersGet((int) $fromId);
+            $user = data_get($resp, 'response.0');
+            if (!is_array($user)) {
+                return null;
+            }
+            return $this->cleanLeadName(trim((string) ($user['first_name'] ?? '').' '.(string) ($user['last_name'] ?? '')));
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function extractAvitoLeadName(array $payload, ?array $msg): ?string
+    {
+        $candidates = [
+            data_get($payload, 'author.name'),
+            data_get($payload, 'user.name'),
+            data_get($payload, 'buyer.name'),
+            data_get($payload, 'sender.name'),
+            data_get($payload, 'chat.users.0.name'),
+            data_get($msg, 'author.name'),
+            data_get($msg, 'sender.name'),
+        ];
+
+        foreach ($candidates as $candidate) {
+            $name = $this->cleanLeadName(is_scalar($candidate) ? (string) $candidate : null);
+            if ($name) {
+                return $name;
+            }
+        }
+
+        return null;
+    }
+
+    private function cleanLeadName(?string $value): ?string
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return null;
+        }
+
+        $lower = mb_strtolower($value);
+        foreach (['vk:', 'tg:', 'avito:', 'telegram:', 'user ', 'id ', 'chat '] as $prefix) {
+            if (str_starts_with($lower, $prefix)) {
+                return null;
+            }
+        }
+
+        if (preg_match('/^\d+$/', $value)) {
+            return null;
+        }
+
+        if (preg_match('/[\p{L}]{2,}/u', $value) !== 1) {
+            return null;
+        }
+
+        return $value;
     }
 }

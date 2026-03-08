@@ -44,6 +44,14 @@ class VkApiClient
         ]);
     }
 
+    public function usersGet(int|string $userId, array $fields = ['first_name', 'last_name']): array
+    {
+        return $this->call('users.get', [
+            'user_ids' => (string) $userId,
+            'fields' => implode(',', $fields),
+        ]);
+    }
+
     public function sendMessageWithAttachment(int|string $peerId, string $text, string $attachment, ?int $randomId = null): array
     {
         return $this->call('messages.send', [

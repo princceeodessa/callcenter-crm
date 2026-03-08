@@ -17,21 +17,22 @@
 
 <div class="card shadow-sm">
   <div class="table-responsive">
-    <table class="table table-sm table-striped align-middle mb-0">
+    <table class="table table-sm align-middle mb-0">
       <thead>
         <tr>
           <th>Сделка</th>
           <th>Результат</th>
+          <th>Источник</th>
           <th>Клиент</th>
-          <th>Ответственный</th>
           <th>Закрыта</th>
         </tr>
       </thead>
       <tbody>
         @forelse ($deals as $deal)
-          <tr>
+          @php($leadName = $deal->lead_display_name ?? 'Без имени')
+          <tr class="{{ $deal->lead_source_surface_class }}">
             <td>
-              <a href="{{ route('deals.show', $deal) }}">{{ $deal->title }}</a>
+              <a href="{{ route('deals.show', $deal) }}" class="fw-semibold text-decoration-none">{{ $deal->title }}</a>
               <span class="text-muted small ms-1">#{{ $deal->id }}</span>
               @if($deal->closed_reason)
                 <div class="text-muted small">Причина: {{ $deal->closed_reason }}</div>
@@ -43,13 +44,13 @@
                 {{ $deal->closed_result === 'won' ? 'Успешно' : ($deal->closed_result === 'lost' ? 'Отказ' : 'Закрыта') }}
               </span>
             </td>
+            <td><span class="{{ $deal->lead_source_badge_class }}">{{ $deal->lead_source_label }}</span></td>
             <td>
-              {{ $deal->contact?->name ?? 'Без имени' }}
+              <div class="fw-semibold">{{ $leadName }}</div>
               @if($deal->contact?->phone)
                 <div class="text-muted small">{{ $deal->contact->phone }}</div>
               @endif
             </td>
-            <td>{{ $deal->responsible?->name ?? '—' }}</td>
             <td class="text-muted small">{{ optional($deal->closed_at)->format('d.m.Y H:i') }}</td>
           </tr>
         @empty

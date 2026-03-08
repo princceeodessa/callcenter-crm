@@ -43,7 +43,7 @@ class NonClosureImportService
                 'responsible_name' => $row['responsible_name'],
                 'comment' => $row['comment'],
                 'follow_up_date' => $row['follow_up_date'],
-                'result_status' => null,
+                'result_status' => $row['result_status'],
                 'special_calculation' => $row['special_calculation'],
                 'source' => 'xlsx_import',
                 'unique_hash' => $hash,
@@ -298,18 +298,36 @@ class NonClosureImportService
         $addressCol = null;
         $reasonCol = null;
         $statusCol = null;
+        $dateCol = null;
+        $followUpCol = null;
+        $responsibleCol = null;
+        $commentCol = null;
+        $specialCol = null;
 
         foreach ($normalized as $col => $header) {
+            if ($dateCol === null && ($header === 'дата' || $header == '' && $col === 'A')) {
+                $dateCol = $col;
+            }
             if ($addressCol === null && str_starts_with($header, 'адрес')) {
                 $addressCol = $col;
             }
-
-            if ($reasonCol === null && str_contains($header, 'причина незаключения')) {
+            if ($reasonCol === null && (str_contains($header, 'причина незаключения') || str_contains($header, 'причина'))) {
                 $reasonCol = $col;
             }
-
-            if ($statusCol === null && str_contains($header, 'заключен/не заключен')) {
+            if ($responsibleCol === null && str_contains($header, 'ответственный')) {
+                $responsibleCol = $col;
+            }
+            if ($commentCol === null && str_contains($header, 'комментар')) {
+                $commentCol = $col;
+            }
+            if ($followUpCol === null && (str_contains($header, 'дата повторной встречи') || str_contains($header, 'повторной встречи'))) {
+                $followUpCol = $col;
+            }
+            if ($statusCol === null && (str_contains($header, 'заключен/не заключен') || str_contains($header, 'заключен') || str_contains($header, 'не заключен'))) {
                 $statusCol = $col;
+            }
+            if ($specialCol === null && (str_contains($header, 'спец просчет') || str_contains($header, 'спецпросчет') || str_contains($header, 'доп инфа'))) {
+                $specialCol = $col;
             }
         }
 
@@ -322,9 +340,14 @@ class NonClosureImportService
             $map[$header] = $col;
         }
 
+        $map['дата'] = $dateCol;
         $map['адрес'] = $addressCol;
         $map['причина незаключения'] = $reasonCol;
+        $map['ответственный (кто звонил из менеджеров)'] = $responsibleCol;
+        $map['комментарий'] = $commentCol;
+        $map['дата повторной встречи'] = $followUpCol;
         $map['заключен/не заключен'] = $statusCol;
+        $map['спец просчет'] = $specialCol;
 
         return $map;
     }
@@ -340,14 +363,14 @@ class NonClosureImportService
             ?? $map['спецпросчет']
             ?? $map['доп инфа']
             ?? null;
-        $special = trim((string) $this->cellValue($cells, $specialCol));
+        $specialRaw = $this->cellValue($cells, $specialCol);
+        $special = trim((string) $specialRaw);
+        if (is_numeric($specialRaw)) {
+            $special = rtrim(rtrim(number_format((float) $specialRaw, 2, '.', ''), '0'), '.');
+        }
 
         $statusRaw = trim((string) $this->cellValue($cells, $map['заключен/не заключен'] ?? null));
-        $statusNorm = $this->normalize($statusRaw);
-
-        if ($statusNorm !== '' && $statusNorm !== '-') {
-            return null;
-        }
+        $resultStatus = $this->mapResultStatus($statusRaw);
 
         if ($address === '' && $reason === '' && $responsible === '' && $comment === '' && $special === '') {
             return null;
@@ -361,6 +384,7 @@ class NonClosureImportService
             'responsible_name' => $responsible,
             'comment' => $comment,
             'follow_up_date' => $this->parseDateValue($this->cellValue($cells, $map['дата повторной встречи'] ?? null)),
+            'result_status' => $resultStatus,
             'special_calculation' => $special,
         ];
     }
@@ -461,5 +485,23 @@ class NonClosureImportService
         $value = preg_replace('/\s+/u', ' ', $value) ?: '';
 
         return $value;
+    }
+
+    private function mapResultStatus(?string $raw): ?string
+    {
+        $normalized = $this->normalize((string) $raw);
+        if ($normalized === '' || $normalized === '-' || $normalized === 'нет') {
+            return null;
+        }
+
+        if (str_contains($normalized, 'не заключ')) {
+            return 'not_concluded';
+        }
+
+        if (str_contains($normalized, 'заключ')) {
+            return 'concluded';
+        }
+
+        return null;
     }
 }

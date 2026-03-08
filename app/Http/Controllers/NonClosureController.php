@@ -112,7 +112,11 @@ class NonClosureController extends Controller
             'file' => ['required', 'file', 'mimes:xlsx'],
         ]);
 
-        $result = $service->importFromXlsx($request->file('file'), (int)$request->user()->account_id, (int)$request->user()->id);
+        try {
+            $result = $service->importFromXlsx($request->file('file'), (int)$request->user()->account_id, (int)$request->user()->id);
+        } catch (\Throwable $e) {
+            return back()->withErrors(['file' => 'Не удалось импортировать файл: '.$e->getMessage()]);
+        }
 
         return back()->with('status', sprintf('Импорт завершён: добавлено %d, обновлено %d, всего обработано %d.', $result['imported'], $result['updated'], $result['total']));
     }

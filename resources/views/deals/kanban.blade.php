@@ -3,35 +3,16 @@
 @push('styles')
     <style>
         .kanban-toolbar{ gap: .5rem; }
-
-        .kanban-board{
-            align-items: start;
-        }
-
-        /* Mode: one row (Bitrix-like) */
-        .kanban-board.mode-row{
-            display: flex;
-            flex-wrap: nowrap;
-            overflow-x: auto;
-            gap: 1rem;
-            padding-bottom: .25rem;
-        }
-        .kanban-board.mode-row .kanban-col{
-            flex: 0 0 360px;
-        }
-
-        /* Mode: wrap */
-        .kanban-board.mode-wrap{
-            display: grid;
-            gap: 1rem;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-        }
-
+        .kanban-board{ align-items: start; }
+        .kanban-board.mode-row{ display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 1rem; padding-bottom: .25rem; }
+        .kanban-board.mode-row .kanban-col{ flex: 0 0 360px; }
+        .kanban-board.mode-wrap{ display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
         .kanban-list{ min-height: 64px; }
         .kanban-card{ cursor: grab; user-select: none; }
         .kanban-card:active{ cursor: grabbing; }
         .drag-ghost{ opacity: .5; }
         .drag-chosen{ outline: 2px dashed rgba(13,110,253,.6); outline-offset: 2px; }
+        .kanban-card .deal-title { line-height: 1.25; }
     </style>
 @endpush
 
@@ -64,14 +45,18 @@
 
                 <div class="card-body d-flex flex-column gap-2 kanban-list" data-stage-id="{{ $stage->id }}">
                     @foreach ($stageDeals as $deal)
-                        <div class="border rounded p-2 bg-white kanban-card" data-deal-id="{{ $deal->id }}">
-                            <div class="d-flex justify-content-between">
-                                <a class="fw-semibold text-decoration-none" href="{{ route('deals.show', $deal) }}">{{ $deal->title }}</a>
+                        @php($leadName = $deal->lead_display_name ?? 'Без имени')
+                        <div class="border rounded p-2 kanban-card {{ $deal->lead_source_surface_class }}" data-deal-id="{{ $deal->id }}">
+                            <div class="d-flex justify-content-between gap-2">
+                                <a class="fw-semibold text-decoration-none deal-title" href="{{ route('deals.show', $deal) }}">{{ $deal->title }}</a>
                                 <span class="text-muted small">#{{ $deal->id }}</span>
                             </div>
-                            <div class="text-muted small">
-                                {{ $deal->contact?->name ?? 'Без имени' }}
-                                @if($deal->contact?->phone) • {{ $deal->contact->phone }} @endif
+                            <div class="mt-2 d-flex align-items-center gap-2 flex-wrap">
+                                <span class="{{ $deal->lead_source_badge_class }}">{{ $deal->lead_source_label }}</span>
+                                <span class="small fw-semibold">{{ $leadName }}</span>
+                            </div>
+                            <div class="text-muted small mt-1">
+                                @if($deal->contact?->phone){{ $deal->contact->phone }}@else Без телефона @endif
                             </div>
                             <div class="mt-2 d-flex gap-1 flex-wrap">
                                 @if($deal->is_unread) <span class="badge text-bg-warning">не прочитан</span> @endif

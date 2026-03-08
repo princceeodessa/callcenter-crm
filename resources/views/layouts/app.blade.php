@@ -7,13 +7,198 @@
     <title>{{ config('app.name') }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --crm-bg: linear-gradient(135deg, #f5f7fb 0%, #eef4ff 45%, #f7fbff 100%);
+            --crm-surface: rgba(255,255,255,.88);
+            --crm-surface-strong: rgba(255,255,255,.96);
+            --crm-border: rgba(15, 23, 42, .08);
+            --crm-shadow: 0 20px 45px rgba(15, 23, 42, .08);
+            --crm-text: #18212f;
+            --crm-muted: #64748b;
+            --crm-navbar: linear-gradient(90deg, #1f2937 0%, #0f172a 100%);
+            --crm-accent: #4f46e5;
+        }
+
+        body[data-theme="sunset"] {
+            --crm-bg: radial-gradient(circle at top right, rgba(251, 191, 36, .18), transparent 30%), linear-gradient(135deg, #fff7ed 0%, #fee2e2 45%, #fdf2f8 100%);
+            --crm-surface: rgba(255,255,255,.9);
+            --crm-surface-strong: rgba(255,255,255,.96);
+            --crm-border: rgba(190, 24, 93, .10);
+            --crm-shadow: 0 20px 45px rgba(190, 24, 93, .10);
+            --crm-text: #3f1d2e;
+            --crm-muted: #7c5166;
+            --crm-navbar: linear-gradient(90deg, #7c2d12 0%, #9d174d 100%);
+            --crm-accent: #e11d48;
+        }
+
+        body[data-theme="forest"] {
+            --crm-bg: radial-gradient(circle at top left, rgba(16, 185, 129, .18), transparent 30%), linear-gradient(135deg, #effdf5 0%, #ecfdf3 40%, #f0fdf4 100%);
+            --crm-surface: rgba(255,255,255,.88);
+            --crm-surface-strong: rgba(255,255,255,.95);
+            --crm-border: rgba(22, 101, 52, .10);
+            --crm-shadow: 0 20px 45px rgba(22, 101, 52, .10);
+            --crm-text: #163423;
+            --crm-muted: #4d705d;
+            --crm-navbar: linear-gradient(90deg, #14532d 0%, #166534 100%);
+            --crm-accent: #059669;
+        }
+
+        body[data-theme="night"] {
+            --crm-bg: radial-gradient(circle at top right, rgba(99, 102, 241, .20), transparent 28%), linear-gradient(135deg, #0f172a 0%, #111827 45%, #1e293b 100%);
+            --crm-surface: rgba(15,23,42,.78);
+            --crm-surface-strong: rgba(15,23,42,.92);
+            --crm-border: rgba(148, 163, 184, .18);
+            --crm-shadow: 0 20px 45px rgba(2, 6, 23, .45);
+            --crm-text: #e5eefb;
+            --crm-muted: #a7b3c8;
+            --crm-navbar: linear-gradient(90deg, #020617 0%, #1e1b4b 100%);
+            --crm-accent: #818cf8;
+        }
+
+        body {
+            position: relative;
+            isolation: isolate;
+            min-height: 100vh;
+            background: var(--crm-bg);
+            color: var(--crm-text);
+            background-attachment: fixed;
+        }
+
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background: radial-gradient(circle at 15% 15%, rgba(255,255,255,.35), transparent 22%), radial-gradient(circle at 85% 8%, rgba(255,255,255,.22), transparent 18%);
+            z-index: -1;
+        }
+
+        .navbar {
+            position: sticky;
+            top: 0;
+            z-index: 1030;
+            backdrop-filter: blur(14px);
+            background: var(--crm-navbar) !important;
+            box-shadow: 0 12px 30px rgba(2, 6, 23, .18);
+        }
+
+        .navbar .btn-outline-light,
+        .navbar .btn-outline-warning,
+        .navbar .btn-outline-info {
+            border-color: rgba(255,255,255,.28);
+        }
+
+        main.container-fluid {
+            position: relative;
+        }
+
+        .toast-container {
+            position: relative;
+            z-index: 1080;
+        }
+
+        .card,
+        .modal-content,
+        .list-group-item,
+        .dropdown-menu,
+        .table,
+        .alert {
+            background-color: var(--crm-surface);
+            color: var(--crm-text);
+            border-color: var(--crm-border);
+        }
+
+        .card,
+        .modal-content,
+        .dropdown-menu,
+        .toast {
+            border: 1px solid var(--crm-border);
+            box-shadow: var(--crm-shadow);
+            border-radius: 1rem;
+        }
+
+        .card-header,
+        .card-footer,
+        .list-group-item,
+        .table > :not(caption) > * > * {
+            background-color: transparent;
+            border-color: var(--crm-border);
+            color: inherit;
+        }
+
+        .table-striped > tbody > tr:nth-of-type(odd) > * {
+            --bs-table-accent-bg: rgba(148, 163, 184, .08);
+            color: inherit;
+        }
+
+        .text-muted,
+        .form-text,
+        .small.text-muted {
+            color: var(--crm-muted) !important;
+        }
+
+        .form-control,
+        .form-select,
+        .btn-outline-secondary,
+        .btn-outline-primary,
+        .btn-outline-success,
+        .btn-outline-danger {
+            border-color: var(--crm-border);
+        }
+
+        .form-control,
+        .form-select {
+            background-color: var(--crm-surface-strong);
+            color: var(--crm-text);
+        }
+
+        .form-control::placeholder {
+            color: color-mix(in srgb, var(--crm-muted) 75%, transparent);
+        }
+
+        .source-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: .35rem;
+            padding: .35rem .65rem;
+            border-radius: 999px;
+            font-weight: 700;
+            font-size: .72rem;
+            letter-spacing: .02em;
+        }
+
+        .source-badge-vk { background: rgba(0, 119, 255, .14); color: #0057b8; }
+        .source-badge-telegram { background: rgba(0, 136, 204, .14); color: #006d9f; }
+        .source-badge-avito { background: rgba(151, 71, 255, .15); color: #6d28d9; }
+        .source-badge-megafon_vats { background: rgba(34, 197, 94, .16); color: #166534; }
+        .source-badge-default { background: rgba(100, 116, 139, .15); color: #334155; }
+
+        .source-surface {
+            border-left: 4px solid transparent;
+        }
+
+        .source-surface-vk { border-left-color: #0077ff; }
+        .source-surface-telegram { border-left-color: #0891b2; }
+        .source-surface-avito { border-left-color: #8b5cf6; }
+        .source-surface-megafon_vats { border-left-color: #16a34a; }
+        .source-surface-default { border-left-color: #94a3b8; }
+
+        .theme-dot {
+            width: .8rem;
+            height: .8rem;
+            border-radius: 999px;
+            display: inline-block;
+            border: 1px solid rgba(255,255,255,.35);
+        }
+    </style>
     @stack('styles')
 </head>
-<body class="bg-light">
-<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+<body data-theme="sky">
+<nav class="navbar navbar-expand-lg navbar-dark">
     <div class="container-fluid">
-        <a class="navbar-brand" href="{{ route('deals.kanban') }}">{{ config('app.name') }}</a>
-        <div class="d-flex gap-2 flex-wrap">
+        <a class="navbar-brand fw-semibold" href="{{ route('deals.kanban') }}">{{ config('app.name') }}</a>
+        <div class="d-flex gap-2 flex-wrap align-items-center">
             @auth
                 @php($isPriv = in_array(auth()->user()?->role, ['admin','main_operator'], true))
                 @php($isNc = in_array(auth()->user()?->role, ['admin','main_operator','operator'], true))
@@ -30,7 +215,18 @@
                     <a class="btn btn-sm btn-outline-light" href="{{ route('settings.users.index') }}">Пользователи</a>
                 @endif
 
-                {{-- Notifications: bright bell icon (always visible) --}}
+                <div class="dropdown">
+                    <button class="btn btn-sm btn-outline-light dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-palette me-1"></i>Тема
+                    </button>
+                    <div class="dropdown-menu dropdown-menu-end p-2" id="themeMenu">
+                        <button class="dropdown-item rounded d-flex align-items-center gap-2 theme-switch" type="button" data-theme="sky"><span class="theme-dot" style="background:#60a5fa"></span> Небо</button>
+                        <button class="dropdown-item rounded d-flex align-items-center gap-2 theme-switch" type="button" data-theme="sunset"><span class="theme-dot" style="background:#fb7185"></span> Закат</button>
+                        <button class="dropdown-item rounded d-flex align-items-center gap-2 theme-switch" type="button" data-theme="forest"><span class="theme-dot" style="background:#34d399"></span> Лес</button>
+                        <button class="dropdown-item rounded d-flex align-items-center gap-2 theme-switch" type="button" data-theme="night"><span class="theme-dot" style="background:#818cf8"></span> Ночь</button>
+                    </div>
+                </div>
+
                 <a class="btn btn-sm btn-warning position-relative" href="{{ route('notifications.index') }}" title="Уведомления" aria-label="Уведомления">
                     <i class="bi bi-bell-fill"></i>
                     <span id="navNotifBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-danger d-none">0</span>
@@ -70,6 +266,21 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+(() => {
+    const storageKey = 'crmTheme';
+    const body = document.body;
+    const applyTheme = (theme) => {
+        body.setAttribute('data-theme', theme || 'sky');
+        localStorage.setItem(storageKey, theme || 'sky');
+    };
+
+    applyTheme(localStorage.getItem(storageKey) || 'sky');
+    document.querySelectorAll('.theme-switch').forEach((btn) => {
+        btn.addEventListener('click', () => applyTheme(btn.dataset.theme || 'sky'));
+    });
+})();
+</script>
 
 @auth
 <script>
@@ -109,7 +320,6 @@
         } catch (e) {}
     };
 
-    // One user gesture is usually required by browsers to enable sound.
     document.addEventListener('click', () => { ensureAudio(); }, { once: true });
 
     const requestSystemPermission = async () => {
@@ -172,7 +382,6 @@
         if (c > 0) {
             badgeEl.textContent = String(c);
             badgeEl.classList.remove('d-none');
-            // a subtle pulse to make the bell noticeable
             badgeEl.closest('a')?.classList.add('shadow');
         } else {
             badgeEl.classList.add('d-none');
@@ -180,8 +389,8 @@
         }
     };
 
-    const storageKey = `lastNotifId_u{{ auth()->user()->id }}_a{{ auth()->user()->account_id }}`;
-    let lastId = Number(localStorage.getItem(storageKey) || '0');
+    const notifStorageKey = `lastNotifId_u{{ auth()->user()->id }}_a{{ auth()->user()->account_id }}`;
+    let lastId = Number(localStorage.getItem(notifStorageKey) || '0');
 
     const poll = async () => {
         try {
@@ -194,7 +403,7 @@
                 const maxId = Number(data.max_id || 0);
                 if (lastId > maxId) {
                     lastId = 0;
-                    localStorage.setItem(storageKey, '0');
+                    localStorage.setItem(notifStorageKey, '0');
                 }
             }
             setBadge(data.unread_count);
@@ -203,18 +412,16 @@
             for (const it of items) {
                 if (!it || !it.id) continue;
                 lastId = Math.max(lastId, Number(it.id));
-                localStorage.setItem(storageKey, String(lastId));
+                localStorage.setItem(notifStorageKey, String(lastId));
 
                 try { showToast(it.title || 'Уведомление', it.body || '', it.url || null); } catch (e) {}
                 try { showSystem(it.title || 'Уведомление', it.body || '', it.url || null); } catch (e) {}
                 try { playBeep(); } catch (e) {}
             }
         } catch (e) {
-            // ignore
         }
     };
 
-    // Initial + interval
     poll();
     setInterval(poll, 25000);
 })();

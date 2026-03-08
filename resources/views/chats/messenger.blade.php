@@ -2,14 +2,17 @@
 
 @push('styles')
 <style>
-  .ccrm-chat-wrap { height: calc(100vh - 120px); }
-  .ccrm-chat-list { width: 360px; }
+  .ccrm-chat-wrap { min-height: calc(100vh - 140px); }
+  .ccrm-chat-list { width: 380px; }
+  .ccrm-chat-item.active { background: rgba(79,70,229,.08); }
+  .ccrm-chat-bubble-out { background: linear-gradient(135deg, rgba(79,70,229,.95), rgba(59,130,246,.92)); color: #fff; }
+  .ccrm-chat-bubble-in { background: rgba(255,255,255,.78); }
   @media (max-width: 992px) {
+    .ccrm-chat-wrap { min-height: auto; }
     .ccrm-chat-list { width: 100%; }
     .ccrm-chat-pane { display: none; }
     .ccrm-chat-pane.show { display: flex; }
   }
-  .ccrm-chat-item.active { background: rgba(13,110,253,.08); }
 </style>
 @endpush
 
@@ -18,11 +21,15 @@
   $active = $activeConversation;
   $activeId = $active?->id;
 
-  $badgeFor = fn($ch) => match($ch) {
-    'vk' => 'VK',
-    'telegram' => 'TG',
-    'avito' => 'Avito',
-    default => strtoupper((string)$ch),
+  $displayAuthor = function($message, $conversation) {
+    $author = trim((string) ($message->author ?? ''));
+    $lower = mb_strtolower($author);
+    foreach (['vk:', 'tg:', 'avito:', 'telegram:', 'user ', 'id '] as $prefix) {
+      if (str_starts_with($lower, $prefix)) {
+        return $conversation?->lead_name ?? 'Клиент';
+      }
+    }
+    return $author !== '' ? $author : ($conversation?->lead_name ?? 'Клиент');
   };
 
   $mediaFor = function($conversation, $message) {
@@ -43,7 +50,7 @@
         $out[] = [
           'type' => $type,
           'url' => $url,
-          'file_name' => $it['file_name'] ?? null,
+          'file_name' => $it['file_name'] ?? ($it['title'] ?? null),
         ];
       }
     }
@@ -51,8 +58,7 @@
   };
 @endphp
 
-<div class="d-flex gap-3 ccrm-chat-wrap">
-  {{-- Left: chat list --}}
+<div class="d-flex gap-3 ccrm-chat-wrap flex-column flex-lg-row">
   <div class="card shadow-sm ccrm-chat-list flex-shrink-0">
     <div class="card-header d-flex align-items-center justify-content-between">
       <div class="fw-semibold">Чаты</div>
@@ -62,18 +68,19 @@
     </div>
     <div class="card-body p-0" style="overflow-y:auto;">
       @if($conversations->count() === 0)
-        <div class="p-4 text-muted">Пока нет диалогов. Напиши в бота/сообщество — и чат появится.</div>
+        <div class="p-4 text-muted">Пока нет диалогов. Как только кто-то напишет из VK, Telegram или Avito, чат появится здесь.</div>
       @else
         <div class="list-group list-group-flush">
           @foreach($conversations as $c)
             @php($last = $c->lastMessage)
             <a href="{{ route('chats.index', ['c' => $c->id]) }}"
-               class="list-group-item list-group-item-action d-flex justify-content-between align-items-start ccrm-chat-item {{ (int)$c->id === (int)$activeId ? 'active' : '' }}">
+               class="list-group-item list-group-item-action d-flex justify-content-between align-items-start ccrm-chat-item {{ $c->source_surface_class }} {{ (int)$c->id === (int)$activeId ? 'active' : '' }}">
               <div class="me-3">
-                <div class="d-flex align-items-center gap-2">
-                  <span class="badge text-bg-secondary">{{ $badgeFor($c->channel) }}</span>
-                  <div class="fw-semibold">{{ $c->deal?->title ?? ('Сделка #'.$c->deal_id) }}</div>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <span class="{{ $c->source_badge_class }}">{{ $c->source_label }}</span>
+                  <div class="fw-semibold">{{ $c->display_title }}</div>
                 </div>
+                <div class="text-muted small mt-1">{{ $c->display_subtitle }}</div>
                 <div class="text-muted small mt-1">
                   {{ $last?->direction === 'out' ? 'Вы: ' : '' }}{{ \Illuminate\Support\Str::limit($last?->body ?? '—', 80) }}
                 </div>
@@ -91,37 +98,39 @@
     </div>
 
     @if($conversations->hasPages())
-      <div class="card-footer bg-white">
+      <div class="card-footer bg-transparent">
         {{ $conversations->links() }}
       </div>
     @endif
   </div>
 
-  {{-- Right: active chat --}}
   <div class="card shadow-sm flex-grow-1 d-flex flex-column ccrm-chat-pane {{ $active ? 'show' : '' }}">
     @if(!$active)
       <div class="card-body text-muted d-flex align-items-center justify-content-center">Выбери чат слева</div>
     @else
-      @php($badge = $badgeFor($active->channel))
-      <div class="card-header d-flex align-items-center justify-content-between">
+      <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
         <div>
-          <div class="d-flex align-items-center gap-2">
-            <span class="badge text-bg-secondary">{{ $badge }}</span>
-            <div class="fw-semibold">{{ $active->deal?->title ?? ('Сделка #'.$active->deal_id) }}</div>
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <span class="{{ $active->source_badge_class }}">{{ $active->source_label }}</span>
+            <div class="fw-semibold">{{ $active->display_title }}</div>
           </div>
           <div class="text-muted small mt-1">
-            external_id: {{ $active->external_id }} • <a href="{{ route('deals.show', $active->deal_id) }}">Открыть сделку</a>
+            {{ $active->display_subtitle }}
+            @if($active->external_id)
+              • id: {{ $active->external_id }}
+            @endif
+            • <a href="{{ route('deals.show', $active->deal_id) }}">Открыть сделку</a>
           </div>
         </div>
         <div class="text-muted small">{{ $messages->count() }} сообщений</div>
       </div>
 
-      <div id="chatScroll" class="card-body bg-white" style="overflow-y:auto;">
+      <div id="chatScroll" class="card-body" style="overflow-y:auto;">
         <div id="chatMessages" class="d-flex flex-column gap-2">
           @forelse($messages as $m)
             @php($mm = $mediaFor($active, $m))
             <div class="d-flex {{ $m->direction === 'out' ? 'justify-content-end' : 'justify-content-start' }}">
-              <div class="p-2 rounded-3 {{ $m->direction === 'out' ? 'bg-primary text-white' : 'bg-light border' }}" style="max-width: 78%;">
+              <div class="p-2 rounded-3 {{ $m->direction === 'out' ? 'ccrm-chat-bubble-out' : 'ccrm-chat-bubble-in border' }}" style="max-width: 78%;">
                 @if(!empty($mm))
                   <div class="d-flex flex-column gap-2 mb-2">
                     @foreach($mm as $it)
@@ -145,7 +154,7 @@
 
                 <div class="d-flex justify-content-between gap-3 mt-1">
                   <div class="text-muted small" style="opacity: .85;">
-                    {{ $m->direction === 'out' ? 'Вы' : ($m->author ?? 'Клиент') }}
+                    {{ $m->direction === 'out' ? 'Вы' : $displayAuthor($m, $active) }}
                   </div>
                   <div class="text-muted small" style="opacity: .85;">
                     {{ optional($m->created_at)->format('H:i') }}
@@ -160,7 +169,7 @@
         </div>
       </div>
 
-      <div class="card-footer bg-white">
+      <div class="card-footer bg-transparent">
         <form id="sendForm" method="POST" action="{{ route('chats.send', $active) }}" class="d-flex gap-2 align-items-center" enctype="multipart/form-data">
           @csrf
           <label class="btn btn-outline-secondary mb-0" title="Прикрепить файл">
@@ -228,7 +237,7 @@
     const bodyHtml = m.body ? `<div class="small" style="white-space: pre-wrap;">${escapeHtml(m.body)}</div>` : '';
 
     wrap.innerHTML = `
-      <div class="p-2 rounded-3 ${isOut ? 'bg-primary text-white' : 'bg-light border'}" style="max-width: 78%;">
+      <div class="p-2 rounded-3 ${isOut ? 'ccrm-chat-bubble-out' : 'ccrm-chat-bubble-in border'}" style="max-width: 78%;">
         ${mediaHtml ? `<div class="d-flex flex-column gap-2 mb-2">${mediaHtml}</div>` : ''}
         ${bodyHtml}
         <div class="d-flex justify-content-between gap-3 mt-1">

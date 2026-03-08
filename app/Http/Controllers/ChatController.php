@@ -164,10 +164,21 @@ class ChatController extends Controller
             }
         }
 
+        $author = trim((string) $m->author);
+        if ($m->direction !== 'out') {
+            $lower = mb_strtolower($author);
+            foreach (['vk:', 'tg:', 'avito:', 'telegram:', 'user ', 'id '] as $prefix) {
+                if (str_starts_with($lower, $prefix)) {
+                    $author = $conversation->lead_name ?? 'Клиент';
+                    break;
+                }
+            }
+        }
+
         return [
             'id' => $m->id,
             'direction' => $m->direction,
-            'author' => $m->author,
+            'author' => $author,
             'body' => $m->body,
             'created_at' => optional($m->created_at)->toDateTimeString(),
             'status' => $m->status,

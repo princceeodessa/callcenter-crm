@@ -25,7 +25,7 @@ class DealController extends Controller
         }
 
         $deals = Deal::query()
-            ->with(['contact','stage','responsible'])
+            ->with(['contact','stage','responsible','conversations' => fn($q) => $q->orderByDesc('last_message_at')])
             ->where('account_id', $user->account_id)
             ->when($status === 'open', fn($qq) => $qq->whereNull('closed_at'))
             ->when($status === 'closed', fn($qq) => $qq->whereNotNull('closed_at'))
@@ -54,7 +54,7 @@ class DealController extends Controller
             ->get();
 
         $dealsByStage = Deal::query()
-            ->with(['contact','responsible'])
+            ->with(['contact','responsible','conversations' => fn($q) => $q->orderByDesc('last_message_at')])
             ->where('account_id', $user->account_id)
             ->whereNull('closed_at')
             ->orderByDesc('updated_at')
@@ -268,7 +268,7 @@ class DealController extends Controller
                             ->orWhere('name','like',"%{$q}%"));
                 });
             })
-            ->with(['contact','responsible','stage'])
+            ->with(['contact','responsible','stage','conversations' => fn($q) => $q->orderByDesc('last_message_at')])
             ->orderByDesc('closed_at')
             ->paginate(25)
             ->withQueryString();

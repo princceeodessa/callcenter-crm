@@ -82,4 +82,40 @@ class Deal extends Model
     {
         return $this->hasMany(CallRecording::class);
     }
+
+    public function primaryConversation(): ?Conversation
+    {
+        if (!$this->relationLoaded('conversations')) {
+            return null;
+        }
+
+        return $this->conversations
+            ->sortByDesc(fn ($conversation) => optional($conversation->last_message_at)->getTimestamp() ?? 0)
+            ->first();
+    }
+
+    public function getLeadDisplayNameAttribute(): ?string
+    {
+        $contactName = trim((string) ($this->contact?->name ?? ''));
+        if ($contactName !== '') {
+            return $contactName;
+        }
+
+        return $this->primaryConversation()?->lead_name;
+    }
+
+    public function getLeadSourceLabelAttribute(): string
+    {
+        return $this->primaryConversation()?->source_label ?? 'CRM';
+    }
+
+    public function getLeadSourceBadgeClassAttribute(): string
+    {
+        return $this->primaryConversation()?->source_badge_class ?? 'source-badge source-badge-default';
+    }
+
+    public function getLeadSourceSurfaceClassAttribute(): string
+    {
+        return $this->primaryConversation()?->source_surface_class ?? 'source-surface source-surface-default';
+    }
 }

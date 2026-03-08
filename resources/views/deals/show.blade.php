@@ -1,8 +1,14 @@
 @extends('layouts.app')
 
 @section('content')
-<div class="d-flex align-items-start justify-content-between mb-3">
+<div class="d-flex align-items-start justify-content-between mb-3 flex-wrap gap-3">
   <div>
+    <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+      <span class="{{ $deal->lead_source_badge_class }}">{{ $deal->lead_source_label }}</span>
+      @if($deal->lead_display_name)
+        <span class="fw-semibold">{{ $deal->lead_display_name }}</span>
+      @endif
+    </div>
     <h4 class="mb-1">
       {{ $deal->title }} <span class="text-muted">#{{ $deal->id }}</span>
       @if(!$deal->is_ready)
@@ -10,7 +16,7 @@
       @endif
     </h4>
     <div class="text-muted small">
-      Клиент: {{ $deal->contact?->name ?? 'Без имени' }}
+      Клиент: {{ $deal->lead_display_name ?? 'Без имени' }}
       @if($deal->contact?->phone) • {{ $deal->contact->phone }} @endif
       • Ответственный: {{ $deal->responsible?->name ?? '—' }}
       @if($deal->closed_at)
@@ -38,6 +44,8 @@
       <div class="card-header fw-semibold">О сделке</div>
       <div class="card-body small">
         <div class="mb-1"><b>Стадия:</b> {{ $deal->stage?->name }}</div>
+        <div class="mb-1"><b>Источник:</b> <span class="{{ $deal->lead_source_badge_class }}">{{ $deal->lead_source_label }}</span></div>
+        <div class="mb-1"><b>Клиент:</b> {{ $deal->lead_display_name ?? 'Без имени' }}</div>
         <div class="mb-1"><b>Создано:</b> {{ optional($deal->created_at)->format('d.m.Y H:i') }}</div>
         <div class="mb-1"><b>Сумма:</b> {{ $deal->amount ? number_format($deal->amount,2,',',' ') : '—' }} {{ $deal->currency ?? 'RUB' }}</div>
         <div class="mb-1"><b>Готовность помещения:</b> {{ $deal->readiness_status ?? '—' }}</div>
@@ -117,20 +125,13 @@
         @else
           <div class="list-group">
             @foreach($deal->conversations as $c)
-              @php
-                $badge = match($c->channel) {
-                  'vk' => 'VK',
-                  'telegram' => 'TG',
-                  'avito' => 'Avito',
-                  default => strtoupper($c->channel),
-                };
-              @endphp
-              <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-start" href="{{ route('chats.show', $c) }}">
+              <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-start {{ $c->source_surface_class }}" href="{{ route('chats.show', $c) }}">
                 <div>
-                  <div class="d-flex align-items-center gap-2">
-                    <span class="badge text-bg-secondary">{{ $badge }}</span>
-                    <span class="fw-semibold">Диалог</span>
+                  <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <span class="{{ $c->source_badge_class }}">{{ $c->source_label }}</span>
+                    <span class="fw-semibold">{{ $c->lead_name ?? 'Диалог' }}</span>
                   </div>
+                  <div class="text-muted small mt-1">{{ $c->display_subtitle }}</div>
                   <div class="text-muted small mt-1">{{ \Illuminate\Support\Str::limit($c->lastMessage?->body ?? '—', 80) }}</div>
                 </div>
                 <div class="text-end">

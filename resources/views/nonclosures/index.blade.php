@@ -31,7 +31,7 @@
     <div class="card-body d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-center">
       <div>
         <h4 class="mb-1">Незаключёнки</h4>
-        <div class="nc-muted">Таблица по записям без итогового статуса. Заключенные и не заключенные скрываются при фильтре «Без статуса».</div>
+        <div class="nc-muted">Импорт поддерживает реальные Excel-файлы незаключёнок, а фильтры позволяют отдельно смотреть строки без статуса, заключённые и не заключённые.</div>
       </div>
       <div class="d-flex gap-2 flex-wrap">
         <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#importModal">
@@ -267,7 +267,7 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
-          <p class="text-muted">Загрузи Excel-файл формата как в твоей таблице «Незаключенки». Импортируются только строки без статуса в колонке «Заключен/не заключен».</p>
+          <p class="text-muted">Загрузи Excel-файл в формате вашей рабочей таблицы. Импортируются строки с пустым статусом, а также с пометками «заключен» и «не заключен».</p>
           <input type="file" class="form-control" name="file" accept=".xlsx" required>
         </div>
         <div class="modal-footer">
