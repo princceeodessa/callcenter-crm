@@ -30,9 +30,10 @@
       <tbody>
         @forelse ($deals as $deal)
           @php($leadName = $deal->lead_display_name ?? 'Без имени')
+          @php($dealTitle = $deal->title_is_custom ? $deal->title : ($deal->lead_display_name ?: $deal->title))
           <tr class="{{ $deal->lead_source_surface_class }}">
             <td>
-              <a href="{{ route('deals.show', $deal) }}" class="fw-semibold text-decoration-none">{{ $deal->title }}</a>
+              <a href="{{ route('deals.show', $deal) }}" class="fw-semibold text-decoration-none">{{ $dealTitle }}</a>
               <span class="text-muted small ms-1">#{{ $deal->id }}</span>
               @if($deal->closed_reason)
                 <div class="text-muted small">Причина: {{ $deal->closed_reason }}</div>

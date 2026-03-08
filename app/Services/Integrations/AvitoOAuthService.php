@@ -22,7 +22,6 @@ class AvitoOAuthService
 
     /**
      * Exchange authorization code for access token.
-     * Avito OAuth endpoints: https://avito.ru/oauth (authorize) and https://api.avito.ru/token (token).
      */
     public function exchangeCode(string $clientId, string $clientSecret, string $code, string $redirectUri): array
     {
@@ -34,28 +33,7 @@ class AvitoOAuthService
             'redirect_uri' => $redirectUri,
         ];
 
-        $r = $this->http()->post($this->baseUrl.'/token', $payload);
-        $json = $r->json();
-
-        // Some OAuth servers require client credentials via HTTP Basic.
-        if ((!is_array($json) || empty($json['access_token'])) && $r->status() >= 400) {
-            $r2 = Http::timeout($this->timeoutSeconds)
-                ->acceptJson()
-                ->asForm()
-                ->withBasicAuth($clientId, $clientSecret)
-                ->post($this->baseUrl.'/token', [
-                    'grant_type' => 'authorization_code',
-                    'code' => $code,
-                    'redirect_uri' => $redirectUri,
-                ]);
-            $json2 = $r2->json();
-            if (is_array($json2) && !empty($json2['access_token'])) {
-                return $json2;
-            }
-            return $json2 ?? ['ok' => false, 'status' => $r2->status(), 'body' => $r2->body()];
-        }
-
-        return $json ?? ['ok' => false, 'status' => $r->status(), 'body' => $r->body()];
+        return $this->requestToken($payload, $clientId, $clientSecret);
     }
 
     public function refreshToken(string $clientId, string $clientSecret, string $refreshToken): array
@@ -67,24 +45,37 @@ class AvitoOAuthService
             'refresh_token' => $refreshToken,
         ];
 
-        $r = $this->http()->post($this->baseUrl.'/token', $payload);
-        $json = $r->json();
-        if ((!is_array($json) || empty($json['access_token'])) && $r->status() >= 400) {
+        return $this->requestToken($payload, $clientId, $clientSecret);
+    }
+
+    private function requestToken(array $payload, string $clientId, string $clientSecret): array
+    {
+        $paths = ['/token', '/oauth/token'];
+
+        foreach ($paths as $path) {
+            $r = $this->http()->post($this->baseUrl.$path, $payload);
+            $json = $r->json();
+            if (is_array($json) && !empty($json['access_token'])) {
+                return $json;
+            }
+
+            $basicPayload = $payload;
+            unset($basicPayload['client_id'], $basicPayload['client_secret']);
             $r2 = Http::timeout($this->timeoutSeconds)
                 ->acceptJson()
                 ->asForm()
                 ->withBasicAuth($clientId, $clientSecret)
-                ->post($this->baseUrl.'/token', [
-                    'grant_type' => 'refresh_token',
-                    'refresh_token' => $refreshToken,
-                ]);
+                ->post($this->baseUrl.$path, $basicPayload);
             $json2 = $r2->json();
             if (is_array($json2) && !empty($json2['access_token'])) {
                 return $json2;
             }
-            return $json2 ?? ['ok' => false, 'status' => $r2->status(), 'body' => $r2->body()];
+
+            if ($r->status() < 400 && $r2->status() < 400) {
+                return $json2 ?? $json ?? ['ok' => false];
+            }
         }
 
-        return $json ?? ['ok' => false, 'status' => $r->status(), 'body' => $r->body()];
+        return ['ok' => false, 'error' => 'token_exchange_failed'];
     }
 }

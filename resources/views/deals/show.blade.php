@@ -9,8 +9,9 @@
         <span class="fw-semibold">{{ $deal->lead_display_name }}</span>
       @endif
     </div>
+    @php($dealTitle = $deal->title_is_custom ? $deal->title : ($deal->lead_display_name ?: $deal->title))
     <h4 class="mb-1">
-      {{ $deal->title }} <span class="text-muted">#{{ $deal->id }}</span>
+      {{ $dealTitle }} <span class="text-muted">#{{ $deal->id }}</span>
       @if(!$deal->is_ready)
         <span class="badge text-bg-warning ms-2">не заполнено</span>
       @endif

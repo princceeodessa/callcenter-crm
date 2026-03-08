@@ -163,7 +163,7 @@
 
                 <div class="mb-2">
                   <label class="form-label small">Redirect URL (зарегистрируй в Авито)</label>
-                  <input class="form-control form-control-sm" readonly value="{{ request()->getSchemeAndHttpHost().'/webhooks/avito' }}">
+                  <input class="form-control form-control-sm" readonly value="{{ rtrim(env('AVITO_OAUTH_REDIRECT_URI') ?: (config('app.url') ?: url('/')), '/').'/webhooks/avito' }}">
                 </div>
 
                 <div class="mb-2">

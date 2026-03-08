@@ -447,7 +447,7 @@ class ChatIngestService
         if ($leadName) {
             if ($deal->contact_id) {
                 $contact = $deal->contact;
-                if ($contact && trim((string) $contact->name) === '') {
+                if ($contact && $this->shouldReplaceDealName($contact->name ?? null)) {
                     $contact->name = $leadName;
                     $contact->save();
                 }
@@ -515,9 +515,18 @@ class ChatIngestService
             data_get($payload, 'user.name'),
             data_get($payload, 'buyer.name'),
             data_get($payload, 'sender.name'),
+            data_get($payload, 'client.name'),
+            data_get($payload, 'chat.user.name'),
+            data_get($payload, 'chat.client.name'),
+            data_get($payload, 'chat.buyer.name'),
             data_get($payload, 'chat.users.0.name'),
+            data_get($payload, 'chat.users.1.name'),
+            data_get($payload, 'users.0.name'),
+            data_get($payload, 'users.1.name'),
             data_get($msg, 'author.name'),
             data_get($msg, 'sender.name'),
+            data_get($msg, 'user.name'),
+            data_get($msg, 'buyer.name'),
         ];
 
         foreach ($candidates as $candidate) {
@@ -527,7 +536,76 @@ class ChatIngestService
             }
         }
 
+        foreach ($this->collectLeadNameCandidates($payload) as $candidate) {
+            $name = $this->cleanLeadName($candidate);
+            if ($name) {
+                return $name;
+            }
+        }
+
+        if (is_array($msg)) {
+            foreach ($this->collectLeadNameCandidates($msg) as $candidate) {
+                $name = $this->cleanLeadName($candidate);
+                if ($name) {
+                    return $name;
+                }
+            }
+        }
+
         return null;
+    }
+
+    private function collectLeadNameCandidates(array $payload): array
+    {
+        $names = [];
+        $walk = function (mixed $node) use (&$walk, &$names) {
+            if (!is_array($node)) {
+                return;
+            }
+
+            $first = trim((string) ($node['first_name'] ?? ''));
+            $last = trim((string) ($node['last_name'] ?? ''));
+            $full = trim($first.' '.$last);
+            if ($full !== '') {
+                $names[] = $full;
+            }
+
+            $name = trim((string) ($node['name'] ?? ''));
+            if ($name !== '') {
+                $names[] = $name;
+            }
+
+            foreach ($node as $value) {
+                if (is_array($value)) {
+                    $walk($value);
+                }
+            }
+        };
+
+        $walk($payload);
+
+        return array_values(array_unique(array_filter($names)));
+    }
+
+    private function shouldReplaceDealName(?string $value): bool
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return true;
+        }
+
+        $lower = mb_strtolower($value);
+        foreach (['vk:', 'tg:', 'avito:', 'telegram:', 'user ', 'id ', 'chat '] as $prefix) {
+            if (str_starts_with($lower, $prefix)) {
+                return true;
+            }
+        }
+
+        if (preg_match('/^\d+$/', $value)) {
+            return true;
+        }
+
+        return preg_match('/[\p{L}]{2,}/u', $value) !== 1;
     }
 
     private function cleanLeadName(?string $value): ?string

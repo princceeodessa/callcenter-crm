@@ -46,9 +46,10 @@
                 <div class="card-body d-flex flex-column gap-2 kanban-list" data-stage-id="{{ $stage->id }}">
                     @foreach ($stageDeals as $deal)
                         @php($leadName = $deal->lead_display_name ?? 'Без имени')
+                        @php($dealTitle = $deal->title_is_custom ? $deal->title : ($deal->lead_display_name ?: $deal->title))
                         <div class="border rounded p-2 kanban-card {{ $deal->lead_source_surface_class }}" data-deal-id="{{ $deal->id }}">
                             <div class="d-flex justify-content-between gap-2">
-                                <a class="fw-semibold text-decoration-none deal-title" href="{{ route('deals.show', $deal) }}">{{ $deal->title }}</a>
+                                <a class="fw-semibold text-decoration-none deal-title" href="{{ route('deals.show', $deal) }}">{{ $dealTitle }}</a>
                                 <span class="text-muted small">#{{ $deal->id }}</span>
                             </div>
                             <div class="mt-2 d-flex align-items-center gap-2 flex-wrap">

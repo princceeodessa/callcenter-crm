@@ -101,7 +101,7 @@ class AvitoWebhookController extends Controller
 
         try {
             $oauth = app(AvitoOAuthService::class);
-            $redirectUri = (string)($settings['oauth_redirect_uri'] ?? $request->url());
+            $redirectUri = (string)($settings['oauth_redirect_uri'] ?? $this->resolveAvitoRedirectUri($request));
             $tokenResp = $oauth->exchangeCode($clientId, $clientSecret, $code, $redirectUri);
 
             $accessToken = (string)($tokenResp['access_token'] ?? '');
@@ -164,5 +164,20 @@ class AvitoWebhookController extends Controller
             $conn->update(['status' => 'error', 'last_error' => 'Avito OAuth exception: '.$e->getMessage()]);
             return response('avito_oauth_exception', 500);
         }
+    }
+
+    private function resolveAvitoRedirectUri(Request $request): string
+    {
+        $override = trim((string) env('AVITO_OAUTH_REDIRECT_URI', ''));
+        if ($override !== '') {
+            return $override;
+        }
+
+        $appUrl = trim((string) config('app.url'));
+        if ($appUrl !== '') {
+            return rtrim($appUrl, '/').'/webhooks/avito';
+        }
+
+        return $request->url();
     }
 }

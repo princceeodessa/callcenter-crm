@@ -85,12 +85,15 @@ class Deal extends Model
 
     public function primaryConversation(): ?Conversation
     {
-        if (!$this->relationLoaded('conversations')) {
-            return null;
+        if ($this->relationLoaded('conversations')) {
+            return $this->conversations
+                ->sortByDesc(fn ($conversation) => optional($conversation->last_message_at)->getTimestamp() ?? 0)
+                ->first();
         }
 
-        return $this->conversations
-            ->sortByDesc(fn ($conversation) => optional($conversation->last_message_at)->getTimestamp() ?? 0)
+        return $this->conversations()
+            ->orderByDesc('last_message_at')
+            ->orderByDesc('id')
             ->first();
     }
 

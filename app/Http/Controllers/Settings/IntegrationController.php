@@ -219,23 +219,24 @@ class IntegrationController extends Controller
             'settings' => $settings,
         ])->save();
 
-        // IMPORTANT: Avito requires redirect_uri in token exchange to match exactly.
-        // We store the exact redirect_uri used here and reuse it in /webhooks/avito callback.
-        $redirectUri = $request->getSchemeAndHttpHost().'/webhooks/avito';
+        $redirectUri = $this->avitoRedirectUri($request);
         $settings['oauth_redirect_uri'] = $redirectUri;
         $connection->update(['settings' => $settings]);
 
-        $authorizeBase = env('AVITO_OAUTH_AUTHORIZE_URL', 'https://www.avito.ru/oauth');
+        $authorizeBase = trim((string) env('AVITO_OAUTH_AUTHORIZE_URL', 'https://avito.ru/oauth'));
         $params = [
             'response_type' => 'code',
             'client_id' => $clientId,
             'redirect_uri' => $redirectUri,
-            // Avito scopes are product-specific; for Messenger we request read/write + user info.
-            'scope' => 'messenger:read messenger:write user:read',
             'state' => $settings['oauth_state'],
         ];
 
-        return redirect()->away(rtrim($authorizeBase, '?').'?'.http_build_query($params));
+        $scope = trim((string) env('AVITO_OAUTH_SCOPE', ''));
+        if ($scope !== '') {
+            $params['scope'] = $scope;
+        }
+
+        return redirect()->away(rtrim($authorizeBase, '?').'?'.http_build_query($params, '', '&', PHP_QUERY_RFC3986));
     }
 
     public function testSend(Request $request, string $provider)
@@ -335,5 +336,20 @@ class IntegrationController extends Controller
         if (!array_key_exists($provider, self::PROVIDERS)) {
             abort(404);
         }
+    }
+
+    private function avitoRedirectUri(Request $request): string
+    {
+        $override = trim((string) env('AVITO_OAUTH_REDIRECT_URI', ''));
+        if ($override !== '') {
+            return $override;
+        }
+
+        $appUrl = trim((string) config('app.url'));
+        if ($appUrl !== '') {
+            return rtrim($appUrl, '/').'/webhooks/avito';
+        }
+
+        return $request->getSchemeAndHttpHost().'/webhooks/avito';
     }
 }
