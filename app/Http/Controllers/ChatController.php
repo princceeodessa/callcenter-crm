@@ -92,31 +92,56 @@ class ChatController extends Controller
 
         $data = $request->validate([
             'text' => ['nullable', 'string', 'max:4000'],
-            'media' => ['nullable', 'file', 'max:20480'], // 20MB
+            'media.*' => ['file', 'max:51200'], // 50MB per file
         ]);
 
         $text = trim((string)($data['text'] ?? ''));
-        $file = $request->file('media');
-        if ($text === '' && !$file) {
+        $rawFiles = $request->file('media');
+        $files = [];
+
+        if ($rawFiles instanceof \Illuminate\Http\UploadedFile) {
+            $files = [$rawFiles];
+        } elseif (is_array($rawFiles)) {
+            foreach ($rawFiles as $item) {
+                if ($item instanceof \Illuminate\Http\UploadedFile) {
+                    $files[] = $item;
+                }
+            }
+        }
+
+        if ($text === '' && count($files) === 0) {
             return $request->expectsJson()
                 ? response()->json(['ok' => false, 'error' => 'empty_message'], 422)
                 : back()->withErrors(['text' => 'Пустое сообщение']);
         }
 
         try {
-            if ($file) {
-                $msg = $sender->sendMedia($conversation, $request->user()->id, $file, $text !== '' ? $text : null);
+            $presentedMessages = [];
+
+            if (count($files) > 0) {
+                $caption = $text !== '' ? $text : null;
+                foreach ($files as $index => $file) {
+                    $msg = $sender->sendMedia($conversation, $request->user()->id, $file, $index === 0 ? $caption : null);
+                    $presentedMessages[] = $this->presentMessage($conversation, $msg);
+                }
             } else {
                 $msg = $sender->sendText($conversation, $request->user()->id, $text);
+                $presentedMessages[] = $this->presentMessage($conversation, $msg);
             }
-
-            $presented = $this->presentMessage($conversation, $msg);
 
             if ($request->expectsJson()) {
-                return response()->json(['ok' => true, 'message' => $presented]);
+                return response()->json([
+                    'ok' => true,
+                    'message' => end($presentedMessages) ?: null,
+                    'messages' => $presentedMessages,
+                ]);
             }
 
-            return redirect()->route('chats.index', ['c' => $conversation->id])->with('status', 'Сообщение отправлено');
+            $statusText = count($presentedMessages) > 1
+                ? 'Сообщения отправлены: '.count($presentedMessages)
+                : 'Сообщение отправлено';
+
+            return redirect()->route('chats.index', ['c' => $conversation->id])->with('status', $statusText);
         } catch (\Throwable $e) {
             if ($request->expectsJson()) {
                 return response()->json(['ok' => false, 'error' => $e->getMessage()], 500);

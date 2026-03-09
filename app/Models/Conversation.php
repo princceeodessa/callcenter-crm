@@ -201,6 +201,26 @@ class Conversation extends Model
         $token = trim((string) ($settings['access_token'] ?? ''));
         $userId = trim((string) ($settings['user_id'] ?? ''));
         $chatId = trim((string) $this->external_id);
+        if ($token === '' && !empty($settings['client_id']) && !empty($settings['client_secret'])) {
+            try {
+                $oauth = app(\App\Services\Integrations\AvitoOAuthService::class);
+                $resp = $oauth->clientCredentials((string) $settings['client_id'], (string) $settings['client_secret']);
+                $token = trim((string) ($resp['access_token'] ?? ''));
+                if ($token !== '') {
+                    $settings['access_token'] = $token;
+                    if (!empty($resp['expires_in'])) {
+                        $settings['token_expires_at'] = now()->addSeconds((int) $resp['expires_in'])->toDateTimeString();
+                    }
+                    if (!empty($resp['refresh_token'])) {
+                        $settings['refresh_token'] = (string) $resp['refresh_token'];
+                    }
+                    unset($settings['last_setup_error']);
+                    $connection?->update(['settings' => $settings, 'status' => 'active', 'last_error' => null]);
+                }
+            } catch (\Throwable) {
+                return null;
+            }
+        }
         if ($token === '' || $userId === '' || $chatId === '') return null;
         try {
             $client = new AvitoApiClient($token, 'https://api.avito.ru', 4.0);

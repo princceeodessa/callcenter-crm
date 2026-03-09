@@ -203,6 +203,10 @@
             <form id="disconnect-{{ $p['provider'] }}" method="POST" action="{{ route('settings.integrations.disconnect', $p['provider']) }}">
               @csrf
             </form>
+
+            @if(!empty($conn->last_error))
+              <div class="alert alert-warning small mb-0">{{ $conn->last_error }}</div>
+            @endif
           @endif
         </div>
       </div>

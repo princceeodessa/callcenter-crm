@@ -172,14 +172,20 @@
       </div>
 
       <div class="card-footer bg-transparent">
-        <form id="sendForm" method="POST" action="{{ route('chats.send', $active) }}" class="d-flex gap-2 align-items-center" enctype="multipart/form-data">
+        <form id="sendForm" method="POST" action="{{ route('chats.send', $active) }}" class="d-flex flex-column gap-2" enctype="multipart/form-data">
           @csrf
-          <label class="btn btn-outline-secondary mb-0" title="Прикрепить файл">
-            <i class="bi bi-paperclip"></i>
-            <input id="sendMedia" type="file" name="media" class="d-none" accept="image/*,video/*,application/pdf">
-          </label>
-          <input id="sendInput" name="text" class="form-control" placeholder="Сообщение…" autocomplete="off" maxlength="4000">
-          <button class="btn btn-primary" type="submit">Отправить</button>
+          <div class="d-flex gap-2 align-items-center">
+            <label class="btn btn-outline-secondary mb-0" title="Прикрепить файл">
+              <i class="bi bi-paperclip me-1"></i>Файлы
+              <input id="sendMedia" type="file" name="media[]" class="d-none" accept="*/*" multiple>
+            </label>
+            <input id="sendInput" name="text" class="form-control" placeholder="Сообщение или подпись к первому файлу…" autocomplete="off" maxlength="4000">
+            <button class="btn btn-primary" type="submit">Отправить</button>
+          </div>
+          <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+            <div id="sendFilesInfo" class="small text-muted">Можно отправлять текст, фото, видео и файлы.</div>
+            <button id="sendFilesClear" type="button" class="btn btn-sm btn-outline-secondary d-none">Очистить файлы</button>
+          </div>
         </form>
         <div id="sendError" class="text-danger small mt-2" style="display:none"></div>
       </div>
@@ -201,6 +207,8 @@
   const formEl = document.getElementById('sendForm');
   const inputEl = document.getElementById('sendInput');
   const mediaEl = document.getElementById('sendMedia');
+  const filesInfoEl = document.getElementById('sendFilesInfo');
+  const clearFilesEl = document.getElementById('sendFilesClear');
   const errEl = document.getElementById('sendError');
 
   let lastId = @json($messages->last()?->id ?? 0);
@@ -274,16 +282,17 @@
     errEl.style.display = 'none';
 
     const text = (inputEl.value || '').trim();
-    const file = mediaEl.files && mediaEl.files[0] ? mediaEl.files[0] : null;
-    if (!text && !file) return;
+    const files = mediaEl.files ? Array.from(mediaEl.files) : [];
+    if (!text && !files.length) return;
 
     const fd = new FormData();
     fd.append('_token', csrf);
     if (text) fd.append('text', text);
-    if (file) fd.append('media', file);
+    files.forEach(file => fd.append('media[]', file));
 
     inputEl.value = '';
     mediaEl.value = '';
+    updateFilesInfo();
     inputEl.focus();
 
     try {
@@ -298,9 +307,12 @@
         throw new Error(j.error || 'send_failed');
       }
 
-      if (j.message) {
-        listEl.appendChild(renderMessage(j.message));
-        lastId = Math.max(lastId, Number(j.message.id || 0));
+      const msgs = Array.isArray(j.messages) && j.messages.length ? j.messages : (j.message ? [j.message] : []);
+      msgs.forEach((msg) => {
+        listEl.appendChild(renderMessage(msg));
+        lastId = Math.max(lastId, Number(msg.id || 0));
+      });
+      if (msgs.length) {
         scrollToBottom();
       }
     } catch (e) {
@@ -309,6 +321,25 @@
     }
   });
 
+  function updateFilesInfo() {
+    const files = mediaEl.files ? Array.from(mediaEl.files) : [];
+    if (!files.length) {
+      filesInfoEl.textContent = 'Можно отправлять текст, фото, видео и файлы.';
+      clearFilesEl.classList.add('d-none');
+      return;
+    }
+
+    filesInfoEl.textContent = 'Выбрано файлов: ' + files.length + ' — ' + files.map(f => f.name).join(', ');
+    clearFilesEl.classList.remove('d-none');
+  }
+
+  mediaEl.addEventListener('change', updateFilesInfo);
+  clearFilesEl.addEventListener('click', () => {
+    mediaEl.value = '';
+    updateFilesInfo();
+  });
+
+  updateFilesInfo();
   scrollToBottom();
   setInterval(poll, 2000);
 })();

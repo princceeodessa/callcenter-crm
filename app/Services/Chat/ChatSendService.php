@@ -149,6 +149,9 @@ class ChatSendService
                     'type' => str_starts_with((string)$file->getClientMimeType(), 'image/') ? 'photo'
                         : (str_starts_with((string)$file->getClientMimeType(), 'video/') ? 'video' : 'document'),
                     'url' => $publicUrl,
+                    'file_name' => $file->getClientOriginalName(),
+                    'mime' => $file->getClientMimeType(),
+                    'size' => $file->getSize(),
                 ]],
             ],
             'status' => 'pending',
@@ -364,6 +367,27 @@ class ChatSendService
 
         $token = (string)($settings['access_token'] ?? '');
         $userId = (string)($settings['user_id'] ?? '');
+        if ($token === '' && !empty($settings['client_id']) && !empty($settings['client_secret'])) {
+            try {
+                $oauth = app(AvitoOAuthService::class);
+                $resp = $oauth->clientCredentials((string) $settings['client_id'], (string) $settings['client_secret']);
+                $token = trim((string) ($resp['access_token'] ?? ''));
+                if ($token !== '') {
+                    $settings['access_token'] = $token;
+                    if (!empty($resp['refresh_token'])) {
+                        $settings['refresh_token'] = (string) $resp['refresh_token'];
+                    }
+                    if (!empty($resp['expires_in'])) {
+                        $settings['token_expires_at'] = now()->addSeconds((int) $resp['expires_in'])->toDateTimeString();
+                    }
+                    unset($settings['last_setup_error']);
+                    $conn->update(['settings' => $settings, 'status' => 'active', 'last_error' => null]);
+                }
+            } catch (\Throwable $e) {
+                $settings['last_setup_error'] = 'Avito token exception: '.$e->getMessage();
+                $conn->update(['settings' => $settings, 'last_error' => $settings['last_setup_error']]);
+            }
+        }
         if ($token === '') {
             return ['ok' => false, 'error' => 'access_token_missing'];
         }

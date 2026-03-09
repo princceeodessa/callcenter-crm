@@ -223,7 +223,9 @@ class IntegrationController extends Controller
         $connection->fill([
             'account_id' => $accountId,
             'provider' => $provider,
-            'status' => ($provider === 'avito' && empty($settings['access_token']) && empty($settings['client_id'])) ? 'disabled' : (empty($settings['access_token']) ? 'disabled' : 'active'),
+            'status' => $provider === 'avito'
+                ? $this->resolveAvitoConnectionStatus($settings)
+                : (empty($settings['access_token']) ? 'disabled' : 'active'),
             'settings' => $settings,
             'last_error' => $settings['last_setup_error'] ?? null,
         ]);
@@ -329,8 +331,11 @@ class IntegrationController extends Controller
                 if (!$userId) {
                     return back()->with('status', 'Для Avito нужен user_id (account id). Укажи его в настройках интеграции.');
                 }
-                $av = new AvitoApiClient($settings['access_token'] ?? '');
-                $result = $av->sendText($userId, $data['chat_id'], $data['text']);
+                $token = $this->ensureAvitoAccessToken($connection);
+                if ($token === '') {
+                    return back()->with('status', 'Не удалось получить access_token для Avito. Проверь client_id / client_secret и last_error.');
+                }
+                $result = (new AvitoApiClient($token))->sendText($userId, $data['chat_id'], $data['text']);
             }
 
             IntegrationEvent::create([
@@ -378,6 +383,80 @@ class IntegrationController extends Controller
     {
         if (!array_key_exists($provider, self::PROVIDERS)) {
             abort(404);
+        }
+    }
+
+
+    private function resolveAvitoConnectionStatus(array $settings): string
+    {
+        $hasToken = trim((string) ($settings['access_token'] ?? '')) !== '';
+        $hasClient = trim((string) ($settings['client_id'] ?? '')) !== ''
+            && trim((string) ($settings['client_secret'] ?? '')) !== '';
+        $hasUserId = trim((string) ($settings['user_id'] ?? '')) !== '';
+
+        if (!$hasToken && !$hasClient) {
+            return 'disabled';
+        }
+
+        if (!$hasUserId) {
+            return 'error';
+        }
+
+        return 'active';
+    }
+
+    private function ensureAvitoAccessToken(IntegrationConnection $connection): string
+    {
+        $settings = is_array($connection->settings) ? $connection->settings : [];
+        $token = trim((string) ($settings['access_token'] ?? ''));
+        if ($token !== '') {
+            return $token;
+        }
+
+        $clientId = trim((string) ($settings['client_id'] ?? ''));
+        $clientSecret = trim((string) ($settings['client_secret'] ?? ''));
+        if ($clientId === '' || $clientSecret === '') {
+            return '';
+        }
+
+        try {
+            $oauth = app(AvitoOAuthService::class);
+            $resp = $oauth->clientCredentials($clientId, $clientSecret);
+            $token = trim((string) ($resp['access_token'] ?? ''));
+            if ($token === '') {
+                $settings['last_setup_error'] = 'Avito token error: '.json_encode($resp, JSON_UNESCAPED_UNICODE);
+                $connection->update([
+                    'settings' => $settings,
+                    'status' => $this->resolveAvitoConnectionStatus($settings),
+                    'last_error' => $settings['last_setup_error'],
+                ]);
+                return '';
+            }
+
+            $settings['access_token'] = $token;
+            if (!empty($resp['expires_in'])) {
+                $settings['token_expires_at'] = now()->addSeconds((int) $resp['expires_in'])->toDateTimeString();
+            }
+            if (!empty($resp['refresh_token'])) {
+                $settings['refresh_token'] = (string) $resp['refresh_token'];
+            }
+            unset($settings['last_setup_error']);
+
+            $connection->update([
+                'settings' => $settings,
+                'status' => $this->resolveAvitoConnectionStatus($settings),
+                'last_error' => null,
+            ]);
+
+            return $token;
+        } catch (\Throwable $e) {
+            $settings['last_setup_error'] = 'Avito token exception: '.$e->getMessage();
+            $connection->update([
+                'settings' => $settings,
+                'status' => $this->resolveAvitoConnectionStatus($settings),
+                'last_error' => $settings['last_setup_error'],
+            ]);
+            return '';
         }
     }
 
