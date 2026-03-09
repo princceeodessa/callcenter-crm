@@ -45,7 +45,13 @@
                 {{ $deal->closed_result === 'won' ? 'Успешно' : ($deal->closed_result === 'lost' ? 'Отказ' : 'Закрыта') }}
               </span>
             </td>
-            <td><span class="{{ $deal->lead_source_badge_class }}">{{ $deal->lead_source_label }}</span></td>
+            <td>
+              @if($deal->lead_source_chat_url)
+                <a href="{{ $deal->lead_source_chat_url }}" class="{{ $deal->lead_source_badge_class }} text-decoration-none" target="_blank" rel="noopener">{{ $deal->lead_source_label }}</a>
+              @else
+                <span class="{{ $deal->lead_source_badge_class }}">{{ $deal->lead_source_label }}</span>
+              @endif
+            </td>
             <td>
               <div class="fw-semibold">{{ $leadName }}</div>
               @if($deal->contact?->phone)

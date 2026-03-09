@@ -269,6 +269,7 @@ class DealController extends Controller
         $dealSourceLabel = trim((string) ($primaryConversation?->source_label ?? 'CRM')) ?: 'CRM';
         $dealSourceBadgeClass = trim((string) ($primaryConversation?->source_badge_class ?? 'source-badge source-badge-default')) ?: 'source-badge source-badge-default';
         $dealSourceIconHtml = (string) ($primaryConversation?->source_icon_html ?? '<span class="source-icon source-icon-default"><i class="bi bi-chat-dots-fill"></i></span>');
+        $dealSourceChatUrl = $primaryConversation?->chat_url;
         $dealTitle = $deal->title_is_custom ? $deal->title : ($dealLeadDisplayName !== '' ? $dealLeadDisplayName : $deal->title);
 
         $dealConversations = $deal->conversations->map(function ($conversation) {
@@ -279,6 +280,7 @@ class DealController extends Controller
                     'badge_class' => $conversation->source_badge_class,
                     'source_label' => $conversation->source_label,
                     'source_icon_html' => $conversation->source_icon_html,
+                    'chat_url' => $conversation->chat_url,
                     'lead_name' => $conversation->lead_name ?: 'Диалог',
                     'subtitle' => $conversation->display_subtitle,
                     'body' => \Illuminate\Support\Str::limit($conversation->lastMessage?->body ?? '—', 80),
@@ -292,6 +294,7 @@ class DealController extends Controller
                     'badge_class' => 'source-badge source-badge-default',
                     'source_label' => 'CRM',
                     'source_icon_html' => '<span class="source-icon source-icon-default"><i class="bi bi-chat-dots-fill"></i></span>',
+                    'chat_url' => null,
                     'lead_name' => 'Диалог',
                     'subtitle' => 'Источник: CRM',
                     'body' => '—',
@@ -310,6 +313,7 @@ class DealController extends Controller
             'dealSourceLabel',
             'dealSourceBadgeClass',
             'dealSourceIconHtml',
+            'dealSourceChatUrl',
             'dealTitle',
             'dealConversations',
         ));

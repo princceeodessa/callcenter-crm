@@ -139,6 +139,15 @@ class Deal extends Model
         }
     }
 
+    public function getLeadSourceChatUrlAttribute(): ?string
+    {
+        try {
+            return $this->primaryConversation()?->chat_url;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
     public function getLeadSourceSurfaceClassAttribute(): string
     {
         try {

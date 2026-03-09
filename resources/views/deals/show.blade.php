@@ -5,17 +5,17 @@
   <div>
     <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
       {!! $dealSourceIconHtml !!}
-      @if($dealLeadDisplayName !== '')
-        <span class="fw-semibold">{{ $dealLeadDisplayName }}</span>
-      @endif
-      <span class="{{ $dealSourceBadgeClass }}">{{ $dealSourceLabel }}</span>
+      <h4 class="mb-0">
+        {{ $dealTitle }} <span class="text-muted">#{{ $deal->id }}</span>
+      </h4>
     </div>
-        <h4 class="mb-1">
-      {{ $dealTitle }} <span class="text-muted">#{{ $deal->id }}</span>
+    @if($dealLeadDisplayName !== '' && $dealLeadDisplayName !== $dealTitle)
+      <div class="fw-semibold text-body-secondary mb-1">{{ $dealLeadDisplayName }}</div>
+    @endif
       @if(!$deal->is_ready)
-        <span class="badge text-bg-warning ms-2">не заполнено</span>
+        <span class="badge text-bg-warning">не заполнено</span>
       @endif
-    </h4>
+    </div>
     <div class="text-muted small">
       Клиент: {{ $dealLeadDisplayName !== '' ? $dealLeadDisplayName : 'Без имени' }}
       @if($deal->contact?->phone) • {{ $deal->contact->phone }} @endif
@@ -45,7 +45,14 @@
       <div class="card-header fw-semibold">О сделке</div>
       <div class="card-body small">
         <div class="mb-1"><b>Стадия:</b> {{ $deal->stage?->name }}</div>
-        <div class="mb-1"><b>Источник:</b> <span class="{{ $dealSourceBadgeClass }}">{{ $dealSourceLabel }}</span></div>
+        <div class="mb-1">
+          <b>Чат:</b>
+          @if($dealSourceChatUrl)
+            <a href="{{ $dealSourceChatUrl }}" class="{{ $dealSourceBadgeClass }} text-decoration-none" target="_blank" rel="noopener">Открыть {{ $dealSourceLabel }}</a>
+          @else
+            <span class="{{ $dealSourceBadgeClass }}">{{ $dealSourceLabel }}</span>
+          @endif
+        </div>
         <div class="mb-1"><b>Клиент:</b> {{ $dealLeadDisplayName !== '' ? $dealLeadDisplayName : 'Без имени' }}</div>
         <div class="mb-1"><b>Создано:</b> {{ optional($deal->created_at)->format('d.m.Y H:i') }}</div>
         <div class="mb-1"><b>Сумма:</b> {{ $deal->amount ? number_format($deal->amount,2,',',' ') : '—' }} {{ $deal->currency ?? 'RUB' }}</div>
@@ -131,7 +138,11 @@
                   <div class="d-flex align-items-center gap-2 flex-wrap">
                     {!! $chat['source_icon_html'] !!}
                     <span class="fw-semibold">{{ $chat['lead_name'] }}</span>
-                    <span class="{{ $chat['badge_class'] }}">{{ $chat['source_label'] }}</span>
+                    @if($chat['chat_url'])
+                      <a href="{{ $chat['chat_url'] }}" class="{{ $chat['badge_class'] }} text-decoration-none" target="_blank" rel="noopener">{{ $chat['source_label'] }}</a>
+                    @else
+                      <span class="{{ $chat['badge_class'] }}">{{ $chat['source_label'] }}</span>
+                    @endif
                   </div>
                   <div class="text-muted small mt-1">{{ $chat['subtitle'] }}</div>
                   <div class="text-muted small mt-1">{{ $chat['body'] }}</div>

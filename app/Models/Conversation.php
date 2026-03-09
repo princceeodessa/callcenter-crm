@@ -50,6 +50,52 @@ class Conversation extends Model
         };
     }
 
+    public function getChatUrlAttribute(): ?string
+    {
+        try {
+            $meta = is_array($this->meta) ? $this->meta : [];
+            foreach (['chat_url', 'conversation_url', 'source_url', 'external_url', 'url', 'link'] as $key) {
+                $value = trim((string) ($meta[$key] ?? ''));
+                if ($this->looksLikeAbsoluteUrl($value)) {
+                    return $value;
+                }
+            }
+
+            if (is_string($this->external_id) && $this->looksLikeAbsoluteUrl($this->external_id)) {
+                return $this->external_id;
+            }
+
+            $message = $this->relationLoaded('lastMessage') ? $this->lastMessage : null;
+            if (!$message) {
+                $message = $this->messages()->orderByDesc('id')->first();
+            }
+
+            $payload = is_array($message?->payload ?? null) ? $message->payload : [];
+            foreach ([
+                data_get($payload, 'chat.url'),
+                data_get($payload, 'chat.link'),
+                data_get($payload, 'chat_url'),
+                data_get($payload, 'conversation_url'),
+                data_get($payload, 'link'),
+                data_get($payload, 'url'),
+            ] as $candidate) {
+                $candidate = is_scalar($candidate) ? trim((string) $candidate) : '';
+                if ($this->looksLikeAbsoluteUrl($candidate)) {
+                    return $candidate;
+                }
+            }
+
+            return match ($this->channel) {
+                'vk' => preg_match('/^\d+$/', (string) $this->external_id) === 1
+                    ? 'https://vk.com/im/convo/'.(string) $this->external_id.'?entrypoint=list_all'
+                    : null,
+                default => null,
+            };
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
     public function getLeadNameAttribute(): ?string
     {
         try {
@@ -205,6 +251,15 @@ class Conversation extends Model
             }
         }
         return null;
+    }
+
+
+    private function looksLikeAbsoluteUrl(?string $value): bool
+    {
+        if (!is_string($value)) return false;
+        $value = trim($value);
+        if ($value === '') return false;
+        return filter_var($value, FILTER_VALIDATE_URL) !== false;
     }
 
     private function extractLeadNameFromPayload(mixed $payload): ?string

@@ -32,7 +32,10 @@
           @php($dealTitle = $deal->title_is_custom ? $deal->title : ($deal->lead_display_name ?: $deal->title))
           <tr class="{{ $deal->lead_source_surface_class }}">
             <td>
-              <a href="{{ route('deals.show', $deal) }}" class="fw-semibold text-decoration-none">{{ $dealTitle }}</a>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                {!! $deal->lead_source_icon_html !!}
+                <a href="{{ route('deals.show', $deal) }}" class="fw-semibold text-decoration-none">{{ $dealTitle }}</a>
+              </div>
               @if($deal->is_unread) <span class="badge text-bg-warning ms-1">не прочитан</span> @endif
               @if($deal->has_script_deviation) <span class="badge text-bg-danger ms-1">отклонения</span> @endif
               @if(!$deal->is_ready) <span class="badge text-bg-warning ms-1">не заполнено</span> @endif
@@ -43,16 +46,14 @@
               <div class="text-muted small mt-1">{{ $deal->stage?->name }}</div>
             </td>
             <td>
-              <div class="d-flex align-items-center gap-2 flex-wrap">
-                {!! $deal->lead_source_icon_html !!}
+              @if($deal->lead_source_chat_url)
+                <a href="{{ $deal->lead_source_chat_url }}" class="{{ $deal->lead_source_badge_class }} text-decoration-none" target="_blank" rel="noopener">{{ $deal->lead_source_label }}</a>
+              @else
                 <span class="{{ $deal->lead_source_badge_class }}">{{ $deal->lead_source_label }}</span>
-              </div>
+              @endif
             </td>
             <td>
-              <div class="d-flex align-items-center gap-2 flex-wrap">
-                {!! $deal->lead_source_icon_html !!}
-                <div class="fw-semibold">{{ $leadName }}</div>
-              </div>
+              <div class="fw-semibold">{{ $leadName }}</div>
               @if($deal->contact?->phone)
                 <div class="text-muted small">{{ $deal->contact->phone }}</div>
               @endif

@@ -53,15 +53,16 @@
                         @php($leadName = $deal->lead_display_name ?? 'Без имени')
                         @php($dealTitle = $deal->title_is_custom ? $deal->title : ($deal->lead_display_name ?: $deal->title))
                         <div class="border rounded p-2 kanban-card {{ $deal->lead_source_surface_class }}" data-deal-id="{{ $deal->id }}">
-                            <div class="d-flex justify-content-between gap-2">
-                                <a class="fw-semibold text-decoration-none deal-title" href="{{ route('deals.show', $deal) }}">{{ $dealTitle }}</a>
+                            <div class="d-flex justify-content-between align-items-start gap-2">
+                                <div class="d-flex align-items-center gap-2 min-w-0">
+                                    {!! $deal->lead_source_icon_html !!}
+                                    <a class="fw-semibold text-decoration-none deal-title" href="{{ route('deals.show', $deal) }}">{{ $dealTitle }}</a>
+                                </div>
                                 <span class="text-muted small">#{{ $deal->id }}</span>
                             </div>
-                            <div class="mt-2 d-flex align-items-center gap-2 flex-wrap">
-                                {!! $deal->lead_source_icon_html !!}
-                                <span class="small fw-semibold">{{ $leadName }}</span>
-                                <span class="{{ $deal->lead_source_badge_class }}">{{ $deal->lead_source_label }}</span>
-                            </div>
+                            @if($leadName && $leadName !== $dealTitle)
+                                <div class="mt-2 small fw-semibold text-body-secondary">{{ $leadName }}</div>
+                            @endif
                             <div class="text-muted small mt-1">
                                 @if($deal->contact?->phone){{ $deal->contact->phone }}@else Без телефона @endif
                             </div>
