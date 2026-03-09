@@ -194,7 +194,7 @@ class IntegrationController extends Controller
                                 $settings['refresh_token'] = (string) $resp['refresh_token'];
                             }
                         } else {
-                            $settings['last_setup_error'] = 'Avito token error: '.json_encode($resp, JSON_UNESCAPED_UNICODE);
+                            $settings['last_setup_error'] = 'Avito token error: '.json_encode($resp, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                         }
                     } catch (\Throwable $e) {
                         $settings['last_setup_error'] = 'Avito token exception: '.$e->getMessage();
@@ -393,12 +393,17 @@ class IntegrationController extends Controller
         $hasClient = trim((string) ($settings['client_id'] ?? '')) !== ''
             && trim((string) ($settings['client_secret'] ?? '')) !== '';
         $hasUserId = trim((string) ($settings['user_id'] ?? '')) !== '';
+        $hasSetupError = trim((string) ($settings['last_setup_error'] ?? '')) !== '';
 
         if (!$hasToken && !$hasClient) {
             return 'disabled';
         }
 
         if (!$hasUserId) {
+            return 'error';
+        }
+
+        if (!$hasToken && $hasSetupError) {
             return 'error';
         }
 
@@ -424,7 +429,7 @@ class IntegrationController extends Controller
             $resp = $oauth->clientCredentials($clientId, $clientSecret);
             $token = trim((string) ($resp['access_token'] ?? ''));
             if ($token === '') {
-                $settings['last_setup_error'] = 'Avito token error: '.json_encode($resp, JSON_UNESCAPED_UNICODE);
+                $settings['last_setup_error'] = 'Avito token error: '.json_encode($resp, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                 $connection->update([
                     'settings' => $settings,
                     'status' => $this->resolveAvitoConnectionStatus($settings),
