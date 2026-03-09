@@ -130,6 +130,15 @@ class Deal extends Model
         }
     }
 
+    public function getLeadSourceIconHtmlAttribute(): string
+    {
+        try {
+            return $this->primaryConversation()?->source_icon_html ?? '<span class="source-icon source-icon-default"><i class="bi bi-chat-dots-fill"></i></span>';
+        } catch (\Throwable) {
+            return '<span class="source-icon source-icon-default"><i class="bi bi-chat-dots-fill"></i></span>';
+        }
+    }
+
     public function getLeadSourceSurfaceClassAttribute(): string
     {
         try {

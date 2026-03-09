@@ -268,7 +268,38 @@ class DealController extends Controller
         }
         $dealSourceLabel = trim((string) ($primaryConversation?->source_label ?? 'CRM')) ?: 'CRM';
         $dealSourceBadgeClass = trim((string) ($primaryConversation?->source_badge_class ?? 'source-badge source-badge-default')) ?: 'source-badge source-badge-default';
+        $dealSourceIconHtml = (string) ($primaryConversation?->source_icon_html ?? '<span class="source-icon source-icon-default"><i class="bi bi-chat-dots-fill"></i></span>');
         $dealTitle = $deal->title_is_custom ? $deal->title : ($dealLeadDisplayName !== '' ? $dealLeadDisplayName : $deal->title);
+
+        $dealConversations = $deal->conversations->map(function ($conversation) {
+            try {
+                return [
+                    'url' => route('chats.show', $conversation),
+                    'surface_class' => $conversation->source_surface_class,
+                    'badge_class' => $conversation->source_badge_class,
+                    'source_label' => $conversation->source_label,
+                    'source_icon_html' => $conversation->source_icon_html,
+                    'lead_name' => $conversation->lead_name ?: 'Диалог',
+                    'subtitle' => $conversation->display_subtitle,
+                    'body' => \Illuminate\Support\Str::limit($conversation->lastMessage?->body ?? '—', 80),
+                    'last_message_at' => $conversation->last_message_at?->format('d.m H:i') ?? '',
+                    'unread_count' => (int) ($conversation->unread_count ?? 0),
+                ];
+            } catch (\Throwable) {
+                return [
+                    'url' => route('chats.show', $conversation),
+                    'surface_class' => 'source-surface source-surface-default',
+                    'badge_class' => 'source-badge source-badge-default',
+                    'source_label' => 'CRM',
+                    'source_icon_html' => '<span class="source-icon source-icon-default"><i class="bi bi-chat-dots-fill"></i></span>',
+                    'lead_name' => 'Диалог',
+                    'subtitle' => 'Источник: CRM',
+                    'body' => '—',
+                    'last_message_at' => '',
+                    'unread_count' => 0,
+                ];
+            }
+        });
 
         return view('deals.show', compact(
             'deal',
@@ -278,7 +309,9 @@ class DealController extends Controller
             'dealLeadDisplayName',
             'dealSourceLabel',
             'dealSourceBadgeClass',
+            'dealSourceIconHtml',
             'dealTitle',
+            'dealConversations',
         ));
     }
 

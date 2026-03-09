@@ -13,14 +13,7 @@ class Conversation extends Model
     use BelongsToAccount;
 
     protected $fillable = [
-        'account_id',
-        'deal_id',
-        'channel',
-        'external_id',
-        'status',
-        'unread_count',
-        'last_message_at',
-        'meta',
+        'account_id', 'deal_id', 'channel', 'external_id', 'status', 'unread_count', 'last_message_at', 'meta',
     ];
 
     protected $casts = [
@@ -28,20 +21,9 @@ class Conversation extends Model
         'last_message_at' => 'datetime',
     ];
 
-    public function deal()
-    {
-        return $this->belongsTo(Deal::class);
-    }
-
-    public function messages()
-    {
-        return $this->hasMany(Message::class);
-    }
-
-    public function lastMessage()
-    {
-        return $this->hasOne(Message::class)->latestOfMany();
-    }
+    public function deal() { return $this->belongsTo(Deal::class); }
+    public function messages() { return $this->hasMany(Message::class); }
+    public function lastMessage() { return $this->hasOne(Message::class)->latestOfMany(); }
 
     public function getSourceLabelAttribute(): string
     {
@@ -54,14 +36,18 @@ class Conversation extends Model
         };
     }
 
-    public function getSourceBadgeClassAttribute(): string
-    {
-        return 'source-badge source-badge-'.($this->channel ?: 'default');
-    }
+    public function getSourceBadgeClassAttribute(): string { return 'source-badge source-badge-'.($this->channel ?: 'default'); }
+    public function getSourceSurfaceClassAttribute(): string { return 'source-surface source-surface-'.($this->channel ?: 'default'); }
 
-    public function getSourceSurfaceClassAttribute(): string
+    public function getSourceIconHtmlAttribute(): string
     {
-        return 'source-surface source-surface-'.($this->channel ?: 'default');
+        return match ($this->channel) {
+            'vk' => '<span class="source-icon source-icon-vk">vk</span>',
+            'telegram' => '<span class="source-icon source-icon-telegram"><i class="bi bi-send-fill"></i></span>',
+            'avito' => '<span class="source-icon source-icon-avito">A</span>',
+            'megafon_vats' => '<span class="source-icon source-icon-megafon_vats"><i class="bi bi-telephone-fill"></i></span>',
+            default => '<span class="source-icon source-icon-default"><i class="bi bi-chat-dots-fill"></i></span>',
+        };
     }
 
     public function getLeadNameAttribute(): ?string
@@ -82,10 +68,7 @@ class Conversation extends Model
 
             $message = $this->relationLoaded('lastMessage') ? $this->lastMessage : null;
             if (!$message) {
-                $message = $this->messages()
-                    ->where('direction', 'in')
-                    ->orderByDesc('id')
-                    ->first();
+                $message = $this->messages()->where('direction', 'in')->orderByDesc('id')->first();
             }
             if (!$message) {
                 $message = $this->messages()->orderByDesc('id')->first();
@@ -94,9 +77,8 @@ class Conversation extends Model
             if ($message) {
                 $payloadName = $this->extractLeadNameFromPayload($message->payload);
                 if ($payloadName) {
-                    return $this->persistLeadName($payloadName);
+                    return $payloadName;
                 }
-
                 $author = trim((string) ($message->author ?? ''));
                 if ($this->looksLikeHumanName($author)) {
                     return $author;
@@ -104,45 +86,32 @@ class Conversation extends Model
             }
 
             if ($this->channel === 'vk') {
-                $vkName = $this->fetchVkLeadName();
-                if ($vkName) {
-                    return $this->persistLeadName($vkName);
-                }
+                return $this->fetchVkLeadName();
             }
-
             if ($this->channel === 'avito') {
-                $avitoName = $this->fetchAvitoLeadName();
-                if ($avitoName) {
-                    return $this->persistLeadName($avitoName);
-                }
+                return $this->fetchAvitoLeadName();
             }
         } catch (\Throwable) {
             return null;
         }
-
         return null;
     }
 
     public function getDisplayTitleAttribute(): string
     {
         try {
-            $leadName = $this->lead_name;
-            if ($leadName) {
-                return $leadName;
+            if ($this->lead_name) {
+                return $this->lead_name;
             }
-
             $title = trim((string) ($this->deal?->title ?? ''));
             if ($title !== '' && !$this->looksLikeGenericChatTitle($title)) {
                 return $title;
             }
-
             if ($this->external_id) {
                 return $this->source_label.': '.$this->external_id;
             }
         } catch (\Throwable) {
-            // ignore
         }
-
         return 'Диалог';
     }
 
@@ -154,11 +123,7 @@ class Conversation extends Model
             if ($hint === '') {
                 $hint = $this->extractSourceHintFromPayload($this->relationLoaded('lastMessage') ? $this->lastMessage?->payload : null) ?? '';
             }
-            if ($hint !== '') {
-                return $hint;
-            }
-
-            return 'Источник: '.$this->source_label;
+            return $hint !== '' ? $hint : 'Источник: '.$this->source_label;
         } catch (\Throwable) {
             return 'Источник: CRM';
         }
@@ -166,34 +131,16 @@ class Conversation extends Model
 
     private function fetchVkLeadName(): ?string
     {
-        if ($this->channel !== 'vk') {
-            return null;
-        }
-
         $userId = $this->extractVkUserId();
-        if (!$userId) {
-            return null;
-        }
-
-        $connection = IntegrationConnection::query()
-            ->where('account_id', $this->account_id)
-            ->where('provider', 'vk')
-            ->where('status', 'active')
-            ->first();
-
+        if (!$userId) return null;
+        $connection = IntegrationConnection::query()->where('account_id', $this->account_id)->where('provider', 'vk')->where('status', 'active')->first();
         $token = trim((string) ($connection?->settings['access_token'] ?? ''));
-        if ($token === '') {
-            return null;
-        }
-
+        if ($token === '') return null;
         try {
             $client = new VkApiClient($token, '5.131', 4.0);
             $response = $client->usersGet($userId);
             $user = data_get($response, 'response.0');
-            if (!is_array($user)) {
-                return null;
-            }
-
+            if (!is_array($user)) return null;
             $name = trim((string) ($user['first_name'] ?? '').' '.(string) ($user['last_name'] ?? ''));
             return $this->looksLikeHumanName($name) ? $name : null;
         } catch (\Throwable) {
@@ -203,177 +150,83 @@ class Conversation extends Model
 
     private function fetchAvitoLeadName(): ?string
     {
-        if ($this->channel !== 'avito') {
-            return null;
-        }
-
-        $connection = IntegrationConnection::query()
-            ->where('account_id', $this->account_id)
-            ->where('provider', 'avito')
-            ->where('status', 'active')
-            ->first();
-
+        $connection = IntegrationConnection::query()->where('account_id', $this->account_id)->where('provider', 'avito')->where('status', 'active')->first();
         $settings = is_array($connection?->settings) ? $connection->settings : [];
         $token = trim((string) ($settings['access_token'] ?? ''));
         $userId = trim((string) ($settings['user_id'] ?? ''));
         $chatId = trim((string) $this->external_id);
-        if ($token === '' || $userId === '' || $chatId === '') {
-            return null;
-        }
-
+        if ($token === '' || $userId === '' || $chatId === '') return null;
         try {
             $client = new AvitoApiClient($token, 'https://api.avito.ru', 4.0);
-            $chat = $client->getChat($userId, $chatId);
-            return $this->pickAvitoLeadNameFromChat($chat, $userId);
+            return $this->pickAvitoLeadNameFromChat($client->getChat($userId, $chatId), $userId);
         } catch (\Throwable) {
             return null;
         }
     }
 
-
     private function extractVkUserId(): ?int
     {
         $meta = is_array($this->meta) ? $this->meta : [];
-        $candidates = [
-            $meta['vk_user_id'] ?? null,
-            $meta['from_id'] ?? null,
-        ];
-
-        $message = $this->messages()
-            ->where('direction', 'in')
-            ->orderByDesc('id')
-            ->first();
-
+        $candidates = [$meta['vk_user_id'] ?? null, $meta['from_id'] ?? null];
+        $message = $this->messages()->where('direction', 'in')->orderByDesc('id')->first();
         if ($message) {
             $author = trim((string) ($message->author ?? ''));
-            if (preg_match('/^vk:(\d+)$/', $author, $m) === 1) {
-                $candidates[] = $m[1];
-            }
+            if (preg_match('/^vk:(\d+)$/', $author, $m) === 1) $candidates[] = $m[1];
             $payload = is_array($message->payload) ? $message->payload : [];
             $candidates[] = data_get($payload, 'object.message.from_id');
             $candidates[] = data_get($payload, 'message.from_id');
             $candidates[] = data_get($payload, 'from_id');
         }
-
         foreach ($candidates as $candidate) {
             if (is_scalar($candidate) && preg_match('/^\d+$/', (string) $candidate) === 1) {
                 $id = (int) $candidate;
-                if ($id > 0 && $id < 2000000000) {
-                    return $id;
-                }
+                if ($id > 0 && $id < 2000000000) return $id;
             }
         }
-
         return null;
-    }
-
-    private function persistLeadName(string $name): string
-    {
-        $name = trim($name);
-        if (!$this->looksLikeHumanName($name)) {
-            return $name;
-        }
-
-        $meta = is_array($this->meta) ? $this->meta : [];
-        $current = trim((string) ($meta['lead_name'] ?? ''));
-        if ($current === $name) {
-            return $name;
-        }
-
-        $meta['lead_name'] = $name;
-        $meta['display_name'] = $name;
-        $this->forceFill(['meta' => $meta]);
-        try {
-            $this->saveQuietly();
-        } catch (\Throwable) {
-            // ignore persistence failures during rendering
-        }
-
-        return $name;
     }
 
     private function pickAvitoLeadNameFromChat(array $chat, string $ownerUserId): ?string
     {
-        foreach ([
-            data_get($chat, 'buyer.name'),
-            data_get($chat, 'user.name'),
-            data_get($chat, 'client.name'),
-        ] as $candidate) {
+        foreach ([data_get($chat, 'buyer.name'), data_get($chat, 'user.name'), data_get($chat, 'client.name')] as $candidate) {
             $candidate = is_scalar($candidate) ? trim((string) $candidate) : '';
-            if ($this->looksLikeHumanName($candidate)) {
-                return $candidate;
-            }
+            if ($this->looksLikeHumanName($candidate)) return $candidate;
         }
-
-        $users = data_get($chat, 'users');
-        if (is_array($users)) {
+        foreach ([data_get($chat, 'users'), data_get($chat, 'participants'), data_get($chat, 'chat.users'), data_get($chat, 'data.users')] as $users) {
+            if (!is_array($users)) continue;
             foreach ($users as $user) {
-                if (!is_array($user)) {
-                    continue;
-                }
-                $id = (string) ($user['id'] ?? $user['user_id'] ?? '');
-                if ($id !== '' && $id === $ownerUserId) {
-                    continue;
-                }
-                foreach ([
-                    $user['name'] ?? null,
-                    $user['title'] ?? null,
-                    trim((string) ($user['first_name'] ?? '').' '.(string) ($user['last_name'] ?? '')),
-                ] as $candidate) {
+                if (!is_array($user)) continue;
+                $id = (string) ($user['id'] ?? $user['user_id'] ?? data_get($user, 'user.id') ?? '');
+                if ($id !== '' && $id === $ownerUserId) continue;
+                foreach ([$user['name'] ?? null, $user['title'] ?? null, trim((string) ($user['first_name'] ?? '').' '.(string) ($user['last_name'] ?? '')), data_get($user, 'profile.name'), data_get($user, 'user.name')] as $candidate) {
                     $candidate = is_scalar($candidate) ? trim((string) $candidate) : '';
-                    if ($this->looksLikeHumanName($candidate)) {
-                        return $candidate;
-                    }
+                    if ($this->looksLikeHumanName($candidate)) return $candidate;
                 }
             }
         }
-
         return null;
     }
 
     private function extractLeadNameFromPayload(mixed $payload): ?string
     {
-        if (!is_array($payload)) {
-            return null;
-        }
-
-        $directCandidates = [
-            data_get($payload, 'author.name'),
-            data_get($payload, 'user.name'),
-            data_get($payload, 'buyer.name'),
-            data_get($payload, 'sender.name'),
-            data_get($payload, 'client.name'),
-            data_get($payload, 'from.first_name'),
-            data_get($payload, 'from.last_name'),
-            data_get($payload, 'message.author.name'),
-            data_get($payload, 'message.sender.name'),
-            data_get($payload, 'message.user.name'),
-            data_get($payload, 'message.client.name'),
-            data_get($payload, 'chat.user.name'),
-            data_get($payload, 'chat.buyer.name'),
-            data_get($payload, 'chat.client.name'),
+        if (!is_array($payload)) return null;
+        $candidates = [
+            data_get($payload, 'author.name'), data_get($payload, 'user.name'), data_get($payload, 'buyer.name'), data_get($payload, 'sender.name'), data_get($payload, 'client.name'),
+            data_get($payload, 'chat.user.name'), data_get($payload, 'chat.buyer.name'), data_get($payload, 'chat.client.name'),
+            data_get($payload, 'chat_full.user.name'), data_get($payload, 'chat_full.buyer.name'), data_get($payload, 'chat_full.client.name'),
+            data_get($payload, 'message.author.name'), data_get($payload, 'message.sender.name'), data_get($payload, 'message.user.name'), data_get($payload, 'message.client.name'),
         ];
-
         $firstName = trim((string) data_get($payload, 'from.first_name'));
         $lastName = trim((string) data_get($payload, 'from.last_name'));
         $fullName = trim($firstName.' '.$lastName);
-        if ($fullName !== '') {
-            $directCandidates[] = $fullName;
-        }
-
-        foreach ($directCandidates as $candidate) {
+        if ($fullName !== '') $candidates[] = $fullName;
+        foreach ($candidates as $candidate) {
             $candidate = is_scalar($candidate) ? trim((string) $candidate) : '';
-            if ($this->looksLikeHumanName($candidate)) {
-                return $candidate;
-            }
+            if ($this->looksLikeHumanName($candidate)) return $candidate;
         }
-
         foreach ($this->collectHumanNames($payload) as $candidate) {
-            if ($this->looksLikeHumanName($candidate)) {
-                return $candidate;
-            }
+            if ($this->looksLikeHumanName($candidate)) return $candidate;
         }
-
         return null;
     }
 
@@ -381,54 +234,26 @@ class Conversation extends Model
     {
         $found = [];
         $walker = function (mixed $node) use (&$walker, &$found) {
-            if (!is_array($node)) {
-                return;
-            }
-
+            if (!is_array($node)) return;
             $first = trim((string) ($node['first_name'] ?? ''));
             $last = trim((string) ($node['last_name'] ?? ''));
             $full = trim($first.' '.$last);
-            if ($full !== '' && $this->looksLikeHumanName($full)) {
-                $found[] = $full;
-            }
-
+            if ($full !== '' && $this->looksLikeHumanName($full)) $found[] = $full;
             $name = trim((string) ($node['name'] ?? ''));
-            if ($name !== '' && $this->looksLikeHumanName($name)) {
-                $found[] = $name;
-            }
-
-            foreach ($node as $value) {
-                if (is_array($value)) {
-                    $walker($value);
-                }
-            }
+            if ($name !== '' && $this->looksLikeHumanName($name)) $found[] = $name;
+            foreach ($node as $value) if (is_array($value)) $walker($value);
         };
-
         $walker($payload);
-
         return array_values(array_unique($found));
     }
 
     private function extractSourceHintFromPayload(mixed $payload): ?string
     {
-        if (!is_array($payload)) {
-            return null;
-        }
-
-        foreach ([
-            data_get($payload, 'chat.context.value.title'),
-            data_get($payload, 'chat.context.value.name'),
-            data_get($payload, 'chat.item.title'),
-            data_get($payload, 'chat.ad.title'),
-            data_get($payload, 'item.title'),
-            data_get($payload, 'ad.title'),
-        ] as $candidate) {
+        if (!is_array($payload)) return null;
+        foreach ([data_get($payload, 'chat.context.value.title'), data_get($payload, 'chat.context.value.name'), data_get($payload, 'chat.item.title'), data_get($payload, 'chat.ad.title'), data_get($payload, 'item.title'), data_get($payload, 'ad.title')] as $candidate) {
             $value = trim((string) ($candidate ?? ''));
-            if ($value !== '' && !$this->looksLikeHumanName($value)) {
-                return Str::limit($value, 80);
-            }
+            if ($value !== '' && !$this->looksLikeHumanName($value)) return Str::limit($value, 80);
         }
-
         return null;
     }
 
@@ -441,21 +266,12 @@ class Conversation extends Model
     private function looksLikeHumanName(?string $value): bool
     {
         $value = trim((string) $value);
-        if ($value === '') {
-            return false;
-        }
-
+        if ($value === '') return false;
         $normalized = Str::lower($value);
         foreach (['vk:', 'tg:', 'avito:', 'telegram:', 'user ', 'id ', 'chat ', 'peer '] as $bad) {
-            if (str_starts_with($normalized, $bad)) {
-                return false;
-            }
+            if (str_starts_with($normalized, $bad)) return false;
         }
-
-        if (preg_match('/^\d+$/', $value)) {
-            return false;
-        }
-
+        if (preg_match('/^\d+$/', $value)) return false;
         return preg_match('/[\p{L}]{2,}/u', $value) === 1;
     }
 }

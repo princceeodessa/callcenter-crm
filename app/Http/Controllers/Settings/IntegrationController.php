@@ -213,6 +213,10 @@ class IntegrationController extends Controller
                         $settings['last_setup_error'] = $settings['last_setup_error'] ?? ('Avito self account exception: '.$e->getMessage());
                     }
                 }
+
+                if (!empty($settings['access_token']) && empty($settings['user_id'])) {
+                    $settings['last_setup_error'] = $settings['last_setup_error'] ?? 'Токен Avito получен, но user_id (account id) Авито не вернул. Укажи user_id вручную — в рабочем боте он называется AVITO_USER_ID.';
+                }
             }
         }
 
@@ -275,7 +279,7 @@ class IntegrationController extends Controller
             $params['scope'] = $scope;
         }
 
-        return redirect()->away(rtrim($authorizeBase, '?').'?'.http_build_query($params, '', '&', PHP_QUERY_RFC3986));
+        return redirect()->away(rtrim($authorizeBase, '?').'?'.http_build_query($params));
     }
 
     public function testSend(Request $request, string $provider)

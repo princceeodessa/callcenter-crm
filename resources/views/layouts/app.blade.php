@@ -168,9 +168,9 @@
             letter-spacing: .02em;
         }
 
-        .source-badge-vk { background: rgba(0, 119, 255, .14); color: #0057b8; }
-        .source-badge-telegram { background: rgba(0, 136, 204, .14); color: #006d9f; }
-        .source-badge-avito { background: rgba(151, 71, 255, .15); color: #6d28d9; }
+        .source-badge-vk { background: rgba(0, 119, 255, .18); color: #0a66ff; }
+        .source-badge-telegram { background: rgba(0, 136, 204, .16); color: #0ea5e9; }
+        .source-badge-avito { background: rgba(151, 71, 255, .18); color: #8b5cf6; }
         .source-badge-megafon_vats { background: rgba(34, 197, 94, .16); color: #166534; }
         .source-badge-default { background: rgba(100, 116, 139, .15); color: #334155; }
 
@@ -183,6 +183,28 @@
         .source-surface-avito { border-left-color: #8b5cf6; }
         .source-surface-megafon_vats { border-left-color: #16a34a; }
         .source-surface-default { border-left-color: #94a3b8; }
+
+
+        .source-icon {
+            width: 1.7rem;
+            height: 1.7rem;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-weight: 800;
+            font-size: .72rem;
+            text-transform: uppercase;
+            box-shadow: 0 0 0 1px rgba(255,255,255,.08), 0 8px 18px rgba(15, 23, 42, .18);
+            flex: 0 0 auto;
+        }
+        .source-icon i { font-size: .82rem; line-height: 1; }
+        .source-icon-vk { background: linear-gradient(135deg, #0ea5ff 0%, #2563eb 100%); text-transform: lowercase; letter-spacing: -.02em; }
+        .source-icon-telegram { background: linear-gradient(135deg, #22d3ee 0%, #0284c7 100%); }
+        .source-icon-avito { background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%); }
+        .source-icon-megafon_vats { background: linear-gradient(135deg, #22c55e 0%, #15803d 100%); }
+        .source-icon-default { background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%); }
 
         .theme-dot {
             width: .8rem;

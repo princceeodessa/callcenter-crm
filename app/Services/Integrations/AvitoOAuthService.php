@@ -16,78 +16,85 @@ class AvitoOAuthService
     private function http(): PendingRequest
     {
         return Http::timeout($this->timeoutSeconds)
-            ->acceptJson()
-            ->asForm();
+            ->acceptJson();
     }
 
-    /**
-     * Exchange authorization code for access token.
-     */
     public function exchangeCode(string $clientId, string $clientSecret, string $code, string $redirectUri): array
     {
-        $payload = [
+        return $this->requestTokenWithBasicAuth([
             'grant_type' => 'authorization_code',
-            'client_id' => $clientId,
-            'client_secret' => $clientSecret,
             'code' => $code,
             'redirect_uri' => $redirectUri,
-        ];
-
-        return $this->requestToken($payload, $clientId, $clientSecret);
+        ], $clientId, $clientSecret);
     }
 
     public function refreshToken(string $clientId, string $clientSecret, string $refreshToken): array
     {
-        $payload = [
+        return $this->requestTokenWithBasicAuth([
             'grant_type' => 'refresh_token',
-            'client_id' => $clientId,
-            'client_secret' => $clientSecret,
             'refresh_token' => $refreshToken,
-        ];
-
-        return $this->requestToken($payload, $clientId, $clientSecret);
+        ], $clientId, $clientSecret);
     }
 
     public function clientCredentials(string $clientId, string $clientSecret): array
     {
-        $payload = [
+        return $this->requestTokenAsForm([
             'grant_type' => 'client_credentials',
             'client_id' => $clientId,
             'client_secret' => $clientSecret,
-        ];
-
-        return $this->requestToken($payload, $clientId, $clientSecret);
+        ]);
     }
 
-    private function requestToken(array $payload, string $clientId, string $clientSecret): array
+    private function requestTokenWithBasicAuth(array $payload, string $clientId, string $clientSecret): array
     {
-        $paths = ['/token', '/oauth/token'];
+        $paths = ['/token/', '/token', '/oauth/token'];
+        $last = null;
 
         foreach ($paths as $path) {
-            $basicPayload = $payload;
-            unset($basicPayload['client_id'], $basicPayload['client_secret']);
-
-            $rBasic = Http::timeout($this->timeoutSeconds)
-                ->acceptJson()
-                ->asForm()
+            $response = $this->http()
                 ->withBasicAuth($clientId, $clientSecret)
-                ->post($this->baseUrl.$path, $basicPayload);
-            $jsonBasic = $rBasic->json();
-            if (is_array($jsonBasic) && !empty($jsonBasic['access_token'])) {
-                return $jsonBasic;
-            }
+                ->asForm()
+                ->post($this->baseUrl.$path, $payload);
 
-            $r = $this->http()->post($this->baseUrl.$path, $payload);
-            $json = $r->json();
+            $json = $response->json();
             if (is_array($json) && !empty($json['access_token'])) {
                 return $json;
             }
 
-            if ($rBasic->status() < 400 || $r->status() < 400) {
-                return $jsonBasic ?? $json ?? ['ok' => false];
-            }
+            $last = is_array($json) ? $json : [
+                'ok' => false,
+                'status' => $response->status(),
+                'body' => $response->body(),
+                'request_id' => $response->header('x-request-id'),
+            ];
         }
 
-        return ['ok' => false, 'error' => 'token_exchange_failed'];
+        return is_array($last) ? $last : ['ok' => false, 'error' => 'token_exchange_failed'];
+    }
+
+    private function requestTokenAsForm(array $payload): array
+    {
+        $paths = ['/token/', '/token', '/oauth/token'];
+        $last = null;
+
+        foreach ($paths as $path) {
+            $response = $this->http()
+                ->asForm()
+                ->post($this->baseUrl.$path, $payload);
+
+            $json = $response->json();
+            if (is_array($json) && !empty($json['access_token'])) {
+                return $json;
+            }
+
+            $last = is_array($json) ? $json : [
+                'ok' => false,
+                'status' => $response->status(),
+                'body' => $response->body(),
+                'request_id' => $response->header('x-request-id'),
+            ];
+        }
+
+        return is_array($last) ? $last : ['ok' => false, 'error' => 'token_exchange_failed'];
     }
 }

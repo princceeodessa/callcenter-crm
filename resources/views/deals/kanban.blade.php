@@ -58,8 +58,9 @@
                                 <span class="text-muted small">#{{ $deal->id }}</span>
                             </div>
                             <div class="mt-2 d-flex align-items-center gap-2 flex-wrap">
-                                <span class="{{ $deal->lead_source_badge_class }}">{{ $deal->lead_source_label }}</span>
+                                {!! $deal->lead_source_icon_html !!}
                                 <span class="small fw-semibold">{{ $leadName }}</span>
+                                <span class="{{ $deal->lead_source_badge_class }}">{{ $deal->lead_source_label }}</span>
                             </div>
                             <div class="text-muted small mt-1">
                                 @if($deal->contact?->phone){{ $deal->contact->phone }}@else Без телефона @endif

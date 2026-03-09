@@ -148,7 +148,8 @@
                   <ol class="mb-0">
                     <li>Сохрани <b>client_id</b> и <b>client_secret</b>.</li>
                     <li>После сохранения CRM попробует получить <b>access_token</b> автоматически через client_credentials.</li>
-                    <li>Если Авито требует браузерную авторизацию, нажми «Подключить через OAuth».</li>
+                    <li>Укажи <b>user_id</b> вручную, если Авито его не вернул. В рабочем боте это поле называется <code>AVITO_USER_ID</code>.</li>
+                    <li>OAuth оставлен как запасной вариант.</li>
                   </ol>
                 </div>
 
@@ -175,7 +176,7 @@
                   <input name="refresh_token" class="form-control form-control-sm" value="{{ $settings['refresh_token'] ?? '' }}" placeholder="refresh_token">
                 </div>
                 <div class="mb-2">
-                  <label class="form-label small">user_id (account id) — можно указать вручную, если Авито не вернул его автоматически</label>
+                  <label class="form-label small">user_id (account id) — лучше указать вручную, как AVITO_USER_ID в рабочем боте</label>
                   <input name="user_id" class="form-control form-control-sm" value="{{ $settings['user_id'] ?? '' }}" placeholder="например: 123456789">
                 </div>
 
@@ -190,7 +191,7 @@
               <div class="d-flex gap-2 flex-wrap">
                 <button class="btn btn-sm btn-primary">Сохранить</button>
                 @if(!empty($settings['client_id']) && !empty($settings['client_secret']))
-                  <a class="btn btn-sm btn-outline-success" href="{{ route('settings.integrations.avito.oauth.start') }}">Подключить через OAuth</a>
+                  <a class="btn btn-sm btn-outline-success" href="{{ route('settings.integrations.avito.oauth.start') }}">OAuth (если нужен именно браузерный вход)</a>
                 @endif
               </div>
 

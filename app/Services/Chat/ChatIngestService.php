@@ -512,7 +512,9 @@ class ChatIngestService
     {
         $participants = [];
         $ownerId = trim((string) data_get($payload, 'account_id'));
-        foreach ([data_get($payload, 'chat.users'), data_get($payload, 'users')] as $users) {
+        foreach ([
+            data_get($payload, 'chat.users'), data_get($payload, 'chat.participants'), data_get($payload, 'chat_full.users'), data_get($payload, 'chat_full.participants'), data_get($payload, 'users'),
+        ] as $users) {
             if (!is_array($users)) {
                 continue;
             }
@@ -520,13 +522,25 @@ class ChatIngestService
                 if (!is_array($user)) {
                     continue;
                 }
-                $id = trim((string) ($user['id'] ?? $user['user_id'] ?? ''));
                 $participants[] = [
-                    'id' => $id,
+                    'id' => trim((string) ($user['id'] ?? $user['user_id'] ?? data_get($user, 'user.id') ?? '')),
                     'name' => $user['name'] ?? $user['title'] ?? trim((string) ($user['first_name'] ?? '').' '.(string) ($user['last_name'] ?? '')),
+                    'role' => trim((string) ($user['role'] ?? data_get($user, 'user.role') ?? '')),
                 ];
             }
         }
+
+        usort($participants, function (array $a, array $b) use ($ownerId) {
+            $score = function (array $participant) use ($ownerId): int {
+                $id = (string) ($participant['id'] ?? '');
+                $role = mb_strtolower((string) ($participant['role'] ?? ''));
+                $value = 0;
+                if ($ownerId !== '' && $id === $ownerId) $value -= 100;
+                if (str_contains($role, 'buyer') || str_contains($role, 'client') || str_contains($role, 'customer')) $value += 20;
+                return $value;
+            };
+            return $score($b) <=> $score($a);
+        });
 
         foreach ($participants as $participant) {
             if ($ownerId !== '' && ($participant['id'] ?? '') === $ownerId) {
@@ -539,24 +553,11 @@ class ChatIngestService
         }
 
         $candidates = [
-            data_get($payload, 'author.name'),
-            data_get($payload, 'user.name'),
-            data_get($payload, 'buyer.name'),
-            data_get($payload, 'sender.name'),
-            data_get($payload, 'client.name'),
-            data_get($payload, 'chat.user.name'),
-            data_get($payload, 'chat.client.name'),
-            data_get($payload, 'chat.buyer.name'),
-            data_get($payload, 'chat.item.title'),
-            data_get($payload, 'chat.context.value.title'),
-            data_get($payload, 'chat.users.0.name'),
-            data_get($payload, 'chat.users.1.name'),
-            data_get($payload, 'users.0.name'),
-            data_get($payload, 'users.1.name'),
-            data_get($msg, 'author.name'),
-            data_get($msg, 'sender.name'),
-            data_get($msg, 'user.name'),
-            data_get($msg, 'buyer.name'),
+            data_get($payload, 'author.name'), data_get($payload, 'user.name'), data_get($payload, 'buyer.name'), data_get($payload, 'sender.name'), data_get($payload, 'client.name'),
+            data_get($payload, 'chat.user.name'), data_get($payload, 'chat.client.name'), data_get($payload, 'chat.buyer.name'),
+            data_get($payload, 'chat_full.user.name'), data_get($payload, 'chat_full.client.name'), data_get($payload, 'chat_full.buyer.name'),
+            data_get($payload, 'chat.users.0.name'), data_get($payload, 'chat.users.1.name'), data_get($payload, 'chat_full.users.0.name'), data_get($payload, 'chat_full.users.1.name'),
+            data_get($payload, 'users.0.name'), data_get($payload, 'users.1.name'), data_get($msg, 'author.name'), data_get($msg, 'sender.name'), data_get($msg, 'user.name'), data_get($msg, 'buyer.name'),
         ];
 
         foreach ($candidates as $candidate) {
@@ -572,7 +573,6 @@ class ChatIngestService
                 return $name;
             }
         }
-
         if (is_array($msg)) {
             foreach ($this->collectLeadNameCandidates($msg) as $candidate) {
                 $name = $this->cleanLeadName($candidate);
@@ -581,7 +581,6 @@ class ChatIngestService
                 }
             }
         }
-
         return null;
     }
 

@@ -77,8 +77,9 @@
                class="list-group-item list-group-item-action d-flex justify-content-between align-items-start ccrm-chat-item {{ $c->source_surface_class }} {{ (int)$c->id === (int)$activeId ? 'active' : '' }}">
               <div class="me-3">
                 <div class="d-flex align-items-center gap-2 flex-wrap">
-                  <span class="{{ $c->source_badge_class }}">{{ $c->source_label }}</span>
+                  {!! $c->source_icon_html !!}
                   <div class="fw-semibold">{{ $c->display_title }}</div>
+                  <span class="{{ $c->source_badge_class }}">{{ $c->source_label }}</span>
                 </div>
                 <div class="text-muted small mt-1">{{ $c->display_subtitle }}</div>
                 <div class="text-muted small mt-1">
@@ -111,8 +112,9 @@
       <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
         <div>
           <div class="d-flex align-items-center gap-2 flex-wrap">
-            <span class="{{ $active->source_badge_class }}">{{ $active->source_label }}</span>
+            {!! $active->source_icon_html !!}
             <div class="fw-semibold">{{ $active->display_title }}</div>
+            <span class="{{ $active->source_badge_class }}">{{ $active->source_label }}</span>
           </div>
           <div class="text-muted small mt-1">
             {{ $active->display_subtitle }}

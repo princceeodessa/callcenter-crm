@@ -4,10 +4,11 @@
 <div class="d-flex align-items-start justify-content-between mb-3 flex-wrap gap-3">
   <div>
     <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
-      <span class="{{ $dealSourceBadgeClass }}">{{ $dealSourceLabel }}</span>
+      {!! $dealSourceIconHtml !!}
       @if($dealLeadDisplayName !== '')
         <span class="fw-semibold">{{ $dealLeadDisplayName }}</span>
       @endif
+      <span class="{{ $dealSourceBadgeClass }}">{{ $dealSourceLabel }}</span>
     </div>
         <h4 class="mb-1">
       {{ $dealTitle }} <span class="text-muted">#{{ $deal->id }}</span>
@@ -120,24 +121,25 @@
     <div class="card shadow-sm mb-3">
       <div class="card-header fw-semibold">Чаты</div>
       <div class="card-body">
-        @if(($deal->conversations?->count() ?? 0) === 0)
+        @if(($dealConversations->count() ?? 0) === 0)
           <div class="text-muted small">Пока нет связанных диалогов</div>
         @else
           <div class="list-group">
-            @foreach($deal->conversations as $c)
-              <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-start {{ $c->source_surface_class }}" href="{{ route('chats.show', $c) }}">
+            @foreach($dealConversations as $chat)
+              <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-start {{ $chat['surface_class'] }}" href="{{ $chat['url'] }}">
                 <div>
                   <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <span class="{{ $c->source_badge_class }}">{{ $c->source_label }}</span>
-                    <span class="fw-semibold">{{ $c->lead_name ?? 'Диалог' }}</span>
+                    {!! $chat['source_icon_html'] !!}
+                    <span class="fw-semibold">{{ $chat['lead_name'] }}</span>
+                    <span class="{{ $chat['badge_class'] }}">{{ $chat['source_label'] }}</span>
                   </div>
-                  <div class="text-muted small mt-1">{{ $c->display_subtitle }}</div>
-                  <div class="text-muted small mt-1">{{ \Illuminate\Support\Str::limit($c->lastMessage?->body ?? '—', 80) }}</div>
+                  <div class="text-muted small mt-1">{{ $chat['subtitle'] }}</div>
+                  <div class="text-muted small mt-1">{{ $chat['body'] }}</div>
                 </div>
                 <div class="text-end">
-                  <div class="text-muted small">{{ $c->last_message_at ? $c->last_message_at->format('d.m H:i') : '' }}</div>
-                  @if(($c->unread_count ?? 0) > 0)
-                    <span class="badge text-bg-primary mt-1">{{ $c->unread_count }}</span>
+                  <div class="text-muted small">{{ $chat['last_message_at'] }}</div>
+                  @if(($chat['unread_count'] ?? 0) > 0)
+                    <span class="badge text-bg-primary mt-1">{{ $chat['unread_count'] }}</span>
                   @endif
                 </div>
               </a>

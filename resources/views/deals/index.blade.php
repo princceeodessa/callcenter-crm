@@ -43,10 +43,16 @@
               <div class="text-muted small mt-1">{{ $deal->stage?->name }}</div>
             </td>
             <td>
-              <span class="{{ $deal->lead_source_badge_class }}">{{ $deal->lead_source_label }}</span>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                {!! $deal->lead_source_icon_html !!}
+                <span class="{{ $deal->lead_source_badge_class }}">{{ $deal->lead_source_label }}</span>
+              </div>
             </td>
             <td>
-              <div class="fw-semibold">{{ $leadName }}</div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                {!! $deal->lead_source_icon_html !!}
+                <div class="fw-semibold">{{ $leadName }}</div>
+              </div>
               @if($deal->contact?->phone)
                 <div class="text-muted small">{{ $deal->contact->phone }}</div>
               @endif

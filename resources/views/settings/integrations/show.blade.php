@@ -64,6 +64,9 @@
           </div>
         @endif
       @endif
+      @if(!empty($s['last_setup_error'] ?? null))
+        <div class="alert alert-warning mt-2 mb-2">{{ $s['last_setup_error'] }}</div>
+      @endif
       @if($connection->last_error)
         <div class="alert alert-warning mt-2 mb-0">{{ $connection->last_error }}</div>
       @endif

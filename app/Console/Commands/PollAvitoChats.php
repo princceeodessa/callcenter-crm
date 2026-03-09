@@ -102,6 +102,13 @@ class PollAvitoChats extends Command
                 $seen[$chatId] = $messageId;
                 $newCount++;
 
+                $chatFull = [];
+                try {
+                    $chatFull = $client->getChat($userId, $chatId);
+                } catch (\Throwable) {
+                    $chatFull = [];
+                }
+
                 IntegrationEvent::create([
                     'account_id' => $conn->account_id,
                     'provider' => 'avito',
@@ -109,10 +116,10 @@ class PollAvitoChats extends Command
                     'event_type' => 'last_message',
                     'external_id' => $messageId,
                     'payload' => [
-                        // normalized for ChatIngestService
                         'chat_id' => $chatId,
                         'account_id' => (string) $userId,
                         'chat' => $chat,
+                        'chat_full' => $chatFull,
                         'message' => $last,
                     ],
                     'received_at' => now(),
