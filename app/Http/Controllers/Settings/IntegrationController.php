@@ -11,6 +11,7 @@ use Illuminate\Support\Str;
 use App\Services\Integrations\TelegramApiClient;
 use App\Services\Integrations\VkApiClient;
 use App\Services\Integrations\AvitoApiClient;
+use App\Services\Integrations\AvitoOAuthService;
 
 class IntegrationController extends Controller
 {
@@ -116,7 +117,7 @@ class IntegrationController extends Controller
             $hasToken = !empty(trim((string)($data['access_token'] ?? '')));
             $hasClient = !empty(trim((string)($data['client_id'] ?? ''))) && !empty(trim((string)($data['client_secret'] ?? '')));
             if (!$hasToken && !$hasClient) {
-                return back()->withErrors(['access_token' => 'Для Avito укажи либо access_token, либо client_id + client_secret (OAuth).']);
+                return back()->withErrors(['access_token' => 'Для Avito укажи либо access_token, либо client_id + client_secret.']);
             }
         }
 
@@ -174,13 +175,51 @@ class IntegrationController extends Controller
                 } catch (\Throwable $e) {
                     $settings['last_setup_error'] = 'VK confirmation_code exception: '.$e->getMessage();
                 }
+            } elseif ($provider === 'avito') {
+                unset($settings['last_setup_error']);
+                $clientId = trim((string) ($settings['client_id'] ?? ''));
+                $clientSecret = trim((string) ($settings['client_secret'] ?? ''));
+                $accessToken = trim((string) ($settings['access_token'] ?? ''));
+                if ($accessToken === '' && $clientId !== '' && $clientSecret !== '') {
+                    try {
+                        $oauth = app(AvitoOAuthService::class);
+                        $resp = $oauth->clientCredentials($clientId, $clientSecret);
+                        $accessToken = trim((string) ($resp['access_token'] ?? ''));
+                        if ($accessToken !== '') {
+                            $settings['access_token'] = $accessToken;
+                            if (!empty($resp['expires_in'])) {
+                                $settings['token_expires_at'] = now()->addSeconds((int) $resp['expires_in'])->toDateTimeString();
+                            }
+                            if (!empty($resp['refresh_token'])) {
+                                $settings['refresh_token'] = (string) $resp['refresh_token'];
+                            }
+                        } else {
+                            $settings['last_setup_error'] = 'Avito token error: '.json_encode($resp, JSON_UNESCAPED_UNICODE);
+                        }
+                    } catch (\Throwable $e) {
+                        $settings['last_setup_error'] = 'Avito token exception: '.$e->getMessage();
+                    }
+                }
+
+                if (!empty($settings['access_token']) && empty($settings['user_id'])) {
+                    try {
+                        $av = new AvitoApiClient((string) $settings['access_token']);
+                        $self = $av->getSelfAccount();
+                        $uid = $self['id'] ?? data_get($self, 'account.id') ?? data_get($self, 'result.id') ?? data_get($self, 'data.id');
+                        if (is_scalar($uid) && (string) $uid !== '') {
+                            $settings['user_id'] = (string) $uid;
+                        }
+                    } catch (\Throwable $e) {
+                        $settings['last_setup_error'] = $settings['last_setup_error'] ?? ('Avito self account exception: '.$e->getMessage());
+                    }
+                }
             }
         }
 
         $connection->fill([
             'account_id' => $accountId,
             'provider' => $provider,
-            'status' => ($provider === 'avito' && empty($settings['access_token'])) ? 'disabled' : 'active',
+            'status' => ($provider === 'avito' && empty($settings['access_token']) && empty($settings['client_id'])) ? 'disabled' : (empty($settings['access_token']) ? 'disabled' : 'active'),
             'settings' => $settings,
             'last_error' => $settings['last_setup_error'] ?? null,
         ]);
@@ -223,7 +262,7 @@ class IntegrationController extends Controller
         $settings['oauth_redirect_uri'] = $redirectUri;
         $connection->update(['settings' => $settings]);
 
-        $authorizeBase = trim((string) env('AVITO_OAUTH_AUTHORIZE_URL', 'https://avito.ru/oauth'));
+        $authorizeBase = trim((string) env('AVITO_OAUTH_AUTHORIZE_URL', 'https://www.avito.ru/oauth'));
         $params = [
             'response_type' => 'code',
             'client_id' => $clientId,
@@ -231,7 +270,7 @@ class IntegrationController extends Controller
             'state' => $settings['oauth_state'],
         ];
 
-        $scope = trim((string) env('AVITO_OAUTH_SCOPE', ''));
+        $scope = trim((string) env('AVITO_OAUTH_SCOPE', 'messenger:read messenger:write'));
         if ($scope !== '') {
             $params['scope'] = $scope;
         }

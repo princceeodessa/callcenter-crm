@@ -50,7 +50,7 @@
           <div class="mb-1"><b>Confirmation code:</b> {{ $s['confirmation_code'] ?? '—' }}</div>
         @elseif($provider === 'avito')
           <div class="mb-1"><b>User ID:</b> {{ $s['user_id'] ?? '—' }}</div>
-          <div class="mb-1"><b>OAuth client_id:</b> {{ !empty($s['client_id']) ? 'установлен' : '—' }}</div>
+          <div class="mb-1"><b>client_id:</b> {{ !empty($s['client_id']) ? 'установлен' : '—' }}</div>
           <div class="mb-1"><b>Access token:</b> {{ !empty($s['access_token']) ? 'установлен' : '—' }}</div>
           @if(!empty($s['token_expires_at']))
             <div class="mb-1"><b>Token expires:</b> {{ \Carbon\Carbon::parse($s['token_expires_at'])->format('d.m.Y H:i:s') }}</div>

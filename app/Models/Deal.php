@@ -99,26 +99,43 @@ class Deal extends Model
 
     public function getLeadDisplayNameAttribute(): ?string
     {
-        $contactName = trim((string) ($this->contact?->name ?? ''));
-        if ($contactName !== '') {
-            return $contactName;
-        }
+        try {
+            $contactName = trim((string) ($this->contact?->name ?? ''));
+            if ($contactName !== '') {
+                return $contactName;
+            }
 
-        return $this->primaryConversation()?->lead_name;
+            $conversation = $this->primaryConversation();
+            return $conversation?->lead_name;
+        } catch (\Throwable) {
+            return trim((string) ($this->attributes['title'] ?? '')) ?: null;
+        }
     }
 
     public function getLeadSourceLabelAttribute(): string
     {
-        return $this->primaryConversation()?->source_label ?? 'CRM';
+        try {
+            return $this->primaryConversation()?->source_label ?? 'CRM';
+        } catch (\Throwable) {
+            return 'CRM';
+        }
     }
 
     public function getLeadSourceBadgeClassAttribute(): string
     {
-        return $this->primaryConversation()?->source_badge_class ?? 'source-badge source-badge-default';
+        try {
+            return $this->primaryConversation()?->source_badge_class ?? 'source-badge source-badge-default';
+        } catch (\Throwable) {
+            return 'source-badge source-badge-default';
+        }
     }
 
     public function getLeadSourceSurfaceClassAttribute(): string
     {
-        return $this->primaryConversation()?->source_surface_class ?? 'source-surface source-surface-default';
+        try {
+            return $this->primaryConversation()?->source_surface_class ?? 'source-surface source-surface-default';
+        } catch (\Throwable) {
+            return 'source-surface source-surface-default';
+        }
     }
 }

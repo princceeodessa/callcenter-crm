@@ -48,31 +48,43 @@ class AvitoOAuthService
         return $this->requestToken($payload, $clientId, $clientSecret);
     }
 
+    public function clientCredentials(string $clientId, string $clientSecret): array
+    {
+        $payload = [
+            'grant_type' => 'client_credentials',
+            'client_id' => $clientId,
+            'client_secret' => $clientSecret,
+        ];
+
+        return $this->requestToken($payload, $clientId, $clientSecret);
+    }
+
     private function requestToken(array $payload, string $clientId, string $clientSecret): array
     {
         $paths = ['/token', '/oauth/token'];
 
         foreach ($paths as $path) {
+            $basicPayload = $payload;
+            unset($basicPayload['client_id'], $basicPayload['client_secret']);
+
+            $rBasic = Http::timeout($this->timeoutSeconds)
+                ->acceptJson()
+                ->asForm()
+                ->withBasicAuth($clientId, $clientSecret)
+                ->post($this->baseUrl.$path, $basicPayload);
+            $jsonBasic = $rBasic->json();
+            if (is_array($jsonBasic) && !empty($jsonBasic['access_token'])) {
+                return $jsonBasic;
+            }
+
             $r = $this->http()->post($this->baseUrl.$path, $payload);
             $json = $r->json();
             if (is_array($json) && !empty($json['access_token'])) {
                 return $json;
             }
 
-            $basicPayload = $payload;
-            unset($basicPayload['client_id'], $basicPayload['client_secret']);
-            $r2 = Http::timeout($this->timeoutSeconds)
-                ->acceptJson()
-                ->asForm()
-                ->withBasicAuth($clientId, $clientSecret)
-                ->post($this->baseUrl.$path, $basicPayload);
-            $json2 = $r2->json();
-            if (is_array($json2) && !empty($json2['access_token'])) {
-                return $json2;
-            }
-
-            if ($r->status() < 400 && $r2->status() < 400) {
-                return $json2 ?? $json ?? ['ok' => false];
+            if ($rBasic->status() < 400 || $r->status() < 400) {
+                return $jsonBasic ?? $json ?? ['ok' => false];
             }
         }
 

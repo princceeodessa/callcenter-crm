@@ -510,6 +510,34 @@ class ChatIngestService
 
     private function extractAvitoLeadName(array $payload, ?array $msg): ?string
     {
+        $participants = [];
+        $ownerId = trim((string) data_get($payload, 'account_id'));
+        foreach ([data_get($payload, 'chat.users'), data_get($payload, 'users')] as $users) {
+            if (!is_array($users)) {
+                continue;
+            }
+            foreach ($users as $user) {
+                if (!is_array($user)) {
+                    continue;
+                }
+                $id = trim((string) ($user['id'] ?? $user['user_id'] ?? ''));
+                $participants[] = [
+                    'id' => $id,
+                    'name' => $user['name'] ?? $user['title'] ?? trim((string) ($user['first_name'] ?? '').' '.(string) ($user['last_name'] ?? '')),
+                ];
+            }
+        }
+
+        foreach ($participants as $participant) {
+            if ($ownerId !== '' && ($participant['id'] ?? '') === $ownerId) {
+                continue;
+            }
+            $name = $this->cleanLeadName(is_scalar($participant['name'] ?? null) ? (string) $participant['name'] : null);
+            if ($name) {
+                return $name;
+            }
+        }
+
         $candidates = [
             data_get($payload, 'author.name'),
             data_get($payload, 'user.name'),
@@ -519,6 +547,8 @@ class ChatIngestService
             data_get($payload, 'chat.user.name'),
             data_get($payload, 'chat.client.name'),
             data_get($payload, 'chat.buyer.name'),
+            data_get($payload, 'chat.item.title'),
+            data_get($payload, 'chat.context.value.title'),
             data_get($payload, 'chat.users.0.name'),
             data_get($payload, 'chat.users.1.name'),
             data_get($payload, 'users.0.name'),

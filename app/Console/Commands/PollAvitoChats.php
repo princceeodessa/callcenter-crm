@@ -111,6 +111,7 @@ class PollAvitoChats extends Command
                     'payload' => [
                         // normalized for ChatIngestService
                         'chat_id' => $chatId,
+                        'account_id' => (string) $userId,
                         'chat' => $chat,
                         'message' => $last,
                     ],

@@ -146,9 +146,9 @@
                 <div class="alert alert-info small">
                   <div class="fw-semibold mb-1">Как подключить Avito</div>
                   <ol class="mb-0">
-                    <li>Сохрани <b>client_id</b> и <b>client_secret</b> (OAuth).</li>
-                    <li>Нажми «Подключить через OAuth» — откроется Авито для авторизации.</li>
-                    <li>После подключения мы сами получим <b>access_token</b> и <b>user_id</b> (нужен для Messenger API).</li>
+                    <li>Сохрани <b>client_id</b> и <b>client_secret</b>.</li>
+                    <li>После сохранения CRM попробует получить <b>access_token</b> автоматически через client_credentials.</li>
+                    <li>Если Авито требует браузерную авторизацию, нажми «Подключить через OAuth».</li>
                   </ol>
                 </div>
 
@@ -163,7 +163,7 @@
 
                 <div class="mb-2">
                   <label class="form-label small">Redirect URL (зарегистрируй в Авито)</label>
-                  <input class="form-control form-control-sm" readonly value="{{ rtrim(env('AVITO_OAUTH_REDIRECT_URI') ?: (config('app.url') ?: url('/')), '/').'/webhooks/avito' }}">
+                  <input class="form-control form-control-sm" readonly value="{{ env('AVITO_OAUTH_REDIRECT_URI') ?: (rtrim((config('app.url') ?: url('/')), '/').'/webhooks/avito') }}">
                 </div>
 
                 <div class="mb-2">
@@ -175,7 +175,7 @@
                   <input name="refresh_token" class="form-control form-control-sm" value="{{ $settings['refresh_token'] ?? '' }}" placeholder="refresh_token">
                 </div>
                 <div class="mb-2">
-                  <label class="form-label small">user_id (account id) — заполнится автоматически после OAuth</label>
+                  <label class="form-label small">user_id (account id) — можно указать вручную, если Авито не вернул его автоматически</label>
                   <input name="user_id" class="form-control form-control-sm" value="{{ $settings['user_id'] ?? '' }}" placeholder="например: 123456789">
                 </div>
 

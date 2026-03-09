@@ -25,6 +25,11 @@
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="kbModeWrap">С переносом</button>
             </div>
             <a class="btn btn-sm btn-outline-primary" href="{{ route('deals.closed') }}">Завершённые</a>
+            @if(empty($showSpam))
+                <a class="btn btn-sm btn-outline-secondary" href="{{ route('deals.kanban', ['show_spam' => 1]) }}">Показать спам</a>
+            @else
+                <a class="btn btn-sm btn-secondary" href="{{ route('deals.kanban') }}">Скрыть спам</a>
+            @endif
             <a class="btn btn-sm btn-success" href="{{ route('deals.create') }}">+ Сделка</a>
         </div>
     </div>

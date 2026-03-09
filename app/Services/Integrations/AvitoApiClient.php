@@ -38,6 +38,25 @@ class AvitoApiClient
         return [];
     }
 
+
+    public function getChat(int|string $userId, string $chatId): array
+    {
+        $uid = (string)$userId;
+        foreach ([
+            "/messenger/v1/accounts/{$uid}/chats/{$chatId}",
+            "/messenger/v1/accounts/{$uid}/chats/{$chatId}/",
+            "/messenger/v2/accounts/{$uid}/chats/{$chatId}",
+            "/messenger/v2/accounts/{$uid}/chats/{$chatId}/",
+        ] as $path) {
+            $r = $this->http()->get($this->baseUrl.$path);
+            if ($r->successful()) {
+                return $r->json() ?? [];
+            }
+        }
+
+        return [];
+    }
+
     public function listChats(int|string $userId, int $limit = 100, int $offset = 0): array
     {
         $uid = (string)$userId;

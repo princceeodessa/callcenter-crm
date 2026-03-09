@@ -4,20 +4,19 @@
 <div class="d-flex align-items-start justify-content-between mb-3 flex-wrap gap-3">
   <div>
     <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
-      <span class="{{ $deal->lead_source_badge_class }}">{{ $deal->lead_source_label }}</span>
-      @if($deal->lead_display_name)
-        <span class="fw-semibold">{{ $deal->lead_display_name }}</span>
+      <span class="{{ $dealSourceBadgeClass }}">{{ $dealSourceLabel }}</span>
+      @if($dealLeadDisplayName !== '')
+        <span class="fw-semibold">{{ $dealLeadDisplayName }}</span>
       @endif
     </div>
-    @php($dealTitle = $deal->title_is_custom ? $deal->title : ($deal->lead_display_name ?: $deal->title))
-    <h4 class="mb-1">
+        <h4 class="mb-1">
       {{ $dealTitle }} <span class="text-muted">#{{ $deal->id }}</span>
       @if(!$deal->is_ready)
         <span class="badge text-bg-warning ms-2">не заполнено</span>
       @endif
     </h4>
     <div class="text-muted small">
-      Клиент: {{ $deal->lead_display_name ?? 'Без имени' }}
+      Клиент: {{ $dealLeadDisplayName !== '' ? $dealLeadDisplayName : 'Без имени' }}
       @if($deal->contact?->phone) • {{ $deal->contact->phone }} @endif
       • Ответственный: {{ $deal->responsible?->name ?? '—' }}
       @if($deal->closed_at)
@@ -45,8 +44,8 @@
       <div class="card-header fw-semibold">О сделке</div>
       <div class="card-body small">
         <div class="mb-1"><b>Стадия:</b> {{ $deal->stage?->name }}</div>
-        <div class="mb-1"><b>Источник:</b> <span class="{{ $deal->lead_source_badge_class }}">{{ $deal->lead_source_label }}</span></div>
-        <div class="mb-1"><b>Клиент:</b> {{ $deal->lead_display_name ?? 'Без имени' }}</div>
+        <div class="mb-1"><b>Источник:</b> <span class="{{ $dealSourceBadgeClass }}">{{ $dealSourceLabel }}</span></div>
+        <div class="mb-1"><b>Клиент:</b> {{ $dealLeadDisplayName !== '' ? $dealLeadDisplayName : 'Без имени' }}</div>
         <div class="mb-1"><b>Создано:</b> {{ optional($deal->created_at)->format('d.m.Y H:i') }}</div>
         <div class="mb-1"><b>Сумма:</b> {{ $deal->amount ? number_format($deal->amount,2,',',' ') : '—' }} {{ $deal->currency ?? 'RUB' }}</div>
         <div class="mb-1"><b>Готовность помещения:</b> {{ $deal->readiness_status ?? '—' }}</div>

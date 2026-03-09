@@ -44,24 +44,46 @@ class DealController extends Controller
         return view('deals.index', compact('deals','q','status'));
     }
 
-    public function kanban()
+    public function kanban(Request $request)
     {
         $user = Auth::user();
+        $showSpam = $request->boolean('show_spam');
 
-        $stages = PipelineStage::query()
+        $stageQuery = PipelineStage::query()
             ->where('account_id', $user->account_id)
-            ->orderBy('sort')
-            ->get();
+            ->orderBy('sort');
 
-        $dealsByStage = Deal::query()
+        if (!$showSpam) {
+            $stageQuery->whereRaw('LOWER(name) NOT LIKE ?', ['%спам%'])
+                ->whereRaw('LOWER(name) NOT LIKE ?', ['%spam%']);
+        }
+
+        $stages = $stageQuery->get();
+        $hiddenStageIds = [];
+        if (!$showSpam) {
+            $hiddenStageIds = PipelineStage::query()
+                ->where('account_id', $user->account_id)
+                ->where(function ($q) {
+                    $q->whereRaw('LOWER(name) LIKE ?', ['%спам%'])
+                        ->orWhereRaw('LOWER(name) LIKE ?', ['%spam%']);
+                })
+                ->pluck('id')
+                ->all();
+        }
+
+        $dealQuery = Deal::query()
             ->with(['contact','responsible','conversations' => fn($q) => $q->orderByDesc('last_message_at')])
             ->where('account_id', $user->account_id)
             ->whereNull('closed_at')
-            ->orderByDesc('updated_at')
-            ->get()
-            ->groupBy('stage_id');
+            ->orderByDesc('updated_at');
 
-        return view('deals.kanban', compact('stages','dealsByStage'));
+        if (!empty($hiddenStageIds)) {
+            $dealQuery->whereNotIn('stage_id', $hiddenStageIds);
+        }
+
+        $dealsByStage = $dealQuery->get()->groupBy('stage_id');
+
+        return view('deals.kanban', compact('stages','dealsByStage','showSpam'));
     }
 
     public function create()
@@ -232,10 +254,32 @@ class DealController extends Controller
 
         $deal->load(['callRecordings' => fn($q) => $q->orderByDesc('id')]);
 
-        $recordingsByCallid = $deal->callRecordings
-            ->keyBy('callid');
+        $recordingsByCallid = $deal->callRecordings->keyBy('callid');
 
-        return view('deals.show', compact('deal','stages','recordingsByCallid','users'));
+        try {
+            $primaryConversation = $deal->primaryConversation();
+        } catch (\Throwable) {
+            $primaryConversation = null;
+        }
+
+        $dealLeadDisplayName = trim((string) ($deal->contact?->name ?? ''));
+        if ($dealLeadDisplayName === '') {
+            $dealLeadDisplayName = trim((string) ($primaryConversation?->lead_name ?? ''));
+        }
+        $dealSourceLabel = trim((string) ($primaryConversation?->source_label ?? 'CRM')) ?: 'CRM';
+        $dealSourceBadgeClass = trim((string) ($primaryConversation?->source_badge_class ?? 'source-badge source-badge-default')) ?: 'source-badge source-badge-default';
+        $dealTitle = $deal->title_is_custom ? $deal->title : ($dealLeadDisplayName !== '' ? $dealLeadDisplayName : $deal->title);
+
+        return view('deals.show', compact(
+            'deal',
+            'stages',
+            'recordingsByCallid',
+            'users',
+            'dealLeadDisplayName',
+            'dealSourceLabel',
+            'dealSourceBadgeClass',
+            'dealTitle',
+        ));
     }
 
     public function closed(Request $request)
