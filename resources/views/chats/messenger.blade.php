@@ -2,15 +2,42 @@
 
 @push('styles')
 <style>
-  .ccrm-chat-wrap { min-height: calc(100vh - 140px); }
-  .ccrm-chat-list { width: 380px; }
+  .ccrm-chat-wrap {
+    height: calc(100vh - 112px);
+    min-height: 600px;
+    align-items: stretch;
+  }
+  .ccrm-chat-list {
+    width: 380px;
+    min-height: 0;
+  }
+  .ccrm-chat-list .card-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .ccrm-chat-pane {
+    min-height: 0;
+    height: 100%;
+  }
+  .ccrm-chat-pane #chatScroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
   .ccrm-chat-item.active { background: rgba(79,70,229,.08); }
   .ccrm-chat-bubble-out { background: linear-gradient(135deg, rgba(79,70,229,.95), rgba(59,130,246,.92)); color: #fff; }
   .ccrm-chat-bubble-in { background: rgba(255,255,255,.78); }
   @media (max-width: 992px) {
-    .ccrm-chat-wrap { min-height: auto; }
+    .ccrm-chat-wrap {
+      height: auto;
+      min-height: auto;
+    }
     .ccrm-chat-list { width: 100%; }
-    .ccrm-chat-pane { display: none; }
+    .ccrm-chat-pane {
+      display: none;
+      height: auto;
+    }
     .ccrm-chat-pane.show { display: flex; }
   }
 </style>
@@ -59,14 +86,14 @@
 @endphp
 
 <div class="d-flex gap-3 ccrm-chat-wrap flex-column flex-lg-row">
-  <div class="card shadow-sm ccrm-chat-list flex-shrink-0">
+  <div class="card shadow-sm ccrm-chat-list flex-shrink-0 d-flex flex-column">
     <div class="card-header d-flex align-items-center justify-content-between">
       <div class="fw-semibold">Чаты</div>
       @if($active)
         <a class="btn btn-sm btn-outline-secondary d-lg-none" href="{{ route('chats.index') }}">Список</a>
       @endif
     </div>
-    <div class="card-body p-0" style="overflow-y:auto;">
+    <div class="card-body p-0">
       @if($conversations->count() === 0)
         <div class="p-4 text-muted">Пока нет диалогов. Как только кто-то напишет из VK, Telegram или Avito, чат появится здесь.</div>
       @else
@@ -127,7 +154,7 @@
         <div class="text-muted small">{{ $messages->count() }} сообщений</div>
       </div>
 
-      <div id="chatScroll" class="card-body" style="overflow-y:auto;">
+      <div id="chatScroll" class="card-body">
         <div id="chatMessages" class="d-flex flex-column gap-2">
           @forelse($messages as $m)
             @php($mm = $mediaFor($active, $m))
