@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\IntegrationConnection;
 use App\Models\IntegrationEvent;
+use App\Services\Chat\ChatIngestService;
 use App\Services\Integrations\AvitoApiClient;
 use App\Services\Integrations\AvitoOAuthService;
 use Illuminate\Console\Command;
@@ -11,7 +12,7 @@ use Illuminate\Console\Command;
 class PollAvitoChats extends Command
 {
     protected $signature = 'integrations:avito-poll {--account_id=} {--limit=100}';
-    protected $description = 'Poll Avito chats (Messenger API) and store last_message into integration_events.';
+    protected $description = 'Poll Avito chats (Messenger API), store events and ingest incoming messages into CRM.';
 
     public function handle(): int
     {
@@ -24,7 +25,7 @@ class PollAvitoChats extends Command
         }
 
         $connections = $q->get();
-        $limit = (int)$this->option('limit');
+        $limit = max(1, min(100, (int)$this->option('limit')));
 
         if ($connections->isEmpty()) {
             $this->info('No active Avito connections.');
@@ -33,22 +34,22 @@ class PollAvitoChats extends Command
 
         foreach ($connections as $conn) {
             $settings = $conn->settings ?? [];
-            $userId = $settings['user_id'] ?? null;
-            $token = $settings['access_token'] ?? null;
+            $userId = (string)($settings['user_id'] ?? '');
+            $token = trim((string)($settings['access_token'] ?? ''));
 
-            if ((!$token || trim((string) $token) === '') && !empty($settings['client_id']) && !empty($settings['client_secret'])) {
+            if ($token === '' && !empty($settings['client_id']) && !empty($settings['client_secret'])) {
                 try {
                     $oauth = app(AvitoOAuthService::class);
-                    $resp = $oauth->clientCredentials((string) $settings['client_id'], (string) $settings['client_secret']);
-                    $freshToken = trim((string) ($resp['access_token'] ?? ''));
+                    $resp = $oauth->clientCredentials((string)$settings['client_id'], (string)$settings['client_secret']);
+                    $freshToken = trim((string)($resp['access_token'] ?? ''));
                     if ($freshToken !== '') {
                         $settings['access_token'] = $freshToken;
                         $token = $freshToken;
                         if (!empty($resp['expires_in'])) {
-                            $settings['token_expires_at'] = now()->addSeconds((int) $resp['expires_in'])->toDateTimeString();
+                            $settings['token_expires_at'] = now()->addSeconds((int)$resp['expires_in'])->toDateTimeString();
                         }
                         if (!empty($resp['refresh_token'])) {
-                            $settings['refresh_token'] = (string) $resp['refresh_token'];
+                            $settings['refresh_token'] = (string)$resp['refresh_token'];
                         }
                         unset($settings['last_setup_error']);
                         $conn->update([
@@ -57,11 +58,11 @@ class PollAvitoChats extends Command
                             'last_error' => null,
                         ]);
                     } else {
-                        $msg = 'Avito token error: '.json_encode($resp, JSON_UNESCAPED_UNICODE);
+                        $msg = 'Avito token error: '.json_encode($resp, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                         $settings['last_setup_error'] = $msg;
                         $conn->update([
                             'settings' => $settings,
-                            'status' => trim((string) ($settings['user_id'] ?? '')) !== '' ? 'active' : 'error',
+                            'status' => trim((string)($settings['user_id'] ?? '')) !== '' ? 'active' : 'error',
                             'last_error' => $msg,
                         ]);
                     }
@@ -70,13 +71,12 @@ class PollAvitoChats extends Command
                     $settings['last_setup_error'] = $msg;
                     $conn->update([
                         'settings' => $settings,
-                        'status' => trim((string) ($settings['user_id'] ?? '')) !== '' ? 'active' : 'error',
+                        'status' => trim((string)($settings['user_id'] ?? '')) !== '' ? 'active' : 'error',
                         'last_error' => $msg,
                     ]);
                 }
             }
 
-            // Refresh token if it is close to expiration (best-effort)
             try {
                 $exp = $settings['token_expires_at'] ?? null;
                 $refreshToken = $settings['refresh_token'] ?? null;
@@ -95,80 +95,119 @@ class PollAvitoChats extends Command
                             if (!empty($resp['expires_in'])) {
                                 $settings['token_expires_at'] = now()->addSeconds((int)$resp['expires_in'])->toDateTimeString();
                             }
-                            $token = $settings['access_token'];
+                            $token = trim((string)$settings['access_token']);
                             $conn->update(['settings' => $settings]);
                         }
                     }
                 }
-            } catch (\Throwable $e) {
+            } catch (\Throwable) {
                 // ignore token refresh errors
             }
 
-            if (!$userId || !$token) {
+            if ($userId === '' || $token === '') {
                 $this->warn("[account {$conn->account_id}] skipped: missing user_id/access_token");
                 continue;
             }
 
             $client = new AvitoApiClient($token);
-            $chats = $client->listChats($userId, $limit);
-
             $seen = $settings['last_seen_message_id_by_chat'] ?? [];
             if (!is_array($seen)) {
                 $seen = [];
             }
 
             $newCount = 0;
+            $ingestedCount = 0;
+            $scannedChats = 0;
+            $offset = 0;
 
-            foreach ($chats as $chat) {
-                $chatId = (string)($chat['id'] ?? $chat['chat_id'] ?? '');
-                if ($chatId === '') {
-                    continue;
+            while (true) {
+                $chats = $client->listChats($userId, $limit, $offset);
+                if (empty($chats)) {
+                    break;
                 }
 
-                $last = $chat['last_message'] ?? null;
-                if (!is_array($last)) {
-                    continue;
-                }
+                foreach ($chats as $chat) {
+                    $scannedChats++;
 
-                $messageId = (string)($last['id'] ?? $last['message_id'] ?? '');
-                if ($messageId === '') {
-                    continue;
-                }
+                    $chatId = (string)($chat['id'] ?? $chat['chat_id'] ?? '');
+                    if ($chatId === '') {
+                        continue;
+                    }
 
-                if (($seen[$chatId] ?? null) === $messageId) {
-                    continue;
-                }
+                    $last = $chat['last_message'] ?? $chat['lastMessage'] ?? $chat['last_message_info'] ?? null;
+                    if (!is_array($last)) {
+                        continue;
+                    }
 
-                $seen[$chatId] = $messageId;
-                $newCount++;
+                    $messageId = (string)($last['id'] ?? $last['message_id'] ?? '');
+                    if ($messageId === '') {
+                        continue;
+                    }
 
-                $chatFull = [];
-                try {
-                    $chatFull = $client->getChat($userId, $chatId);
-                } catch (\Throwable) {
+                    $direction = strtolower(trim((string)($last['direction'] ?? '')));
+                    $authorId = (string)($last['author_id'] ?? $last['authorId'] ?? '');
+                    $isIncoming = match ($direction) {
+                        'in', 'incoming' => true,
+                        'out', 'outgoing' => false,
+                        default => ($authorId === '' || $authorId !== (string)$userId),
+                    };
+
+                    if (!$isIncoming) {
+                        $seen[$chatId] = $messageId;
+                        continue;
+                    }
+
+                    if (($seen[$chatId] ?? null) === $messageId) {
+                        continue;
+                    }
+
+                    $seen[$chatId] = $messageId;
+                    $newCount++;
+
                     $chatFull = [];
-                }
+                    try {
+                        $chatFull = $client->getChat($userId, $chatId);
+                    } catch (\Throwable) {
+                        $chatFull = [];
+                    }
 
-                IntegrationEvent::create([
-                    'account_id' => $conn->account_id,
-                    'provider' => 'avito',
-                    'direction' => 'in',
-                    'event_type' => 'last_message',
-                    'external_id' => $messageId,
-                    'payload' => [
+                    $eventPayload = [
                         'chat_id' => $chatId,
-                        'account_id' => (string) $userId,
+                        'account_id' => (string)$userId,
                         'chat' => $chat,
                         'chat_full' => $chatFull,
                         'message' => $last,
-                    ],
-                    'received_at' => now(),
-                ]);
+                    ];
+
+                    IntegrationEvent::create([
+                        'account_id' => $conn->account_id,
+                        'provider' => 'avito',
+                        'direction' => 'in',
+                        'event_type' => 'last_message',
+                        'external_id' => $messageId,
+                        'payload' => $eventPayload,
+                        'received_at' => now(),
+                    ]);
+
+                    try {
+                        $message = app(ChatIngestService::class)->ingestFromAvito($conn, $eventPayload);
+                        if ($message) {
+                            $ingestedCount++;
+                        }
+                    } catch (\Throwable $e) {
+                        $conn->update(['last_error' => 'Avito ingest error: '.$e->getMessage()]);
+                    }
+                }
+
+                if (count($chats) < $limit) {
+                    break;
+                }
+
+                $offset += $limit;
             }
 
-            // keep map reasonably small
-            if (count($seen) > 500) {
-                $seen = array_slice($seen, -500, null, true);
+            if (count($seen) > 1000) {
+                $seen = array_slice($seen, -1000, null, true);
             }
 
             $settings['last_seen_message_id_by_chat'] = $seen;
@@ -178,7 +217,7 @@ class PollAvitoChats extends Command
                 'last_error' => null,
             ]);
 
-            $this->info("[account {$conn->account_id}] chats=".count($chats)." new={$newCount}");
+            $this->info("[account {$conn->account_id}] chats={$scannedChats} new={$newCount} ingested={$ingestedCount}");
         }
 
         return self::SUCCESS;

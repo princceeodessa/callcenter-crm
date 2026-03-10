@@ -9,8 +9,13 @@ class Kernel extends ConsoleKernel
 {
     protected function schedule(Schedule $schedule): void
     {
-        // Create due task notifications (requires cron to run `php artisan schedule:run`).
-        $schedule->command('tasks:notify-due')->everyMinute();
+        // Create due task notifications.
+        $schedule->command('tasks:notify-due')->everyMinute()->withoutOverlapping();
+
+        // Pull Avito Messenger chats into CRM.
+        $schedule->command('integrations:avito-poll --limit=100')
+            ->everyMinute()
+            ->withoutOverlapping();
     }
 
     protected function commands(): void
