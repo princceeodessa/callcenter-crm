@@ -25,7 +25,7 @@
     <div class="col-md-3">
       <div class="card shadow-sm h-100">
         <div class="card-body">
-          <div class="text-muted small">Успешные замеры</div>
+          <div class="text-muted small">Заключённые</div>
           <div class="fs-3 fw-semibold text-success">{{ $measurementSummary['successful'] }}</div>
         </div>
       </div>
@@ -33,7 +33,7 @@
     <div class="col-md-3">
       <div class="card shadow-sm h-100">
         <div class="card-body">
-          <div class="text-muted small">Отказ после замера</div>
+          <div class="text-muted small">Не заключённые</div>
           <div class="fs-3 fw-semibold text-danger">{{ $measurementSummary['refused'] }}</div>
         </div>
       </div>
@@ -41,7 +41,7 @@
     <div class="col-md-3">
       <div class="card shadow-sm h-100">
         <div class="card-body">
-          <div class="text-muted small">В работе / подтверждены</div>
+          <div class="text-muted small">Запланирован / принят</div>
           <div class="fs-3 fw-semibold">{{ $measurementSummary['planned'] }}</div>
         </div>
       </div>
@@ -63,9 +63,9 @@
         <thead>
           <tr>
             <th>Замерщик</th>
-            <th>Успешные</th>
-            <th>Отказ после замера</th>
-            <th>В работе</th>
+            <th>Заключён</th>
+            <th>Не заключённые</th>
+            <th>Запланирован / принят</th>
             <th>Отменены</th>
             <th>Успешность</th>
           </tr>
@@ -165,16 +165,16 @@
     <div class="card shadow-sm">
       <div class="card-header d-flex align-items-center justify-content-between">
         <span class="fw-semibold">Замерщики</span>
-        <span class="small text-muted">Сравнение идёт только по успешным и отказным, отменённые не входят в процент.</span>
+        <span class="small text-muted">Сравнение идёт только по заключённым и не заключённым, отменённые не входят в процент.</span>
       </div>
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-0">
           <thead>
             <tr>
               <th>Замерщик</th>
-              <th>Успешные</th>
-              <th>Отказ после замера</th>
-              <th>В работе</th>
+              <th>Заключён</th>
+              <th>Не заключённые</th>
+              <th>Запланирован / принят</th>
               <th>Отменены</th>
               <th>Успешность</th>
             </tr>

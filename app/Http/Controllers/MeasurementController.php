@@ -11,17 +11,17 @@ class MeasurementController extends Controller
 {
     public const STATUSES = [
         'planned' => 'Запланирован',
-        'confirmed' => 'Подтверждён',
-        'done' => 'Успешный замер',
-        'refused_after_measurement' => 'Отказ после замера',
+        'accepted' => 'Принят',
+        'concluded' => 'Заключён',
+        'not_concluded' => 'Не заключён',
         'cancelled' => 'Отменён',
     ];
 
     private const STATUS_COLORS = [
         'planned' => ['#0d6efd', '#0d6efd'],
-        'confirmed' => ['#0dcaf0', '#0dcaf0'],
-        'done' => ['#198754', '#198754'],
-        'refused_after_measurement' => ['#dc3545', '#dc3545'],
+        'accepted' => ['#0dcaf0', '#0dcaf0'],
+        'concluded' => ['#198754', '#198754'],
+        'not_concluded' => ['#dc3545', '#dc3545'],
         'cancelled' => ['#6c757d', '#6c757d'],
     ];
 
@@ -113,7 +113,7 @@ class MeasurementController extends Controller
             'duration_minutes' => ['nullable', 'integer', 'min:5', 'max:600'],
             'address' => ['required', 'string', 'max:500'],
             'phone' => ['nullable', 'string', 'max:32'],
-            'status' => ['nullable', 'string', 'in:planned,confirmed,done,refused_after_measurement,cancelled'],
+            'status' => ['nullable', 'string', 'in:planned,accepted,concluded,not_concluded,cancelled'],
             'assigned_user_id' => ['nullable', 'integer'],
             'callcenter_comment' => ['nullable', 'string'],
             'measurer_comment' => ['nullable', 'string'],
@@ -150,7 +150,7 @@ class MeasurementController extends Controller
             'duration_minutes' => ['nullable', 'integer', 'min:5', 'max:600'],
             'address' => ['nullable', 'string', 'max:500'],
             'phone' => ['nullable', 'string', 'max:32'],
-            'status' => ['nullable', 'string', 'in:planned,confirmed,done,refused_after_measurement,cancelled'],
+            'status' => ['nullable', 'string', 'in:planned,accepted,concluded,not_concluded,cancelled'],
             'assigned_user_id' => ['nullable', 'integer'],
             'callcenter_comment' => ['nullable', 'string'],
             'measurer_comment' => ['nullable', 'string'],

@@ -166,10 +166,10 @@ class ReportController extends Controller
                 ->where('assigned_user_id', $u->id)
                 ->whereBetween('scheduled_at', [$from, $to]);
 
-            $successful = (clone $base)->where('status', 'done')->count();
-            $refused = (clone $base)->where('status', 'refused_after_measurement')->count();
+            $successful = (clone $base)->whereIn('status', ['concluded', 'done'])->count();
+            $refused = (clone $base)->whereIn('status', ['not_concluded', 'refused_after_measurement'])->count();
             $cancelled = (clone $base)->where('status', 'cancelled')->count();
-            $planned = (clone $base)->whereIn('status', ['planned', 'confirmed'])->count();
+            $planned = (clone $base)->whereIn('status', ['planned', 'accepted', 'confirmed'])->count();
             $baseForResult = $successful + $refused;
 
             return [

@@ -16,7 +16,7 @@ class NonClosureController extends Controller
         $user = $request->user();
         $accountId = $user->account_id;
 
-        $statusFilter = (string)($request->query('status', 'pending'));
+        $statusFilter = (string)($request->query('status', 'all'));
         $measurerId = (int)($request->query('measurer_id') ?? 0);
         $responsibleId = (int)($request->query('responsible_id') ?? 0);
         $search = trim((string)$request->query('q', ''));
@@ -118,7 +118,7 @@ class NonClosureController extends Controller
             return back()->withErrors(['file' => 'Не удалось импортировать файл: '.$e->getMessage()]);
         }
 
-        return back()->with('status', sprintf('Импорт завершён: добавлено %d, обновлено %d, всего обработано %d.', $result['imported'], $result['updated'], $result['total']));
+        return redirect()->route('nonclosures.index', ['status' => 'all'])->with('status', sprintf('Импорт завершён: добавлено %d, обновлено %d, всего обработано %d.', $result['imported'], $result['updated'], $result['total']));
     }
 
     private function authorizeRow(Request $request, NonClosure $row): void

@@ -19,10 +19,10 @@
 @section('content')
 @php
   $statusLabels = [
+    'all' => 'Все',
     'pending' => 'Без статуса',
     'concluded' => 'Заключен',
     'not_concluded' => 'Не заключен',
-    'all' => 'Все',
   ];
 @endphp
 
@@ -31,7 +31,7 @@
     <div class="card-body d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-center">
       <div>
         <h4 class="mb-1">Незаключёнки</h4>
-        <div class="nc-muted">Импорт поддерживает реальные Excel-файлы незаключёнок, а фильтры позволяют отдельно смотреть строки без статуса, заключённые и не заключённые.</div>
+        <div class="nc-muted">Импорт поддерживает реальные Excel-файлы незаключёнок. После загрузки список по умолчанию показывает все строки, чтобы импорт не выглядел пустым.</div>
       </div>
       <div class="d-flex gap-2 flex-wrap">
         <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#importModal">
@@ -54,10 +54,10 @@
         <div class="col-6 col-lg-2">
           <label class="form-label small">Статус</label>
           <select class="form-select" name="status">
+            <option value="all" @selected($statusFilter==='all')>Все</option>
             <option value="pending" @selected($statusFilter==='pending')>Без статуса</option>
             <option value="concluded" @selected($statusFilter==='concluded')>Заключен</option>
             <option value="not_concluded" @selected($statusFilter==='not_concluded')>Не заключен</option>
-            <option value="all" @selected($statusFilter==='all')>Все</option>
           </select>
         </div>
         <div class="col-6 col-lg-2">
