@@ -26,8 +26,6 @@
     overflow-y: auto;
   }
   .ccrm-chat-item.active { background: rgba(79,70,229,.08); }
-  .ccrm-chat-list .pagination { margin-bottom: 0; }
-  .ccrm-chat-list .card-footer nav { display: flex; justify-content: center; }
   .ccrm-chat-bubble-out { background: linear-gradient(135deg, rgba(79,70,229,.95), rgba(59,130,246,.92)); color: #fff; }
   .ccrm-chat-bubble-in { background: rgba(255,255,255,.78); }
   @media (max-width: 992px) {
@@ -128,8 +126,8 @@
     </div>
 
     @if($conversations->hasPages())
-      <div class="card-footer bg-transparent py-2">
-        {{ $conversations->onEachSide(1)->links('pagination::bootstrap-5') }}
+      <div class="card-footer bg-transparent">
+        {{ $conversations->links() }}
       </div>
     @endif
   </div>

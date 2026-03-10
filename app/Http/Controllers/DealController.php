@@ -48,6 +48,7 @@ class DealController extends Controller
     {
         $user = Auth::user();
         $showSpam = $request->boolean('show_spam');
+        $q = trim($request->string('q')->toString());
 
         $stageQuery = PipelineStage::query()
             ->where('account_id', $user->account_id)
@@ -75,6 +76,15 @@ class DealController extends Controller
             ->with(['contact','responsible','conversations' => fn($q) => $q->orderByDesc('last_message_at')])
             ->where('account_id', $user->account_id)
             ->whereNull('closed_at')
+            ->when($q !== '', function ($query) use ($q) {
+                $query->where(function ($qq) use ($q) {
+                    $qq->where('title', 'like', "%{$q}%")
+                        ->orWhereHas('contact', fn($c) => $c->where('phone', 'like', "%{$q}%")
+                            ->orWhere('name', 'like', "%{$q}%"))
+                        ->orWhereHas('responsible', fn($u) => $u->where('name', 'like', "%{$q}%"))
+                        ->orWhereHas('conversations', fn($c) => $c->where('external_id', 'like', "%{$q}%"));
+                });
+            })
             ->orderByDesc('updated_at');
 
         if (!empty($hiddenStageIds)) {
@@ -83,7 +93,7 @@ class DealController extends Controller
 
         $dealsByStage = $dealQuery->get()->groupBy('stage_id');
 
-        return view('deals.kanban', compact('stages','dealsByStage','showSpam'));
+        return view('deals.kanban', compact('stages','dealsByStage','showSpam','q'));
     }
 
     public function create()

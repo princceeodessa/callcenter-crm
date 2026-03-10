@@ -135,34 +135,12 @@ class PollAvitoChats extends Command
                     }
 
                     $last = $chat['last_message'] ?? $chat['lastMessage'] ?? $chat['last_message_info'] ?? null;
-                    if (!is_array($last)) {
+                    $lastMessageId = is_array($last) ? (string)($last['id'] ?? $last['message_id'] ?? '') : '';
+                    $previousSeen = (string)($seen[$chatId] ?? '');
+
+                    if ($lastMessageId !== '' && $previousSeen === $lastMessageId) {
                         continue;
                     }
-
-                    $messageId = (string)($last['id'] ?? $last['message_id'] ?? '');
-                    if ($messageId === '') {
-                        continue;
-                    }
-
-                    $direction = strtolower(trim((string)($last['direction'] ?? '')));
-                    $authorId = (string)($last['author_id'] ?? $last['authorId'] ?? '');
-                    $isIncoming = match ($direction) {
-                        'in', 'incoming' => true,
-                        'out', 'outgoing' => false,
-                        default => ($authorId === '' || $authorId !== (string)$userId),
-                    };
-
-                    if (!$isIncoming) {
-                        $seen[$chatId] = $messageId;
-                        continue;
-                    }
-
-                    if (($seen[$chatId] ?? null) === $messageId) {
-                        continue;
-                    }
-
-                    $seen[$chatId] = $messageId;
-                    $newCount++;
 
                     $chatFull = [];
                     try {
@@ -170,6 +148,107 @@ class PollAvitoChats extends Command
                     } catch (\Throwable) {
                         $chatFull = [];
                     }
+
+                    $historyMessages = [];
+                    try {
+                        $historyMessages = $client->listMessages($userId, $chatId, 50, 0);
+                    } catch (\Throwable) {
+                        $historyMessages = [];
+                    }
+
+                    $historyMessages = array_values(array_filter($historyMessages, fn($item) => is_array($item)));
+
+                    if (!empty($historyMessages)) {
+                        usort($historyMessages, function (array $a, array $b) {
+                            $ta = $this->messageTimestamp($a);
+                            $tb = $this->messageTimestamp($b);
+                            if ($ta === $tb) {
+                                return strcmp((string)($a['id'] ?? ''), (string)($b['id'] ?? ''));
+                            }
+                            return $ta <=> $tb;
+                        });
+
+                        $ids = array_map(fn($item) => (string)($item['id'] ?? $item['message_id'] ?? ''), $historyMessages);
+                        $startAt = 0;
+                        if ($previousSeen !== '') {
+                            $foundIndex = array_search($previousSeen, $ids, true);
+                            if ($foundIndex !== false) {
+                                $startAt = $foundIndex + 1;
+                            }
+                        }
+
+                        for ($i = $startAt; $i < count($historyMessages); $i++) {
+                            $historyMessage = $historyMessages[$i];
+                            $historyMessageId = (string)($historyMessage['id'] ?? $historyMessage['message_id'] ?? '');
+                            if ($historyMessageId === '') {
+                                continue;
+                            }
+
+                            if (!$this->isIncomingMessage($historyMessage, (string)$userId)) {
+                                continue;
+                            }
+
+                            $newCount++;
+                            $eventPayload = [
+                                'chat_id' => $chatId,
+                                'account_id' => (string)$userId,
+                                'chat' => $chat,
+                                'chat_full' => $chatFull,
+                                'message' => $historyMessage,
+                            ];
+
+                            IntegrationEvent::create([
+                                'account_id' => $conn->account_id,
+                                'provider' => 'avito',
+                                'direction' => 'in',
+                                'event_type' => 'message',
+                                'external_id' => $historyMessageId,
+                                'payload' => $eventPayload,
+                                'received_at' => now(),
+                            ]);
+
+                            try {
+                                $message = app(ChatIngestService::class)->ingestFromAvito($conn, $eventPayload);
+                                if ($message) {
+                                    $ingestedCount++;
+                                }
+                            } catch (\Throwable $e) {
+                                $conn->update(['last_error' => 'Avito ingest error: '.$e->getMessage()]);
+                            }
+                        }
+
+                        $lastHistoryId = '';
+                        for ($i = count($ids) - 1; $i >= 0; $i--) {
+                            if ($ids[$i] !== '') {
+                                $lastHistoryId = $ids[$i];
+                                break;
+                            }
+                        }
+                        if ($lastHistoryId !== '') {
+                            $seen[$chatId] = $lastHistoryId;
+                            continue;
+                        }
+                    }
+
+                    if (!is_array($last)) {
+                        continue;
+                    }
+
+                    if ($lastMessageId === '') {
+                        continue;
+                    }
+
+                    if (!$this->isIncomingMessage($last, (string)$userId)) {
+                        $seen[$chatId] = $lastMessageId;
+                        continue;
+                    }
+
+                    if ($previousSeen === $lastMessageId) {
+                        continue;
+                    }
+
+                    $seen[$chatId] = $lastMessageId;
+                    $newCount++;
 
                     $eventPayload = [
                         'chat_id' => $chatId,
@@ -184,7 +263,7 @@ class PollAvitoChats extends Command
                         'provider' => 'avito',
                         'direction' => 'in',
                         'event_type' => 'last_message',
-                        'external_id' => $messageId,
+                        'external_id' => $lastMessageId,
                         'payload' => $eventPayload,
                         'received_at' => now(),
                     ]);
@@ -221,5 +300,45 @@ class PollAvitoChats extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    private function isIncomingMessage(array $message, string $ownerUserId): bool
+    {
+        $direction = strtolower(trim((string)($message['direction'] ?? '')));
+        $authorId = (string)($message['author_id'] ?? $message['authorId'] ?? '');
+
+        return match ($direction) {
+            'in', 'incoming' => true,
+            'out', 'outgoing' => false,
+            default => ($authorId === '' || $authorId !== $ownerUserId),
+        };
+    }
+
+    private function messageTimestamp(array $message): int
+    {
+        foreach (['created', 'created_at', 'timestamp', 'time', 'date'] as $key) {
+            $value = $message[$key] ?? null;
+            if ($value === null || $value === '') {
+                continue;
+            }
+
+            try {
+                if (is_numeric($value)) {
+                    $raw = (int)$value;
+                    if ($raw > 9999999999) {
+                        $raw = (int) floor($raw / 1000);
+                    }
+                    return $raw;
+                }
+
+                if (is_string($value)) {
+                    return strtotime($value) ?: 0;
+                }
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+
+        return 0;
     }
 }

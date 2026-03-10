@@ -192,11 +192,7 @@ class ChatIngestService
             $msg = is_array(data_get($payload, 'last_message')) ? data_get($payload, 'last_message') : null;
         }
 
-        $text = $payload['text']
-            ?? data_get($msg, 'text')
-            ?? data_get($payload, 'message.text')
-            ?? data_get($payload, 'content.text');
-        $text = is_string($text) ? $text : '';
+        $text = $this->extractAvitoText($payload, $msg);
 
         $externalMessageId = $payload['id']
             ?? ($payload['message_id'] ?? data_get($msg, 'id'))
@@ -237,9 +233,82 @@ class ChatIngestService
             author: $author,
             body: $text,
             payload: $payload,
-            sentAt: now(),
+            sentAt: $this->resolveAvitoSentAt($payload, $msg),
             leadName: $leadName,
         );
+    }
+
+
+    private function extractAvitoText(array $payload, ?array $message): string
+    {
+        $candidates = [
+            $payload['text'] ?? null,
+            data_get($message, 'text'),
+            data_get($message, 'content.text'),
+            data_get($message, 'message.text'),
+            data_get($payload, 'message.text'),
+            data_get($payload, 'message.content.text'),
+            data_get($payload, 'content.text'),
+            data_get($payload, 'last_message.text'),
+            data_get($payload, 'last_message.content.text'),
+            data_get($payload, 'lastMessage.text'),
+            data_get($payload, 'lastMessage.content.text'),
+            data_get($payload, 'last_message_info.text'),
+            data_get($payload, 'last_message_info.content.text'),
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (is_string($candidate)) {
+                $candidate = trim($candidate);
+                if ($candidate !== '') {
+                    return $candidate;
+                }
+            }
+        }
+
+        return '';
+    }
+
+    private function resolveAvitoSentAt(array $payload, ?array $message): Carbon
+    {
+        $candidates = [
+            data_get($message, 'created'),
+            data_get($message, 'created_at'),
+            data_get($message, 'timestamp'),
+            data_get($message, 'time'),
+            data_get($message, 'date'),
+            data_get($payload, 'created'),
+            data_get($payload, 'created_at'),
+            data_get($payload, 'timestamp'),
+            data_get($payload, 'time'),
+            data_get($payload, 'date'),
+        ];
+
+        foreach ($candidates as $candidate) {
+            if ($candidate === null || $candidate === '') {
+                continue;
+            }
+
+            try {
+                if (is_numeric($candidate)) {
+                    $raw = (int) $candidate;
+                    if ($raw > 9999999999) {
+                        $raw = (int) floor($raw / 1000);
+                    }
+                    if ($raw > 0) {
+                        return Carbon::createFromTimestamp($raw);
+                    }
+                }
+
+                if (is_string($candidate)) {
+                    return Carbon::parse($candidate);
+                }
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+
+        return now();
     }
 
     private function ingestGeneric(
@@ -296,13 +365,36 @@ class ChatIngestService
         }
 
         if ($externalMessageId) {
-            $exists = Message::query()
+            $existing = Message::query()
                 ->where('conversation_id', $conversation->id)
                 ->where('external_id', $externalMessageId)
                 ->where('direction', 'in')
-                ->exists();
-            if ($exists) {
-                return null;
+                ->first();
+            if ($existing) {
+                $existingPayload = is_array($existing->payload) ? $existing->payload : [];
+                $incomingMedia = is_array($payload['media'] ?? null) ? $payload['media'] : [];
+                $existingMedia = is_array($existingPayload['media'] ?? null) ? $existingPayload['media'] : [];
+
+                $updates = [];
+                if (trim((string) $existing->body) === '' && trim((string) $body) !== '') {
+                    $updates['body'] = $body;
+                }
+                if (trim((string) $existing->author) === '' && trim((string) $author) !== '') {
+                    $updates['author'] = $author;
+                }
+                if (empty($existingMedia) && !empty($incomingMedia)) {
+                    $updates['payload'] = $payload;
+                }
+
+                if (!empty($updates)) {
+                    $existing->update($updates);
+                }
+
+                if ($deal = $conversation->deal) {
+                    $this->syncDealLeadPresentation($deal, $provider, $externalConversationId, $leadName);
+                }
+
+                return $existing->fresh();
             }
         }
 

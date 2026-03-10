@@ -18,7 +18,27 @@
 
 @section('content')
     <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap kanban-toolbar">
-        <h4 class="mb-0">Сделки — канбан</h4>
+        <div class="d-flex flex-column gap-2">
+            <h4 class="mb-0">Сделки — канбан</h4>
+            <form method="GET" action="{{ route('deals.kanban') }}" class="d-flex gap-2 flex-wrap align-items-center">
+                @if(!empty($showSpam))
+                    <input type="hidden" name="show_spam" value="1">
+                @endif
+                <input
+                    type="search"
+                    class="form-control form-control-sm"
+                    id="kanbanSearch"
+                    name="q"
+                    value="{{ $q }}"
+                    placeholder="Поиск по имени, телефону, сделке, id, ответственному"
+                    style="min-width: 320px;"
+                >
+                <button type="submit" class="btn btn-sm btn-primary">Найти</button>
+                @if($q !== '')
+                    <a class="btn btn-sm btn-outline-secondary" href="{{ route('deals.kanban', array_filter(['show_spam' => !empty($showSpam) ? 1 : null])) }}">Сбросить</a>
+                @endif
+            </form>
+        </div>
         <div class="d-flex gap-2 flex-wrap">
             <div class="btn-group" role="group" aria-label="Kanban mode">
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="kbModeRow">В один ряд</button>
@@ -26,9 +46,9 @@
             </div>
             <a class="btn btn-sm btn-outline-primary" href="{{ route('deals.closed') }}">Завершённые</a>
             @if(empty($showSpam))
-                <a class="btn btn-sm btn-outline-secondary" href="{{ route('deals.kanban', ['show_spam' => 1]) }}">Показать спам</a>
+                <a class="btn btn-sm btn-outline-secondary" href="{{ route('deals.kanban', ['show_spam' => 1, 'q' => $q ?: null]) }}">Показать спам</a>
             @else
-                <a class="btn btn-sm btn-secondary" href="{{ route('deals.kanban') }}">Скрыть спам</a>
+                <a class="btn btn-sm btn-secondary" href="{{ route('deals.kanban', ['q' => $q ?: null]) }}">Скрыть спам</a>
             @endif
             <a class="btn btn-sm btn-success" href="{{ route('deals.create') }}">+ Сделка</a>
         </div>
@@ -52,7 +72,7 @@
                     @foreach ($stageDeals as $deal)
                         @php($leadName = $deal->lead_display_name ?? 'Без имени')
                         @php($dealTitle = $deal->title_is_custom ? $deal->title : ($deal->lead_display_name ?: $deal->title))
-                        <div class="border rounded p-2 kanban-card {{ $deal->lead_source_surface_class }}" data-deal-id="{{ $deal->id }}">
+                        <div class="border rounded p-2 kanban-card {{ $deal->lead_source_surface_class }}" data-deal-id="{{ $deal->id }}" data-search="{{ mb_strtolower(trim(implode(' ', array_filter([$dealTitle, $leadName, $deal->contact?->phone, $deal->responsible?->name, $deal->id])))) }}">
                             <div class="d-flex justify-content-between align-items-start gap-2">
                                 <div class="d-flex align-items-center gap-2 min-w-0">
                                     {!! $deal->lead_source_icon_html !!}
@@ -75,9 +95,7 @@
                         </div>
                     @endforeach
 
-                    @if ($stageDeals->isEmpty())
-                        <div class="text-muted small">Пусто</div>
-                    @endif
+                    <div class="text-muted small kanban-empty-note" @if(!$stageDeals->isEmpty()) style="display:none" @endif>Пусто</div>
                 </div>
             </div>
         @endforeach
@@ -112,6 +130,7 @@
 
             const tokenEl = document.querySelector('meta[name="csrf-token"]');
             const csrf = tokenEl ? tokenEl.getAttribute('content') : '';
+            const searchInput = document.getElementById('kanbanSearch');
 
             const updateCount = (stageId) => {
                 const list = document.querySelector(`.kanban-list[data-stage-id="${stageId}"]`);
@@ -119,6 +138,26 @@
                 if (!list || !countEl) return;
                 countEl.textContent = list.querySelectorAll('.kanban-card').length;
             };
+
+            const applySearch = () => {
+                const needle = (searchInput?.value || '').trim().toLowerCase();
+                document.querySelectorAll('.kanban-card').forEach((card) => {
+                    const hay = (card.dataset.search || '').toLowerCase();
+                    card.style.display = !needle || hay.includes(needle) ? '' : 'none';
+                });
+
+                document.querySelectorAll('.kanban-list').forEach((listEl) => {
+                    const stageId = listEl.dataset.stageId;
+                    const visibleCards = Array.from(listEl.querySelectorAll('.kanban-card')).filter((card) => card.style.display !== 'none');
+                    const emptyEl = listEl.querySelector('.kanban-empty-note');
+                    if (emptyEl) {
+                        emptyEl.style.display = visibleCards.length ? 'none' : '';
+                    }
+                    updateCount(stageId);
+                });
+            };
+
+            searchInput?.addEventListener('input', applySearch);
 
             document.querySelectorAll('.kanban-list').forEach((listEl) => {
                 new Sortable(listEl, {
@@ -160,6 +199,8 @@
                     }
                 });
            });
+
+            applySearch();
         })();
     </script>
 @endpush
