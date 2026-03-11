@@ -47,8 +47,8 @@ class ReportController extends Controller
             ->get(['id', 'name', 'role']);
 
         if ($isMeasurer) {
-            $measurementRows = $this->measurementRows($measurerUsers->where('id', $user->id), $from, $to);
-            $measurementSummary = $this->summarizeMeasurementRows($measurementRows);
+            $measurementRows = $this->measurementCompletionRows($measurerUsers->where('id', $user->id), $from, $to);
+            $measurementSummary = $this->summarizeMeasurementCompletionRows($measurementRows);
 
             return view('reports.monthly', [
                 'month' => $month,
@@ -90,6 +90,55 @@ class ReportController extends Controller
             'measurementSummary' => null,
             'measurementRows' => collect(),
         ]);
+    }
+
+    private function measurementCompletionRows(Collection $users, $from, $to): Collection
+    {
+        return $users->values()->map(function (User $u) use ($from, $to) {
+            $base = Measurement::query()
+                ->where('account_id', $u->account_id)
+                ->where('assigned_user_id', $u->id)
+                ->whereBetween('scheduled_at', [$from, $to]);
+
+            $completed = (clone $base)->whereIn('status', [
+                'concluded',
+                'not_concluded',
+                'done',
+                'refused_after_measurement',
+            ])->count();
+
+            $notCompleted = (clone $base)->whereIn('status', [
+                'planned',
+                'accepted',
+                'confirmed',
+                'cancelled',
+            ])->count();
+
+            $total = $completed + $notCompleted;
+
+            return [
+                'id' => $u->id,
+                'name' => $u->name,
+                'completed' => $completed,
+                'notCompleted' => $notCompleted,
+                'total' => $total,
+                'completionRate' => $total > 0 ? round(($completed / $total) * 100, 1) : null,
+            ];
+        });
+    }
+
+    private function summarizeMeasurementCompletionRows(Collection $rows): array
+    {
+        $completed = (int) $rows->sum('completed');
+        $notCompleted = (int) $rows->sum('notCompleted');
+        $total = $completed + $notCompleted;
+
+        return [
+            'completed' => $completed,
+            'notCompleted' => $notCompleted,
+            'total' => $total,
+            'completionRate' => $total > 0 ? round(($completed / $total) * 100, 1) : null,
+        ];
     }
 
     private function operatorRows(Collection $users, $from, $to): Collection

@@ -27,6 +27,10 @@ class AuthController extends Controller
 
         if (Auth::attempt($credentials, true)) {
             $request->session()->regenerate();
+            if ($request->user()?->role === 'measurer') {
+                return redirect()->route('calendar.index');
+            }
+
             return redirect()->intended(route('deals.kanban'));
         }
 

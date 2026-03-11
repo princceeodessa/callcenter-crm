@@ -8,7 +8,7 @@
       @if($mode === 'manager')
         Общий отчёт по операторам и замерщикам.
       @elseif($mode === 'measurer')
-        Твой отчёт по замерам. Отменённые не участвуют в сравнении успешных и отказных.
+        Твой отчёт строится по календарю замеров: где замер выполнен, а где нет.
       @else
         Твой персональный отчёт по сделкам и звонкам.
       @endif
@@ -25,32 +25,32 @@
     <div class="col-md-3">
       <div class="card shadow-sm h-100">
         <div class="card-body">
-          <div class="text-muted small">Заключённые</div>
-          <div class="fs-3 fw-semibold text-success">{{ $measurementSummary['successful'] }}</div>
+          <div class="text-muted small">Выполнен замер</div>
+          <div class="fs-3 fw-semibold text-success">{{ $measurementSummary['completed'] }}</div>
         </div>
       </div>
     </div>
     <div class="col-md-3">
       <div class="card shadow-sm h-100">
         <div class="card-body">
-          <div class="text-muted small">Не заключённые</div>
-          <div class="fs-3 fw-semibold text-danger">{{ $measurementSummary['refused'] }}</div>
+          <div class="text-muted small">Не выполнен замер</div>
+          <div class="fs-3 fw-semibold text-danger">{{ $measurementSummary['notCompleted'] }}</div>
         </div>
       </div>
     </div>
     <div class="col-md-3">
       <div class="card shadow-sm h-100">
         <div class="card-body">
-          <div class="text-muted small">Запланирован / принят</div>
-          <div class="fs-3 fw-semibold">{{ $measurementSummary['planned'] }}</div>
+          <div class="text-muted small">Всего в календаре</div>
+          <div class="fs-3 fw-semibold">{{ $measurementSummary['total'] }}</div>
         </div>
       </div>
     </div>
     <div class="col-md-3">
       <div class="card shadow-sm h-100">
         <div class="card-body">
-          <div class="text-muted small">Успешность</div>
-          <div class="fs-3 fw-semibold">{{ $measurementSummary['successRate'] !== null ? $measurementSummary['successRate'].'%' : '—' }}</div>
+          <div class="text-muted small">Выполнение</div>
+          <div class="fs-3 fw-semibold">{{ $measurementSummary['completionRate'] !== null ? $measurementSummary['completionRate'].'%' : '—' }}</div>
         </div>
       </div>
     </div>
@@ -63,25 +63,23 @@
         <thead>
           <tr>
             <th>Замерщик</th>
-            <th>Заключён</th>
-            <th>Не заключённые</th>
-            <th>Запланирован / принят</th>
-            <th>Отменены</th>
-            <th>Успешность</th>
+            <th>Выполнен</th>
+            <th>Не выполнен</th>
+            <th>Всего</th>
+            <th>Выполнение</th>
           </tr>
         </thead>
         <tbody>
           @forelse($measurementRows as $row)
             <tr>
               <td>{{ $row['name'] }}</td>
-              <td class="text-success fw-semibold">{{ $row['successful'] }}</td>
-              <td class="text-danger fw-semibold">{{ $row['refused'] }}</td>
-              <td>{{ $row['planned'] }}</td>
-              <td class="text-muted">{{ $row['cancelled'] }}</td>
-              <td>{{ $row['successRate'] !== null ? $row['successRate'].'%' : '—' }}</td>
+              <td class="text-success fw-semibold">{{ $row['completed'] }}</td>
+              <td class="text-danger fw-semibold">{{ $row['notCompleted'] }}</td>
+              <td>{{ $row['total'] }}</td>
+              <td>{{ $row['completionRate'] !== null ? $row['completionRate'].'%' : '—' }}</td>
             </tr>
           @empty
-            <tr><td colspan="6" class="text-muted">Данных за месяц нет.</td></tr>
+            <tr><td colspan="5" class="text-muted">Данных за месяц нет.</td></tr>
           @endforelse
         </tbody>
       </table>

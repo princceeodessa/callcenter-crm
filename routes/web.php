@@ -37,7 +37,9 @@ Route::post('/webhooks/tilda', [TildaWebhookController::class, 'handle'])
     ->name('webhooks.tilda');
 
 Route::get('/', function () {
-    return redirect()->route('deals.kanban');
+    $user = request()->user();
+
+    return redirect()->route($user && $user->role === 'measurer' ? 'calendar.index' : 'deals.kanban');
 })->middleware('auth');
 
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
@@ -45,33 +47,42 @@ Route::post('/login', [AuthController::class, 'login'])->name('login.perform');
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout')->middleware('auth');
 
 Route::middleware('auth')->group(function () {
-    Route::get('/deals/kanban', [DealController::class, 'kanban'])->name('deals.kanban');
-    Route::get('/deals', [DealController::class, 'index'])->name('deals.index');
-    Route::get('/deals/closed', [DealController::class, 'closed'])->name('deals.closed');
-    Route::get('/deals/create', [DealController::class, 'create'])->name('deals.create');
-    Route::post('/deals', [DealController::class, 'store'])->name('deals.store');
-    Route::get('/deals/{deal}', [DealController::class, 'show'])->name('deals.show');
-    Route::patch('/deals/{deal}', [DealController::class, 'update'])->name('deals.update');
-    Route::post('/deals/{deal}/stage', [DealController::class, 'changeStage'])->name('deals.stage');
-    Route::post('/deals/{deal}/close', [DealController::class, 'close'])->name('deals.close');
+    Route::middleware('desk')->group(function () {
+        Route::get('/deals/kanban', [DealController::class, 'kanban'])->name('deals.kanban');
+        Route::get('/deals', [DealController::class, 'index'])->name('deals.index');
+        Route::get('/deals/closed', [DealController::class, 'closed'])->name('deals.closed');
+        Route::get('/deals/create', [DealController::class, 'create'])->name('deals.create');
+        Route::post('/deals', [DealController::class, 'store'])->name('deals.store');
+        Route::get('/deals/{deal}', [DealController::class, 'show'])->name('deals.show');
+        Route::patch('/deals/{deal}', [DealController::class, 'update'])->name('deals.update');
+        Route::post('/deals/{deal}/stage', [DealController::class, 'changeStage'])->name('deals.stage');
+        Route::post('/deals/{deal}/close', [DealController::class, 'close'])->name('deals.close');
 
-    // Kanban drag&drop move
-    Route::post('/deals/{deal}/move', [DealController::class, 'move'])->name('deals.move');
+        // Kanban drag&drop move
+        Route::post('/deals/{deal}/move', [DealController::class, 'move'])->name('deals.move');
 
-    Route::post('/deals/{deal}/tasks', [TaskController::class, 'store'])->name('tasks.store');
-    Route::post('/tasks/{task}/complete', [TaskController::class, 'complete'])->name('tasks.complete');
+        Route::post('/deals/{deal}/tasks', [TaskController::class, 'store'])->name('tasks.store');
+        Route::post('/tasks/{task}/complete', [TaskController::class, 'complete'])->name('tasks.complete');
 
-    // Notifications
-    Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
-    Route::get('/notifications/poll', [NotificationController::class, 'poll'])->name('notifications.poll');
-    Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
+        // Notifications
+        Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
+        Route::get('/notifications/poll', [NotificationController::class, 'poll'])->name('notifications.poll');
+        Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
 
-    // Call recordings
-    Route::post('/recordings/{recording}/transcribe', [CallRecordingController::class, 'transcribe'])->name('recordings.transcribe');
+        // Call recordings
+        Route::post('/recordings/{recording}/transcribe', [CallRecordingController::class, 'transcribe'])->name('recordings.transcribe');
 
-    // Media proxy (Telegram files without exposing bot token)
-    Route::get('/media/telegram/{conversation}/{fileId}', [MediaController::class, 'telegram'])
-        ->name('media.telegram');
+        // Media proxy (Telegram files without exposing bot token)
+        Route::get('/media/telegram/{conversation}/{fileId}', [MediaController::class, 'telegram'])
+            ->name('media.telegram');
+
+        // Chats (Messenger)
+        Route::get('/chats', [ChatController::class, 'index'])->name('chats.index');
+        Route::get('/chats/{conversation}', [ChatController::class, 'show'])->name('chats.show');
+        Route::get('/chats/{conversation}/poll', [ChatController::class, 'poll'])->name('chats.poll');
+        Route::post('/chats/{conversation}/messages', [ChatController::class, 'send'])->name('chats.send');
+        Route::post('/chats/{conversation}/read', [ChatController::class, 'markRead'])->name('chats.read');
+    });
 
     // Settings: integrations (admin only)
     Route::middleware('admin.only')->group(function () {
@@ -96,13 +107,6 @@ Route::middleware('auth')->group(function () {
     Route::post('/settings/users/{user}/toggle', [SettingsUserController::class, 'toggleActive'])
         ->middleware('admin')
         ->name('settings.users.toggle');
-
-    // Chats (Messenger)
-    Route::get('/chats', [ChatController::class, 'index'])->name('chats.index');
-    Route::get('/chats/{conversation}', [ChatController::class, 'show'])->name('chats.show');
-    Route::get('/chats/{conversation}/poll', [ChatController::class, 'poll'])->name('chats.poll');
-    Route::post('/chats/{conversation}/messages', [ChatController::class, 'send'])->name('chats.send');
-    Route::post('/chats/{conversation}/read', [ChatController::class, 'markRead'])->name('chats.read');
 
     // Reports (personal for users, aggregated for main_operator/admin)
     Route::get('/reports/monthly', [ReportController::class, 'monthly'])

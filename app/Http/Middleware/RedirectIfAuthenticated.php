@@ -12,7 +12,7 @@ class RedirectIfAuthenticated
     public function handle(Request $request, Closure $next, string ...$guards): Response
     {
         if (Auth::check()) {
-            return redirect()->route('deals.kanban');
+            return redirect()->route(Auth::user()?->role === 'measurer' ? 'calendar.index' : 'deals.kanban');
         }
 
         return $next($request);

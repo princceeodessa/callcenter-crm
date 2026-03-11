@@ -34,6 +34,7 @@ class Kernel extends HttpKernel
         'guest' => \App\Http\Middleware\RedirectIfAuthenticated::class,
         'admin' => \App\Http\Middleware\RequireAdmin::class,
         'admin.only' => \App\Http\Middleware\RequireOnlyAdmin::class,
+        'desk' => \App\Http\Middleware\RequireDeskAccess::class,
         'calendar' => \App\Http\Middleware\RequireCalendarAccess::class,
         'nonclosure' => \App\Http\Middleware\RequireNonClosureAccess::class,
     ];

@@ -219,16 +219,21 @@
 <body data-theme="sky">
 <nav class="navbar navbar-expand-lg navbar-dark">
     <div class="container-fluid">
-        <a class="navbar-brand fw-semibold" href="{{ route('deals.kanban') }}">{{ config('app.name') }}</a>
+        @php($navUser = auth()->user())
+        @php($isPriv = in_array($navUser?->role, ['admin','main_operator'], true))
+        @php($isAdmin = $navUser?->role === 'admin')
+        @php($isNc = in_array($navUser?->role, ['admin','main_operator','operator'], true))
+        @php($isMeasurer = $navUser?->role === 'measurer')
+        @php($homeRoute = $isMeasurer ? 'calendar.index' : 'deals.kanban')
+        <a class="navbar-brand fw-semibold" href="{{ route($homeRoute) }}">{{ config('app.name') }}</a>
         <div class="d-flex gap-2 flex-wrap align-items-center">
             @auth
-                @php($isPriv = in_array(auth()->user()?->role, ['admin','main_operator'], true))
-                @php($isAdmin = auth()->user()?->role === 'admin')
-                @php($isNc = in_array(auth()->user()?->role, ['admin','main_operator','operator'], true))
-                <a class="btn btn-sm btn-outline-light" href="{{ route('deals.kanban') }}">Канбан</a>
-                <a class="btn btn-sm btn-outline-light" href="{{ route('deals.index') }}">Список</a>
-                <a class="btn btn-sm btn-outline-light" href="{{ route('deals.closed') }}">Завершённые</a>
-                <a class="btn btn-sm btn-outline-light" href="{{ route('chats.index') }}">Чаты</a>
+                @if(!$isMeasurer)
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('deals.kanban') }}">Канбан</a>
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('deals.index') }}">Список</a>
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('deals.closed') }}">Завершённые</a>
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('chats.index') }}">Чаты</a>
+                @endif
                 <a class="btn btn-sm btn-outline-light" href="{{ route('calendar.index') }}">Календарь</a>
                 @if($isNc)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('nonclosures.index') }}">Незаключёнки</a>
@@ -252,14 +257,15 @@
                     </div>
                 </div>
 
-                <a class="btn btn-sm btn-warning position-relative" href="{{ route('notifications.index') }}" title="Уведомления" aria-label="Уведомления">
-                    <i class="bi bi-bell-fill"></i>
-                    <span id="navNotifBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-danger d-none">0</span>
-                </a>
-                <button type="button" class="btn btn-sm btn-outline-info d-none" id="enableNotifBtn" title="Системные уведомления">🔊</button>
-
                 <a class="btn btn-sm btn-outline-light" href="{{ route('reports.monthly') }}">Отчёты</a>
-                <a class="btn btn-sm btn-success" href="{{ route('deals.create') }}">+ Сделка</a>
+                @if(!$isMeasurer)
+                    <a class="btn btn-sm btn-warning position-relative" href="{{ route('notifications.index') }}" title="Уведомления" aria-label="Уведомления">
+                        <i class="bi bi-bell-fill"></i>
+                        <span id="navNotifBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-danger d-none">0</span>
+                    </a>
+                    <button type="button" class="btn btn-sm btn-outline-info d-none" id="enableNotifBtn" title="Системные уведомления">🔊</button>
+                    <a class="btn btn-sm btn-success" href="{{ route('deals.create') }}">+ Сделка</a>
+                @endif
                 <form method="POST" action="{{ route('logout') }}">
                     @csrf
                     <button class="btn btn-sm btn-outline-warning">Выйти</button>
@@ -308,6 +314,7 @@
 </script>
 
 @auth
+@if(auth()->user()?->role !== 'measurer')
 <script>
 (() => {
     const badgeEl = document.getElementById('navNotifBadge');
@@ -376,12 +383,12 @@
         el.innerHTML = `
           <div class="toast-header">
             <strong class="me-auto">${title}</strong>
-            <small class="text-muted">сейчас</small>
+            <small class="text-muted">СЃРµР№С‡Р°СЃ</small>
             <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
           </div>
           <div class="toast-body">
             <div>${(body || '').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
-            ${url ? `<div class="mt-2"><a class="btn btn-sm btn-primary" href="${url}">Открыть</a></div>` : ''}
+            ${url ? `<div class="mt-2"><a class="btn btn-sm btn-primary" href="${url}">РћС‚РєСЂС‹С‚СЊ</a></div>` : ''}
           </div>
         `;
         container.appendChild(el);
@@ -439,8 +446,8 @@
                 lastId = Math.max(lastId, Number(it.id));
                 localStorage.setItem(notifStorageKey, String(lastId));
 
-                try { showToast(it.title || 'Уведомление', it.body || '', it.url || null); } catch (e) {}
-                try { showSystem(it.title || 'Уведомление', it.body || '', it.url || null); } catch (e) {}
+                try { showToast(it.title || 'РЈРІРµРґРѕРјР»РµРЅРёРµ', it.body || '', it.url || null); } catch (e) {}
+                try { showSystem(it.title || 'РЈРІРµРґРѕРјР»РµРЅРёРµ', it.body || '', it.url || null); } catch (e) {}
                 try { playBeep(); } catch (e) {}
             }
         } catch (e) {
@@ -451,6 +458,7 @@
     setInterval(poll, 25000);
 })();
 </script>
+@endif
 @endauth
 
 @stack('scripts')
