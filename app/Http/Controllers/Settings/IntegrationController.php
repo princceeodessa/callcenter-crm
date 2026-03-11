@@ -12,6 +12,7 @@ use App\Services\Integrations\TelegramApiClient;
 use App\Services\Integrations\VkApiClient;
 use App\Services\Integrations\AvitoApiClient;
 use App\Services\Integrations\AvitoOAuthService;
+use App\Services\Integrations\AvitoTokenManager;
 
 class IntegrationController extends Controller
 {
@@ -412,57 +413,7 @@ class IntegrationController extends Controller
 
     private function ensureAvitoAccessToken(IntegrationConnection $connection): string
     {
-        $settings = is_array($connection->settings) ? $connection->settings : [];
-        $token = trim((string) ($settings['access_token'] ?? ''));
-        if ($token !== '') {
-            return $token;
-        }
-
-        $clientId = trim((string) ($settings['client_id'] ?? ''));
-        $clientSecret = trim((string) ($settings['client_secret'] ?? ''));
-        if ($clientId === '' || $clientSecret === '') {
-            return '';
-        }
-
-        try {
-            $oauth = app(AvitoOAuthService::class);
-            $resp = $oauth->clientCredentials($clientId, $clientSecret);
-            $token = trim((string) ($resp['access_token'] ?? ''));
-            if ($token === '') {
-                $settings['last_setup_error'] = 'Avito token error: '.json_encode($resp, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                $connection->update([
-                    'settings' => $settings,
-                    'status' => $this->resolveAvitoConnectionStatus($settings),
-                    'last_error' => $settings['last_setup_error'],
-                ]);
-                return '';
-            }
-
-            $settings['access_token'] = $token;
-            if (!empty($resp['expires_in'])) {
-                $settings['token_expires_at'] = now()->addSeconds((int) $resp['expires_in'])->toDateTimeString();
-            }
-            if (!empty($resp['refresh_token'])) {
-                $settings['refresh_token'] = (string) $resp['refresh_token'];
-            }
-            unset($settings['last_setup_error']);
-
-            $connection->update([
-                'settings' => $settings,
-                'status' => $this->resolveAvitoConnectionStatus($settings),
-                'last_error' => null,
-            ]);
-
-            return $token;
-        } catch (\Throwable $e) {
-            $settings['last_setup_error'] = 'Avito token exception: '.$e->getMessage();
-            $connection->update([
-                'settings' => $settings,
-                'status' => $this->resolveAvitoConnectionStatus($settings),
-                'last_error' => $settings['last_setup_error'],
-            ]);
-            return '';
-        }
+        return app(AvitoTokenManager::class)->getValidToken($connection);
     }
 
     private function avitoRedirectUri(Request $request): string

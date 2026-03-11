@@ -325,7 +325,9 @@
   document.querySelectorAll('.btn-edit-row').forEach(btn => btn.addEventListener('click', () => openEdit(btn)));
 
   @if($errors->any())
-    @if(old('_method') === 'PATCH' || old('address') || old('entry_date'))
+    @if($errors->has('file'))
+      new bootstrap.Modal(document.getElementById('importModal')).show();
+    @elseif(old('_method') === 'PATCH' || old('address') || old('entry_date'))
       openNew();
       titleEl.textContent = 'Проверь данные записи';
       setVal('f_entry_date', @json(old('entry_date')));

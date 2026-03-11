@@ -109,7 +109,7 @@ class NonClosureController extends Controller
     public function import(Request $request, NonClosureImportService $service)
     {
         $request->validate([
-            'file' => ['required', 'file', 'mimes:xlsx'],
+            'file' => ['required', 'file', 'max:10240'],
         ]);
 
         try {

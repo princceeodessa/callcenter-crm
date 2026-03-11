@@ -6,7 +6,7 @@ use App\Models\IntegrationConnection;
 use App\Models\IntegrationEvent;
 use App\Services\Chat\ChatIngestService;
 use App\Services\Integrations\AvitoApiClient;
-use App\Services\Integrations\AvitoOAuthService;
+use App\Services\Integrations\AvitoTokenManager;
 use Illuminate\Console\Command;
 
 class PollAvitoChats extends Command
@@ -33,76 +33,10 @@ class PollAvitoChats extends Command
         }
 
         foreach ($connections as $conn) {
-            $settings = $conn->settings ?? [];
-            $userId = (string)($settings['user_id'] ?? '');
-            $token = trim((string)($settings['access_token'] ?? ''));
-
-            if ($token === '' && !empty($settings['client_id']) && !empty($settings['client_secret'])) {
-                try {
-                    $oauth = app(AvitoOAuthService::class);
-                    $resp = $oauth->clientCredentials((string)$settings['client_id'], (string)$settings['client_secret']);
-                    $freshToken = trim((string)($resp['access_token'] ?? ''));
-                    if ($freshToken !== '') {
-                        $settings['access_token'] = $freshToken;
-                        $token = $freshToken;
-                        if (!empty($resp['expires_in'])) {
-                            $settings['token_expires_at'] = now()->addSeconds((int)$resp['expires_in'])->toDateTimeString();
-                        }
-                        if (!empty($resp['refresh_token'])) {
-                            $settings['refresh_token'] = (string)$resp['refresh_token'];
-                        }
-                        unset($settings['last_setup_error']);
-                        $conn->update([
-                            'settings' => $settings,
-                            'status' => 'active',
-                            'last_error' => null,
-                        ]);
-                    } else {
-                        $msg = 'Avito token error: '.json_encode($resp, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                        $settings['last_setup_error'] = $msg;
-                        $conn->update([
-                            'settings' => $settings,
-                            'status' => trim((string)($settings['user_id'] ?? '')) !== '' ? 'active' : 'error',
-                            'last_error' => $msg,
-                        ]);
-                    }
-                } catch (\Throwable $e) {
-                    $msg = 'Avito token exception: '.$e->getMessage();
-                    $settings['last_setup_error'] = $msg;
-                    $conn->update([
-                        'settings' => $settings,
-                        'status' => trim((string)($settings['user_id'] ?? '')) !== '' ? 'active' : 'error',
-                        'last_error' => $msg,
-                    ]);
-                }
-            }
-
-            try {
-                $exp = $settings['token_expires_at'] ?? null;
-                $refreshToken = $settings['refresh_token'] ?? null;
-                $clientId = $settings['client_id'] ?? null;
-                $clientSecret = $settings['client_secret'] ?? null;
-                if ($exp && $refreshToken && $clientId && $clientSecret) {
-                    $expAt = \Carbon\Carbon::parse($exp);
-                    if ($expAt->lessThanOrEqualTo(now()->addSeconds(60))) {
-                        $oauth = app(AvitoOAuthService::class);
-                        $resp = $oauth->refreshToken((string)$clientId, (string)$clientSecret, (string)$refreshToken);
-                        if (!empty($resp['access_token'])) {
-                            $settings['access_token'] = (string)$resp['access_token'];
-                            if (!empty($resp['refresh_token'])) {
-                                $settings['refresh_token'] = (string)$resp['refresh_token'];
-                            }
-                            if (!empty($resp['expires_in'])) {
-                                $settings['token_expires_at'] = now()->addSeconds((int)$resp['expires_in'])->toDateTimeString();
-                            }
-                            $token = trim((string)$settings['access_token']);
-                            $conn->update(['settings' => $settings]);
-                        }
-                    }
-                }
-            } catch (\Throwable) {
-                // ignore token refresh errors
-            }
+            $tokenManager = app(AvitoTokenManager::class);
+            $token = $tokenManager->getValidToken($conn);
+            $settings = is_array($conn->fresh()->settings) ? $conn->fresh()->settings : [];
+            $userId = trim((string) ($settings['user_id'] ?? ''));
 
             if ($userId === '' || $token === '') {
                 $this->warn("[account {$conn->account_id}] skipped: missing user_id/access_token");

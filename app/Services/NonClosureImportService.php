@@ -105,29 +105,36 @@ class NonClosureImportService
         $sheetFiles = $this->sheetFiles($zip);
         $rows = [];
         $sheetCounts = [];
+        $sheetDiagnostics = [];
 
         foreach ($sheetFiles as $sheetName => $sheetPath) {
+            $plainSheetName = trim((string) $sheetName);
             $xmlString = $zip->getFromName($sheetPath);
             if ($xmlString === false) {
-                $sheetCounts[$sheetName] = 0;
+                $sheetCounts[$plainSheetName] = 0;
+                $sheetDiagnostics[$plainSheetName] = [
+                    'header_found' => false,
+                    'header_row' => null,
+                    'reason' => 'sheet_xml_missing',
+                ];
                 continue;
             }
 
             $sheetRows = $this->parseSheetRows($xmlString, $sharedStrings);
             $headerMap = null;
+            $headerRowIndex = null;
             $importableForSheet = 0;
 
-            foreach ($sheetRows as $cells) {
+            foreach ($sheetRows as $rowIndex => $cells) {
                 if ($headerMap === null) {
                     $headerMap = $this->detectHeaderMap($cells);
+                    if ($headerMap !== null) {
+                        $headerRowIndex = $rowIndex + 1;
+                    }
                     continue;
                 }
 
-                if ($headerMap === null) {
-                    continue;
-                }
-
-                $record = $this->mapDataRow($cells, $headerMap, trim((string) $sheetName));
+                $record = $this->mapDataRow($cells, $headerMap, $plainSheetName);
                 if (!$record) {
                     continue;
                 }
@@ -136,14 +143,37 @@ class NonClosureImportService
                 $importableForSheet++;
             }
 
-            $sheetCounts[trim((string) $sheetName)] = $importableForSheet;
+            $sheetCounts[$plainSheetName] = $importableForSheet;
+            $sheetDiagnostics[$plainSheetName] = [
+                'header_found' => $headerMap !== null,
+                'header_row' => $headerRowIndex,
+                'rows_in_sheet' => count($sheetRows),
+                'importable_rows' => $importableForSheet,
+            ];
         }
 
         $zip->close();
 
+        if (count($rows) === 0) {
+            $failedSheets = [];
+            foreach ($sheetDiagnostics as $sheetName => $diagnostic) {
+                if (!($diagnostic['header_found'] ?? false)) {
+                    $failedSheets[] = $sheetName;
+                }
+            }
+
+            $message = 'Не удалось распознать строки для импорта из Excel.';
+            if (!empty($failedSheets)) {
+                $message .= ' Не найдены заголовки в листах: '.implode(', ', $failedSheets).'.';
+            }
+            $message .= ' Нужны колонки вроде «Адрес», «Причина незаключения», «Заключен/не заключен».';
+            throw new \RuntimeException($message);
+        }
+
         return [
             'rows' => $rows,
             'sheet_counts' => $sheetCounts,
+            'sheet_diagnostics' => $sheetDiagnostics,
         ];
     }
 

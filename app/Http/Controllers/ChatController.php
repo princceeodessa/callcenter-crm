@@ -8,6 +8,7 @@ use App\Models\Message;
 use App\Services\Chat\ChatIngestService;
 use App\Services\Chat\ChatSendService;
 use App\Services\Integrations\AvitoApiClient;
+use App\Services\Integrations\AvitoTokenManager;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 
@@ -187,9 +188,9 @@ class ChatController extends Controller
             return;
         }
 
-        $settings = is_array($connection->settings) ? $connection->settings : [];
+        $token = app(AvitoTokenManager::class)->getValidToken($connection);
+        $settings = is_array($connection->fresh()->settings) ? $connection->fresh()->settings : [];
         $userId = trim((string) ($settings['user_id'] ?? ''));
-        $token = trim((string) ($settings['access_token'] ?? ''));
 
         if ($userId === '' || $token === '') {
             return;
