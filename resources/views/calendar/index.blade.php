@@ -33,6 +33,7 @@
 @section('content')
 @php
   $isMeasurer = auth()->user()?->role === 'measurer';
+  $measurerScope = $measurerScope ?? 'available';
 @endphp
 
 <div class="d-flex gap-3 ccrm-cal-wrap">
@@ -62,6 +63,20 @@
           @endif
         </div>
       </div>
+
+      @if($isMeasurer)
+        <div class="mb-2">
+          <label class="form-label small">Показ записей</label>
+          <div class="btn-group w-100" role="group" aria-label="scope">
+            <button type="button" class="btn btn-sm {{ $measurerScope === 'available' ? 'btn-primary' : 'btn-outline-primary' }} js-scope" data-scope="available">
+              Мои + свободные
+            </button>
+            <button type="button" class="btn btn-sm {{ $measurerScope === 'mine' ? 'btn-primary' : 'btn-outline-primary' }} js-scope" data-scope="mine">
+              Только мои
+            </button>
+          </div>
+        </div>
+      @endif
 
       <div class="border rounded p-2 bg-light">
         <div class="fw-semibold small mb-1">Статусы</div>
@@ -151,6 +166,7 @@
       <div class="modal-footer">
         @if($isMeasurer)
           <button type="button" class="btn btn-outline-success" id="btnClaim">Взять на себя</button>
+          <button type="button" class="btn btn-outline-danger" id="btnRelease">Отказаться</button>
         @endif
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
         <button type="button" class="btn btn-primary" id="btnSave">Сохранить</button>
@@ -170,7 +186,9 @@
     const storeUrl = @json(route('calendar.store'));
     const updateUrlTpl = @json(route('calendar.update', ['measurement' => 0]));
     const claimUrlTpl = @json(route('calendar.claim', ['measurement' => 0]));
+    const releaseUrlTpl = @json(route('calendar.release', ['measurement' => 0]));
     const isMeasurer = @json($isMeasurer);
+    const currentUserId = @json((int) auth()->id());
 
     const modalEl = document.getElementById('measurementModal');
     const modal = new bootstrap.Modal(modalEl);
@@ -180,6 +198,8 @@
     const btnNew = document.getElementById('btnNew');
     const btnSave = document.getElementById('btnSave');
     const btnClaim = document.getElementById('btnClaim');
+    const btnRelease = document.getElementById('btnRelease');
+    const scopeButtons = Array.from(document.querySelectorAll('.js-scope'));
 
     const fld = (id) => document.getElementById(id);
 
@@ -230,6 +250,7 @@
       const local = dt ? toLocalInputValue(dt) : toLocalInputValue(new Date());
       setForm({ id: '', scheduled_at: local, duration_minutes: 60, status: 'planned', assigned_user_id: '' });
       if (btnClaim) btnClaim.classList.add('d-none');
+      if (btnRelease) btnRelease.classList.add('d-none');
       modal.show();
     }
 
@@ -248,10 +269,22 @@
         callcenter_comment: p.callcenter_comment || '',
         measurer_comment: p.measurer_comment || '',
       });
+      const canClaim = isMeasurer && !p.assigned_user_id;
+      const canRelease = isMeasurer
+        && Number(p.assigned_user_id || 0) === currentUserId
+        && !['concluded', 'not_concluded', 'cancelled'].includes(String(p.status || ''));
       if (btnClaim) {
-        btnClaim.classList.toggle('d-none', !(isMeasurer && !p.assigned_user_id));
+        btnClaim.classList.toggle('d-none', !canClaim);
+      }
+      if (btnRelease) {
+        btnRelease.classList.toggle('d-none', !canRelease);
       }
       modal.show();
+    }
+
+    function getScope() {
+      const activeBtn = scopeButtons.find((btn) => btn.classList.contains('btn-primary'));
+      return activeBtn ? String(activeBtn.dataset.scope || 'available') : 'available';
     }
 
     const calendar = new FullCalendar.Calendar(document.getElementById('ccrmCalendar'), {
@@ -263,6 +296,8 @@
       initialView: 'timeGridWeek',
       nowIndicator: true,
       selectable: true,
+      slotEventOverlap: false,
+      eventMaxStack: 10,
       headerToolbar: {
         left: 'prev,next today',
         center: 'title',
@@ -274,6 +309,7 @@
         url.searchParams.set('end', info.endStr);
         const uid = Number(fUser.value || 0);
         if (uid > 0) url.searchParams.set('user_id', String(uid));
+        if (isMeasurer) url.searchParams.set('scope', getScope());
         fetch(url.toString(), { headers: { 'Accept': 'application/json' } })
           .then(r => r.json())
           .then(success)
@@ -326,6 +362,21 @@
       calendar.refetchEvents();
     });
 
+    scopeButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        scopeButtons.forEach((item) => {
+          const active = item === btn;
+          item.classList.toggle('btn-primary', active);
+          item.classList.toggle('btn-outline-primary', !active);
+        });
+
+        const url = new URL(window.location.href);
+        url.searchParams.set('scope', btn.dataset.scope || 'available');
+        window.history.replaceState({}, '', url.toString());
+        calendar.refetchEvents();
+      });
+    });
+
     btnNew.addEventListener('click', () => openCreate());
 
     btnSave.addEventListener('click', async () => {
@@ -375,6 +426,28 @@
           });
           const j = await r.json().catch(() => ({}));
           if (!r.ok || !j.ok) throw new Error(j.error || 'claim_failed');
+          calendar.refetchEvents();
+          modal.hide();
+        } catch (e) {
+          showError(e.message);
+        }
+      });
+    }
+
+    if (btnRelease) {
+      btnRelease.addEventListener('click', async () => {
+        clearError();
+        const id = fld('m_id').value;
+        if (!id) return;
+
+        const url = releaseUrlTpl.replace('/0', '/' + id);
+        try {
+          const r = await fetch(url, {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },
+          });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok || !j.ok) throw new Error(j.message || j.error || 'release_failed');
           calendar.refetchEvents();
           modal.hide();
         } catch (e) {

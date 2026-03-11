@@ -119,6 +119,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/calendar/measurements', [MeasurementController::class, 'store'])->name('calendar.store');
         Route::patch('/calendar/measurements/{measurement}', [MeasurementController::class, 'update'])->name('calendar.update');
         Route::post('/calendar/measurements/{measurement}/claim', [MeasurementController::class, 'claim'])->name('calendar.claim');
+        Route::post('/calendar/measurements/{measurement}/release', [MeasurementController::class, 'release'])->name('calendar.release');
     });
 
     // Non-closures table (admin + call-center)

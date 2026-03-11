@@ -28,7 +28,8 @@ class MeasurementController extends Controller
 
     public function index(Request $request)
     {
-        $accountId = $request->user()->account_id;
+        $user = $request->user();
+        $accountId = $user->account_id;
 
         $measurers = User::query()
             ->where('account_id', $accountId)
@@ -38,14 +39,18 @@ class MeasurementController extends Controller
             ->get(['id','name','role']);
 
         $selectedUserId = (int)($request->query('u') ?? 0);
-        if ($request->user()->role === 'measurer' && $selectedUserId === 0) {
-            $selectedUserId = (int)$request->user()->id;
+        $measurerScope = $user->role === 'measurer'
+            ? $request->query('scope', 'available')
+            : null;
+        if ($user->role === 'measurer' && $selectedUserId === 0) {
+            $selectedUserId = (int)$user->id;
         }
 
         return view('calendar.index', [
             'measurers' => $measurers,
             'selectedUserId' => $selectedUserId,
             'statuses' => self::STATUSES,
+            'measurerScope' => in_array($measurerScope, ['mine', 'available'], true) ? $measurerScope : 'available',
         ]);
     }
 
@@ -57,6 +62,7 @@ class MeasurementController extends Controller
         $start = $request->query('start');
         $end = $request->query('end');
         $userId = (int)($request->query('user_id') ?? 0);
+        $scope = $request->query('scope', 'available');
 
         $startAt = $start ? Carbon::parse($start) : now()->startOfMonth();
         $endAt = $end ? Carbon::parse($end) : now()->endOfMonth();
@@ -68,17 +74,20 @@ class MeasurementController extends Controller
 
         if ($user->role === 'measurer') {
             $measurerId = (int) $user->id;
+            $showOnlyMine = $scope === 'mine';
 
-            $q->where(function ($query) use ($measurerId, $userId) {
+            $q->where(function ($query) use ($measurerId, $userId, $showOnlyMine) {
                 if ($userId > 0 && $userId !== $measurerId) {
                     $query->whereRaw('1 = 0');
 
                     return;
                 }
 
-                $query
-                    ->where('assigned_user_id', $measurerId)
-                    ->orWhereNull('assigned_user_id');
+                $query->where('assigned_user_id', $measurerId);
+
+                if (! $showOnlyMine) {
+                    $query->orWhereNull('assigned_user_id');
+                }
             });
         } elseif ($userId > 0) {
             $q->where('assigned_user_id', $userId);
@@ -209,6 +218,37 @@ class MeasurementController extends Controller
         $measurement->update([
             'assigned_user_id' => (int)$request->user()->id,
         ]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function release(Request $request, Measurement $measurement)
+    {
+        $this->authorizeMeasurement($request, $measurement);
+
+        if ($request->user()->role !== 'measurer') {
+            abort(403);
+        }
+
+        if ((int) $measurement->assigned_user_id !== (int) $request->user()->id) {
+            abort(403);
+        }
+
+        if (in_array($measurement->status, ['concluded', 'not_concluded', 'cancelled'], true)) {
+            throw ValidationException::withMessages([
+                'status' => 'Нельзя отказаться от уже завершенного или отмененного замера.',
+            ]);
+        }
+
+        $updates = [
+            'assigned_user_id' => null,
+        ];
+
+        if ($measurement->status === 'accepted') {
+            $updates['status'] = 'planned';
+        }
+
+        $measurement->update($updates);
 
         return response()->json(['ok' => true]);
     }
