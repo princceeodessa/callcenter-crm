@@ -223,6 +223,7 @@
         <div class="d-flex gap-2 flex-wrap align-items-center">
             @auth
                 @php($isPriv = in_array(auth()->user()?->role, ['admin','main_operator'], true))
+                @php($isAdmin = auth()->user()?->role === 'admin')
                 @php($isNc = in_array(auth()->user()?->role, ['admin','main_operator','operator'], true))
                 <a class="btn btn-sm btn-outline-light" href="{{ route('deals.kanban') }}">Канбан</a>
                 <a class="btn btn-sm btn-outline-light" href="{{ route('deals.index') }}">Список</a>
@@ -232,8 +233,10 @@
                 @if($isNc)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('nonclosures.index') }}">Незаключёнки</a>
                 @endif
-                @if($isPriv)
+                @if($isAdmin)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('settings.integrations.index') }}">Интеграции</a>
+                @endif
+                @if($isPriv)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('settings.users.index') }}">Пользователи</a>
                 @endif
 

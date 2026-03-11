@@ -16,13 +16,16 @@
         <div class="d-flex gap-2 flex-wrap">
             @auth
                 @php($isPriv = in_array(auth()->user()?->role, ['admin','main_operator'], true))
+                @php($isAdmin = auth()->user()?->role === 'admin')
                 @php($isNc = in_array(auth()->user()?->role, ['admin','main_operator','operator'], true))
                 <a class="btn btn-sm btn-outline-light" href="{{ route('deals.kanban') }}">Канбан</a>
                 <a class="btn btn-sm btn-outline-light" href="{{ route('deals.index') }}">Список</a>
                 <a class="btn btn-sm btn-outline-light" href="{{ route('deals.closed') }}">Завершённые</a>
                 <a class="btn btn-sm btn-outline-light" href="{{ route('chats.index') }}">Чаты</a>
-                @if($isPriv)
+                @if($isAdmin)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('settings.integrations.index') }}">Интеграции</a>
+                @endif
+                @if($isPriv)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('settings.users.index') }}">Пользователи</a>
                 @endif
                 <a class="btn btn-sm btn-warning position-relative" href="{{ route('notifications.index') }}" title="Уведомления" aria-label="Уведомления">

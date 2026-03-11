@@ -10,13 +10,14 @@
 </div>
 
 @if($connection)
+  @php($s = $connection->settings ?? [])
   <div class="card shadow-sm mb-3">
     <div class="card-header fw-semibold">Статус и настройки</div>
     <div class="card-body small">
       <div class="mb-1"><b>Статус:</b> {{ $connection->status }}</div>
       <div class="mb-1"><b>Последняя синхронизация:</b> {{ $connection->last_synced_at?->format('d.m.Y H:i:s') ?? '—' }}</div>
+
       @if($provider === 'megafon_vats')
-        @php($s = $connection->settings ?? [])
         <div class="mb-1"><b>Base URL:</b> {{ $s['ats_api_base_url'] ?? '—' }}</div>
         <div class="mb-1"><b>Webhook URL:</b>
           @if(!empty($s['crm_webhook_token']))
@@ -25,45 +26,52 @@
             —
           @endif
         </div>
+      @elseif($provider === 'telegram')
+        <div class="mb-1"><b>Webhook URL:</b>
+          @if(!empty($s['crm_webhook_token']))
+            <code>{{ url('/webhooks/telegram?token='.$s['crm_webhook_token']) }}</code>
+          @else
+            —
+          @endif
+        </div>
+        <div class="mb-1"><b>Webhook secret:</b> {{ $s['webhook_secret'] ?? '—' }}</div>
+      @elseif($provider === 'vk')
+        <div class="mb-1"><b>Webhook URL:</b>
+          @if(!empty($s['crm_webhook_token']))
+            <code>{{ url('/webhooks/vk?token='.$s['crm_webhook_token']) }}</code>
+          @else
+            —
+          @endif
+        </div>
+        <div class="mb-1"><b>Secret:</b> {{ $s['webhook_secret'] ?? '—' }}</div>
+        <div class="mb-1"><b>Confirmation code:</b> {{ $s['confirmation_code'] ?? '—' }}</div>
+      @elseif($provider === 'avito')
+        <div class="mb-1"><b>User ID:</b> {{ $s['user_id'] ?? '—' }}</div>
+        <div class="mb-1"><b>client_id:</b> {{ !empty($s['client_id']) ? 'установлен' : '—' }}</div>
+        <div class="mb-1"><b>Access token:</b> {{ !empty($s['access_token']) ? 'установлен' : '—' }}</div>
+        @if(!empty($s['token_expires_at']))
+          <div class="mb-1"><b>Token expires:</b> {{ \Carbon\Carbon::parse($s['token_expires_at'])->format('d.m.Y H:i:s') }}</div>
+        @endif
+        <div class="mb-1"><b>Webhook URL:</b>
+          @if(!empty($s['crm_webhook_token']))
+            <code>{{ url('/webhooks/avito?token='.$s['crm_webhook_token']) }}</code>
+          @else
+            —
+          @endif
+        </div>
+      @elseif($provider === 'tilda')
+        <div class="mb-1"><b>Webhook URL:</b> <code>{{ url('/webhooks/tilda') }}</code></div>
+        <div class="mb-1"><b>API field name:</b> {{ $s['api_field_name'] ?? 'crm_token' }}</div>
+        <div class="mb-1"><b>API key:</b> {{ $s['crm_webhook_token'] ?? '—' }}</div>
+        <div class="mb-1"><b>Webhook URL with query token:</b>
+          @if(!empty($s['crm_webhook_token']))
+            <code>{{ url('/webhooks/tilda?token='.$s['crm_webhook_token']) }}</code>
+          @else
+            —
+          @endif
+        </div>
       @endif
 
-      @if(in_array($provider, ['telegram','vk','avito'], true))
-        @php($s = $connection->settings ?? [])
-        @if($provider === 'telegram')
-          <div class="mb-1"><b>Webhook URL:</b>
-            @if(!empty($s['crm_webhook_token']))
-              <code>{{ url('/webhooks/telegram?token='.$s['crm_webhook_token']) }}</code>
-            @else
-              —
-            @endif
-          </div>
-          <div class="mb-1"><b>Webhook secret:</b> {{ $s['webhook_secret'] ?? '—' }}</div>
-        @elseif($provider === 'vk')
-          <div class="mb-1"><b>Webhook URL:</b>
-            @if(!empty($s['crm_webhook_token']))
-              <code>{{ url('/webhooks/vk?token='.$s['crm_webhook_token']) }}</code>
-            @else
-              —
-            @endif
-          </div>
-          <div class="mb-1"><b>Secret:</b> {{ $s['webhook_secret'] ?? '—' }}</div>
-          <div class="mb-1"><b>Confirmation code:</b> {{ $s['confirmation_code'] ?? '—' }}</div>
-        @elseif($provider === 'avito')
-          <div class="mb-1"><b>User ID:</b> {{ $s['user_id'] ?? '—' }}</div>
-          <div class="mb-1"><b>client_id:</b> {{ !empty($s['client_id']) ? 'установлен' : '—' }}</div>
-          <div class="mb-1"><b>Access token:</b> {{ !empty($s['access_token']) ? 'установлен' : '—' }}</div>
-          @if(!empty($s['token_expires_at']))
-            <div class="mb-1"><b>Token expires:</b> {{ \Carbon\Carbon::parse($s['token_expires_at'])->format('d.m.Y H:i:s') }}</div>
-          @endif
-          <div class="mb-1"><b>Webhook URL:</b>
-            @if(!empty($s['crm_webhook_token']))
-              <code>{{ url('/webhooks/avito?token='.$s['crm_webhook_token']) }}</code>
-            @else
-              —
-            @endif
-          </div>
-        @endif
-      @endif
       @if(!empty($s['last_setup_error'] ?? null))
         <div class="alert alert-warning mt-2 mb-2">{{ $s['last_setup_error'] }}</div>
       @endif

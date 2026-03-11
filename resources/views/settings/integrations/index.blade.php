@@ -88,7 +88,36 @@
             <form method="POST" action="{{ route('settings.integrations.connect', $p['provider']) }}" class="mb-2">
               @csrf
 
-              @if($p['provider'] === 'telegram')
+              @if($p['provider'] === 'tilda')
+                <div class="alert alert-info small">
+                  <div class="fw-semibold mb-1">Как подключить Tilda</div>
+                  <ol class="mb-0">
+                    <li>В Tilda открой приёмщик данных <b>Webhook</b> у форм сайта.</li>
+                    <li>Укажи <b>Webhook URL</b> ниже.</li>
+                    <li>Рекомендуемый вариант авторизации: <b>API METHOD = POST</b>, <b>API NAME = {{ $settings['api_field_name'] ?? 'crm_token' }}</b>, <b>API KEY = {{ $settings['crm_webhook_token'] ?? 'сначала сохрани интеграцию' }}</b>.</li>
+                    <li>После сохранения Tilda отправит тестовый POST <code>test=test</code>, а затем реальные заявки пойдут в сделки CRM.</li>
+                  </ol>
+                </div>
+
+                <div class="mb-2">
+                  <label class="form-label small">Имя поля для API key в Tilda</label>
+                  <input name="api_field_name" class="form-control form-control-sm" value="{{ $settings['api_field_name'] ?? 'crm_token' }}" placeholder="crm_token">
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small">API key / token</label>
+                  <input name="crm_webhook_token" class="form-control form-control-sm" value="{{ $settings['crm_webhook_token'] ?? '' }}" placeholder="можно оставить пустым — CRM сгенерирует автоматически">
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small">Webhook URL</label>
+                  <input class="form-control form-control-sm" readonly value="{{ url('/webhooks/tilda') }}">
+                </div>
+                @if(!empty($settings['crm_webhook_token']))
+                  <div class="mb-2">
+                    <label class="form-label small">Webhook URL с token в query (запасной вариант)</label>
+                    <input class="form-control form-control-sm" readonly value="{{ url('/webhooks/tilda?token='.($settings['crm_webhook_token'])) }}">
+                  </div>
+                @endif
+              @elseif($p['provider'] === 'telegram')
                 <div class="mb-2">
                   <label class="form-label small">Bot token</label>
                   <input name="bot_token" class="form-control form-control-sm" value="{{ $settings['bot_token'] ?? '' }}" required>

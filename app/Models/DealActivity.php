@@ -35,20 +35,22 @@ class DealActivity extends Model
 
     public function getTypeLabelAttribute(): string
     {
-        $type = (string)($this->type ?? '');
+        $type = (string) ($this->type ?? '');
         $payload = is_array($this->payload ?? null) ? $this->payload : [];
-        $provider = isset($payload['provider']) ? (string)$payload['provider'] : null;
+        $provider = isset($payload['provider']) ? (string) $payload['provider'] : null;
 
         $provLabel = $provider ? match ($provider) {
             'vk' => 'VK',
             'telegram' => 'Telegram',
             'avito' => 'Avito',
+            'tilda' => 'Tilda',
             default => strtoupper($provider),
         } : null;
 
         return match ($type) {
             'message_in' => 'Входящее сообщение'.($provLabel ? " ({$provLabel})" : ''),
             'message_out' => 'Исходящее сообщение'.($provLabel ? " ({$provLabel})" : ''),
+            'lead_form' => 'Заявка с формы'.($provLabel ? " ({$provLabel})" : ''),
             'call' => 'Звонок',
             'task_created' => 'Создано дело',
             'task_done' => 'Дело выполнено',

@@ -14,6 +14,7 @@ use App\Http\Controllers\Webhooks\MegafonVatsWebhookController;
 use App\Http\Controllers\Webhooks\TelegramWebhookController;
 use App\Http\Controllers\Webhooks\VkWebhookController;
 use App\Http\Controllers\Webhooks\AvitoWebhookController;
+use App\Http\Controllers\Webhooks\TildaWebhookController;
 use App\Http\Controllers\MediaController;
 use App\Http\Controllers\MeasurementController;
 use App\Http\Controllers\NonClosureController;
@@ -31,6 +32,9 @@ Route::post('/webhooks/vk', [VkWebhookController::class, 'handle'])
 // Avito: POST (events) + GET (OAuth redirect)
 Route::match(['GET','POST'], '/webhooks/avito', [AvitoWebhookController::class, 'handle'])
     ->name('webhooks.avito');
+
+Route::post('/webhooks/tilda', [TildaWebhookController::class, 'handle'])
+    ->name('webhooks.tilda');
 
 Route::get('/', function () {
     return redirect()->route('deals.kanban');
@@ -69,8 +73,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/media/telegram/{conversation}/{fileId}', [MediaController::class, 'telegram'])
         ->name('media.telegram');
 
-    // Settings: integrations (main_operator only)
-    Route::middleware('admin')->group(function () {
+    // Settings: integrations (admin only)
+    Route::middleware('admin.only')->group(function () {
         Route::get('/settings/integrations', [IntegrationController::class, 'index'])->name('settings.integrations.index');
         Route::get('/settings/integrations/{provider}', [IntegrationController::class, 'show'])->name('settings.integrations.show');
         Route::post('/settings/integrations/{provider}/connect', [IntegrationController::class, 'connect'])->name('settings.integrations.connect');

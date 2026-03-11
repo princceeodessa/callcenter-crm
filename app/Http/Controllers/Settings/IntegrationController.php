@@ -5,14 +5,14 @@ namespace App\Http\Controllers\Settings;
 use App\Http\Controllers\Controller;
 use App\Models\IntegrationConnection;
 use App\Models\IntegrationEvent;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Str;
-use App\Services\Integrations\TelegramApiClient;
-use App\Services\Integrations\VkApiClient;
 use App\Services\Integrations\AvitoApiClient;
 use App\Services\Integrations\AvitoOAuthService;
 use App\Services\Integrations\AvitoTokenManager;
+use App\Services\Integrations\TelegramApiClient;
+use App\Services\Integrations\VkApiClient;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 
 class IntegrationController extends Controller
 {
@@ -21,6 +21,7 @@ class IntegrationController extends Controller
         'vk' => 'ВКонтакте',
         'avito' => 'Avito',
         'telegram' => 'Telegram',
+        'tilda' => 'Tilda',
     ];
 
     public function index()
@@ -32,10 +33,9 @@ class IntegrationController extends Controller
             ->get()
             ->keyBy('provider');
 
-        // Ensure all providers exist in UI
         $providers = collect(self::PROVIDERS)->map(function ($title, $provider) use ($connections, $accountId) {
             $conn = $connections->get($provider);
-            if (!$conn) {
+            if (! $conn) {
                 $conn = new IntegrationConnection([
                     'account_id' => $accountId,
                     'provider' => $provider,
@@ -111,37 +111,45 @@ class IntegrationController extends Controller
                 'refresh_token' => ['nullable', 'string', 'max:255'],
                 'user_id' => ['nullable', 'string', 'max:50'],
             ]),
+            'tilda' => $request->validate([
+                'api_field_name' => ['nullable', 'string', 'max:100', 'regex:/^[A-Za-z0-9_-]+$/'],
+                'crm_webhook_token' => ['nullable', 'string', 'max:255'],
+            ]),
             default => [],
         };
 
         if ($provider === 'avito') {
-            $hasToken = !empty(trim((string)($data['access_token'] ?? '')));
-            $hasClient = !empty(trim((string)($data['client_id'] ?? ''))) && !empty(trim((string)($data['client_secret'] ?? '')));
-            if (!$hasToken && !$hasClient) {
-                return back()->withErrors(['access_token' => 'Для Avito укажи либо access_token, либо client_id + client_secret.']);
+            $hasToken = trim((string) ($data['access_token'] ?? '')) !== '';
+            $hasClient = trim((string) ($data['client_id'] ?? '')) !== ''
+                && trim((string) ($data['client_secret'] ?? '')) !== '';
+
+            if (! $hasToken && ! $hasClient) {
+                return back()->withErrors([
+                    'access_token' => 'Для Avito укажи либо access_token, либо client_id + client_secret.',
+                ]);
             }
         }
 
         $connection = IntegrationConnection::query()
             ->firstOrNew(['account_id' => $accountId, 'provider' => $provider]);
 
-        $settings = $connection->settings ?? [];
+        $settings = is_array($connection->settings) ? $connection->settings : [];
 
         if ($provider === 'megafon_vats') {
-            $settings['ats_api_base_url'] = trim($data['ats_api_base_url']);
-            $settings['ats_api_key'] = trim($data['ats_api_key']);
-            $settings['crm_webhook_token'] = trim($data['crm_webhook_token'] ?? '') ?: ($settings['crm_webhook_token'] ?? Str::random(40));
+            $settings['ats_api_base_url'] = trim((string) $data['ats_api_base_url']);
+            $settings['ats_api_key'] = trim((string) $data['ats_api_key']);
+            $settings['crm_webhook_token'] = trim((string) ($data['crm_webhook_token'] ?? ''))
+                ?: ($settings['crm_webhook_token'] ?? Str::random(40));
         } elseif ($provider === 'telegram') {
-            $settings['bot_token'] = trim($data['bot_token']);
+            $settings['bot_token'] = trim((string) $data['bot_token']);
             $settings['crm_webhook_token'] = $settings['crm_webhook_token'] ?? Str::random(40);
             $settings['webhook_secret'] = $settings['webhook_secret'] ?? TelegramApiClient::makeSecretToken();
 
-            // Best-effort: auto set Telegram webhook (requires https APP_URL)
             try {
                 $webhookUrl = url('/webhooks/telegram?token='.$settings['crm_webhook_token']);
                 $tg = new TelegramApiClient($settings['bot_token']);
                 $resp = $tg->setWebhook($webhookUrl, $settings['webhook_secret']);
-                if (!($resp['ok'] ?? false)) {
+                if (! ($resp['ok'] ?? false)) {
                     $settings['last_setup_error'] = $resp['description'] ?? 'Telegram setWebhook failed';
                 } else {
                     unset($settings['last_setup_error']);
@@ -149,20 +157,26 @@ class IntegrationController extends Controller
             } catch (\Throwable $e) {
                 $settings['last_setup_error'] = 'Telegram setWebhook exception: '.$e->getMessage();
             }
+        } elseif ($provider === 'tilda') {
+            $settings['api_field_name'] = trim((string) ($data['api_field_name'] ?? ''))
+                ?: ($settings['api_field_name'] ?? 'crm_token');
+            $settings['crm_webhook_token'] = trim((string) ($data['crm_webhook_token'] ?? ''))
+                ?: ($settings['crm_webhook_token'] ?? Str::random(40));
+            unset($settings['last_setup_error']);
         } elseif (in_array($provider, ['vk', 'avito'], true)) {
-            foreach ($data as $k => $v) {
-                if ($v === null) {
+            foreach ($data as $key => $value) {
+                if ($value === null) {
                     continue;
                 }
-                $settings[$k] = is_string($v) ? trim($v) : $v;
+
+                $settings[$key] = is_string($value) ? trim($value) : $value;
             }
 
-            // Generate webhook token/secret for providers that may use webhooks
             $settings['crm_webhook_token'] = $settings['crm_webhook_token'] ?? Str::random(40);
+
             if ($provider === 'vk') {
                 $settings['webhook_secret'] = $settings['webhook_secret'] ?? VkApiClient::makeSecret();
 
-                // Best-effort: fetch confirmation code (useful for VK callback setup)
                 try {
                     $vk = new VkApiClient($settings['access_token']);
                     $resp = $vk->getCallbackConfirmationCode($settings['group_id']);
@@ -181,6 +195,7 @@ class IntegrationController extends Controller
                 $clientId = trim((string) ($settings['client_id'] ?? ''));
                 $clientSecret = trim((string) ($settings['client_secret'] ?? ''));
                 $accessToken = trim((string) ($settings['access_token'] ?? ''));
+
                 if ($accessToken === '' && $clientId !== '' && $clientSecret !== '') {
                     try {
                         $oauth = app(AvitoOAuthService::class);
@@ -188,10 +203,10 @@ class IntegrationController extends Controller
                         $accessToken = trim((string) ($resp['access_token'] ?? ''));
                         if ($accessToken !== '') {
                             $settings['access_token'] = $accessToken;
-                            if (!empty($resp['expires_in'])) {
+                            if (! empty($resp['expires_in'])) {
                                 $settings['token_expires_at'] = now()->addSeconds((int) $resp['expires_in'])->toDateTimeString();
                             }
-                            if (!empty($resp['refresh_token'])) {
+                            if (! empty($resp['refresh_token'])) {
                                 $settings['refresh_token'] = (string) $resp['refresh_token'];
                             }
                         } else {
@@ -202,11 +217,14 @@ class IntegrationController extends Controller
                     }
                 }
 
-                if (!empty($settings['access_token']) && empty($settings['user_id'])) {
+                if (! empty($settings['access_token']) && empty($settings['user_id'])) {
                     try {
                         $av = new AvitoApiClient((string) $settings['access_token']);
                         $self = $av->getSelfAccount();
-                        $uid = $self['id'] ?? data_get($self, 'account.id') ?? data_get($self, 'result.id') ?? data_get($self, 'data.id');
+                        $uid = $self['id']
+                            ?? data_get($self, 'account.id')
+                            ?? data_get($self, 'result.id')
+                            ?? data_get($self, 'data.id');
                         if (is_scalar($uid) && (string) $uid !== '') {
                             $settings['user_id'] = (string) $uid;
                         }
@@ -215,8 +233,9 @@ class IntegrationController extends Controller
                     }
                 }
 
-                if (!empty($settings['access_token']) && empty($settings['user_id'])) {
-                    $settings['last_setup_error'] = $settings['last_setup_error'] ?? 'Токен Avito получен, но user_id (account id) Авито не вернул. Укажи user_id вручную — в рабочем боте он называется AVITO_USER_ID.';
+                if (! empty($settings['access_token']) && empty($settings['user_id'])) {
+                    $settings['last_setup_error'] = $settings['last_setup_error']
+                        ?? 'Токен Avito получен, но user_id (account id) Авито не вернул. Укажи user_id вручную — в рабочем боте он называется AVITO_USER_ID.';
                 }
             }
         }
@@ -224,9 +243,7 @@ class IntegrationController extends Controller
         $connection->fill([
             'account_id' => $accountId,
             'provider' => $provider,
-            'status' => $provider === 'avito'
-                ? $this->resolveAvitoConnectionStatus($settings)
-                : (empty($settings['access_token']) ? 'disabled' : 'active'),
+            'status' => $this->resolveConnectionStatus($provider, $settings),
             'settings' => $settings,
             'last_error' => $settings['last_setup_error'] ?? null,
         ]);
@@ -236,10 +253,6 @@ class IntegrationController extends Controller
         return redirect()->route('settings.integrations.index')->with('status', 'Интеграция сохранена.');
     }
 
-    /**
-     * Start Avito OAuth flow (redirect user to Avito).
-     * Callback will come back to /webhooks/avito (GET) where we finalize token exchange.
-     */
     public function avitoOauthStart(Request $request)
     {
         $accountId = Auth::user()->account_id;
@@ -247,9 +260,9 @@ class IntegrationController extends Controller
         $connection = IntegrationConnection::query()
             ->firstOrNew(['account_id' => $accountId, 'provider' => 'avito']);
 
-        $settings = $connection->settings ?? [];
-        $clientId = trim((string)($settings['client_id'] ?? ''));
-        $clientSecret = trim((string)($settings['client_secret'] ?? ''));
+        $settings = is_array($connection->settings) ? $connection->settings : [];
+        $clientId = trim((string) ($settings['client_id'] ?? ''));
+        $clientSecret = trim((string) ($settings['client_secret'] ?? ''));
 
         if ($clientId === '' || $clientSecret === '') {
             return redirect()->route('settings.integrations.show', 'avito')
@@ -296,11 +309,11 @@ class IntegrationController extends Controller
             ->where('status', 'active')
             ->first();
 
-        if (!$connection) {
+        if (! $connection) {
             return back()->with('status', 'Интеграция не активна.');
         }
 
-        $settings = $connection->settings ?? [];
+        $settings = is_array($connection->settings) ? $connection->settings : [];
 
         $data = match ($provider) {
             'telegram' => $request->validate([
@@ -329,13 +342,15 @@ class IntegrationController extends Controller
                 $result = $vk->sendMessage($data['peer_id'], $data['text']);
             } elseif ($provider === 'avito') {
                 $userId = $settings['user_id'] ?? null;
-                if (!$userId) {
+                if (! $userId) {
                     return back()->with('status', 'Для Avito нужен user_id (account id). Укажи его в настройках интеграции.');
                 }
+
                 $token = $this->ensureAvitoAccessToken($connection);
                 if ($token === '') {
                     return back()->with('status', 'Не удалось получить access_token для Avito. Проверь client_id / client_secret и last_error.');
                 }
+
                 $result = (new AvitoApiClient($token))->sendText($userId, $data['chat_id'], $data['text']);
             }
 
@@ -382,11 +397,24 @@ class IntegrationController extends Controller
 
     private function assertProvider(string $provider): void
     {
-        if (!array_key_exists($provider, self::PROVIDERS)) {
+        if (! array_key_exists($provider, self::PROVIDERS)) {
             abort(404);
         }
     }
 
+    private function resolveConnectionStatus(string $provider, array $settings): string
+    {
+        return match ($provider) {
+            'megafon_vats' => trim((string) ($settings['ats_api_base_url'] ?? '')) !== ''
+                && trim((string) ($settings['ats_api_key'] ?? '')) !== '' ? 'active' : 'disabled',
+            'telegram' => trim((string) ($settings['bot_token'] ?? '')) !== '' ? 'active' : 'disabled',
+            'vk' => trim((string) ($settings['group_id'] ?? '')) !== ''
+                && trim((string) ($settings['access_token'] ?? '')) !== '' ? 'active' : 'disabled',
+            'tilda' => trim((string) ($settings['crm_webhook_token'] ?? '')) !== '' ? 'active' : 'disabled',
+            'avito' => $this->resolveAvitoConnectionStatus($settings),
+            default => 'disabled',
+        };
+    }
 
     private function resolveAvitoConnectionStatus(array $settings): string
     {
@@ -396,15 +424,15 @@ class IntegrationController extends Controller
         $hasUserId = trim((string) ($settings['user_id'] ?? '')) !== '';
         $hasSetupError = trim((string) ($settings['last_setup_error'] ?? '')) !== '';
 
-        if (!$hasToken && !$hasClient) {
+        if (! $hasToken && ! $hasClient) {
             return 'disabled';
         }
 
-        if (!$hasUserId) {
+        if (! $hasUserId) {
             return 'error';
         }
 
-        if (!$hasToken && $hasSetupError) {
+        if (! $hasToken && $hasSetupError) {
             return 'error';
         }
 
