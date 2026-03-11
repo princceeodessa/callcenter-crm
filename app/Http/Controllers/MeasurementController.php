@@ -6,6 +6,7 @@ use App\Models\Measurement;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class MeasurementController extends Controller
 {
@@ -32,8 +33,7 @@ class MeasurementController extends Controller
         $measurers = User::query()
             ->where('account_id', $accountId)
             ->where('is_active', true)
-            ->whereIn('role', ['measurer', 'admin', 'main_operator', 'operator'])
-            ->orderByRaw("FIELD(role,'measurer','operator','main_operator','admin')")
+            ->where('role', 'measurer')
             ->orderBy('name')
             ->get(['id','name','role']);
 
@@ -51,7 +51,8 @@ class MeasurementController extends Controller
 
     public function events(Request $request)
     {
-        $accountId = $request->user()->account_id;
+        $user = $request->user();
+        $accountId = $user->account_id;
 
         $start = $request->query('start');
         $end = $request->query('end');
@@ -65,7 +66,21 @@ class MeasurementController extends Controller
             ->whereBetween('scheduled_at', [$startAt, $endAt])
             ->with(['assignedUser:id,name']);
 
-        if ($userId > 0) {
+        if ($user->role === 'measurer') {
+            $measurerId = (int) $user->id;
+
+            $q->where(function ($query) use ($measurerId, $userId) {
+                if ($userId > 0 && $userId !== $measurerId) {
+                    $query->whereRaw('1 = 0');
+
+                    return;
+                }
+
+                $query
+                    ->where('assigned_user_id', $measurerId)
+                    ->orWhereNull('assigned_user_id');
+            });
+        } elseif ($userId > 0) {
             $q->where('assigned_user_id', $userId);
         }
 
@@ -123,6 +138,7 @@ class MeasurementController extends Controller
         if ($role === 'measurer') {
             $assigned = (int)$request->user()->id;
         }
+        $assigned = $this->resolveAssignedMeasurerId($accountId, $assigned);
 
         $m = Measurement::create([
             'account_id' => $accountId,
@@ -162,6 +178,10 @@ class MeasurementController extends Controller
                 $allowed['assigned_user_id'] = (int)$request->user()->id;
             }
             $data = $allowed;
+        }
+
+        if (array_key_exists('assigned_user_id', $data)) {
+            $data['assigned_user_id'] = $this->resolveAssignedMeasurerId($request->user()->account_id, $data['assigned_user_id']);
         }
 
         if (isset($data['scheduled_at'])) {
@@ -204,5 +224,28 @@ class MeasurementController extends Controller
                 abort(403);
             }
         }
+    }
+
+    private function resolveAssignedMeasurerId(int $accountId, mixed $assignedUserId): ?int
+    {
+        $assignedUserId = (int) $assignedUserId;
+        if ($assignedUserId <= 0) {
+            return null;
+        }
+
+        $exists = User::query()
+            ->where('account_id', $accountId)
+            ->where('is_active', true)
+            ->where('role', 'measurer')
+            ->whereKey($assignedUserId)
+            ->exists();
+
+        if (! $exists) {
+            throw ValidationException::withMessages([
+                'assigned_user_id' => 'Назначить замер можно только замерщику.',
+            ]);
+        }
+
+        return $assignedUserId;
     }
 }
