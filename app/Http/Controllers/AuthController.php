@@ -15,19 +15,22 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         $data = $request->validate([
-            'email' => ['required','email'],
+            'login' => ['required', 'string', 'max:255', 'regex:/^\S+$/u'],
             'password' => ['required'],
         ]);
 
-        // Disallow login for disabled users.
-        $data['is_active'] = 1;
+        $credentials = [
+            'email' => strtolower(trim($data['login'])),
+            'password' => $data['password'],
+            'is_active' => 1,
+        ];
 
-        if (Auth::attempt($data, true)) {
+        if (Auth::attempt($credentials, true)) {
             $request->session()->regenerate();
             return redirect()->intended(route('deals.kanban'));
         }
 
-        return back()->withErrors(['email' => 'Неверный email или пароль'])->onlyInput('email');
+        return back()->withErrors(['login' => 'Неверный логин или пароль'])->onlyInput('login');
     }
 
     public function logout(Request $request)

@@ -12,7 +12,7 @@
             <thead>
               <tr>
                 <th>Имя</th>
-                <th>Email</th>
+                <th>Логин</th>
                 <th>Роль</th>
                 <th>Статус</th>
                 <th></th>
@@ -87,8 +87,9 @@
             </div>
           </div>
           <div class="mb-2">
-            <label class="form-label">Email (логин)</label>
-            <input name="email" type="email" class="form-control" value="{{ old('email') }}" required>
+            <label class="form-label">Логин</label>
+            <input name="login" class="form-control" value="{{ old('login') }}" autocomplete="username" required>
+            <div class="form-text">Без пробелов. Можно использовать буквы, цифры и символы вроде <code>.</code>, <code>_</code>, <code>-</code>.</div>
           </div>
           <div class="mb-2">
             <label class="form-label">Пароль</label>
