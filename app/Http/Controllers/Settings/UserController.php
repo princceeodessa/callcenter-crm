@@ -26,22 +26,29 @@ class UserController extends Controller
     public function store(Request $request)
     {
         $accountId = Auth::user()->account_id;
+        $usesSplitName = $request->filled('first_name') || $request->filled('last_name');
 
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
+            'first_name' => [$usesSplitName ? 'required' : 'nullable', 'string', 'max:255'],
+            'last_name' => [$usesSplitName ? 'required' : 'nullable', 'string', 'max:255'],
+            'name' => [$usesSplitName ? 'nullable' : 'required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:6'],
             'role' => ['required', 'in:admin,main_operator,operator,measurer'],
             'is_active' => ['nullable'],
         ]);
 
+        $name = $usesSplitName
+            ? preg_replace('/\s+/u', ' ', trim(($data['first_name'] ?? '').' '.($data['last_name'] ?? '')))
+            : preg_replace('/\s+/u', ' ', trim($data['name']));
+
         User::create([
             'account_id' => $accountId,
-            'name' => $data['name'],
+            'name' => $name,
             'email' => strtolower(trim($data['email'])),
             'password' => Hash::make($data['password']),
             'role' => $data['role'],
-            'is_active' => (bool)($data['is_active'] ?? false),
+            'is_active' => (bool) ($data['is_active'] ?? false),
         ]);
 
         return redirect()->route('settings.users.index')->with('status', 'Пользователь добавлен.');
@@ -57,7 +64,7 @@ class UserController extends Controller
             return back()->with('status', 'Нельзя отключить самого себя.');
         }
 
-        $user->is_active = !$user->is_active;
+        $user->is_active = ! $user->is_active;
         $user->save();
 
         return back()->with('status', $user->is_active ? 'Пользователь активирован.' : 'Пользователь отключён.');

@@ -37,9 +37,9 @@
                   </td>
                   <td>
                     @if($u->is_active)
-                      <span class="badge text-bg-success">active</span>
+                      <span class="badge text-bg-success">Активен</span>
                     @else
-                      <span class="badge text-bg-danger">disabled</span>
+                      <span class="badge text-bg-danger">Отключён</span>
                     @endif
                   </td>
                   <td class="text-end">
@@ -68,15 +68,27 @@
       <div class="card-body">
         <h5 class="mb-3">Добавить пользователя</h5>
 
+        @if($errors->any())
+          <div class="alert alert-danger py-2">
+            {{ $errors->first() }}
+          </div>
+        @endif
+
         <form method="POST" action="{{ route('settings.users.store') }}">
           @csrf
-          <div class="mb-2">
-            <label class="form-label">Имя</label>
-            <input name="name" class="form-control" required>
+          <div class="row g-2 mb-2">
+            <div class="col-md-6">
+              <label class="form-label">Имя</label>
+              <input name="first_name" class="form-control" value="{{ old('first_name') }}" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Фамилия</label>
+              <input name="last_name" class="form-control" value="{{ old('last_name') }}" required>
+            </div>
           </div>
           <div class="mb-2">
             <label class="form-label">Email (логин)</label>
-            <input name="email" type="email" class="form-control" required>
+            <input name="email" type="email" class="form-control" value="{{ old('email') }}" required>
           </div>
           <div class="mb-2">
             <label class="form-label">Пароль</label>
@@ -86,14 +98,14 @@
           <div class="mb-2">
             <label class="form-label">Роль</label>
             <select name="role" class="form-select">
-              <option value="operator" selected>operator (колл-центр)</option>
-              <option value="main_operator">main_operator (руководитель)</option>
-              <option value="measurer">measurer (замерщик)</option>
-              <option value="admin">admin</option>
+              <option value="operator" @selected(old('role', 'operator') === 'operator')>operator (колл-центр)</option>
+              <option value="main_operator" @selected(old('role') === 'main_operator')>main_operator (руководитель)</option>
+              <option value="measurer" @selected(old('role') === 'measurer')>measurer (замерщик)</option>
+              <option value="admin" @selected(old('role') === 'admin')>admin</option>
             </select>
           </div>
           <div class="form-check mb-3">
-            <input class="form-check-input" type="checkbox" name="is_active" value="1" checked id="isActive">
+            <input class="form-check-input" type="checkbox" name="is_active" value="1" @checked(old('is_active', '1')) id="isActive">
             <label class="form-check-label" for="isActive">Активный</label>
           </div>
           <button class="btn btn-primary w-100">Создать</button>
