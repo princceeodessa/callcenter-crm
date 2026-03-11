@@ -5,61 +5,75 @@
   <style>
     .ccrm-cal-wrap { height: calc(100vh - 120px); }
     .ccrm-cal-left { width: 360px; }
+
     @media (max-width: 992px) {
       .ccrm-cal-wrap { flex-direction: column; height: auto; }
       .ccrm-cal-left { width: 100%; }
       #ccrmCalendar { height: 75vh; }
     }
+
     #ccrmCalendar { height: 100%; }
     .fc .fc-toolbar-title { font-size: 1.1rem; }
     .ccrm-event-main { font-weight: 600; line-height: 1.2; }
-    .ccrm-event-address { opacity: .95; line-height: 1.2; white-space: normal; word-break: break-word; font-size: .84em; margin-top: 2px; }
-    .fc-timegrid-event .fc-event-main, .fc-daygrid-event .fc-event-main { white-space: normal; }
+    .ccrm-event-address {
+      opacity: .95;
+      line-height: 1.2;
+      white-space: normal;
+      word-break: break-word;
+      font-size: .84em;
+      margin-top: 2px;
+    }
+    .fc-timegrid-event .fc-event-main,
+    .fc-daygrid-event .fc-event-main {
+      white-space: normal;
+    }
   </style>
 @endpush
 
 @section('content')
 @php
-  $isMeasurer = in_array(auth()->user()?->role, ['measurer'], true);
+  $isMeasurer = auth()->user()?->role === 'measurer';
 @endphp
 
 <div class="d-flex gap-3 ccrm-cal-wrap">
   <div class="card shadow-sm ccrm-cal-left flex-shrink-0">
     <div class="card-header d-flex align-items-center justify-content-between">
-      <div class="fw-semibold">РљР°Р»РµРЅРґР°СЂСЊ Р·Р°РјРµСЂРѕРІ</div>
-      <button class="btn btn-sm btn-primary" id="btnNew">+ Р—Р°РїРёСЃСЊ</button>
+      <div class="fw-semibold">Календарь замеров</div>
+      <button class="btn btn-sm btn-primary" id="btnNew">+ Запись</button>
     </div>
     <div class="card-body">
       <div class="mb-2">
-        <label class="form-label small">Р¤РёР»СЊС‚СЂ РїРѕ Р·Р°РјРµСЂС‰РёРєСѓ</label>
+        <label class="form-label small">Фильтр по замерщику</label>
         <select id="filterUser" class="form-select form-select-sm">
           @unless($isMeasurer)
-            <option value="0">Р’СЃРµ</option>
+            <option value="0">Все</option>
           @endunless
           @foreach($measurers as $u)
-            <option value="{{ $u->id }}" @selected((int)$selectedUserId === (int)$u->id)>{{ $u->name }}@unless($isMeasurer) ({{ $u->role }})@endunless</option>
+            <option value="{{ $u->id }}" @selected((int) $selectedUserId === (int) $u->id)>
+              {{ $u->name }}@unless($isMeasurer) ({{ $u->role }})@endunless
+            </option>
           @endforeach
         </select>
         <div class="form-text">
           @if($isMeasurer)
-            Р—Р°РјРµСЂС‰РёРє РІРёРґРёС‚ СЃРІРѕРё Р·Р°РїРёСЃРё Рё СЃРІРѕР±РѕРґРЅС‹Рµ Р·Р°РјРµСЂС‹ Р±РµР· РЅР°Р·РЅР°С‡РµРЅРЅРѕРіРѕ РёСЃРїРѕР»РЅРёС‚РµР»СЏ.
+            Замерщик видит свои записи и свободные замеры без назначенного исполнителя.
           @else
-            Р—Р°РјРµСЂС‰РёРє РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ РІРёРґРёС‚ СЃРІРѕР№ РєР°Р»РµРЅРґР°СЂСЊ.
+            Можно отфильтровать календарь по конкретному замерщику.
           @endif
         </div>
       </div>
 
       <div class="border rounded p-2 bg-light">
-        <div class="fw-semibold small mb-1">РЎС‚Р°С‚СѓСЃС‹</div>
+        <div class="fw-semibold small mb-1">Статусы</div>
         <div class="d-flex flex-column gap-1 small">
           @foreach($statuses as $k => $v)
-            <div><span class="badge text-bg-secondary">{{ $k }}</span> вЂ” {{ $v }}</div>
+            <div><span class="badge text-bg-secondary">{{ $k }}</span> - {{ $v }}</div>
           @endforeach
         </div>
       </div>
 
       <div class="mt-3 text-muted small">
-        РџРѕРґСЃРєР°Р·РєР°: РєР»РёРєРЅРё РїРѕ РґРЅСЋ РёР»Рё РІСЂРµРјРµРЅРё РІ РєР°Р»РµРЅРґР°СЂРµ вЂ” С„РѕСЂРјР° РѕС‚РєСЂРѕРµС‚СЃСЏ СЃСЂР°Р·Сѓ РЅР° РІС‹Р±СЂР°РЅРЅРѕРј СЃР»РѕС‚Рµ.
+        Подсказка: кликни по дню или времени в календаре, чтобы быстро создать запись на выбранный слот.
       </div>
     </div>
   </div>
@@ -75,7 +89,7 @@
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="modalTitle">Р—Р°РїРёСЃСЊ РЅР° Р·Р°РјРµСЂ</h5>
+        <h5 class="modal-title" id="modalTitle">Запись на замер</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
@@ -83,25 +97,25 @@
           <input type="hidden" id="m_id">
 
           <div class="col-12 col-md-6">
-            <label class="form-label">Р”Р°С‚Р° Рё РІСЂРµРјСЏ</label>
+            <label class="form-label">Дата и время</label>
             <input type="datetime-local" id="m_scheduled_at" class="form-control">
           </div>
           <div class="col-12 col-md-6">
-            <label class="form-label">Р”Р»РёС‚РµР»СЊРЅРѕСЃС‚СЊ (РјРёРЅ)</label>
+            <label class="form-label">Длительность (мин)</label>
             <input type="number" id="m_duration" class="form-control" min="5" max="600" value="60">
           </div>
 
           <div class="col-12">
-            <label class="form-label">РђРґСЂРµСЃ</label>
-            <input type="text" id="m_address" class="form-control" placeholder="РђРґСЂРµСЃ" maxlength="500">
+            <label class="form-label">Адрес</label>
+            <input type="text" id="m_address" class="form-control" placeholder="Адрес" maxlength="500">
           </div>
 
           <div class="col-12 col-md-6">
-            <label class="form-label">РўРµР»РµС„РѕРЅ РєР»РёРµРЅС‚Р°</label>
+            <label class="form-label">Телефон клиента</label>
             <input type="text" id="m_phone" class="form-control" placeholder="+7..." maxlength="32">
           </div>
           <div class="col-12 col-md-6">
-            <label class="form-label">РЎС‚Р°С‚СѓСЃ</label>
+            <label class="form-label">Статус</label>
             <select id="m_status" class="form-select">
               @foreach($statuses as $k => $v)
                 <option value="{{ $k }}">{{ $v }}</option>
@@ -110,25 +124,25 @@
           </div>
 
           <div class="col-12 col-md-6">
-            <label class="form-label">РљС‚Рѕ РІР·СЏР» (Р·Р°РјРµСЂС‰РёРє)</label>
+            <label class="form-label">Кто взял (замерщик)</label>
             <select id="m_assigned" class="form-select" {{ $isMeasurer ? 'disabled' : '' }}>
-              <option value="">вЂ”</option>
+              <option value="">-</option>
               @foreach($measurers as $u)
                 <option value="{{ $u->id }}">{{ $u->name }}</option>
               @endforeach
             </select>
             @if($isMeasurer)
-              <div class="form-text">Р—Р°РјРµСЂС‰РёРє РјРѕР¶РµС‚ В«РІР·СЏС‚СЊВ» Р·Р°РїРёСЃСЊ РЅР° СЃРµР±СЏ РєРЅРѕРїРєРѕР№ РЅРёР¶Рµ.</div>
+              <div class="form-text">Свободную запись можно взять на себя кнопкой ниже.</div>
             @endif
           </div>
 
           <div class="col-12 col-md-6">
-            <label class="form-label">РљРѕРјРјРµРЅС‚Р°СЂРёР№ РєРѕР»Р»-С†РµРЅС‚СЂР°</label>
+            <label class="form-label">Комментарий колл-центра</label>
             <textarea id="m_callcenter_comment" class="form-control" rows="2" {{ $isMeasurer ? 'disabled' : '' }}></textarea>
           </div>
 
           <div class="col-12">
-            <label class="form-label">РљРѕРјРјРµРЅС‚Р°СЂРёР№ Р·Р°РјРµСЂС‰РёРєР°</label>
+            <label class="form-label">Комментарий замерщика</label>
             <textarea id="m_measurer_comment" class="form-control" rows="3"></textarea>
           </div>
         </div>
@@ -136,10 +150,10 @@
       </div>
       <div class="modal-footer">
         @if($isMeasurer)
-          <button type="button" class="btn btn-outline-success" id="btnClaim">Р’Р·СЏС‚СЊ РЅР° СЃРµР±СЏ</button>
+          <button type="button" class="btn btn-outline-success" id="btnClaim">Взять на себя</button>
         @endif
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Р—Р°РєСЂС‹С‚СЊ</button>
-        <button type="button" class="btn btn-primary" id="btnSave">РЎРѕС…СЂР°РЅРёС‚СЊ</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+        <button type="button" class="btn btn-primary" id="btnSave">Сохранить</button>
       </div>
     </div>
   </div>
@@ -176,9 +190,10 @@
     }
 
     function showError(msg) {
-      errEl.textContent = msg || 'РћС€РёР±РєР°';
+      errEl.textContent = msg || 'Ошибка';
       errEl.classList.remove('d-none');
     }
+
     function clearError() {
       errEl.classList.add('d-none');
       errEl.textContent = '';
@@ -211,7 +226,7 @@
 
     function openCreate(dt) {
       clearError();
-      document.getElementById('modalTitle').textContent = 'РќРѕРІР°СЏ Р·Р°РїРёСЃСЊ РЅР° Р·Р°РјРµСЂ';
+      document.getElementById('modalTitle').textContent = 'Новая запись на замер';
       const local = dt ? toLocalInputValue(dt) : toLocalInputValue(new Date());
       setForm({ id: '', scheduled_at: local, duration_minutes: 60, status: 'planned', assigned_user_id: '' });
       if (btnClaim) btnClaim.classList.add('d-none');
@@ -220,7 +235,7 @@
 
     function openEdit(event) {
       clearError();
-      document.getElementById('modalTitle').textContent = 'Р—Р°РјРµСЂ #' + event.id;
+      document.getElementById('modalTitle').textContent = 'Замер #' + event.id;
       const p = event.extendedProps || {};
       setForm({
         id: event.id,
@@ -233,7 +248,9 @@
         callcenter_comment: p.callcenter_comment || '',
         measurer_comment: p.measurer_comment || '',
       });
-      if (btnClaim) btnClaim.classList.toggle('d-none', !(isMeasurer && !p.assigned_user_id));
+      if (btnClaim) {
+        btnClaim.classList.toggle('d-none', !(isMeasurer && !p.assigned_user_id));
+      }
       modal.show();
     }
 
@@ -241,8 +258,8 @@
       locale: 'ru',
       firstDay: 1,
       timeZone: 'local',
-      buttonText: { today: 'РЎРµРіРѕРґРЅСЏ', month: 'РњРµСЃСЏС†', week: 'РќРµРґРµР»СЏ', day: 'Р”РµРЅСЊ' },
-      allDayText: 'Р’РµСЃСЊ РґРµРЅСЊ',
+      buttonText: { today: 'Сегодня', month: 'Месяц', week: 'Неделя', day: 'День' },
+      allDayText: 'Весь день',
       initialView: 'timeGridWeek',
       nowIndicator: true,
       selectable: true,
@@ -268,18 +285,21 @@
         const wrap = document.createElement('div');
         const main = document.createElement('div');
         main.className = 'ccrm-event-main';
+
         const mainParts = [];
         if (p.assigned_user_name) mainParts.push(p.assigned_user_name + ':');
         if (p.phone) mainParts.push(p.phone);
-        main.textContent = mainParts.join(' ') || arg.event.title || ('Р—Р°РјРµСЂ #' + arg.event.id);
+        main.textContent = mainParts.join(' ') || arg.event.title || ('Замер #' + arg.event.id);
         wrap.appendChild(main);
+
         if (p.address) {
           const addr = document.createElement('div');
           addr.className = 'ccrm-event-address';
           addr.textContent = p.address;
           wrap.appendChild(addr);
         }
-        wrap.title = [main.textContent, p.address || '', p.status_label || ''].filter(Boolean).join(' вЂ” ');
+
+        wrap.title = [main.textContent, p.address || '', p.status_label || ''].filter(Boolean).join(' - ');
         return { domNodes: [wrap] };
       },
       eventDidMount: (info) => {
@@ -287,13 +307,14 @@
         const mainParts = [];
         if (p.assigned_user_name) mainParts.push(p.assigned_user_name + ':');
         if (p.phone) mainParts.push(p.phone);
-        info.el.title = [mainParts.join(' ') || info.event.title, p.address || '', p.status_label || ''].filter(Boolean).join(' вЂ” ');
+        info.el.title = [mainParts.join(' ') || info.event.title, p.address || '', p.status_label || ''].filter(Boolean).join(' - ');
       },
       eventClick: (info) => {
         info.jsEvent.preventDefault();
         openEdit(info.event);
       }
     });
+
     calendar.render();
 
     fUser.addEventListener('change', () => {
@@ -311,8 +332,9 @@
       clearError();
       const id = fld('m_id').value;
       const data = getForm();
+
       if (!data.scheduled_at || !data.address) {
-        showError('Р—Р°РїРѕР»РЅРё РґР°С‚Сѓ/РІСЂРµРјСЏ Рё Р°РґСЂРµСЃ');
+        showError('Заполни дату/время и адрес');
         return;
       }
 
@@ -344,6 +366,7 @@
         clearError();
         const id = fld('m_id').value;
         if (!id) return;
+
         const url = claimUrlTpl.replace('/0', '/' + id);
         try {
           const r = await fetch(url, {
