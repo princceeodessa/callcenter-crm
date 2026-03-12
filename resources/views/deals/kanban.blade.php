@@ -95,12 +95,12 @@
                             <div class="text-muted small mt-1">
                                 @if($deal->contact?->phone){{ $deal->contact->phone }}@else Без телефона @endif
                             </div>
-                            <div class="mt-2 d-flex gap-1 flex-wrap">
-                                @if($deal->is_unread) <span class="badge text-bg-warning">не прочитан</span> @endif
-                                @if($deal->has_script_deviation) <span class="badge text-bg-danger">отклонения</span> @endif
-                                @if(!$deal->is_ready) <span class="badge text-bg-warning">не заполнено</span> @endif
-                                <span class="badge text-bg-secondary">{{ $deal->responsible?->name ?? 'без ответственного' }}</span>
-                            </div>
+                            @php
+                                $lastMovedByLabel = $deal->latestStageHistory
+                                    ? 'Последний перенос: '.($deal->latestStageHistory->changedBy?->name ?? 'Система')
+                                    : 'Еще не перемещали';
+                            @endphp
+                            <div class="text-muted small mt-2 kanban-last-moved">{{ $lastMovedByLabel }}</div>
                         </div>
                     @endforeach
 
@@ -205,7 +205,14 @@
                                 body: JSON.stringify({ to_stage_id: Number(toStageId) })
                             });
 
-                            if (!res.ok) throw new Error('Move failed');
+                            const payload = await res.json().catch(() => ({}));
+                            if (!res.ok || payload.ok === false) throw new Error(payload.message || 'Move failed');
+
+                            const lastMovedEl = cardEl?.querySelector('.kanban-last-moved');
+                            if (lastMovedEl && payload.last_moved_by_label) {
+                                lastMovedEl.textContent = payload.last_moved_by_label;
+                            }
+
                             updateCount(fromStageId);
                             updateCount(toStageId);
                         } catch (e) {

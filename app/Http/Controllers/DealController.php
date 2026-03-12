@@ -89,7 +89,7 @@ class DealController extends Controller
         }
 
         $dealQuery = Deal::query()
-            ->with(['contact','responsible','conversations' => fn($q) => $q->orderByDesc('last_message_at')])
+            ->with(['contact','responsible','latestStageHistory.changedBy:id,name','conversations' => fn($q) => $q->orderByDesc('last_message_at')])
             ->withCount([
                 'callRecordings as phone_call_recordings_count',
                 'activities as phone_call_activities_count' => fn($q) => $q->where('type', 'call'),
@@ -563,7 +563,10 @@ class DealController extends Controller
             'changed_at' => now(),
         ]);
 
-        return response()->json(['ok' => true]);
+        return response()->json([
+            'ok' => true,
+            'last_moved_by_label' => 'Последний перенос: '.$user->name,
+        ]);
     }
 
     private function nonTargetStagePatterns(): array

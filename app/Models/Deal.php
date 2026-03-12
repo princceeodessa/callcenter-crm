@@ -76,6 +76,14 @@ class Deal extends Model
         return $this->belongsTo(User::class, 'responsible_user_id');
     }
 
+    public function latestStageHistory()
+    {
+        return $this->hasOne(DealStageHistory::class)->ofMany([
+            'changed_at' => 'max',
+            'id' => 'max',
+        ]);
+    }
+
     public function tasks()
     {
         return $this->hasMany(Task::class);
