@@ -242,12 +242,20 @@ class MegafonVatsDealSync
         $candidates = [];
 
         foreach ([
-            'telnum',
-            'diversion',
+            'phone',
             'phone_client',
             'client_phone',
+            'telnum',
+            'diversion',
+            'callerid',
+            'caller_id',
             'from',
             'caller',
+            'src',
+            'src_num',
+            'to',
+            'dst',
+            'number',
         ] as $key) {
             $normalized = self::normalizePhone(self::firstString($payload, [$key]));
             if ($normalized) {

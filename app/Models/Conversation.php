@@ -32,7 +32,7 @@ class Conversation extends Model
             'vk' => 'VK',
             'telegram' => 'Telegram',
             'avito' => 'Avito',
-            'megafon_vats' => 'Звонок',
+            'megafon_vats' => "\u{0422}\u{0435}\u{043B}\u{0435}\u{0444}\u{043E}\u{043D}",
             default => Str::upper((string) $this->channel),
         };
     }

@@ -26,6 +26,10 @@ class DealController extends Controller
 
         $deals = Deal::query()
             ->with(['contact','stage','responsible','conversations' => fn($q) => $q->orderByDesc('last_message_at')])
+            ->withCount([
+                'callRecordings as phone_call_recordings_count',
+                'activities as phone_call_activities_count' => fn($q) => $q->where('type', 'call'),
+            ])
             ->where('account_id', $user->account_id)
             ->when($status === 'open', fn($qq) => $qq->whereNull('closed_at'))
             ->when($status === 'closed', fn($qq) => $qq->whereNotNull('closed_at'))
@@ -74,6 +78,10 @@ class DealController extends Controller
 
         $dealQuery = Deal::query()
             ->with(['contact','responsible','conversations' => fn($q) => $q->orderByDesc('last_message_at')])
+            ->withCount([
+                'callRecordings as phone_call_recordings_count',
+                'activities as phone_call_activities_count' => fn($q) => $q->where('type', 'call'),
+            ])
             ->where('account_id', $user->account_id)
             ->whereNull('closed_at')
             ->when($q !== '', function ($query) use ($q) {
@@ -85,7 +93,8 @@ class DealController extends Controller
                         ->orWhereHas('conversations', fn($c) => $c->where('external_id', 'like', "%{$q}%"));
                 });
             })
-            ->orderByDesc('updated_at');
+            ->orderByDesc('created_at')
+            ->orderByDesc('id');
 
         if (!empty($hiddenStageIds)) {
             $dealQuery->whereNotIn('stage_id', $hiddenStageIds);
@@ -303,10 +312,10 @@ class DealController extends Controller
         if ($dealLeadDisplayName === '') {
             $dealLeadDisplayName = trim((string) ($primaryConversation?->lead_name ?? ''));
         }
-        $dealSourceLabel = trim((string) ($primaryConversation?->source_label ?? 'CRM')) ?: 'CRM';
-        $dealSourceBadgeClass = trim((string) ($primaryConversation?->source_badge_class ?? 'source-badge source-badge-default')) ?: 'source-badge source-badge-default';
-        $dealSourceIconHtml = (string) ($primaryConversation?->source_icon_html ?? '<span class="source-icon source-icon-default"><i class="bi bi-chat-dots-fill"></i></span>');
-        $dealSourceChatUrl = $primaryConversation?->chat_url;
+        $dealSourceLabel = $deal->lead_source_label;
+        $dealSourceBadgeClass = $deal->lead_source_badge_class;
+        $dealSourceIconHtml = $deal->lead_source_icon_html;
+        $dealSourceChatUrl = $deal->lead_source_chat_url;
         $dealTitle = $deal->title_is_custom ? $deal->title : ($dealLeadDisplayName !== '' ? $dealLeadDisplayName : $deal->title);
 
         $dealConversations = $deal->conversations->map(function ($conversation) {
@@ -387,6 +396,10 @@ class DealController extends Controller
                 });
             })
             ->with(['contact','responsible','stage','conversations' => fn($q) => $q->orderByDesc('last_message_at')])
+            ->withCount([
+                'callRecordings as phone_call_recordings_count',
+                'activities as phone_call_activities_count' => fn($q) => $q->where('type', 'call'),
+            ])
             ->orderByDesc('closed_at')
             ->paginate(25)
             ->withQueryString();
