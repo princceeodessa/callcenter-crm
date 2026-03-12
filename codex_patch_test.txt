@@ -1,0 +1,6 @@
+*** Begin Patch
+*** Update File: app\Http\Controllers\Webhooks\VkWebhookController.php
+@@
+-use App\Models\IntegrationConnection;
++use App\Models\IntegrationConnection;
+*** End Patch
