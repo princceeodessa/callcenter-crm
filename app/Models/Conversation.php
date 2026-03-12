@@ -32,6 +32,7 @@ class Conversation extends Model
             'vk' => 'VK',
             'telegram' => 'Telegram',
             'avito' => 'Avito',
+            'tilda' => 'Tilda',
             'megafon_vats' => "\u{0422}\u{0435}\u{043B}\u{0435}\u{0444}\u{043E}\u{043D}",
             default => Str::upper((string) $this->channel),
         };
@@ -46,6 +47,7 @@ class Conversation extends Model
             'vk' => '<span class="source-icon source-icon-vk">vk</span>',
             'telegram' => '<span class="source-icon source-icon-telegram"><i class="bi bi-send-fill"></i></span>',
             'avito' => '<span class="source-icon source-icon-avito">A</span>',
+            'tilda' => '<span class="source-icon source-icon-tilda" aria-hidden="true"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="M13 24C13 14.6112 20.6112 7 30 7C36.664 7 40.5365 9.56094 44.2817 12.0394C47.4207 14.1167 50.4702 16.1348 55 16.1348V25.1348C47.6644 25.1348 43.4048 22.3158 39.9587 20.0354C36.7068 17.8836 34.3559 16.3272 30 16.3272C25.7452 16.3272 22.2963 19.7761 22.2963 24.0309V25.1348H13V24ZM28 25H37V57H28V25Z" fill="currentColor"/></svg></span>',
             'megafon_vats' => '<span class="source-icon source-icon-megafon_vats"><i class="bi bi-telephone-fill"></i></span>',
             default => '<span class="source-icon source-icon-default"><i class="bi bi-chat-dots-fill"></i></span>',
         };
@@ -336,3 +338,4 @@ class Conversation extends Model
         return preg_match('/[\p{L}]{2,}/u', $value) === 1;
     }
 }
+

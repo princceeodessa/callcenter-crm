@@ -13,6 +13,10 @@ class Deal extends Model
     private const DEFAULT_SOURCE_BADGE_CLASS = 'source-badge source-badge-default';
     private const DEFAULT_SOURCE_SURFACE_CLASS = 'source-surface source-surface-default';
     private const DEFAULT_SOURCE_ICON_HTML = '<span class="source-icon source-icon-default"><i class="bi bi-chat-dots-fill"></i></span>';
+    private const TILDA_SOURCE_LABEL = 'Tilda';
+    private const TILDA_SOURCE_BADGE_CLASS = 'source-badge source-badge-tilda';
+    private const TILDA_SOURCE_SURFACE_CLASS = 'source-surface source-surface-tilda';
+    private const TILDA_SOURCE_ICON_HTML = '<span class="source-icon source-icon-tilda" aria-hidden="true"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="M13 24C13 14.6112 20.6112 7 30 7C36.664 7 40.5365 9.56094 44.2817 12.0394C47.4207 14.1167 50.4702 16.1348 55 16.1348V25.1348C47.6644 25.1348 43.4048 22.3158 39.9587 20.0354C36.7068 17.8836 34.3559 16.3272 30 16.3272C25.7452 16.3272 22.2963 19.7761 22.2963 24.0309V25.1348H13V24ZM28 25H37V57H28V25Z" fill="currentColor"/></svg></span>';
     private const PHONE_SOURCE_LABEL = "\u{0422}\u{0435}\u{043B}\u{0435}\u{0444}\u{043E}\u{043D}";
     private const PHONE_SOURCE_BADGE_CLASS = 'source-badge source-badge-megafon_vats';
     private const PHONE_SOURCE_SURFACE_CLASS = 'source-surface source-surface-megafon_vats';
@@ -177,6 +181,15 @@ class Deal extends Model
 
     private function fallbackLeadSourceMeta(): array
     {
+        if ($this->hasTildaLeadSource()) {
+            return [
+                'label' => self::TILDA_SOURCE_LABEL,
+                'badge_class' => self::TILDA_SOURCE_BADGE_CLASS,
+                'surface_class' => self::TILDA_SOURCE_SURFACE_CLASS,
+                'icon_html' => self::TILDA_SOURCE_ICON_HTML,
+            ];
+        }
+
         if ($this->hasPhoneLeadSource()) {
             return [
                 'label' => self::PHONE_SOURCE_LABEL,
@@ -216,5 +229,27 @@ class Deal extends Model
 
         return $this->activities()->where('type', 'call')->exists()
             || $this->callRecordings()->exists();
+    }
+
+    private function hasTildaLeadSource(): bool
+    {
+        if (array_key_exists('tilda_lead_form_activities_count', $this->attributes)
+            && (int) $this->attributes['tilda_lead_form_activities_count'] > 0) {
+            return true;
+        }
+
+        if ($this->relationLoaded('activities')) {
+            return $this->activities->contains(function ($activity) {
+                $payload = is_array($activity->payload ?? null) ? $activity->payload : [];
+
+                return $activity->type === 'lead_form'
+                    && (($payload['provider'] ?? null) === 'tilda');
+            });
+        }
+
+        return $this->activities()
+            ->where('type', 'lead_form')
+            ->where('payload->provider', 'tilda')
+            ->exists();
     }
 }

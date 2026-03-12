@@ -29,6 +29,9 @@ class DealController extends Controller
             ->withCount([
                 'callRecordings as phone_call_recordings_count',
                 'activities as phone_call_activities_count' => fn($q) => $q->where('type', 'call'),
+                'activities as tilda_lead_form_activities_count' => fn($q) => $q
+                    ->where('type', 'lead_form')
+                    ->where('payload->provider', 'tilda'),
             ])
             ->where('account_id', $user->account_id)
             ->when($status === 'open', fn($qq) => $qq->whereNull('closed_at'))
@@ -90,6 +93,9 @@ class DealController extends Controller
             ->withCount([
                 'callRecordings as phone_call_recordings_count',
                 'activities as phone_call_activities_count' => fn($q) => $q->where('type', 'call'),
+                'activities as tilda_lead_form_activities_count' => fn($q) => $q
+                    ->where('type', 'lead_form')
+                    ->where('payload->provider', 'tilda'),
             ])
             ->where('account_id', $user->account_id)
             ->whereNull('closed_at')
@@ -408,6 +414,9 @@ class DealController extends Controller
             ->withCount([
                 'callRecordings as phone_call_recordings_count',
                 'activities as phone_call_activities_count' => fn($q) => $q->where('type', 'call'),
+                'activities as tilda_lead_form_activities_count' => fn($q) => $q
+                    ->where('type', 'lead_form')
+                    ->where('payload->provider', 'tilda'),
             ])
             ->orderByDesc('closed_at')
             ->paginate(25)
@@ -573,3 +582,4 @@ class DealController extends Controller
         return str_contains($name, 'квал') && str_contains($name, 'замер');
     }
 }
+
