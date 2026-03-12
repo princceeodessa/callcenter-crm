@@ -25,11 +25,32 @@ class BitrixLeadImportService
         'lead_id' => ['id', 'ид', 'id лида', 'ид лида', 'lead id', 'leadid', 'crm id'],
         'title' => ['название', 'название лида', 'заголовок', 'тема', 'title', 'lead title'],
         'contact_name' => ['контакт', 'фио', 'имя контакта', 'название контакта', 'contact', 'contact name'],
-        'first_name' => ['имя', 'firstname', 'first name', 'name'],
-        'last_name' => ['фамилия', 'lastname', 'last name', 'surname'],
-        'middle_name' => ['отчество', 'middlename', 'middle name', 'second name'],
-        'phone' => ['телефон', 'мобильный телефон', 'рабочий телефон', 'phone', 'mobile phone', 'work phone'],
-        'email' => ['email', 'e-mail', 'e mail', 'почта', 'электронная почта'],
+        'first_name' => ['имя', 'контактимя', 'firstname', 'first name', 'name'],
+        'last_name' => ['фамилия', 'контактфамилия', 'lastname', 'last name', 'surname'],
+        'middle_name' => ['отчество', 'контактотчество', 'middlename', 'middle name', 'second name'],
+        'phone' => [
+            'телефон',
+            'мобильный телефон',
+            'рабочий телефон',
+            'контактрабочийтелефон',
+            'контактмобильныйтелефон',
+            'контакттелефондлярассылок',
+            'контактдругойтелефон',
+            'phone',
+            'mobile phone',
+            'work phone',
+        ],
+        'email' => [
+            'email',
+            'e-mail',
+            'e mail',
+            'почта',
+            'электронная почта',
+            'контактрабочийemail',
+            'контактчастныйemail',
+            'контактemailдлярассылок',
+            'контактдругойemail',
+        ],
         'status' => ['статус', 'статус лида', 'стадия', 'status', 'status name', 'statusname'],
         'responsible' => ['ответственный', 'менеджер', 'responsible', 'responsible name', 'assigned by', 'assigned by name', 'assignedbyname'],
         'amount' => ['сумма', 'бюджет', 'стоимость', 'amount', 'opportunity', 'price'],
@@ -344,6 +365,7 @@ class BitrixLeadImportService
     private function detectHeaderMap(array $cells): ?array
     {
         $map = [];
+        $aliasesByField = $this->normalizedHeaderAliases();
 
         foreach ($cells as $index => $cell) {
             $normalizedCell = $this->normalizeHeader($cell);
@@ -351,15 +373,29 @@ class BitrixLeadImportService
                 continue;
             }
 
-            foreach ($this->normalizedHeaderAliases() as $field => $aliases) {
+            $bestField = null;
+            $bestScore = -1;
+
+            foreach ($aliasesByField as $field => $aliases) {
                 foreach ($aliases as $alias) {
-                    if ($this->headerMatches($normalizedCell, $alias)) {
-                        $map[$field] ??= [];
-                        $map[$field][] = $index;
-                        break 2;
+                    if (!$this->headerMatches($normalizedCell, $alias)) {
+                        continue;
+                    }
+
+                    $score = strlen($alias);
+                    if ($score > $bestScore) {
+                        $bestField = $field;
+                        $bestScore = $score;
                     }
                 }
             }
+
+            if ($bestField === null) {
+                continue;
+            }
+
+            $map[$bestField] ??= [];
+            $map[$bestField][] = $index;
         }
 
         $recognized = count($map);
@@ -376,7 +412,6 @@ class BitrixLeadImportService
 
         return $map;
     }
-
     private function mapRow(array $cells, array $headerMap, string $sheetName, int $rowNumber): ?array
     {
         $record = [
@@ -839,9 +874,12 @@ class BitrixLeadImportService
             return true;
         }
 
+        if (in_array($alias, ["\u{043a}\u{043e}\u{043d}\u{0442}\u{0430}\u{043a}\u{0442}", 'contact'], true)) {
+            return false;
+        }
+
         return strlen($alias) >= 4 && str_starts_with($normalizedCell, $alias);
     }
-
     private function normalizedHeaderAliases(): array
     {
         static $normalized = null;
