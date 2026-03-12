@@ -61,6 +61,8 @@ Route::middleware('auth')->group(function () {
         // Kanban drag&drop move
         Route::post('/deals/{deal}/move', [DealController::class, 'move'])->name('deals.move');
 
+        Route::get('/tasks', [TaskController::class, 'index'])->name('tasks.index');
+        Route::post('/tasks', [TaskController::class, 'storeFromPage'])->name('tasks.page.store');
         Route::post('/deals/{deal}/tasks', [TaskController::class, 'store'])->name('tasks.store');
         Route::post('/tasks/{task}/complete', [TaskController::class, 'complete'])->name('tasks.complete');
 

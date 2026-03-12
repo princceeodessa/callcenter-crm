@@ -52,6 +52,15 @@ class VkApiClient
         ]);
     }
 
+    public function getHistory(int|string $peerId, int $count = 200, int $offset = 0): array
+    {
+        return $this->call('messages.getHistory', [
+            'peer_id' => (string) $peerId,
+            'count' => max(1, min($count, 200)),
+            'offset' => max(0, $offset),
+        ]);
+    }
+
     public function sendMessageWithAttachment(int|string $peerId, string $text, string $attachment, ?int $randomId = null): array
     {
         return $this->call('messages.send', [

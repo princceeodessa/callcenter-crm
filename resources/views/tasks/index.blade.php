@@ -1,0 +1,187 @@
+@extends('layouts.app')
+
+@php
+    $dealLabel = function ($deal) {
+        $contact = trim((string) ($deal->contact?->name ?? ''));
+        $phone = trim((string) ($deal->contact?->phone ?? ''));
+        $title = trim((string) ($deal->title ?? ''));
+        $parts = array_filter([$title !== '' ? $title : ('Сделка #'.$deal->id), $contact, $phone]);
+        return implode(' | ', $parts);
+    };
+
+    $taskDealTitle = function ($task) {
+        $deal = $task->deal;
+        if (!$deal) {
+            return 'Сделка не найдена';
+        }
+
+        $contact = trim((string) ($deal->contact?->name ?? ''));
+        $phone = trim((string) ($deal->contact?->phone ?? ''));
+        $title = trim((string) ($deal->title ?? ''));
+        $parts = array_filter([$title !== '' ? $title : ('Сделка #'.$deal->id), $contact, $phone]);
+        return implode(' | ', $parts);
+    };
+@endphp
+
+@section('content')
+<div class="d-flex flex-column gap-3">
+    <div class="d-flex align-items-start justify-content-between flex-wrap gap-3">
+        <div>
+            <h4 class="mb-1">Дела</h4>
+            <div class="text-muted">Сегодня: {{ $todayLabel }}</div>
+        </div>
+        <form class="d-flex gap-2 flex-wrap" method="GET" action="{{ route('tasks.index') }}">
+            <select class="form-select form-select-sm" name="assigned_user_id" style="min-width: 220px;">
+                <option value="0">Все сотрудники</option>
+                @foreach($users as $worker)
+                    <option value="{{ $worker->id }}" @selected($assignedUserId === (int) $worker->id)>{{ $worker->name }}</option>
+                @endforeach
+            </select>
+            <input class="form-control form-control-sm" name="q" value="{{ $search }}" placeholder="Поиск по делу, клиенту, телефону, названию">
+            <button class="btn btn-sm btn-primary">Найти</button>
+            @if($search !== '' || $assignedUserId > 0)
+                <a class="btn btn-sm btn-outline-secondary" href="{{ route('tasks.index') }}">Сбросить</a>
+            @endif
+        </form>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header fw-semibold">Новое дело</div>
+        <div class="card-body">
+            <form method="POST" action="{{ route('tasks.page.store') }}" class="row g-3">
+                @csrf
+                <div class="col-12 col-lg-5">
+                    <label class="form-label">Сделка</label>
+                    <select name="deal_id" class="form-select" required>
+                        <option value="">Выберите сделку</option>
+                        @foreach($deals as $deal)
+                            <option value="{{ $deal->id }}" @selected((int) old('deal_id') === (int) $deal->id)>{{ $dealLabel($deal) }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="col-12 col-lg-3">
+                    <label class="form-label">Кому назначить</label>
+                    <select name="assigned_user_id" class="form-select" required>
+                        <option value="">Выберите сотрудника</option>
+                        @foreach($users as $worker)
+                            <option value="{{ $worker->id }}" @selected((int) old('assigned_user_id') === (int) $worker->id)>{{ $worker->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="col-12 col-lg-4">
+                    <label class="form-label">Когда напомнить</label>
+                    <input type="datetime-local" name="due_at" class="form-control" value="{{ old('due_at', now()->addHour()->format('Y-m-d\\TH:i')) }}" required>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Название</label>
+                    <input name="title" class="form-control" value="{{ old('title') }}" placeholder="Например: связаться с клиентом" required>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Комментарий</label>
+                    <textarea name="description" class="form-control" rows="3" placeholder="Комментарий по делу">{{ old('description') }}</textarea>
+                </div>
+                <div class="col-12">
+                    <button class="btn btn-primary">Добавить дело</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <span class="fw-semibold">На сегодня</span>
+            <span class="text-muted small">{{ $todayTasks->count() }} шт.</span>
+        </div>
+        <div class="card-body">
+            @forelse($todayTasks as $task)
+                <div class="border rounded p-3 mb-2">
+                    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                        <div>
+                            <div class="fw-semibold">{{ $task->title }}</div>
+                            <div class="text-muted small mt-1">{{ $taskDealTitle($task) }}</div>
+                            <div class="text-muted small mt-1">
+                                До {{ optional($task->due_at)->format('d.m.Y H:i') ?: 'без срока' }}
+                                @if($task->assignedTo)
+                                    | Ответственный: {{ $task->assignedTo->name }}
+                                @endif
+                            </div>
+                        </div>
+                        <div class="d-flex gap-2 flex-wrap">
+                            @if($task->deal)
+                                <a class="btn btn-sm btn-outline-secondary" href="{{ route('deals.show', $task->deal) }}">Открыть сделку</a>
+                            @endif
+                            <form method="POST" action="{{ route('tasks.complete', $task) }}">
+                                @csrf
+                                <button class="btn btn-sm btn-success">Выполнено</button>
+                            </form>
+                        </div>
+                    </div>
+                    @if($task->description)
+                        <div class="mt-2">{{ $task->description }}</div>
+                    @endif
+                </div>
+            @empty
+                <div class="text-muted">На сегодня открытых дел нет.</div>
+            @endforelse
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-12 col-xl-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <span class="fw-semibold">Просроченные</span>
+                    <span class="text-muted small">{{ $overdueTasks->count() }} шт.</span>
+                </div>
+                <div class="card-body">
+                    @forelse($overdueTasks as $task)
+                        <div class="border rounded p-3 mb-2">
+                            <div class="fw-semibold">{{ $task->title }}</div>
+                            <div class="text-muted small mt-1">{{ $taskDealTitle($task) }}</div>
+                            <div class="text-muted small mt-1">
+                                До {{ optional($task->due_at)->format('d.m.Y H:i') ?: 'без срока' }}
+                                @if($task->assignedTo)
+                                    | Ответственный: {{ $task->assignedTo->name }}
+                                @endif
+                            </div>
+                            @if($task->description)
+                                <div class="mt-2">{{ $task->description }}</div>
+                            @endif
+                        </div>
+                    @empty
+                        <div class="text-muted">Просроченных дел нет.</div>
+                    @endforelse
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <span class="fw-semibold">Ближайшие</span>
+                    <span class="text-muted small">{{ $upcomingTasks->count() }} шт.</span>
+                </div>
+                <div class="card-body">
+                    @forelse($upcomingTasks as $task)
+                        <div class="border rounded p-3 mb-2">
+                            <div class="fw-semibold">{{ $task->title }}</div>
+                            <div class="text-muted small mt-1">{{ $taskDealTitle($task) }}</div>
+                            <div class="text-muted small mt-1">
+                                До {{ optional($task->due_at)->format('d.m.Y H:i') ?: 'без срока' }}
+                                @if($task->assignedTo)
+                                    | Ответственный: {{ $task->assignedTo->name }}
+                                @endif
+                            </div>
+                            @if($task->description)
+                                <div class="mt-2">{{ $task->description }}</div>
+                            @endif
+                        </div>
+                    @empty
+                        <div class="text-muted">Ближайших дел нет.</div>
+                    @endforelse
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+@endsection

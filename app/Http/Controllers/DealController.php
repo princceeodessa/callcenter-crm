@@ -92,8 +92,35 @@ class DealController extends Controller
         }
 
         $dealsByStage = $dealQuery->get()->groupBy('stage_id');
+        $todayFocusedStageIds = $stages
+            ->filter(fn ($stage) => $this->isTodayFocusedStage($stage))
+            ->pluck('id')
+            ->all();
 
-        return view('deals.kanban', compact('stages','dealsByStage','showSpam','q'));
+        if (!empty($todayFocusedStageIds)) {
+            $todayStart = now()->startOfDay();
+            $tomorrowStart = (clone $todayStart)->addDay();
+
+            $todayStageIdsByStage = DealStageHistory::query()
+                ->where('account_id', $user->account_id)
+                ->whereIn('to_stage_id', $todayFocusedStageIds)
+                ->whereBetween('changed_at', [$todayStart, $tomorrowStart])
+                ->get(['deal_id', 'to_stage_id'])
+                ->groupBy('to_stage_id')
+                ->map(fn ($rows) => $rows->pluck('deal_id')->map(fn ($id) => (int) $id)->all());
+
+            foreach ($todayFocusedStageIds as $stageId) {
+                $todayDealIds = $todayStageIdsByStage[$stageId] ?? [];
+                $dealsByStage[$stageId] = ($dealsByStage[$stageId] ?? collect())
+                    ->filter(function ($deal) use ($todayDealIds, $todayStart) {
+                        $createdToday = $deal->created_at && $deal->created_at->isSameDay($todayStart);
+                        return $createdToday || in_array((int) $deal->id, $todayDealIds, true);
+                    })
+                    ->values();
+            }
+        }
+
+        return view('deals.kanban', compact('stages','dealsByStage','showSpam','q', 'todayFocusedStageIds'));
     }
 
     public function create()
@@ -506,5 +533,12 @@ class DealController extends Controller
         ]);
 
         return response()->json(['ok' => true]);
+    }
+
+    private function isTodayFocusedStage(PipelineStage $stage): bool
+    {
+        $name = mb_strtolower(trim((string) $stage->name));
+
+        return str_contains($name, 'квал') && str_contains($name, 'замер');
     }
 }

@@ -15,6 +15,23 @@ use App\Models\CallRecording;
 
 class MegafonVatsDealSync
 {
+    private const EXCLUDED_PHONE_NUMBERS = [
+        '79199141840',
+        '79828321458',
+        '79124641519',
+        '79120188459',
+        '79120182724',
+        '79124443217',
+        '79524018877',
+        '79225090014',
+        '79225090047',
+        '79225090052',
+        '79221797710',
+        '79225085574',
+        '79225070404',
+        '79225174552',
+    ];
+
     /**
      * Convert a VATS call event to a Deal + DealActivity.
      *
@@ -28,16 +45,7 @@ class MegafonVatsDealSync
         $p = $event->payload ?? [];
 
         // Pick client phone (best-effort for MegaFon VATS payloads)
-        $clientPhoneRaw = self::firstString($p, [
-            'telnum',          // external number
-            'diversion',       // sometimes external number is duplicated here
-            'phone_client',
-            'client_phone',
-            'from',
-            'caller',
-        ]);
-
-        $clientPhone = self::normalizePhone($clientPhoneRaw);
+        $clientPhone = self::resolveClientPhone($connection, $p);
         if (!$clientPhone) {
             // No client phone -> don't create a deal
             return;
@@ -226,6 +234,54 @@ class MegafonVatsDealSync
         }
 
         return $digits;
+    }
+
+    private static function resolveClientPhone(IntegrationConnection $connection, array $payload): ?string
+    {
+        $excluded = self::excludedPhoneNumbers($connection);
+        $candidates = [];
+
+        foreach ([
+            'telnum',
+            'diversion',
+            'phone_client',
+            'client_phone',
+            'from',
+            'caller',
+        ] as $key) {
+            $normalized = self::normalizePhone(self::firstString($payload, [$key]));
+            if ($normalized) {
+                $candidates[] = $normalized;
+            }
+        }
+
+        foreach (array_values(array_unique($candidates)) as $candidate) {
+            if (!in_array($candidate, $excluded, true)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private static function excludedPhoneNumbers(IntegrationConnection $connection): array
+    {
+        $settings = is_array($connection->settings) ? $connection->settings : [];
+        $custom = $settings['ignored_phone_numbers'] ?? $settings['excluded_phone_numbers'] ?? [];
+
+        if (is_string($custom)) {
+            $custom = preg_split('/[\s,;]+/', $custom) ?: [];
+        }
+
+        $normalized = [];
+        foreach (array_merge(self::EXCLUDED_PHONE_NUMBERS, is_array($custom) ? $custom : []) as $phone) {
+            $value = self::normalizePhone((string) $phone);
+            if ($value) {
+                $normalized[] = $value;
+            }
+        }
+
+        return array_values(array_unique($normalized));
     }
 
     private static function findRecordingUrl(array $payload): ?string

@@ -231,6 +231,7 @@
                 @if(!$isMeasurer)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('deals.kanban') }}">Канбан</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('deals.index') }}">Список</a>
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('tasks.index') }}">Дела</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('deals.closed') }}">Завершённые</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('chats.index') }}">Чаты</a>
                 @endif

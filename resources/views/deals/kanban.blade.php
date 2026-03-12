@@ -64,6 +64,15 @@
                         <div class="text-muted small">
                             <span class="kanban-count" data-stage-id="{{ $stage->id }}">{{ $stageDeals->count() }}</span> шт.
                         </div>
+                        @if(in_array($stage->id, $todayFocusedStageIds ?? [], true))
+                            <div class="text-muted small mt-1">Показываются только сделки за текущую дату</div>
+                            <input
+                                type="search"
+                                class="form-control form-control-sm mt-2 kanban-stage-search"
+                                data-stage-id="{{ $stage->id }}"
+                                placeholder="Поиск по сделкам в этой стадии"
+                            >
+                        @endif
                     </div>
                     <a class="btn btn-sm btn-success" href="{{ route('deals.create') }}" title="Создать сделку">+</a>
                 </div>
@@ -131,19 +140,28 @@
             const tokenEl = document.querySelector('meta[name="csrf-token"]');
             const csrf = tokenEl ? tokenEl.getAttribute('content') : '';
             const searchInput = document.getElementById('kanbanSearch');
+            const stageSearchInputs = document.querySelectorAll('.kanban-stage-search');
 
             const updateCount = (stageId) => {
                 const list = document.querySelector(`.kanban-list[data-stage-id="${stageId}"]`);
                 const countEl = document.querySelector(`.kanban-count[data-stage-id="${stageId}"]`);
                 if (!list || !countEl) return;
-                countEl.textContent = list.querySelectorAll('.kanban-card').length;
+                countEl.textContent = Array.from(list.querySelectorAll('.kanban-card'))
+                    .filter((card) => card.style.display !== 'none')
+                    .length;
             };
 
             const applySearch = () => {
                 const needle = (searchInput?.value || '').trim().toLowerCase();
                 document.querySelectorAll('.kanban-card').forEach((card) => {
                     const hay = (card.dataset.search || '').toLowerCase();
-                    card.style.display = !needle || hay.includes(needle) ? '' : 'none';
+                    const listEl = card.closest('.kanban-list');
+                    const stageId = listEl?.dataset?.stageId || '';
+                    const stageSearch = document.querySelector(`.kanban-stage-search[data-stage-id="${stageId}"]`);
+                    const stageNeedle = (stageSearch?.value || '').trim().toLowerCase();
+                    const matchesGlobal = !needle || hay.includes(needle);
+                    const matchesStage = !stageNeedle || hay.includes(stageNeedle);
+                    card.style.display = matchesGlobal && matchesStage ? '' : 'none';
                 });
 
                 document.querySelectorAll('.kanban-list').forEach((listEl) => {
@@ -158,6 +176,7 @@
             };
 
             searchInput?.addEventListener('input', applySearch);
+            stageSearchInputs.forEach((input) => input.addEventListener('input', applySearch));
 
             document.querySelectorAll('.kanban-list').forEach((listEl) => {
                 new Sortable(listEl, {
