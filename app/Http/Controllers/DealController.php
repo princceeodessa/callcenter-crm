@@ -53,14 +53,18 @@ class DealController extends Controller
         $user = Auth::user();
         $showSpam = $request->boolean('show_spam');
         $q = trim($request->string('q')->toString());
+        $nonTargetPatterns = $this->nonTargetStagePatterns();
 
         $stageQuery = PipelineStage::query()
             ->where('account_id', $user->account_id)
             ->orderBy('sort');
 
         if (!$showSpam) {
-            $stageQuery->whereRaw('LOWER(name) NOT LIKE ?', ['%спам%'])
-                ->whereRaw('LOWER(name) NOT LIKE ?', ['%spam%']);
+            $stageQuery->where(function ($query) use ($nonTargetPatterns) {
+                foreach ($nonTargetPatterns as $pattern) {
+                    $query->whereRaw('LOWER(name) NOT LIKE ?', [$pattern]);
+                }
+            });
         }
 
         $stages = $stageQuery->get();
@@ -68,9 +72,14 @@ class DealController extends Controller
         if (!$showSpam) {
             $hiddenStageIds = PipelineStage::query()
                 ->where('account_id', $user->account_id)
-                ->where(function ($q) {
-                    $q->whereRaw('LOWER(name) LIKE ?', ['%спам%'])
-                        ->orWhereRaw('LOWER(name) LIKE ?', ['%spam%']);
+                ->where(function ($q) use ($nonTargetPatterns) {
+                    foreach ($nonTargetPatterns as $index => $pattern) {
+                        if ($index === 0) {
+                            $q->whereRaw('LOWER(name) LIKE ?', [$pattern]);
+                        } else {
+                            $q->orWhereRaw('LOWER(name) LIKE ?', [$pattern]);
+                        }
+                    }
                 })
                 ->pluck('id')
                 ->all();
@@ -268,7 +277,7 @@ class DealController extends Controller
             'stage',
             'responsible',
             'tasks' => fn($q) => $q->with('assignedTo')->orderBy('status')->orderBy('due_at'),
-            'activities' => fn($q) => $q->orderByDesc('id'),
+            'activities' => fn($q) => $q->with('author')->orderByDesc('id'),
             'conversations' => fn($q) => $q->with('lastMessage')->orderByDesc('last_message_at'),
             'callRecordings' => fn($q) => $q->orderByDesc('id'),
         ]);
@@ -548,6 +557,15 @@ class DealController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    private function nonTargetStagePatterns(): array
+    {
+        return [
+            "%\u{0441}\u{043F}\u{0430}\u{043C}%",
+            '%spam%',
+            "%\u{043D}\u{0435}\u{0446}\u{0435}\u{043B}\u{0435}\u{0432}%",
+            '%non-target%',
+        ];
+    }
     private function isTodayFocusedStage(PipelineStage $stage): bool
     {
         $name = mb_strtolower(trim((string) $stage->name));

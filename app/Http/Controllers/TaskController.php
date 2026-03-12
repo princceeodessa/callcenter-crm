@@ -30,6 +30,7 @@ class TaskController extends Controller
             ->where('account_id', $user->account_id)
             ->where('status', 'open')
             ->when($assignedUserId > 0, fn ($query) => $query->where('assigned_user_id', $assignedUserId))
+            ->when($assignedUserId === -1, fn ($query) => $query->whereNull('assigned_user_id'))
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($inner) use ($search) {
                     $inner->where('title', 'like', "%{$search}%")
@@ -98,7 +99,7 @@ class TaskController extends Controller
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'due_at' => ['required', 'date'],
-            'assigned_user_id' => ['required', 'integer', 'exists:users,id'],
+            'assigned_user_id' => ['nullable', 'integer'],
         ]);
 
         $user = Auth::user();
@@ -116,7 +117,7 @@ class TaskController extends Controller
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'due_at' => ['required', 'date'],
-            'assigned_user_id' => ['required', 'integer', 'exists:users,id'],
+            'assigned_user_id' => ['nullable', 'integer'],
         ]);
 
         $user = Auth::user();
@@ -152,18 +153,7 @@ class TaskController extends Controller
 
     private function createTask(Deal $deal, array $data, $user): Task
     {
-        $assigneeId = (int) $data['assigned_user_id'];
-        $assigneeOk = User::query()
-            ->where('account_id', $user->account_id)
-            ->where('is_active', 1)
-            ->where('id', $assigneeId)
-            ->exists();
-
-        if (!$assigneeOk) {
-            throw ValidationException::withMessages([
-                'assigned_user_id' => 'Нельзя назначить дело этому пользователю',
-            ]);
-        }
+        $assigneeId = $this->resolveAssigneeId($user->account_id, $data['assigned_user_id'] ?? null);
 
         $task = Task::create([
             'account_id' => $user->account_id,
@@ -175,10 +165,10 @@ class TaskController extends Controller
             'due_at' => $data['due_at'],
         ]);
 
-        if ($task->due_at && $task->due_at->lte(now())) {
+        if ($task->assigned_user_id && $task->due_at && $task->due_at->lte(now())) {
             DB::transaction(function () use ($task) {
                 $fresh = Task::query()->lockForUpdate()->find($task->id);
-                if (!$fresh || $fresh->notified_at) {
+                if (!$fresh || $fresh->notified_at || !$fresh->assigned_user_id) {
                     return;
                 }
 
@@ -214,10 +204,36 @@ class TaskController extends Controller
             'deal_id' => $deal->id,
             'author_user_id' => $user->id,
             'type' => 'task_created',
-            'body' => 'Создано дело: '.$task->title,
-            'payload' => ['task_id' => $task->id],
+            'body' => 'Создано дело: '.$task->title.' • Назначено: '.$task->assignee_label,
+            'payload' => [
+                'task_id' => $task->id,
+                'assigned_user_id' => $task->assigned_user_id,
+                'assigned_label' => $task->assignee_label,
+            ],
         ]);
 
         return $task;
+    }
+
+    private function resolveAssigneeId(int $accountId, mixed $value): ?int
+    {
+        if ($value === null || $value === '' || (string) $value === '0') {
+            return null;
+        }
+
+        $assigneeId = (int) $value;
+        $assigneeOk = User::query()
+            ->where('account_id', $accountId)
+            ->where('is_active', 1)
+            ->where('id', $assigneeId)
+            ->exists();
+
+        if (!$assigneeOk) {
+            throw ValidationException::withMessages([
+                'assigned_user_id' => 'Нельзя назначить дело этому пользователю',
+            ]);
+        }
+
+        return $assigneeId;
     }
 }

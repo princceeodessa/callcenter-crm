@@ -46,9 +46,9 @@
             </div>
             <a class="btn btn-sm btn-outline-primary" href="{{ route('deals.closed') }}">Завершённые</a>
             @if(empty($showSpam))
-                <a class="btn btn-sm btn-outline-secondary" href="{{ route('deals.kanban', ['show_spam' => 1, 'q' => $q ?: null]) }}">Показать спам</a>
+                <a class="btn btn-sm btn-outline-secondary" href="{{ route('deals.kanban', ['show_spam' => 1, 'q' => $q ?: null]) }}">Показать нецелевое</a>
             @else
-                <a class="btn btn-sm btn-secondary" href="{{ route('deals.kanban', ['q' => $q ?: null]) }}">Скрыть спам</a>
+                <a class="btn btn-sm btn-secondary" href="{{ route('deals.kanban', ['q' => $q ?: null]) }}">Скрыть нецелевое</a>
             @endif
             <a class="btn btn-sm btn-success" href="{{ route('deals.create') }}">+ Сделка</a>
         </div>

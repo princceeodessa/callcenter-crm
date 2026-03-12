@@ -33,13 +33,14 @@
         <form class="d-flex gap-2 flex-wrap" method="GET" action="{{ route('tasks.index') }}">
             <select class="form-select form-select-sm" name="assigned_user_id" style="min-width: 220px;">
                 <option value="0">Все сотрудники</option>
+                <option value="-1" @selected($assignedUserId === -1)>Только &quot;Всем&quot;</option>
                 @foreach($users as $worker)
                     <option value="{{ $worker->id }}" @selected($assignedUserId === (int) $worker->id)>{{ $worker->name }}</option>
                 @endforeach
             </select>
             <input class="form-control form-control-sm" name="q" value="{{ $search }}" placeholder="Поиск по делу, клиенту, телефону, названию">
             <button class="btn btn-sm btn-primary">Найти</button>
-            @if($search !== '' || $assignedUserId > 0)
+            @if($search !== '' || $assignedUserId !== 0)
                 <a class="btn btn-sm btn-outline-secondary" href="{{ route('tasks.index') }}">Сбросить</a>
             @endif
         </form>
@@ -61,8 +62,8 @@
                 </div>
                 <div class="col-12 col-lg-3">
                     <label class="form-label">Кому назначить</label>
-                    <select name="assigned_user_id" class="form-select" required>
-                        <option value="">Выберите сотрудника</option>
+                    <select name="assigned_user_id" class="form-select">
+                        <option value="0" @selected((string) old('assigned_user_id', '0') === '0')>Всем</option>
                         @foreach($users as $worker)
                             <option value="{{ $worker->id }}" @selected((int) old('assigned_user_id') === (int) $worker->id)>{{ $worker->name }}</option>
                         @endforeach
@@ -101,9 +102,7 @@
                             <div class="text-muted small mt-1">{{ $taskDealTitle($task) }}</div>
                             <div class="text-muted small mt-1">
                                 До {{ optional($task->due_at)->format('d.m.Y H:i') ?: 'без срока' }}
-                                @if($task->assignedTo)
-                                    | Ответственный: {{ $task->assignedTo->name }}
-                                @endif
+                                | Ответственный: {{ $task->assignee_label }}
                             </div>
                         </div>
                         <div class="d-flex gap-2 flex-wrap">
@@ -140,9 +139,7 @@
                             <div class="text-muted small mt-1">{{ $taskDealTitle($task) }}</div>
                             <div class="text-muted small mt-1">
                                 До {{ optional($task->due_at)->format('d.m.Y H:i') ?: 'без срока' }}
-                                @if($task->assignedTo)
-                                    | Ответственный: {{ $task->assignedTo->name }}
-                                @endif
+                                | Ответственный: {{ $task->assignee_label }}
                             </div>
                             @if($task->description)
                                 <div class="mt-2">{{ $task->description }}</div>
@@ -168,9 +165,7 @@
                             <div class="text-muted small mt-1">{{ $taskDealTitle($task) }}</div>
                             <div class="text-muted small mt-1">
                                 До {{ optional($task->due_at)->format('d.m.Y H:i') ?: 'без срока' }}
-                                @if($task->assignedTo)
-                                    | Ответственный: {{ $task->assignedTo->name }}
-                                @endif
+                                | Ответственный: {{ $task->assignee_label }}
                             </div>
                             @if($task->description)
                                 <div class="mt-2">{{ $task->description }}</div>
