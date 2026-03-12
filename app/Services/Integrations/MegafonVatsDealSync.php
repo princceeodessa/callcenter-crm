@@ -9,7 +9,6 @@ use App\Models\IntegrationConnection;
 use App\Models\IntegrationEvent;
 use App\Models\Pipeline;
 use App\Models\PipelineStage;
-use App\Models\Task;
 use App\Models\User;
 use App\Models\CallRecording;
 
@@ -182,27 +181,7 @@ class MegafonVatsDealSync
             );
         }
 
-        // Optional: create a callback task for missed calls
         if ($status === 'missed') {
-            $taskExists = Task::query()
-                ->where('deal_id', $deal->id)
-                ->where('status', 'open')
-                ->where('title', 'like', '%Перезвонить%')
-                ->whereDate('created_at', now()->toDateString())
-                ->exists();
-
-            if (!$taskExists) {
-                Task::create([
-                    'account_id' => $accountId,
-                    'deal_id' => $deal->id,
-                    'assigned_user_id' => $deal->responsible_user_id,
-                    'title' => 'Перезвонить: '.$clientPhone,
-                    'description' => $recordingUrl ? ('Запись: '.$recordingUrl) : null,
-                    'status' => 'open',
-                    'due_at' => now()->addMinutes(10),
-                ]);
-            }
-
             $deal->is_unread = true;
             $deal->save();
         }

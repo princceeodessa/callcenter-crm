@@ -99,7 +99,13 @@
                     <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
                         <div>
                             <div class="fw-semibold">{{ $task->title }}</div>
-                            <div class="text-muted small mt-1">{{ $taskDealTitle($task) }}</div>
+                            <div class="text-muted small mt-1">
+                                @if($task->deal)
+                                    <a href="{{ route('deals.show', $task->deal) }}" class="text-decoration-none">{{ $taskDealTitle($task) }}</a>
+                                @else
+                                    {{ $taskDealTitle($task) }}
+                                @endif
+                            </div>
                             <div class="text-muted small mt-1">
                                 До {{ optional($task->due_at)->format('d.m.Y H:i') ?: 'без срока' }}
                                 | Ответственный: {{ $task->assignee_label }}
@@ -136,7 +142,13 @@
                     @forelse($overdueTasks as $task)
                         <div class="border rounded p-3 mb-2">
                             <div class="fw-semibold">{{ $task->title }}</div>
-                            <div class="text-muted small mt-1">{{ $taskDealTitle($task) }}</div>
+                            <div class="text-muted small mt-1">
+                                @if($task->deal)
+                                    <a href="{{ route('deals.show', $task->deal) }}" class="text-decoration-none">{{ $taskDealTitle($task) }}</a>
+                                @else
+                                    {{ $taskDealTitle($task) }}
+                                @endif
+                            </div>
                             <div class="text-muted small mt-1">
                                 До {{ optional($task->due_at)->format('d.m.Y H:i') ?: 'без срока' }}
                                 | Ответственный: {{ $task->assignee_label }}
@@ -162,7 +174,13 @@
                     @forelse($upcomingTasks as $task)
                         <div class="border rounded p-3 mb-2">
                             <div class="fw-semibold">{{ $task->title }}</div>
-                            <div class="text-muted small mt-1">{{ $taskDealTitle($task) }}</div>
+                            <div class="text-muted small mt-1">
+                                @if($task->deal)
+                                    <a href="{{ route('deals.show', $task->deal) }}" class="text-decoration-none">{{ $taskDealTitle($task) }}</a>
+                                @else
+                                    {{ $taskDealTitle($task) }}
+                                @endif
+                            </div>
                             <div class="text-muted small mt-1">
                                 До {{ optional($task->due_at)->format('d.m.Y H:i') ?: 'без срока' }}
                                 | Ответственный: {{ $task->assignee_label }}
