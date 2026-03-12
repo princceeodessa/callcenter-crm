@@ -178,6 +178,17 @@ class Deal extends Model
         return $this->fallbackLeadSourceMeta()['surface_class'];
     }
 
+    public function getLastMovedByLabelAttribute(): string
+    {
+        $history = $this->latestStageHistory;
+
+        if (!$history) {
+            return 'Еще не перемещали';
+        }
+
+        return 'Последний перенос: '.($history->changedBy?->name ?? 'Система');
+    }
+
     private function resolveLeadSourceConversation(): ?Conversation
     {
         try {

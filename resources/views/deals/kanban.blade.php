@@ -95,12 +95,7 @@
                             <div class="text-muted small mt-1">
                                 @if($deal->contact?->phone){{ $deal->contact->phone }}@else Без телефона @endif
                             </div>
-                            @php
-                                $lastMovedByLabel = $deal->latestStageHistory
-                                    ? 'Последний перенос: '.($deal->latestStageHistory->changedBy?->name ?? 'Система')
-                                    : 'Еще не перемещали';
-                            @endphp
-                            <div class="text-muted small mt-2 kanban-last-moved">{{ $lastMovedByLabel }}</div>
+                            <div class="text-muted small mt-2 kanban-last-moved">{{ $deal->last_moved_by_label }}</div>
                         </div>
                     @endforeach
 
