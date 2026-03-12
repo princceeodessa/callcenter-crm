@@ -17,6 +17,10 @@ class Deal extends Model
     private const TILDA_SOURCE_BADGE_CLASS = 'source-badge source-badge-tilda';
     private const TILDA_SOURCE_SURFACE_CLASS = 'source-surface source-surface-tilda';
     private const TILDA_SOURCE_ICON_HTML = '<span class="source-icon source-icon-tilda" aria-hidden="true"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="M13 24C13 14.6112 20.6112 7 30 7C36.664 7 40.5365 9.56094 44.2817 12.0394C47.4207 14.1167 50.4702 16.1348 55 16.1348V25.1348C47.6644 25.1348 43.4048 22.3158 39.9587 20.0354C36.7068 17.8836 34.3559 16.3272 30 16.3272C25.7452 16.3272 22.2963 19.7761 22.2963 24.0309V25.1348H13V24ZM28 25H37V57H28V25Z" fill="currentColor"/></svg></span>';
+    private const BITRIX_SOURCE_LABEL = 'Bitrix';
+    private const BITRIX_SOURCE_BADGE_CLASS = 'source-badge source-badge-bitrix';
+    private const BITRIX_SOURCE_SURFACE_CLASS = 'source-surface source-surface-bitrix';
+    private const BITRIX_SOURCE_ICON_HTML = '<span class="source-icon source-icon-bitrix"><i class="bi bi-box-arrow-in-down-right"></i></span>';
     private const PHONE_SOURCE_LABEL = "\u{0422}\u{0435}\u{043B}\u{0435}\u{0444}\u{043E}\u{043D}";
     private const PHONE_SOURCE_BADGE_CLASS = 'source-badge source-badge-megafon_vats';
     private const PHONE_SOURCE_SURFACE_CLASS = 'source-surface source-surface-megafon_vats';
@@ -218,6 +222,15 @@ class Deal extends Model
             ];
         }
 
+        if ($this->hasBitrixImportSource()) {
+            return [
+                'label' => self::BITRIX_SOURCE_LABEL,
+                'badge_class' => self::BITRIX_SOURCE_BADGE_CLASS,
+                'surface_class' => self::BITRIX_SOURCE_SURFACE_CLASS,
+                'icon_html' => self::BITRIX_SOURCE_ICON_HTML,
+            ];
+        }
+
         return [
             'label' => self::DEFAULT_SOURCE_LABEL,
             'badge_class' => self::DEFAULT_SOURCE_BADGE_CLASS,
@@ -269,6 +282,23 @@ class Deal extends Model
         return $this->activities()
             ->where('type', 'lead_form')
             ->where('payload->provider', 'tilda')
+            ->exists();
+    }
+
+    private function hasBitrixImportSource(): bool
+    {
+        if ($this->relationLoaded('activities')) {
+            return $this->activities->contains(function ($activity) {
+                $payload = is_array($activity->payload ?? null) ? $activity->payload : [];
+
+                return $activity->type === 'import'
+                    && (($payload['provider'] ?? null) === 'bitrix');
+            });
+        }
+
+        return $this->activities()
+            ->where('type', 'import')
+            ->where('payload->provider', 'bitrix')
             ->exists();
     }
 }

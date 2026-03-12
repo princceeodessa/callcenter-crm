@@ -171,6 +171,7 @@
         .source-badge-vk { background: rgba(0, 119, 255, .18); color: #0a66ff; }
         .source-badge-telegram { background: rgba(0, 136, 204, .16); color: #0ea5e9; }
         .source-badge-avito { background: rgba(151, 71, 255, .18); color: #8b5cf6; }
+        .source-badge-bitrix { background: rgba(37, 99, 235, .16); color: #1d4ed8; }
         .source-badge-tilda { background: rgba(249, 115, 22, .16); color: #c2410c; }
         .source-badge-megafon_vats { background: rgba(34, 197, 94, .16); color: #166534; }
         .source-badge-default { background: rgba(100, 116, 139, .15); color: #334155; }
@@ -182,6 +183,7 @@
         .source-surface-vk { border-left-color: #0077ff; }
         .source-surface-telegram { border-left-color: #0891b2; }
         .source-surface-avito { border-left-color: #8b5cf6; }
+        .source-surface-bitrix { border-left-color: #2563eb; }
         .source-surface-tilda { border-left-color: #f97316; }
         .source-surface-megafon_vats { border-left-color: #16a34a; }
         .source-surface-default { border-left-color: #94a3b8; }
@@ -206,6 +208,7 @@
         .source-icon-vk { background: linear-gradient(135deg, #0ea5ff 0%, #2563eb 100%); text-transform: lowercase; letter-spacing: -.02em; }
         .source-icon-telegram { background: linear-gradient(135deg, #22d3ee 0%, #0284c7 100%); }
         .source-icon-avito { background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%); }
+        .source-icon-bitrix { background: linear-gradient(135deg, #60a5fa 0%, #1d4ed8 100%); }
         .source-icon-tilda { background: linear-gradient(135deg, #fdba74 0%, #f97316 100%); }
         .source-icon-megafon_vats { background: linear-gradient(135deg, #22c55e 0%, #15803d 100%); }
         .source-icon-default { background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%); }
@@ -245,6 +248,7 @@
                 @endif
                 @if($isAdmin)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('settings.integrations.index') }}">Интеграции</a>
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('settings.imports.bitrix.index') }}">Импорт Bitrix</a>
                 @endif
                 @if($isPriv)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('settings.users.index') }}">Пользователи</a>

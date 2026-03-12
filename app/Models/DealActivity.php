@@ -40,6 +40,7 @@ class DealActivity extends Model
         $provider = isset($payload['provider']) ? (string) $payload['provider'] : null;
 
         $provLabel = $provider ? match ($provider) {
+            'bitrix' => 'Bitrix',
             'vk' => 'VK',
             'telegram' => 'Telegram',
             'avito' => 'Avito',
@@ -51,6 +52,7 @@ class DealActivity extends Model
             'message_in' => 'Входящее сообщение'.($provLabel ? " ({$provLabel})" : ''),
             'message_out' => 'Исходящее сообщение'.($provLabel ? " ({$provLabel})" : ''),
             'lead_form' => 'Заявка с формы'.($provLabel ? " ({$provLabel})" : ''),
+            'import' => 'Импорт'.($provLabel ? " ({$provLabel})" : ''),
             'call' => 'Звонок',
             'task_created' => 'Создано дело',
             'task_done' => 'Дело выполнено',

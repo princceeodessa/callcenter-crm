@@ -18,6 +18,7 @@ use App\Http\Controllers\Webhooks\TildaWebhookController;
 use App\Http\Controllers\MediaController;
 use App\Http\Controllers\MeasurementController;
 use App\Http\Controllers\NonClosureController;
+use App\Http\Controllers\Settings\BitrixImportController;
 
 // Webhooks (public)
 Route::post('/webhooks/megafon/vats', [MegafonVatsWebhookController::class, 'handle'])
@@ -93,6 +94,8 @@ Route::middleware('auth')->group(function () {
         Route::post('/settings/integrations/{provider}/connect', [IntegrationController::class, 'connect'])->name('settings.integrations.connect');
         Route::post('/settings/integrations/{provider}/disconnect', [IntegrationController::class, 'disconnect'])->name('settings.integrations.disconnect');
         Route::post('/settings/integrations/{provider}/test-send', [IntegrationController::class, 'testSend'])->name('settings.integrations.testSend');
+        Route::get('/settings/imports/bitrix', [BitrixImportController::class, 'index'])->name('settings.imports.bitrix.index');
+        Route::post('/settings/imports/bitrix', [BitrixImportController::class, 'import'])->name('settings.imports.bitrix.import');
 
         // Avito OAuth flow (redirect starts here, callback hits /webhooks/avito)
         Route::get('/settings/integrations/avito/oauth/start', [IntegrationController::class, 'avitoOauthStart'])
