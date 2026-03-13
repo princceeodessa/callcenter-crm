@@ -70,6 +70,10 @@
             —
           @endif
         </div>
+      @elseif($provider === 'bitrix')
+        <div class="mb-1"><b>Webhook URL:</b> {{ $s['webhook_url'] ?? '—' }}</div>
+        <div class="mb-1"><b>ID ответственного в Bitrix:</b> {{ $s['default_responsible_id'] ?? '—' }}</div>
+        <div class="mb-1 text-muted">Синхронизируются локальные дела по сделкам, которые были импортированы из Bitrix.</div>
       @endif
 
       @if(!empty($s['last_setup_error'] ?? null))
@@ -108,7 +112,7 @@
           <button class="btn btn-sm btn-outline-primary w-100">Отправить</button>
         </div>
       </form>
-      <div class="text-muted small mt-2">Результат смотри ниже в “Последние события”.</div>
+      <div class="text-muted small mt-2">Результат смотри ниже в «Последние события».</div>
     </div>
   </div>
 @endif

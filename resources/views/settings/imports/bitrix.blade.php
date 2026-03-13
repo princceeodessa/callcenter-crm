@@ -1,4 +1,4 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @section('content')
 <div class="d-flex flex-column gap-3">
@@ -13,6 +13,10 @@
         <a class="btn btn-outline-secondary" href="{{ route('deals.kanban') }}">Канбан</a>
       </div>
     </div>
+  </div>
+
+  <div class="alert alert-info mb-0">
+    Импорт из этого экрана односторонний: файл загружается в CRM. Комментарии и Bitrix-дела подтягиваются только если они есть в выгрузке, а обратная отправка локальных дел в Bitrix работает через раздел «Интеграции» при включённом Bitrix webhook.
   </div>
 
   <div class="row g-3">
@@ -36,7 +40,7 @@
                   <option value="{{ $stage->id }}" @selected((int) old('default_stage_id', $stages->first()?->id) === (int) $stage->id)>{{ $stage->name }}</option>
                 @endforeach
               </select>
-              <div class="form-text">Если статус из Bitrix не совпадёт с названием вашей стадии, лид попадёт сюда.</div>
+              <div class="form-text">Если стадия сделки из Bitrix не совпадёт с названием вашей стадии, лид попадёт сюда.</div>
             </div>
 
             <div class="col-md-6">
@@ -46,7 +50,7 @@
                   <option value="{{ $crmUser->id }}" @selected((int) old('default_responsible_user_id', auth()->id()) === (int) $crmUser->id)>{{ $crmUser->name }}</option>
                 @endforeach
               </select>
-              <div class="form-text">Если имя ответственного в файле не распознается, сделка назначится на этого сотрудника.</div>
+              <div class="form-text">Если имя ответственного из файла не распознается, сделка назначится на этого сотрудника.</div>
             </div>
 
             <div class="col-12">
@@ -63,8 +67,8 @@
         <div class="card-body small">
           <div class="mb-2">Импорт старается распознать типовые колонки выгрузки Bitrix без ручного маппинга.</div>
           <ul class="mb-0">
-            <li>`ID`, `Название`, `Имя`, `Фамилия`, `Отчество`</li>
-            <li>`Телефон`, `E-mail`, `Статус`, `Ответственный`</li>
+            <li>`ID`, `Название сделки`, `Контакт`, `Имя`, `Фамилия`, `Отчество`</li>
+            <li>`Телефон`, `E-mail`, `Стадия сделки`, `Ответственный`</li>
             <li>`Сумма`, `Валюта`, `Источник`, `Комментарий`, `Дата создания`</li>
           </ul>
         </div>

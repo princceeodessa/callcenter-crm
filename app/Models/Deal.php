@@ -25,7 +25,27 @@ class Deal extends Model
     private const PHONE_SOURCE_BADGE_CLASS = 'source-badge source-badge-megafon_vats';
     private const PHONE_SOURCE_SURFACE_CLASS = 'source-surface source-surface-megafon_vats';
     private const PHONE_SOURCE_ICON_HTML = '<span class="source-icon source-icon-megafon_vats"><i class="bi bi-telephone-fill"></i></span>';
-
+    private const INCOMING_PHONE_SOURCE_LABELS = [
+        '79225150259' => 'авито частник',
+        '79225070404' => 'радио',
+        '79225085574' => 'вк',
+        '79221797710' => 'авито',
+        '79225174552' => 'сайт (директ)',
+    ];
+    private const INCOMING_PHONE_SOURCE_KEYS = [
+        'diversion',
+        'to',
+        'dst',
+        'dst_num',
+        'destination',
+        'number',
+        'did',
+        'redirect_number',
+        'redirect',
+        'callerid_dnis',
+        'caller_id_dnis',
+        'telnum',
+    ];
     protected $fillable = [
         'account_id','pipeline_id','stage_id',
         'title','title_is_custom','contact_id','responsible_user_id',
@@ -108,6 +128,12 @@ class Deal extends Model
         return $this->hasMany(CallRecording::class);
     }
 
+    public function latestCallActivity()
+    {
+        return $this->hasOne(DealActivity::class)->ofMany(['id' => 'max'], function ($query) {
+            $query->where('type', 'call');
+        });
+    }
     public function primaryConversation(): ?Conversation
     {
         if ($this->relationLoaded('conversations')) {
@@ -182,6 +208,20 @@ class Deal extends Model
         return $this->fallbackLeadSourceMeta()['surface_class'];
     }
 
+    public function getIncomingPhoneSourceLabelAttribute(): ?string
+    {
+        return $this->resolveIncomingPhoneSourceBinding()['label'] ?? null;
+    }
+
+    public function getIncomingPhoneSourceDisplayAttribute(): ?string
+    {
+        $binding = $this->resolveIncomingPhoneSourceBinding();
+        if (!$binding) {
+            return null;
+        }
+
+        return $binding['label'].' - '.$this->formatPhoneSourceNumber($binding['number']);
+    }
     public function getLastMovedByLabelAttribute(): string
     {
         $history = $this->latestStageHistory;
@@ -202,6 +242,39 @@ class Deal extends Model
         }
     }
 
+    public static function resolveIncomingPhoneSourceFromPayload(?array $payload): ?array
+    {
+        if (!is_array($payload) || $payload === []) {
+            return null;
+        }
+
+        $callType = strtolower(trim((string) ($payload['type'] ?? '')));
+        if ($callType === 'out') {
+            return null;
+        }
+
+        foreach (self::INCOMING_PHONE_SOURCE_KEYS as $key) {
+            if (!array_key_exists($key, $payload)) {
+                continue;
+            }
+
+            $binding = self::resolveIncomingPhoneSourceFromValue($payload[$key]);
+            if ($binding) {
+                return $binding;
+            }
+        }
+
+        $binding = null;
+        array_walk_recursive($payload, function ($value) use (&$binding) {
+            if ($binding !== null) {
+                return;
+            }
+
+            $binding = self::resolveIncomingPhoneSourceFromValue($value);
+        });
+
+        return $binding;
+    }
     private function fallbackLeadSourceMeta(): array
     {
         if ($this->hasTildaLeadSource()) {
@@ -285,20 +358,141 @@ class Deal extends Model
             ->exists();
     }
 
+    public function resolveBitrixBinding(): ?array
+    {
+        $activity = $this->resolveLatestBitrixImportActivity();
+        if (! $activity) {
+            return null;
+        }
+
+        $payload = is_array($activity->payload ?? null) ? $activity->payload : [];
+        $entityId = trim((string) ($payload['bitrix_entity_id'] ?? $payload['bitrix_lead_id'] ?? ''));
+        if ($entityId === '') {
+            return null;
+        }
+
+        $entityType = strtolower(trim((string) ($payload['bitrix_entity_type'] ?? 'lead')));
+        if (! in_array($entityType, ['lead', 'deal'], true)) {
+            $entityType = 'lead';
+        }
+
+        return [
+            'entity_id' => $entityId,
+            'entity_type' => $entityType,
+            'owner_type_id' => $entityType === 'deal' ? 2 : 1,
+            'activity_id' => $activity->id,
+        ];
+    }
+
     private function hasBitrixImportSource(): bool
     {
-        if ($this->relationLoaded('activities')) {
-            return $this->activities->contains(function ($activity) {
-                $payload = is_array($activity->payload ?? null) ? $activity->payload : [];
+        return $this->resolveLatestBitrixImportActivity() !== null;
+    }
 
-                return $activity->type === 'import'
-                    && (($payload['provider'] ?? null) === 'bitrix');
-            });
+    private function resolveIncomingPhoneSourceBinding(): ?array
+    {
+        if ($this->relationLoaded('activities')) {
+            foreach ($this->activities->where('type', 'call')->sortByDesc('id') as $activity) {
+                $binding = self::resolveIncomingPhoneSourceFromPayload(is_array($activity->payload ?? null) ? $activity->payload : []);
+                if ($binding) {
+                    return $binding;
+                }
+            }
+
+            return null;
+        }
+
+        if ($this->relationLoaded('latestCallActivity')) {
+            $binding = self::resolveIncomingPhoneSourceFromPayload(
+                is_array($this->latestCallActivity?->payload ?? null) ? $this->latestCallActivity->payload : []
+            );
+            if ($binding) {
+                return $binding;
+            }
+        }
+
+        foreach ($this->activities()->where('type', 'call')->orderByDesc('id')->limit(5)->get() as $activity) {
+            $binding = self::resolveIncomingPhoneSourceFromPayload(is_array($activity->payload ?? null) ? $activity->payload : []);
+            if ($binding) {
+                return $binding;
+            }
+        }
+
+        return null;
+    }
+
+    private static function resolveIncomingPhoneSourceFromValue(mixed $value): ?array
+    {
+        $number = self::normalizePhoneSourceNumber($value);
+        if (!$number) {
+            return null;
+        }
+
+        $label = self::INCOMING_PHONE_SOURCE_LABELS[$number] ?? null;
+        if (!$label) {
+            return null;
+        }
+
+        return [
+            'number' => $number,
+            'label' => $label,
+        ];
+    }
+
+    private static function normalizePhoneSourceNumber(mixed $value): ?string
+    {
+        if (!is_scalar($value)) {
+            return null;
+        }
+
+        $digits = preg_replace('/\D+/', '', (string) $value);
+        if (!$digits) {
+            return null;
+        }
+
+        if (strlen($digits) === 11 && $digits[0] === '8') {
+            $digits = '7'.substr($digits, 1);
+        }
+
+        if (strlen($digits) === 10) {
+            $digits = '7'.$digits;
+        }
+
+        if (!preg_match('/^7\d{10}$/', $digits)) {
+            return null;
+        }
+
+        return $digits;
+    }
+
+    private function formatPhoneSourceNumber(string $digits): string
+    {
+        return sprintf(
+            '+7 (%s) %s-%s-%s',
+            substr($digits, 1, 3),
+            substr($digits, 4, 3),
+            substr($digits, 7, 2),
+            substr($digits, 9, 2)
+        );
+    }
+    private function resolveLatestBitrixImportActivity(): ?DealActivity
+    {
+        if ($this->relationLoaded('activities')) {
+            return $this->activities
+                ->filter(function ($activity) {
+                    $payload = is_array($activity->payload ?? null) ? $activity->payload : [];
+
+                    return $activity->type === 'import'
+                        && (($payload['provider'] ?? null) === 'bitrix');
+                })
+                ->sortByDesc('id')
+                ->first();
         }
 
         return $this->activities()
             ->where('type', 'import')
             ->where('payload->provider', 'bitrix')
-            ->exists();
+            ->orderByDesc('id')
+            ->first();
     }
 }

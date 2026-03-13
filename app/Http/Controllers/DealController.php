@@ -9,6 +9,7 @@ use App\Models\DealActivity;
 use App\Models\DealStageHistory;
 use App\Models\CallRecording;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -56,6 +57,7 @@ class DealController extends Controller
         $user = Auth::user();
         $showSpam = $request->boolean('show_spam');
         $q = trim($request->string('q')->toString());
+        $focusDate = $this->resolveKanbanFocusDate($request->string('focus_date')->toString());
         $nonTargetPatterns = $this->nonTargetStagePatterns();
 
         $stageQuery = PipelineStage::query()
@@ -92,10 +94,7 @@ class DealController extends Controller
             ->with(['contact','responsible','latestStageHistory.changedBy:id,name','conversations' => fn($q) => $q->orderByDesc('last_message_at')])
             ->withCount([
                 'callRecordings as phone_call_recordings_count',
-                'activities as phone_call_activities_count' => fn($q) => $q->where('type', 'call'),
-                'activities as tilda_lead_form_activities_count' => fn($q) => $q
-                    ->where('type', 'lead_form')
-                    ->where('payload->provider', 'tilda'),
+                'activities as tilda_lead_form_activities_count' => fn ($query) => $query->where('type', 'lead_form')->where('payload->provider', 'tilda'),
             ])
             ->where('account_id', $user->account_id)
             ->whereNull('closed_at')
@@ -116,35 +115,36 @@ class DealController extends Controller
         }
 
         $dealsByStage = $dealQuery->get()->groupBy('stage_id');
-        $todayFocusedStageIds = $stages
-            ->filter(fn ($stage) => $this->isTodayFocusedStage($stage))
+        $dateFilteredStageIds = $stages
+            ->filter(fn ($stage) => $this->isDateFilteredStage($stage))
             ->pluck('id')
             ->all();
 
-        if (!empty($todayFocusedStageIds)) {
-            $todayStart = now()->startOfDay();
-            $tomorrowStart = (clone $todayStart)->addDay();
+        if ($focusDate !== null && !empty($dateFilteredStageIds)) {
+            $dayStart = $focusDate->copy()->startOfDay();
+            $dayEnd = $focusDate->copy()->endOfDay();
 
-            $todayStageIdsByStage = DealStageHistory::query()
+            $dayStageIdsByStage = DealStageHistory::query()
                 ->where('account_id', $user->account_id)
-                ->whereIn('to_stage_id', $todayFocusedStageIds)
-                ->whereBetween('changed_at', [$todayStart, $tomorrowStart])
+                ->whereIn('to_stage_id', $dateFilteredStageIds)
+                ->whereBetween('changed_at', [$dayStart, $dayEnd])
                 ->get(['deal_id', 'to_stage_id'])
                 ->groupBy('to_stage_id')
                 ->map(fn ($rows) => $rows->pluck('deal_id')->map(fn ($id) => (int) $id)->all());
 
-            foreach ($todayFocusedStageIds as $stageId) {
-                $todayDealIds = $todayStageIdsByStage[$stageId] ?? [];
+            foreach ($dateFilteredStageIds as $stageId) {
+                $dayDealIds = $dayStageIdsByStage[$stageId] ?? [];
                 $dealsByStage[$stageId] = ($dealsByStage[$stageId] ?? collect())
-                    ->filter(function ($deal) use ($todayDealIds, $todayStart) {
-                        $createdToday = $deal->created_at && $deal->created_at->isSameDay($todayStart);
-                        return $createdToday || in_array((int) $deal->id, $todayDealIds, true);
+                    ->filter(function ($deal) use ($dayDealIds, $dayStart) {
+                        $createdOnDay = $deal->created_at && $deal->created_at->isSameDay($dayStart);
+
+                        return $createdOnDay || in_array((int) $deal->id, $dayDealIds, true);
                     })
                     ->values();
             }
         }
 
-        return view('deals.kanban', compact('stages','dealsByStage','showSpam','q', 'todayFocusedStageIds'));
+        return view('deals.kanban', compact('stages','dealsByStage','showSpam','q', 'dateFilteredStageIds', 'focusDate'));
     }
 
     public function create()
@@ -211,7 +211,7 @@ class DealController extends Controller
             'deal_id' => $deal->id,
             'author_user_id' => $user->id,
             'type' => 'system',
-            'body' => 'Сделка создана вручную',
+            'body' => $this->dealCreatedActivityBody(),
         ]);
 
         DealStageHistory::create([
@@ -259,7 +259,7 @@ class DealController extends Controller
             'deal_id' => $deal->id,
             'author_user_id' => $user->id,
             'type' => 'deal_updated',
-            'body' => 'Данные сделки обновлены',
+            'body' => $this->dealUpdatedActivityBody(),
             'payload' => [
                 'before' => $old,
                 'after' => [
@@ -270,7 +270,7 @@ class DealController extends Controller
             ],
         ]);
 
-        return back()->with('status', 'Сделка обновлена');
+        return back()->with('status', $this->dealUpdatedStatusMessage());
     }
 
     public function show(Deal $deal)
@@ -342,9 +342,9 @@ class DealController extends Controller
                     'source_label' => $conversation->source_label,
                     'source_icon_html' => $conversation->source_icon_html,
                     'chat_url' => $conversation->chat_url,
-                    'lead_name' => $conversation->lead_name ?: 'Диалог',
+                    'lead_name' => $conversation->lead_name ?: $this->unknownLeadLabel(),
                     'subtitle' => $conversation->display_subtitle,
-                    'body' => \Illuminate\Support\Str::limit($conversation->lastMessage?->body ?? '—', 80),
+                    'body' => \Illuminate\Support\Str::limit($conversation->lastMessage?->body ?? $this->conversationUnavailableBody(), 80),
                     'last_message_at' => $conversation->last_message_at?->format('d.m H:i') ?? '',
                     'unread_count' => (int) ($conversation->unread_count ?? 0),
                 ];
@@ -356,9 +356,9 @@ class DealController extends Controller
                     'source_label' => 'CRM',
                     'source_icon_html' => '<span class="source-icon source-icon-default"><i class="bi bi-chat-dots-fill"></i></span>',
                     'chat_url' => null,
-                    'lead_name' => 'Диалог',
-                    'subtitle' => 'Источник: CRM',
-                    'body' => '—',
+                    'lead_name' => $this->unknownLeadLabel(),
+                    'subtitle' => $this->crmConversationSubtitle(),
+                    'body' => $this->conversationUnavailableBody(),
                     'last_message_at' => '',
                     'unread_count' => 0,
                 ];
@@ -457,16 +457,14 @@ class DealController extends Controller
             'deal_id' => $deal->id,
             'author_user_id' => $user->id,
             'type' => 'deal_closed',
-            'body' => $data['result'] === 'won'
-                ? ('Сделка закрыта успешно'.($deal->closed_reason ? (': '.$deal->closed_reason) : ''))
-                : ('Сделка закрыта с отказом'.($deal->closed_reason ? (': '.$deal->closed_reason) : '')),
+            'body' => $this->dealClosedActivityBody($deal->closed_result, $deal->closed_reason),
             'payload' => [
                 'closed_result' => $deal->closed_result,
                 'closed_reason' => $deal->closed_reason,
             ],
         ]);
 
-        return redirect()->route('deals.show', $deal)->with('status', 'Сделка закрыта');
+        return redirect()->route('deals.show', $deal)->with('status', $this->dealClosedStatusMessage());
     }
 
     public function changeStage(Request $request, Deal $deal)
@@ -479,14 +477,14 @@ class DealController extends Controller
         abort_unless($deal->account_id === $user->account_id, 403);
 
         if ($deal->closed_at) {
-            return back()->withErrors(['stage_id' => 'Нельзя менять стадию у закрытой сделки']);
+            return back()->withErrors(['stage_id' => $this->closedDealStageChangeError()]);
         }
         $to = PipelineStage::findOrFail($data['stage_id']);
         abort_unless($to->account_id === $user->account_id, 403);
         $fromId = $deal->stage_id;
 
         if ($to->pipeline_id !== $deal->pipeline_id) {
-            abort(422, 'Stage pipeline mismatch');
+            abort(422, "\u{042D}\u{0442}\u{0430}\u{043F} \u{043E}\u{0442}\u{043D}\u{043E}\u{0441}\u{0438}\u{0442}\u{0441}\u{044F} \u{043A} \u{0434}\u{0440}\u{0443}\u{0433}\u{043E}\u{0439} \u{0432}\u{043E}\u{0440}\u{043E}\u{043D}\u{043A}\u{0435}");
         }
 
         $deal->stage_id = $to->id;
@@ -497,7 +495,7 @@ class DealController extends Controller
             'deal_id' => $deal->id,
             'author_user_id' => $user->id,
             'type' => 'stage_changed',
-            'body' => 'Стадия изменена',
+            'body' => $this->stageChangedActivityBody(),
             'payload' => ['from_stage_id' => $fromId, 'to_stage_id' => $to->id],
         ]);
 
@@ -526,15 +524,15 @@ class DealController extends Controller
         }
 
         if ($deal->closed_at) {
-            return response()->json(['ok' => false, 'message' => 'Deal is closed'], 422);
+            return response()->json(['ok' => false, 'message' => "\u{0421}\u{0434}\u{0435}\u{043B}\u{043A}\u{0430} \u{0443}\u{0436}\u{0435} \u{0437}\u{0430}\u{043A}\u{0440}\u{044B}\u{0442}\u{0430}"], 422);
         }
 
         $to = PipelineStage::findOrFail($data['to_stage_id']);
         if ($to->account_id !== $user->account_id) {
-            return response()->json(['ok' => false, 'message' => 'Forbidden'], 403);
+            return response()->json(['ok' => false, 'message' => "\u{041D}\u{0435}\u{0442} \u{0434}\u{043E}\u{0441}\u{0442}\u{0443}\u{043F}\u{0430}"], 403);
         }
         if ($to->pipeline_id !== $deal->pipeline_id) {
-            return response()->json(['ok' => false, 'message' => 'Stage pipeline mismatch'], 422);
+            return response()->json(['ok' => false, 'message' => "\u{042D}\u{0442}\u{0430}\u{043F} \u{043E}\u{0442}\u{043D}\u{043E}\u{0441}\u{0438}\u{0442}\u{0441}\u{044F} \u{043A} \u{0434}\u{0440}\u{0443}\u{0433}\u{043E}\u{0439} \u{0432}\u{043E}\u{0440}\u{043E}\u{043D}\u{043A}\u{0435}"], 422);
         }
 
         $fromId = $deal->stage_id;
@@ -550,7 +548,7 @@ class DealController extends Controller
             'deal_id' => $deal->id,
             'author_user_id' => $user->id,
             'type' => 'stage_changed',
-            'body' => 'Стадия изменена (перетаскиванием)',
+            'body' => $this->stageChangedActivityBody(),
             'payload' => ['from_stage_id' => $fromId, 'to_stage_id' => $to->id],
         ]);
 
@@ -565,10 +563,73 @@ class DealController extends Controller
 
         return response()->json([
             'ok' => true,
-            'last_moved_by_label' => 'Последний перенос: '.$user->name,
+            'last_moved_by_label' => $this->lastMovedByLabel($user->name),
         ]);
     }
 
+    private function dealCreatedActivityBody(): string
+    {
+        return "\u{0421}\u{0434}\u{0435}\u{043B}\u{043A}\u{0430} \u{0441}\u{043E}\u{0437}\u{0434}\u{0430}\u{043D}\u{0430}.";
+    }
+
+    private function dealUpdatedActivityBody(): string
+    {
+        return "\u{0414}\u{0430}\u{043D}\u{043D}\u{044B}\u{0435} \u{0441}\u{0434}\u{0435}\u{043B}\u{043A}\u{0438} \u{043E}\u{0431}\u{043D}\u{043E}\u{0432}\u{043B}\u{0435}\u{043D}\u{044B}.";
+    }
+
+    private function dealUpdatedStatusMessage(): string
+    {
+        return "\u{0421}\u{0434}\u{0435}\u{043B}\u{043A}\u{0430} \u{043E}\u{0431}\u{043D}\u{043E}\u{0432}\u{043B}\u{0435}\u{043D}\u{0430}.";
+    }
+
+    private function dealClosedActivityBody(string $result, ?string $reason): string
+    {
+        $base = $result === 'won'
+            ? "\u{0421}\u{0434}\u{0435}\u{043B}\u{043A}\u{0430} \u{0437}\u{0430}\u{043A}\u{0440}\u{044B}\u{0442}\u{0430} \u{0443}\u{0441}\u{043F}\u{0435}\u{0448}\u{043D}\u{043E}."
+            : "\u{0421}\u{0434}\u{0435}\u{043B}\u{043A}\u{0430} \u{0437}\u{0430}\u{043A}\u{0440}\u{044B}\u{0442}\u{0430} \u{043A}\u{0430}\u{043A} \u{043D}\u{0435}\u{0443}\u{0441}\u{043F}\u{0435}\u{0448}\u{043D}\u{0430}\u{044F}.";
+
+        $reason = trim((string) $reason);
+        if ($reason === '') {
+            return $base;
+        }
+
+        return $base.' '."\u{041F}\u{0440}\u{0438}\u{0447}\u{0438}\u{043D}\u{0430}: ".$reason;
+    }
+
+    private function dealClosedStatusMessage(): string
+    {
+        return "\u{0421}\u{0434}\u{0435}\u{043B}\u{043A}\u{0430} \u{0437}\u{0430}\u{043A}\u{0440}\u{044B}\u{0442}\u{0430}.";
+    }
+
+    private function closedDealStageChangeError(): string
+    {
+        return "\u{0417}\u{0430}\u{043A}\u{0440}\u{044B}\u{0442}\u{0443}\u{044E} \u{0441}\u{0434}\u{0435}\u{043B}\u{043A}\u{0443} \u{043D}\u{0435}\u{043B}\u{044C}\u{0437}\u{044F} \u{043F}\u{0435}\u{0440}\u{0435}\u{043C}\u{0435}\u{0449}\u{0430}\u{0442}\u{044C}.";
+    }
+
+    private function stageChangedActivityBody(): string
+    {
+        return "\u{0421}\u{0442}\u{0430}\u{0434}\u{0438}\u{044F} \u{0441}\u{0434}\u{0435}\u{043B}\u{043A}\u{0438} \u{0438}\u{0437}\u{043C}\u{0435}\u{043D}\u{0435}\u{043D}\u{0430}.";
+    }
+
+    private function lastMovedByLabel(string $userName): string
+    {
+        return "\u{041F}\u{043E}\u{0441}\u{043B}\u{0435}\u{0434}\u{043D}\u{0438}\u{0439} \u{043F}\u{0435}\u{0440}\u{0435}\u{043D}\u{043E}\u{0441}: ".$userName;
+    }
+
+    private function unknownLeadLabel(): string
+    {
+        return "\u{0411}\u{0435}\u{0437} \u{0438}\u{043C}\u{0435}\u{043D}\u{0438}";
+    }
+
+    private function crmConversationSubtitle(): string
+    {
+        return 'CRM';
+    }
+
+    private function conversationUnavailableBody(): string
+    {
+        return "\u{0421}\u{043E}\u{043E}\u{0431}\u{0449}\u{0435}\u{043D}\u{0438}\u{0435} \u{043D}\u{0435}\u{0434}\u{043E}\u{0441}\u{0442}\u{0443}\u{043F}\u{043D}\u{043E}.";
+    }
     private function nonTargetStagePatterns(): array
     {
         return [
@@ -578,11 +639,26 @@ class DealController extends Controller
             '%non-target%',
         ];
     }
-    private function isTodayFocusedStage(PipelineStage $stage): bool
+    private function resolveKanbanFocusDate(string $value): ?Carbon
+    {
+        $value = trim($value);
+
+        if ($value === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::createFromFormat('Y-m-d', $value)->startOfDay();
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function isDateFilteredStage(PipelineStage $stage): bool
     {
         $name = mb_strtolower(trim((string) $stage->name));
 
-        return str_contains($name, 'квал') && str_contains($name, 'замер');
+        return str_contains($name, "\u{043A}\u{0432}\u{0430}\u{043B}")
+            && str_contains($name, "\u{0437}\u{0430}\u{043C}\u{0435}\u{0440}");
     }
 }
-

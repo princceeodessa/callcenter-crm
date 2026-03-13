@@ -115,6 +115,10 @@ class IntegrationController extends Controller
                 'api_field_name' => ['nullable', 'string', 'max:100', 'regex:/^[A-Za-z0-9_-]+$/'],
                 'crm_webhook_token' => ['nullable', 'string', 'max:255'],
             ]),
+            'bitrix' => $request->validate([
+                'webhook_url' => ['required', 'string', 'max:255'],
+                'default_responsible_id' => ['nullable', 'integer', 'min:1'],
+            ]),
             default => [],
         };
 

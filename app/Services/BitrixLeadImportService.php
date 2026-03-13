@@ -7,6 +7,7 @@ use App\Models\Deal;
 use App\Models\DealActivity;
 use App\Models\DealStageHistory;
 use App\Models\PipelineStage;
+use App\Models\Task;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
@@ -91,7 +92,7 @@ class BitrixLeadImportService
         $rows = $parsed['rows'];
 
         if (count($rows) === 0) {
-            throw new RuntimeException('Не удалось найти строки с лидами для импорта.');
+            throw new RuntimeException('Р В Р’В Р РЋРЎС™Р В Р’В Р вЂ™Р’Вµ Р В Р Р‹Р РЋРІР‚СљР В Р’В Р СћРІР‚ВР В Р’В Р вЂ™Р’В°Р В Р’В Р вЂ™Р’В»Р В Р’В Р РЋРІР‚СћР В Р Р‹Р В РЎвЂњР В Р Р‹Р В Р вЂ° Р В Р’В Р В РІР‚В¦Р В Р’В Р вЂ™Р’В°Р В Р’В Р Р†РІР‚С›РІР‚вЂњР В Р Р‹Р Р†Р вЂљРЎв„ўР В Р’В Р РЋРІР‚В Р В Р Р‹Р В РЎвЂњР В Р Р‹Р Р†Р вЂљРЎв„ўР В Р Р‹Р В РІР‚С™Р В Р’В Р РЋРІР‚СћР В Р’В Р РЋРІР‚СњР В Р’В Р РЋРІР‚В Р В Р Р‹Р В РЎвЂњ Р В Р’В Р вЂ™Р’В»Р В Р’В Р РЋРІР‚ВР В Р’В Р СћРІР‚ВР В Р’В Р вЂ™Р’В°Р В Р’В Р РЋР’ВР В Р’В Р РЋРІР‚В Р В Р’В Р СћРІР‚ВР В Р’В Р вЂ™Р’В»Р В Р Р‹Р В Р РЏ Р В Р’В Р РЋРІР‚ВР В Р’В Р РЋР’ВР В Р’В Р РЋРІР‚вЂќР В Р’В Р РЋРІР‚СћР В Р Р‹Р В РІР‚С™Р В Р Р‹Р Р†Р вЂљРЎв„ўР В Р’В Р вЂ™Р’В°.');
         }
 
         $defaultStage = PipelineStage::query()
@@ -157,6 +158,7 @@ class BitrixLeadImportService
                     $currency,
                     $resolvedStage,
                     $resolvedResponsible,
+                    $users,
                     $activityBody,
                     &$imported,
                     &$matchedStages,
@@ -189,6 +191,8 @@ class BitrixLeadImportService
                         'payload' => [
                             'provider' => 'bitrix',
                             'bitrix_lead_id' => $leadId,
+                            'bitrix_entity_id' => $leadId,
+                            'bitrix_entity_type' => 'lead',
                             'import_hash' => $importHash,
                             'source_sheet' => $row['_sheet'] ?? null,
                             'source_row' => $row['_row'] ?? null,
@@ -202,6 +206,9 @@ class BitrixLeadImportService
                     if ($createdAt) {
                         $this->applyTimestamps($activity, $createdAt);
                     }
+
+                    $this->createBitrixCommentActivity($accountId, $deal->id, $userId, $row, $createdAt);
+                    $this->createImportedTask($accountId, $deal->id, $userId, $row, $resolvedResponsible['user'], $users, $createdAt);
 
                     DealStageHistory::create([
                         'account_id' => $accountId,
@@ -645,6 +652,150 @@ class BitrixLeadImportService
         return implode(' ', $parts);
     }
 
+    private function createBitrixCommentActivity(int $accountId, int $dealId, int $userId, array $row, ?Carbon $createdAt): void
+    {
+        $comment = $this->nullIfBlank($row['comments'] ?? null);
+        if ($comment === null) {
+            return;
+        }
+
+        $activity = DealActivity::create([
+            'account_id' => $accountId,
+            'deal_id' => $dealId,
+            'author_user_id' => $userId,
+            'type' => 'bitrix_comment',
+            'body' => $comment,
+            'payload' => [
+                'provider' => 'bitrix',
+                'source_sheet' => $row['_sheet'] ?? null,
+                'source_row' => $row['_row'] ?? null,
+            ],
+        ]);
+
+        if ($createdAt) {
+            $this->applyTimestamps($activity, $createdAt);
+        }
+    }
+
+    private function createImportedTask(
+        int $accountId,
+        int $dealId,
+        int $userId,
+        array $row,
+        User $defaultResponsible,
+        $users,
+        ?Carbon $createdAt
+    ): void {
+        if (! $this->hasImportedTaskData($row)) {
+            return;
+        }
+
+        $title = $this->buildImportedTaskTitle($row);
+        if ($title === null) {
+            return;
+        }
+
+        $resolvedResponsible = $this->resolveResponsible($row['task_responsible'] ?? null, $defaultResponsible, $users);
+        $description = $this->nullIfBlank($row['task_description'] ?? null);
+        $dueAt = $this->parseDate($row['task_due_at'] ?? null);
+        $completed = $this->isCompletedTaskStatus($row['task_completed'] ?? null);
+
+        $task = Task::create([
+            'account_id' => $accountId,
+            'deal_id' => $dealId,
+            'assigned_user_id' => $resolvedResponsible['user']->id,
+            'title' => $title,
+            'description' => $description,
+            'status' => $completed ? 'done' : 'open',
+            'due_at' => $dueAt,
+            'completed_at' => $completed ? ($dueAt ?? $createdAt ?? now()) : null,
+            'external_provider' => 'bitrix',
+            'external_sync_status' => 'imported',
+            'external_payload' => [
+                'source' => 'bitrix_file_import',
+                'source_sheet' => $row['_sheet'] ?? null,
+                'source_row' => $row['_row'] ?? null,
+            ],
+        ]);
+
+        if ($createdAt) {
+            $this->applyTimestamps($task, $createdAt);
+        }
+
+        $activityBody = 'РРјРїРѕСЂС‚РёСЂРѕРІР°РЅРѕ РґРµР»Рѕ РёР· Bitrix: '.$task->title;
+        if ($description) {
+            $activityBody .= "\n".$description;
+        }
+
+        $activity = DealActivity::create([
+            'account_id' => $accountId,
+            'deal_id' => $dealId,
+            'author_user_id' => $userId,
+            'type' => 'bitrix_task_import',
+            'body' => $activityBody,
+            'payload' => [
+                'provider' => 'bitrix',
+                'task_id' => $task->id,
+                'source_sheet' => $row['_sheet'] ?? null,
+                'source_row' => $row['_row'] ?? null,
+            ],
+        ]);
+
+        if ($createdAt) {
+            $this->applyTimestamps($activity, $createdAt);
+        }
+    }
+
+    private function hasImportedTaskData(array $row): bool
+    {
+        foreach (['task_title', 'task_description', 'task_due_at', 'task_responsible', 'task_completed'] as $field) {
+            if ($this->nullIfBlank($row[$field] ?? null) !== null) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function buildImportedTaskTitle(array $row): ?string
+    {
+        $title = $this->nullIfBlank($row['task_title'] ?? null);
+        if ($title !== null) {
+            return $title;
+        }
+
+        $description = $this->nullIfBlank($row['task_description'] ?? null);
+        if ($description === null) {
+            return null;
+        }
+
+        $firstLine = trim((string) preg_split('/\R/u', $description, 2)[0]);
+        if ($firstLine === '') {
+            return null;
+        }
+
+        return mb_strlen($firstLine, 'UTF-8') > 120
+            ? mb_substr($firstLine, 0, 117, 'UTF-8').'...'
+            : $firstLine;
+    }
+
+    private function isCompletedTaskStatus(?string $value): bool
+    {
+        $normalized = $this->normalizeLookup($value);
+
+        if ($normalized === '') {
+            return false;
+        }
+
+        foreach (['done', 'complete', 'completed', 'success', 'finished', 'РІС‹РїРѕР»РЅРµРЅРѕ', 'Р·Р°РІРµСЂС€РµРЅРѕ', 'Р·Р°РєСЂС‹С‚Рѕ'] as $candidate) {
+            if ($normalized === $this->normalizeLookup($candidate)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function parseAmount(?string $value): ?float
     {
         $value = $this->nullIfBlank($value);
@@ -755,7 +906,7 @@ class BitrixLeadImportService
 
     private function isMeaningfulRow(array $row): bool
     {
-        foreach (['lead_id', 'title', 'contact_name', 'first_name', 'last_name', 'phone', 'email', 'status', 'responsible', 'amount', 'comments'] as $field) {
+        foreach (['lead_id', 'title', 'contact_name', 'first_name', 'last_name', 'phone', 'email', 'status', 'responsible', 'amount', 'comments', 'task_title', 'task_description', 'task_due_at'] as $field) {
             if ($this->nullIfBlank($row[$field] ?? null) !== null) {
                 return true;
             }

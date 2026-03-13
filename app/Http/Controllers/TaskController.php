@@ -7,6 +7,7 @@ use App\Models\DealActivity;
 use App\Models\Task;
 use App\Models\User;
 use App\Models\UserNotification;
+use App\Services\Integrations\BitrixTaskSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -130,7 +131,7 @@ class TaskController extends Controller
         return redirect()->route('tasks.index')->with('status', 'Дело добавлено');
     }
 
-    public function complete(Request $request, Task $task)
+    public function complete(Request $request, Task $task, BitrixTaskSyncService $bitrixSync)
     {
         $user = Auth::user();
         abort_unless($task->account_id === $user->account_id, 403);
@@ -148,10 +149,13 @@ class TaskController extends Controller
             'payload' => ['task_id' => $task->id],
         ]);
 
+        $task->loadMissing('deal');
+        $bitrixSync->syncCompletedTask($task, $user);
+
         return back();
     }
 
-    private function createTask(Deal $deal, array $data, $user): Task
+    private function createTask(Deal $deal, array $data, User $user): Task
     {
         $assigneeId = $this->resolveAssigneeId($user->account_id, $data['assigned_user_id'] ?? null);
 
@@ -168,7 +172,7 @@ class TaskController extends Controller
         if ($task->assigned_user_id && $task->due_at && $task->due_at->lte(now())) {
             DB::transaction(function () use ($task) {
                 $fresh = Task::query()->lockForUpdate()->find($task->id);
-                if (!$fresh || $fresh->notified_at || !$fresh->assigned_user_id) {
+                if (! $fresh || $fresh->notified_at || ! $fresh->assigned_user_id) {
                     return;
                 }
 
@@ -212,6 +216,8 @@ class TaskController extends Controller
             ],
         ]);
 
+        app(BitrixTaskSyncService::class)->syncCreatedTask($task, $deal, $user);
+
         return $task;
     }
 
@@ -228,7 +234,7 @@ class TaskController extends Controller
             ->where('id', $assigneeId)
             ->exists();
 
-        if (!$assigneeOk) {
+        if (! $assigneeOk) {
             throw ValidationException::withMessages([
                 'assigned_user_id' => 'Нельзя назначить дело этому пользователю',
             ]);

@@ -12,14 +12,26 @@ class Task extends Model
     private const UNASSIGNED_LABEL = "\u{0412}\u{0441}\u{0435}\u{043C}";
 
     protected $fillable = [
-        'account_id','deal_id','assigned_user_id',
-        'title','description','status','due_at','completed_at'
+        'account_id',
+        'deal_id',
+        'assigned_user_id',
+        'title',
+        'description',
+        'status',
+        'due_at',
+        'completed_at',
+        'external_provider',
+        'external_id',
+        'external_sync_status',
+        'external_sync_error',
+        'external_payload',
     ];
 
     protected $casts = [
         'due_at' => 'datetime',
         'notified_at' => 'datetime',
         'completed_at' => 'datetime',
+        'external_payload' => 'array',
     ];
 
     public function deal()
@@ -41,5 +53,20 @@ class Task extends Model
         }
 
         return $name !== '' ? $name : self::UNASSIGNED_LABEL;
+    }
+
+    public function getExternalSyncLabelAttribute(): ?string
+    {
+        if (($this->external_provider ?? null) !== 'bitrix') {
+            return null;
+        }
+
+        return match ((string) ($this->external_sync_status ?? '')) {
+            'synced' => 'Bitrix: синхронизировано',
+            'imported' => 'Bitrix: импортировано',
+            'pending' => 'Bitrix: ждёт синхронизации',
+            'error' => 'Bitrix: ошибка синхронизации',
+            default => 'Bitrix',
+        };
     }
 }

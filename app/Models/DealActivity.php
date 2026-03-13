@@ -10,8 +10,12 @@ class DealActivity extends Model
     use BelongsToAccount;
 
     protected $fillable = [
-        'account_id','deal_id','author_user_id',
-        'type','body','payload'
+        'account_id',
+        'deal_id',
+        'author_user_id',
+        'type',
+        'body',
+        'payload',
     ];
 
     protected $casts = [
@@ -31,7 +35,6 @@ class DealActivity extends Model
     {
         return $this->belongsTo(User::class, 'author_user_id');
     }
-
 
     public function getTypeLabelAttribute(): string
     {
@@ -53,6 +56,9 @@ class DealActivity extends Model
             'message_out' => 'Исходящее сообщение'.($provLabel ? " ({$provLabel})" : ''),
             'lead_form' => 'Заявка с формы'.($provLabel ? " ({$provLabel})" : ''),
             'import' => 'Импорт'.($provLabel ? " ({$provLabel})" : ''),
+            'bitrix_comment' => 'Комментарий Bitrix',
+            'bitrix_task_import' => 'Дело Bitrix',
+            'bitrix_sync' => 'Синхронизация Bitrix',
             'call' => 'Звонок',
             'task_created' => 'Создано дело',
             'task_done' => 'Дело выполнено',

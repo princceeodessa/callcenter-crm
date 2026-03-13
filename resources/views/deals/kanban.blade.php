@@ -17,9 +17,57 @@
 @endpush
 
 @section('content')
+    @php
+        $focusDateValue = $focusDate?->format('Y-m-d');
+        $kanbanParamsWithoutSpam = array_filter([
+            'q' => $q !== '' ? $q : null,
+            'focus_date' => $focusDateValue ?: null,
+        ], fn ($value) => !is_null($value) && $value !== '');
+        $kanbanParamsWithoutDate = array_filter([
+            'show_spam' => !empty($showSpam) ? 1 : null,
+            'q' => $q !== '' ? $q : null,
+        ], fn ($value) => !is_null($value) && $value !== '');
+        $kanbanResetParams = array_filter([
+            'show_spam' => !empty($showSpam) ? 1 : null,
+        ], fn ($value) => !is_null($value) && $value !== '');
+
+        $ui = [
+            'title' => "\u{0421}\u{0434}\u{0435}\u{043B}\u{043A}\u{0438} - \u{043A}\u{0430}\u{043D}\u{0431}\u{0430}\u{043D}",
+            'search_placeholder' => "\u{041F}\u{043E}\u{0438}\u{0441}\u{043A} \u{043F}\u{043E} \u{0438}\u{043C}\u{0435}\u{043D}\u{0438}, \u{0442}\u{0435}\u{043B}\u{0435}\u{0444}\u{043E}\u{043D}\u{0443}, \u{0441}\u{0434}\u{0435}\u{043B}\u{043A}\u{0435}, id, \u{043E}\u{0442}\u{0432}\u{0435}\u{0442}\u{0441}\u{0442}\u{0432}\u{0435}\u{043D}\u{043D}\u{043E}\u{043C}\u{0443}",
+            'apply' => "\u{041F}\u{0440}\u{0438}\u{043C}\u{0435}\u{043D}\u{0438}\u{0442}\u{044C}",
+            'yesterday' => "\u{0412}\u{0447}\u{0435}\u{0440}\u{0430}",
+            'today' => "\u{0421}\u{0435}\u{0433}\u{043E}\u{0434}\u{043D}\u{044F}",
+            'tomorrow' => "\u{0417}\u{0430}\u{0432}\u{0442}\u{0440}\u{0430}",
+            'all_dates' => "\u{0412}\u{0441}\u{0435} \u{0434}\u{0430}\u{0442}\u{044B}",
+            'reset' => "\u{0421}\u{0431}\u{0440}\u{043E}\u{0441}\u{0438}\u{0442}\u{044C}",
+            'mode_row' => "\u{0412} \u{043E}\u{0434}\u{0438}\u{043D} \u{0440}\u{044F}\u{0434}",
+            'mode_wrap' => "\u{0421} \u{043F}\u{0435}\u{0440}\u{0435}\u{043D}\u{043E}\u{0441}\u{043E}\u{043C}",
+            'closed' => "\u{0417}\u{0430}\u{0432}\u{0435}\u{0440}\u{0448}\u{0435}\u{043D}\u{043D}\u{044B}\u{0435}",
+            'show_non_target' => "\u{041F}\u{043E}\u{043A}\u{0430}\u{0437}\u{0430}\u{0442}\u{044C} \u{043D}\u{0435}\u{0446}\u{0435}\u{043B}\u{0435}\u{0432}\u{043E}\u{0435}",
+            'hide_non_target' => "\u{0421}\u{043A}\u{0440}\u{044B}\u{0442}\u{044C} \u{043D}\u{0435}\u{0446}\u{0435}\u{043B}\u{0435}\u{0432}\u{043E}\u{0435}",
+            'create_deal' => "\u{0421}\u{0434}\u{0435}\u{043B}\u{043A}\u{0430}",
+            'create_deal_title' => "\u{0421}\u{043E}\u{0437}\u{0434}\u{0430}\u{0442}\u{044C} \u{0441}\u{0434}\u{0435}\u{043B}\u{043A}\u{0443}",
+            'count_suffix' => "\u{0448}\u{0442}.",
+            'stage_hint_prefix' => "\u{0424}\u{0438}\u{043B}\u{044C}\u{0442}\u{0440} \u{043F}\u{043E} \u{0434}\u{0430}\u{0442}\u{0435}: ",
+            'stage_hint_suffix' => "\u{0423}\u{0447}\u{0438}\u{0442}\u{044B}\u{0432}\u{0430}\u{0435}\u{0442}\u{0441}\u{044F} \u{0441}\u{043E}\u{0437}\u{0434}\u{0430}\u{043D}\u{0438}\u{0435} \u{0441}\u{0434}\u{0435}\u{043B}\u{043A}\u{0438} \u{0438} \u{043F}\u{0435}\u{0440}\u{0435}\u{043D}\u{043E}\u{0441} \u{0432} \u{0441}\u{0442}\u{0430}\u{0434}\u{0438}\u{044E}.",
+            'stage_hint_all' => "\u{041F}\u{043E}\u{043A}\u{0430}\u{0437}\u{0430}\u{043D}\u{044B} \u{0432}\u{0441}\u{0435} \u{0441}\u{0434}\u{0435}\u{043B}\u{043A}\u{0438}. \u{0414}\u{043B}\u{044F} \u{043E}\u{0442}\u{0431}\u{043E}\u{0440}\u{0430} \u{043F}\u{043E} \u{0434}\u{043D}\u{044E} \u{0432}\u{044B}\u{0431}\u{0435}\u{0440}\u{0438}\u{0442}\u{0435} \u{0434}\u{0430}\u{0442}\u{0443} \u{0432}\u{044B}\u{0448}\u{0435}.",
+            'stage_search_placeholder' => "\u{041F}\u{043E}\u{0438}\u{0441}\u{043A} \u{043F}\u{043E} \u{0441}\u{0434}\u{0435}\u{043B}\u{043A}\u{0430}\u{043C} \u{0432} \u{044D}\u{0442}\u{043E}\u{0439} \u{0441}\u{0442}\u{0430}\u{0434}\u{0438}\u{0438}",
+            'no_name' => "\u{0411}\u{0435}\u{0437} \u{0438}\u{043C}\u{0435}\u{043D}\u{0438}",
+            'no_phone' => "\u{0411}\u{0435}\u{0437} \u{0442}\u{0435}\u{043B}\u{0435}\u{0444}\u{043E}\u{043D}\u{0430}",
+            'empty' => "\u{041F}\u{0443}\u{0441}\u{0442}\u{043E}",
+            'move_error' => "\u{041D}\u{0435} \u{0443}\u{0434}\u{0430}\u{043B}\u{043E}\u{0441}\u{044C} \u{043F}\u{0435}\u{0440}\u{0435}\u{043C}\u{0435}\u{0441}\u{0442}\u{0438}\u{0442}\u{044C} \u{0441}\u{0434}\u{0435}\u{043B}\u{043A}\u{0443}. \u{041E}\u{0431}\u{043D}\u{043E}\u{0432}\u{0438} \u{0441}\u{0442}\u{0440}\u{0430}\u{043D}\u{0438}\u{0446}\u{0443} \u{0438} \u{043F}\u{043E}\u{043F}\u{0440}\u{043E}\u{0431}\u{0443}\u{0439} \u{0441}\u{043D}\u{043E}\u{0432}\u{0430}.",
+        ];
+
+        $focusDatePresets = [
+            $ui['yesterday'] => now()->copy()->subDay()->format('Y-m-d'),
+            $ui['today'] => now()->format('Y-m-d'),
+            $ui['tomorrow'] => now()->copy()->addDay()->format('Y-m-d'),
+        ];
+    @endphp
+
     <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap kanban-toolbar">
         <div class="d-flex flex-column gap-2">
-            <h4 class="mb-0">Сделки — канбан</h4>
+            <h4 class="mb-0">{{ $ui['title'] }}</h4>
             <form method="GET" action="{{ route('deals.kanban') }}" class="d-flex gap-2 flex-wrap align-items-center">
                 @if(!empty($showSpam))
                     <input type="hidden" name="show_spam" value="1">
@@ -30,27 +78,44 @@
                     id="kanbanSearch"
                     name="q"
                     value="{{ $q }}"
-                    placeholder="Поиск по имени, телефону, сделке, id, ответственному"
+                    placeholder="{{ $ui['search_placeholder'] }}"
                     style="min-width: 320px;"
                 >
-                <button type="submit" class="btn btn-sm btn-primary">Найти</button>
-                @if($q !== '')
-                    <a class="btn btn-sm btn-outline-secondary" href="{{ route('deals.kanban', array_filter(['show_spam' => !empty($showSpam) ? 1 : null])) }}">Сбросить</a>
+                <input
+                    type="date"
+                    class="form-control form-control-sm"
+                    id="kanbanFocusDate"
+                    name="focus_date"
+                    value="{{ $focusDateValue }}"
+                    style="min-width: 170px;"
+                >
+                <button type="submit" class="btn btn-sm btn-primary">{{ $ui['apply'] }}</button>
+                @foreach($focusDatePresets as $label => $presetDate)
+                    <a
+                        class="btn btn-sm {{ $focusDateValue === $presetDate ? 'btn-secondary' : 'btn-outline-secondary' }}"
+                        href="{{ route('deals.kanban', array_merge($kanbanParamsWithoutDate, ['focus_date' => $presetDate])) }}"
+                    >{{ $label }}</a>
+                @endforeach
+                @if($focusDateValue)
+                    <a class="btn btn-sm btn-outline-secondary" href="{{ route('deals.kanban', $kanbanParamsWithoutDate) }}">{{ $ui['all_dates'] }}</a>
+                @endif
+                @if($q !== '' || $focusDateValue)
+                    <a class="btn btn-sm btn-outline-secondary" href="{{ route('deals.kanban', $kanbanResetParams) }}">{{ $ui['reset'] }}</a>
                 @endif
             </form>
         </div>
         <div class="d-flex gap-2 flex-wrap">
             <div class="btn-group" role="group" aria-label="Kanban mode">
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="kbModeRow">В один ряд</button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="kbModeWrap">С переносом</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="kbModeRow">{{ $ui['mode_row'] }}</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="kbModeWrap">{{ $ui['mode_wrap'] }}</button>
             </div>
-            <a class="btn btn-sm btn-outline-primary" href="{{ route('deals.closed') }}">Завершённые</a>
+            <a class="btn btn-sm btn-outline-primary" href="{{ route('deals.closed') }}">{{ $ui['closed'] }}</a>
             @if(empty($showSpam))
-                <a class="btn btn-sm btn-outline-secondary" href="{{ route('deals.kanban', ['show_spam' => 1, 'q' => $q ?: null]) }}">Показать нецелевое</a>
+                <a class="btn btn-sm btn-outline-secondary" href="{{ route('deals.kanban', array_merge($kanbanParamsWithoutDate, ['show_spam' => 1])) }}">{{ $ui['show_non_target'] }}</a>
             @else
-                <a class="btn btn-sm btn-secondary" href="{{ route('deals.kanban', ['q' => $q ?: null]) }}">Скрыть нецелевое</a>
+                <a class="btn btn-sm btn-secondary" href="{{ route('deals.kanban', $kanbanParamsWithoutSpam) }}">{{ $ui['hide_non_target'] }}</a>
             @endif
-            <a class="btn btn-sm btn-success" href="{{ route('deals.create') }}">+ Сделка</a>
+            <a class="btn btn-sm btn-success" href="{{ route('deals.create') }}">+ {{ $ui['create_deal'] }}</a>
         </div>
     </div>
 
@@ -62,24 +127,30 @@
                     <div>
                         <div class="fw-semibold">{{ $stage->name }}</div>
                         <div class="text-muted small">
-                            <span class="kanban-count" data-stage-id="{{ $stage->id }}">{{ $stageDeals->count() }}</span> шт.
+                            <span class="kanban-count" data-stage-id="{{ $stage->id }}">{{ $stageDeals->count() }}</span> {{ $ui['count_suffix'] }}
                         </div>
-                        @if(in_array($stage->id, $todayFocusedStageIds ?? [], true))
-                            <div class="text-muted small mt-1">Показываются только сделки за текущую дату</div>
+                        @if(in_array($stage->id, $dateFilteredStageIds ?? [], true))
+                            <div class="text-muted small mt-1">
+                                @if($focusDateValue)
+                                    {{ $ui['stage_hint_prefix'] }}{{ optional($focusDate)->format('d.m.Y') }}. {{ $ui['stage_hint_suffix'] }}
+                                @else
+                                    {{ $ui['stage_hint_all'] }}
+                                @endif
+                            </div>
                             <input
                                 type="search"
                                 class="form-control form-control-sm mt-2 kanban-stage-search"
                                 data-stage-id="{{ $stage->id }}"
-                                placeholder="Поиск по сделкам в этой стадии"
+                                placeholder="{{ $ui['stage_search_placeholder'] }}"
                             >
                         @endif
                     </div>
-                    <a class="btn btn-sm btn-success" href="{{ route('deals.create') }}" title="Создать сделку">+</a>
+                    <a class="btn btn-sm btn-success" href="{{ route('deals.create') }}" title="{{ $ui['create_deal_title'] }}">+</a>
                 </div>
 
                 <div class="card-body d-flex flex-column gap-2 kanban-list" data-stage-id="{{ $stage->id }}">
                     @foreach ($stageDeals as $deal)
-                        @php($leadName = $deal->lead_display_name ?? 'Без имени')
+                        @php($leadName = $deal->lead_display_name ?? $ui['no_name'])
                         @php($dealTitle = $deal->title_is_custom ? $deal->title : ($deal->lead_display_name ?: $deal->title))
                         <div class="border rounded p-2 kanban-card {{ $deal->lead_source_surface_class }}" data-deal-id="{{ $deal->id }}" data-search="{{ mb_strtolower(trim(implode(' ', array_filter([$dealTitle, $leadName, $deal->contact?->phone, $deal->responsible?->name, $deal->id])))) }}">
                             <div class="d-flex justify-content-between align-items-start gap-2">
@@ -93,13 +164,13 @@
                                 <div class="mt-2 small fw-semibold text-body-secondary">{{ $leadName }}</div>
                             @endif
                             <div class="text-muted small mt-1">
-                                @if($deal->contact?->phone){{ $deal->contact->phone }}@else Без телефона @endif
+                                @if($deal->contact?->phone){{ $deal->contact->phone }}@else {{ $ui['no_phone'] }} @endif
                             </div>
                             <div class="text-muted small mt-2 kanban-last-moved">{{ $deal->last_moved_by_label }}</div>
                         </div>
                     @endforeach
 
-                    <div class="text-muted small kanban-empty-note" @if(!$stageDeals->isEmpty()) style="display:none" @endif>Пусто</div>
+                    <div class="text-muted small kanban-empty-note" @if(!$stageDeals->isEmpty()) style="display:none" @endif>{{ $ui['empty'] }}</div>
                 </div>
             </div>
         @endforeach
@@ -113,6 +184,7 @@
             const board = document.getElementById('kanbanBoard');
             const btnRow = document.getElementById('kbModeRow');
             const btnWrap = document.getElementById('kbModeWrap');
+            const moveErrorMessage = @json($ui['move_error']);
 
             const applyMode = (mode) => {
                 board.classList.remove('mode-row','mode-wrap');
@@ -215,11 +287,11 @@
                             evt.from.insertBefore(cardEl, ref);
                             updateCount(fromStageId);
                             updateCount(toStageId);
-                            alert('Не удалось переместить сделку. Обнови страницу и попробуй снова.');
+                            alert(moveErrorMessage);
                         }
                     }
                 });
-           });
+            });
 
             applySearch();
         })();
