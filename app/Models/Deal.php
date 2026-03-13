@@ -230,9 +230,10 @@ class Deal extends Model
             return 'Еще не перемещали';
         }
 
-        return 'Последний перенос: '.($history->changedBy?->name ?? 'Система');
+        return 'Последний перенос: '.(
+            $history->changedBy?->name ?? 'Система'
+        );
     }
-
     private function resolveLeadSourceConversation(): ?Conversation
     {
         try {
@@ -241,7 +242,6 @@ class Deal extends Model
             return null;
         }
     }
-
     public static function resolveIncomingPhoneSourceFromPayload(?array $payload): ?array
     {
         if (!is_array($payload) || $payload === []) {
