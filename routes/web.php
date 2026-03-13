@@ -66,6 +66,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/tasks', [TaskController::class, 'index'])->name('tasks.index');
         Route::post('/tasks', [TaskController::class, 'storeFromPage'])->name('tasks.page.store');
         Route::post('/deals/{deal}/tasks', [TaskController::class, 'store'])->name('tasks.store');
+        Route::patch('/tasks/{task}', [TaskController::class, 'update'])->name('tasks.update');
         Route::post('/tasks/{task}/complete', [TaskController::class, 'complete'])->name('tasks.complete');
 
         // Notifications

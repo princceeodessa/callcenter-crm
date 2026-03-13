@@ -61,6 +61,7 @@ class DealActivity extends Model
             'bitrix_sync' => 'Синхронизация Bitrix',
             'call' => 'Звонок',
             'task_created' => 'Создано дело',
+            'task_updated' => 'Дело обновлено',
             'task_done' => 'Дело выполнено',
             'stage_changed' => 'Смена стадии',
             'deal_closed' => 'Закрытие сделки',

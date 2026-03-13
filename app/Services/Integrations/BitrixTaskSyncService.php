@@ -92,6 +92,91 @@ class BitrixTaskSyncService
         }
     }
 
+    public function syncUpdatedTask(Task $task, User $author): void
+    {
+        $deal = $task->deal ?? $task->deal()->first();
+        if (! $deal) {
+            return;
+        }
+
+        if (($task->external_sync_status ?? '') === 'imported' && empty($task->external_id)) {
+            return;
+        }
+
+        if (($task->external_provider ?? null) === 'bitrix' && empty($task->external_id)) {
+            $this->syncCreatedTask($task, $deal, $author);
+            $task->refresh();
+        }
+
+        if (($task->external_provider ?? null) !== 'bitrix' || empty($task->external_id)) {
+            return;
+        }
+
+        $connection = $this->resolveConnection($task->account_id);
+        if (! $connection) {
+            $this->markPending($task, 'Bitrix интеграция отключена: локальное дело изменено, но данные в Bitrix не обновлены.');
+            return;
+        }
+
+        $settings = is_array($connection->settings) ? $connection->settings : [];
+
+        try {
+            $client = new BitrixApiClient((string) ($settings['webhook_url'] ?? ''));
+            $requestFields = $this->makeActivityUpdateFields($task, $deal, $settings);
+            $response = $client->updateActivity((string) $task->external_id, $requestFields);
+
+            $task->forceFill([
+                'external_sync_status' => 'synced',
+                'external_sync_error' => null,
+                'external_payload' => $this->mergeExternalPayload($task, [
+                    'bitrix_activity_id' => $task->external_id,
+                    'bitrix_last_action' => 'updated',
+                    'bitrix_updated_at' => now()->toIso8601String(),
+                ]),
+            ])->save();
+
+            $connection->forceFill([
+                'status' => 'active',
+                'last_error' => null,
+                'last_synced_at' => now(),
+            ])->save();
+
+            $this->logEvent($task->account_id, 'crm.activity.update', (string) $task->external_id, [
+                'request' => $requestFields,
+                'response' => $response,
+                'task_id' => $task->id,
+                'deal_id' => $deal->id,
+            ]);
+        } catch (\Throwable $e) {
+            $task->forceFill([
+                'external_sync_status' => 'error',
+                'external_sync_error' => $e->getMessage(),
+                'external_payload' => $this->mergeExternalPayload($task, [
+                    'bitrix_activity_id' => $task->external_id,
+                    'bitrix_last_action' => 'update_failed',
+                ]),
+            ])->save();
+
+            $connection->forceFill([
+                'status' => 'error',
+                'last_error' => $e->getMessage(),
+            ])->save();
+
+            $this->logEvent($task->account_id, 'crm.activity.update_error', (string) $task->external_id, [
+                'task_id' => $task->id,
+                'deal_id' => $deal->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            $this->addSyncNote($deal, $author, 'Не удалось обновить дело в Bitrix: '.$e->getMessage(), [
+                'provider' => 'bitrix',
+                'task_id' => $task->id,
+                'sync_status' => 'error',
+                'external_id' => $task->external_id,
+            ]);
+        }
+    }
+
     public function syncCompletedTask(Task $task, User $author): void
     {
         $deal = $task->deal ?? $task->deal()->first();
@@ -212,6 +297,24 @@ class BitrixTaskSyncService
         if ($task->due_at) {
             $fields['DEADLINE'] = $task->due_at->format('Y-m-d\TH:i:sP');
         }
+
+        $defaultResponsibleId = (int) ($settings['default_responsible_id'] ?? 0);
+        if ($defaultResponsibleId > 0) {
+            $fields['RESPONSIBLE_ID'] = $defaultResponsibleId;
+        }
+
+        return $fields;
+    }
+
+    private function makeActivityUpdateFields(Task $task, Deal $deal, array $settings): array
+    {
+        $fields = [
+            'SUBJECT' => $task->title,
+            'DESCRIPTION' => $this->makeDescription($task, $deal),
+            'DESCRIPTION_TYPE' => 1,
+            'COMPLETED' => $task->status === 'done' ? 'Y' : 'N',
+            'DEADLINE' => $task->due_at ? $task->due_at->format('Y-m-d\TH:i:sP') : '',
+        ];
 
         $defaultResponsibleId = (int) ($settings['default_responsible_id'] ?? 0);
         if ($defaultResponsibleId > 0) {
