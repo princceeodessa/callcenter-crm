@@ -136,6 +136,24 @@ class WhisperCliTranscriber
 
     private function resolveExecutableCandidate(string $candidate, ExecutableFinder $finder): ?string
     {
+        $candidate = trim($candidate);
+        if ($candidate === '') {
+            return null;
+        }
+
+        // Preserve virtualenv symlinks like ".venv/bin/python": resolving them
+        // to the system interpreter breaks Python's virtualenv detection.
+        if (file_exists($candidate) && is_executable($candidate)) {
+            return $candidate;
+        }
+
+        if (!$this->isAbsolutePath($candidate)) {
+            $relativeToBase = base_path($candidate);
+            if (file_exists($relativeToBase) && is_executable($relativeToBase)) {
+                return $relativeToBase;
+            }
+        }
+
         $file = $this->resolveFileCandidate($candidate);
         if ($file !== null) {
             return $file;
