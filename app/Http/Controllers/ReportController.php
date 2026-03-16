@@ -115,7 +115,7 @@ class ReportController extends Controller
 
     private function measurementCompletionRows(Collection $users, $from, $to): Collection
     {
-        return $users->values()->map(function (User $u) use ($createdDeals, $closedDeals, $stageHistoryRows, $callActivities, $dealResponsibleMap) {
+        return $users->values()->map(function (User $u) use ($from, $to) {
             $base = Measurement::query()
                 ->where('account_id', $u->account_id)
                 ->where('assigned_user_id', $u->id)
@@ -198,7 +198,7 @@ class ReportController extends Controller
             ->map(fn ($value) => $value !== null ? (int) $value : null)
             ->all();
 
-        return $users->values()->map(function (User $u) use ($from, $to) {
+        return $users->values()->map(function (User $u) use ($createdDeals, $closedDeals, $stageHistoryRows, $callActivities, $dealResponsibleMap) {
             $createdDealIds = $createdDeals
                 ->filter(fn (Deal $deal) => (int) $deal->responsible_user_id === (int) $u->id)
                 ->pluck('id');

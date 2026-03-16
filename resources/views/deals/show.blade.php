@@ -37,6 +37,22 @@
 @endpush
 
 @php
+  $editingTaskId = max(0, (int) request()->query('edit_task', 0));
+
+  $buildDealUrl = function (array $changes = []) use ($deal) {
+      $query = array_merge(request()->query(), $changes);
+
+      foreach ($query as $key => $value) {
+          if ($value === null || $value === '') {
+              unset($query[$key]);
+          }
+      }
+
+      $queryString = http_build_query($query);
+
+      return route('deals.show', $deal).($queryString !== '' ? '?'.$queryString : '');
+  };
+
   $formatPhone = function ($value) {
       $digits = preg_replace('/\D+/', '', (string) $value);
       if (!$digits) {
@@ -298,7 +314,7 @@
         </form>
 
         @forelse($deal->tasks as $task)
-          <div class="border rounded p-2 mb-2 bg-white">
+          <div id="task-{{ $task->id }}" class="border rounded p-2 mb-2 bg-white {{ $editingTaskId === (int) $task->id ? 'border-primary' : '' }}">
             <div class="d-flex justify-content-between align-items-start">
               <div>
                 <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -313,18 +329,28 @@
                   • Ответственный: <b>{{ $task->assignee_label }}</b>
                 </div>
               </div>
-              @if($task->status !== 'done')
-                <form method="POST" action="{{ route('tasks.complete', $task) }}">
-                  @csrf
-                  <button class="btn btn-sm btn-success">Выполнено</button>
-                </form>
-              @endif
+              <div class="d-flex gap-2 flex-wrap justify-content-end">
+                <a class="btn btn-sm btn-outline-primary" href="{{ $buildDealUrl(['edit_task' => $task->id]) }}#task-{{ $task->id }}">Редактировать</a>
+                @if($task->status !== 'done')
+                  <form method="POST" action="{{ route('tasks.complete', $task) }}">
+                    @csrf
+                    <button class="btn btn-sm btn-success">Выполнено</button>
+                  </form>
+                @endif
+              </div>
             </div>
             @if($task->description)
               <div class="text-muted small mt-1">{{ $task->description }}</div>
             @endif
             @if(($task->external_sync_error ?? '') !== '')
               <div class="text-danger small mt-1">{{ $task->external_sync_error }}</div>
+            @endif
+            @if($editingTaskId === (int) $task->id)
+              @include('tasks._edit_form', [
+                'task' => $task,
+                'users' => $users,
+                'cancelUrl' => $buildDealUrl(['edit_task' => null]).'#task-'.$task->id,
+              ])
             @endif
           </div>
         @empty
