@@ -4,12 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Models\Deal;
 use App\Models\DealActivity;
+use App\Models\DealStageHistory;
 use App\Models\Measurement;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 
 class ReportController extends Controller
 {
@@ -113,7 +115,7 @@ class ReportController extends Controller
 
     private function measurementCompletionRows(Collection $users, $from, $to): Collection
     {
-        return $users->values()->map(function (User $u) use ($from, $to) {
+        return $users->values()->map(function (User $u) use ($createdDeals, $closedDeals, $stageHistoryRows, $callActivities, $dealResponsibleMap) {
             $base = Measurement::query()
                 ->where('account_id', $u->account_id)
                 ->where('assigned_user_id', $u->id)
@@ -162,39 +164,73 @@ class ReportController extends Controller
 
     private function operatorRows(Collection $users, $from, $to): Collection
     {
+        $accountId = (int) $users->first()?->account_id;
+
+        if ($accountId === 0) {
+            return collect();
+        }
+
+        $createdDeals = Deal::query()
+            ->where('account_id', $accountId)
+            ->whereBetween('created_at', [$from, $to])
+            ->get(['id', 'responsible_user_id']);
+
+        $closedDeals = Deal::query()
+            ->where('account_id', $accountId)
+            ->whereNotNull('closed_at')
+            ->whereBetween('closed_at', [$from, $to])
+            ->get(['id', 'responsible_user_id', 'closed_by_user_id', 'closed_result']);
+
+        $stageHistoryRows = DealStageHistory::query()
+            ->where('account_id', $accountId)
+            ->whereBetween('changed_at', [$from, $to])
+            ->get(['deal_id', 'changed_by_user_id']);
+
+        $callActivities = DealActivity::query()
+            ->where('account_id', $accountId)
+            ->where('type', 'call')
+            ->whereBetween('created_at', [$from, $to])
+            ->get(['deal_id', 'payload']);
+
+        $dealResponsibleMap = Deal::query()
+            ->where('account_id', $accountId)
+            ->pluck('responsible_user_id', 'id')
+            ->map(fn ($value) => $value !== null ? (int) $value : null)
+            ->all();
+
         return $users->values()->map(function (User $u) use ($from, $to) {
-            $created = Deal::query()
-                ->where('account_id', $u->account_id)
-                ->where('responsible_user_id', $u->id)
-                ->whereBetween('created_at', [$from, $to])
-                ->count();
+            $createdDealIds = $createdDeals
+                ->filter(fn (Deal $deal) => (int) $deal->responsible_user_id === (int) $u->id)
+                ->pluck('id');
 
-            $closedWon = Deal::query()
-                ->where('account_id', $u->account_id)
-                ->where('responsible_user_id', $u->id)
-                ->where('closed_result', 'won')
-                ->whereNotNull('closed_at')
-                ->whereBetween('closed_at', [$from, $to])
-                ->count();
+            $stageChangedDealIds = $stageHistoryRows
+                ->filter(fn (DealStageHistory $row) => (int) $row->changed_by_user_id === (int) $u->id)
+                ->pluck('deal_id');
 
-            $closedLost = Deal::query()
-                ->where('account_id', $u->account_id)
-                ->where('responsible_user_id', $u->id)
-                ->where('closed_result', 'lost')
-                ->whereNotNull('closed_at')
-                ->whereBetween('closed_at', [$from, $to])
-                ->count();
+            $closedByUser = $closedDeals->filter(function (Deal $deal) use ($u) {
+                if ((int) ($deal->closed_by_user_id ?? 0) === (int) $u->id) {
+                    return true;
+                }
 
-            $callActivities = DealActivity::query()
-                ->where('account_id', $u->account_id)
-                ->where('type', 'call')
-                ->whereBetween('created_at', [$from, $to])
-                ->whereHas('deal', function ($q) use ($u) {
-                    $q->where('responsible_user_id', $u->id);
-                })
-                ->get(['payload']);
+                return $deal->closed_by_user_id === null
+                    && (int) ($deal->responsible_user_id ?? 0) === (int) $u->id;
+            });
 
-            $callSourceStats = $this->callSourceStats($callActivities);
+            $userCallActivities = $callActivities->filter(function (DealActivity $activity) use ($u, $dealResponsibleMap) {
+                return $this->callActivityBelongsToUser($activity, $u, $dealResponsibleMap);
+            })->values();
+
+            $processedDealIds = $createdDealIds
+                ->merge($stageChangedDealIds)
+                ->merge($closedByUser->pluck('id'))
+                ->merge($userCallActivities->pluck('deal_id'))
+                ->filter()
+                ->unique()
+                ->values();
+
+            $closedWon = $closedByUser->where('closed_result', 'won')->count();
+            $closedLost = $closedByUser->where('closed_result', 'lost')->count();
+            $callSourceStats = $this->callSourceStats($userCallActivities);
 
             $winBase = $closedWon + $closedLost;
 
@@ -202,10 +238,10 @@ class ReportController extends Controller
                 'id' => $u->id,
                 'name' => $u->name,
                 'role' => $u->role,
-                'created' => $created,
+                'created' => $processedDealIds->count(),
                 'closedWon' => $closedWon,
                 'closedLost' => $closedLost,
-                'callActivities' => $callActivities->count(),
+                'callActivities' => $userCallActivities->count(),
                 'callSourceCounts' => $callSourceStats['counts'],
                 'uncategorizedCallActivities' => $callSourceStats['uncategorized'],
                 'winRate' => $winBase > 0 ? round(($closedWon / $winBase) * 100, 1) : null,
@@ -434,5 +470,90 @@ class ReportController extends Controller
                 ->max('created_at'),
             Measurement::query()->where('account_id', $accountId)->max('scheduled_at'),
         ]);
+    }
+
+    private function callActivityBelongsToUser(DealActivity $activity, User $user, array $dealResponsibleMap): bool
+    {
+        $payload = is_array($activity->payload ?? null) ? $activity->payload : [];
+        $employee = Deal::resolveCallEmployeeFromPayload($payload);
+
+        if ($employee !== null && $this->operatorLabelMatchesUser($employee, $user)) {
+            return true;
+        }
+
+        return (int) ($dealResponsibleMap[(int) $activity->deal_id] ?? 0) === (int) $user->id;
+    }
+
+    private function operatorLabelMatchesUser(string $label, User $user): bool
+    {
+        $labelTokens = $this->normalizeHumanTokens($label);
+        if ($labelTokens === []) {
+            return false;
+        }
+
+        $candidates = [$user->name];
+        $login = trim((string) $user->email);
+        if ($login !== '') {
+            $candidates[] = Str::before($login, '@');
+            $candidates[] = $login;
+        }
+
+        foreach ($candidates as $candidate) {
+            if ($this->humanTokensMatch($labelTokens, $this->normalizeHumanTokens((string) $candidate))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function normalizeHumanTokens(string $value): array
+    {
+        $value = Str::lower(Str::ascii($value));
+        $value = str_replace(['_', '.', '-', '@'], ' ', $value);
+        $value = preg_replace('/[^a-z0-9\s]+/', ' ', $value) ?? '';
+
+        return collect(preg_split('/\s+/', trim($value)) ?: [])
+            ->filter(fn ($token) => $token !== '' && !ctype_digit($token))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function humanTokensMatch(array $left, array $right): bool
+    {
+        if ($left === [] || $right === []) {
+            return false;
+        }
+
+        $matched = 0;
+        foreach ($right as $candidateToken) {
+            foreach ($left as $labelToken) {
+                if ($this->humanTokenMatches($labelToken, $candidateToken)) {
+                    $matched++;
+                    break;
+                }
+            }
+        }
+
+        if (count($right) === 1) {
+            return $matched >= 1;
+        }
+
+        return $matched >= min(2, count($right));
+    }
+
+    private function humanTokenMatches(string $left, string $right): bool
+    {
+        if ($left === $right) {
+            return true;
+        }
+
+        $minLength = min(strlen($left), strlen($right));
+        if ($minLength >= 4 && (str_starts_with($left, $right) || str_starts_with($right, $left))) {
+            return true;
+        }
+
+        return $minLength >= 5 && levenshtein($left, $right) <= 2;
     }
 }

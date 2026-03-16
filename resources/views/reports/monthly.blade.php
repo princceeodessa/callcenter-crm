@@ -96,7 +96,7 @@
     <div class="col-md-3">
       <div class="card shadow-sm h-100">
         <div class="card-body">
-          <div class="text-muted small">Создано сделок</div>
+          <div class="text-muted small">Обработано сделок</div>
           <div class="fs-3 fw-semibold">{{ $operatorSummary['created'] }}</div>
         </div>
       </div>
@@ -137,7 +137,7 @@
           <tr>
             <th>Пользователь</th>
             @if($mode === 'manager')<th>Роль</th>@endif
-            <th>Создано сделок</th>
+            <th>Обработано сделок</th>
             <th>Успешно</th>
             <th>Отказ</th>
             <th>Звонки</th>
