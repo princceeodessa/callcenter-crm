@@ -20,6 +20,12 @@
   </form>
 </div>
 
+@if(!empty($dataPeriodHint))
+  <div class="alert alert-info py-2">
+    {{ $dataPeriodHint }}
+  </div>
+@endif
+
 @if($mode === 'measurer')
   <div class="row g-3 mb-4">
     <div class="col-md-3">
