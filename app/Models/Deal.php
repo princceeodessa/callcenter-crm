@@ -3,12 +3,16 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToAccount;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 class Deal extends Model
 {
     use BelongsToAccount;
 
+    private const SOURCE_FILTER_PHONE = 'phone';
+    private const SOURCE_FILTER_CRM = 'crm';
+    private const PHONE_SOURCE_FILTER_PREFIX = 'phone:';
     private const DEFAULT_SOURCE_LABEL = 'CRM';
     private const DEFAULT_SOURCE_BADGE_CLASS = 'source-badge source-badge-default';
     private const DEFAULT_SOURCE_SURFACE_CLASS = 'source-surface source-surface-default';
@@ -88,6 +92,132 @@ class Deal extends Model
         'is_ready',
         'missing_fields',
     ];
+
+    public static function sourceFilterOptions(): array
+    {
+        $options = [
+            'vk' => 'VK',
+            'telegram' => 'Telegram',
+            'avito' => 'Avito',
+            'tilda' => self::TILDA_SOURCE_LABEL,
+            'bitrix' => self::BITRIX_SOURCE_LABEL,
+            self::SOURCE_FILTER_PHONE => self::PHONE_SOURCE_LABEL,
+        ];
+
+        foreach (self::INCOMING_PHONE_SOURCE_LABELS as $number => $label) {
+            $options[self::phoneSourceFilterKey($number)] = self::PHONE_SOURCE_LABEL.': '.$label;
+        }
+
+        $options[self::SOURCE_FILTER_CRM] = self::DEFAULT_SOURCE_LABEL;
+
+        return $options;
+    }
+
+    public static function incomingPhoneSourceOptions(): array
+    {
+        $options = [];
+
+        foreach (self::INCOMING_PHONE_SOURCE_LABELS as $number => $label) {
+            $options[self::phoneSourceFilterKey($number)] = $label;
+        }
+
+        return $options;
+    }
+
+    public static function emptyIncomingPhoneSourceCounts(): array
+    {
+        return array_fill_keys(array_keys(self::incomingPhoneSourceOptions()), 0);
+    }
+
+    public static function resolveIncomingPhoneSourceFilterKeyFromPayload(?array $payload): ?string
+    {
+        $binding = self::resolveIncomingPhoneSourceFromPayload($payload);
+        if ($binding === null) {
+            return null;
+        }
+
+        return self::phoneSourceFilterKey($binding['number']);
+    }
+
+    public static function applySourceFilter(Builder $query, string $filter): Builder
+    {
+        if (!array_key_exists($filter, self::sourceFilterOptions())) {
+            return $query;
+        }
+
+        if (in_array($filter, ['vk', 'telegram', 'avito'], true)) {
+            return $query->whereHas('conversations', function (Builder $conversationQuery) use ($filter) {
+                $conversationQuery->where('channel', $filter);
+            });
+        }
+
+        if ($filter === 'tilda') {
+            return $query->where(function (Builder $sourceQuery) {
+                $sourceQuery
+                    ->whereHas('conversations', function (Builder $conversationQuery) {
+                        $conversationQuery->where('channel', 'tilda');
+                    })
+                    ->orWhereHas('activities', function (Builder $activityQuery) {
+                        $activityQuery
+                            ->where('type', 'lead_form')
+                            ->where('payload->provider', 'tilda');
+                    });
+            });
+        }
+
+        if ($filter === 'bitrix') {
+            return $query->whereHas('activities', function (Builder $activityQuery) {
+                $activityQuery
+                    ->where('type', 'import')
+                    ->where('payload->provider', 'bitrix');
+            });
+        }
+
+        if ($filter === self::SOURCE_FILTER_PHONE) {
+            return $query->where(function (Builder $sourceQuery) {
+                $sourceQuery
+                    ->whereHas('activities', function (Builder $activityQuery) {
+                        $activityQuery->where('type', 'call');
+                    })
+                    ->orWhereHas('callRecordings');
+            });
+        }
+
+        if ($filter === self::SOURCE_FILTER_CRM) {
+            return $query
+                ->whereDoesntHave('conversations')
+                ->whereDoesntHave('callRecordings')
+                ->whereDoesntHave('activities', function (Builder $activityQuery) {
+                    $activityQuery->where(function (Builder $sourceQuery) {
+                        $sourceQuery
+                            ->where('type', 'call')
+                            ->orWhere(function (Builder $tildaQuery) {
+                                $tildaQuery
+                                    ->where('type', 'lead_form')
+                                    ->where('payload->provider', 'tilda');
+                            })
+                            ->orWhere(function (Builder $bitrixQuery) {
+                                $bitrixQuery
+                                    ->where('type', 'import')
+                                    ->where('payload->provider', 'bitrix');
+                            });
+                    });
+                });
+        }
+
+        $number = self::phoneSourceNumberFromFilter($filter);
+        if ($number === null) {
+            return $query;
+        }
+
+        return $query->whereHas('activities', function (Builder $activityQuery) use ($number) {
+            $activityQuery
+                ->where('type', 'call')
+                ->where(function (Builder $callQuery) use ($number) {
+                    self::applyIncomingPhoneSourceNumberCondition($callQuery, $number);
+                });
+        });
+    }
 
     public function getMissingFieldsAttribute(): array
     {
@@ -547,6 +677,54 @@ class Deal extends Model
             'number' => $number,
             'label' => $label,
         ];
+    }
+
+    private static function phoneSourceFilterKey(string $number): string
+    {
+        return self::PHONE_SOURCE_FILTER_PREFIX.$number;
+    }
+
+    private static function phoneSourceNumberFromFilter(string $filter): ?string
+    {
+        if (!str_starts_with($filter, self::PHONE_SOURCE_FILTER_PREFIX)) {
+            return null;
+        }
+
+        $number = substr($filter, strlen(self::PHONE_SOURCE_FILTER_PREFIX));
+        if ($number === '' || !array_key_exists($number, self::INCOMING_PHONE_SOURCE_LABELS)) {
+            return null;
+        }
+
+        return $number;
+    }
+
+    private static function applyIncomingPhoneSourceNumberCondition(Builder $query, string $number): Builder
+    {
+        $variants = self::phoneSourceSearchVariants($number);
+
+        return $query->where(function (Builder $matchQuery) use ($variants) {
+            foreach (self::INCOMING_PHONE_SOURCE_KEYS as $key) {
+                foreach ($variants as $variant) {
+                    $matchQuery->orWhere("payload->{$key}", $variant);
+                }
+            }
+
+            foreach ($variants as $variant) {
+                $matchQuery->orWhereRaw('CAST(payload AS CHAR) LIKE ?', ['%'.$variant.'%']);
+            }
+        });
+    }
+
+    private static function phoneSourceSearchVariants(string $number): array
+    {
+        $tail = substr($number, 1);
+
+        return array_values(array_unique([
+            $number,
+            $tail,
+            '+'.$number,
+            '8'.$tail,
+        ]));
     }
 
     private static function normalizePhoneSourceNumber(mixed $value): ?string

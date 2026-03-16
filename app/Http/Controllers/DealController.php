@@ -20,12 +20,17 @@ class DealController extends Controller
         $user = Auth::user();
         $q = $request->string('q')->toString();
         $status = $request->string('status')->toString(); // open|closed|all
+        $source = trim($request->string('source')->toString());
+        $sourceOptions = Deal::sourceFilterOptions();
 
         if (!in_array($status, ['open','closed','all'], true)) {
             $status = 'open';
         }
+        if ($source !== '' && !array_key_exists($source, $sourceOptions)) {
+            $source = '';
+        }
 
-        $deals = Deal::query()
+        $dealsQuery = Deal::query()
             ->with(['contact','stage','responsible','conversations' => fn($q) => $q->orderByDesc('last_message_at')])
             ->withCount([
                 'callRecordings as phone_call_recordings_count',
@@ -45,11 +50,17 @@ class DealController extends Controller
                             ->orWhere('name','like',"%{$q}%"));
                 });
             })
-            ->orderByDesc('id')
+            ->orderByDesc('id');
+
+        if ($source !== '') {
+            Deal::applySourceFilter($dealsQuery, $source);
+        }
+
+        $deals = $dealsQuery
             ->paginate(25)
             ->withQueryString();
 
-        return view('deals.index', compact('deals','q','status'));
+        return view('deals.index', compact('deals','q','status','source','sourceOptions'));
     }
 
     public function kanban(Request $request)

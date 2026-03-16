@@ -159,6 +159,55 @@
     </div>
   </div>
 
+  <div class="card shadow-sm mb-4">
+    <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+      <span class="fw-semibold">Источники звонков</span>
+      <span class="small text-muted">Разбивка строится по входящим телефонным номерам: авито частник, радио, вк, авито, сайт и прочее.</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Пользователь</th>
+            @foreach($callSourceOptions as $sourceKey => $sourceLabel)
+              <th>{{ $sourceLabel }}</th>
+            @endforeach
+            <th>Без категории</th>
+            <th>Всего звонков</th>
+          </tr>
+        </thead>
+        <tbody>
+          @forelse($operatorRows as $row)
+            <tr>
+              <td>{{ $row['name'] }}</td>
+              @foreach($callSourceOptions as $sourceKey => $sourceLabel)
+                <td>{{ $row['callSourceCounts'][$sourceKey] ?? 0 }}</td>
+              @endforeach
+              <td>{{ $row['uncategorizedCallActivities'] ?? 0 }}</td>
+              <td class="fw-semibold">{{ $row['callActivities'] }}</td>
+            </tr>
+          @empty
+            <tr>
+              <td colspan="{{ count($callSourceOptions) + 3 }}" class="text-muted">Данных по источникам звонков за месяц нет.</td>
+            </tr>
+          @endforelse
+        </tbody>
+        @if($operatorRows->count() > 1)
+          <tfoot>
+            <tr class="fw-semibold">
+              <td>Итого</td>
+              @foreach($callSourceOptions as $sourceKey => $sourceLabel)
+                <td>{{ $operatorSummary['callSourceCounts'][$sourceKey] ?? 0 }}</td>
+              @endforeach
+              <td>{{ $operatorSummary['uncategorizedCallActivities'] ?? 0 }}</td>
+              <td>{{ $operatorSummary['callActivities'] }}</td>
+            </tr>
+          </tfoot>
+        @endif
+      </table>
+    </div>
+  </div>
+
   @if($isManager)
     <div class="card shadow-sm">
       <div class="card-header d-flex align-items-center justify-content-between">

@@ -9,6 +9,12 @@
       <option value="closed" @selected(($status ?? 'open') === 'closed')>Завершённые</option>
       <option value="all" @selected(($status ?? 'open') === 'all')>Все</option>
     </select>
+    <select class="form-select form-select-sm" name="source" style="width: 240px;">
+      <option value="">Все источники</option>
+      @foreach(($sourceOptions ?? []) as $sourceKey => $sourceLabel)
+        <option value="{{ $sourceKey }}" @selected(($source ?? '') === $sourceKey)>{{ $sourceLabel }}</option>
+      @endforeach
+    </select>
     <input class="form-control form-control-sm" name="q" value="{{ $q }}" placeholder="поиск: имя, телефон, заголовок">
     <button class="btn btn-sm btn-outline-primary">Найти</button>
   </form>
@@ -50,6 +56,9 @@
                 <a href="{{ $deal->lead_source_chat_url }}" class="{{ $deal->lead_source_badge_class }} text-decoration-none" target="_blank" rel="noopener">{{ $deal->lead_source_label }}</a>
               @else
                 <span class="{{ $deal->lead_source_badge_class }}">{{ $deal->lead_source_label }}</span>
+              @endif
+              @if($deal->incoming_phone_source_display)
+                <div class="text-muted small mt-1">{{ $deal->incoming_phone_source_display }}</div>
               @endif
             </td>
             <td>

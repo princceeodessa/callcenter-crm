@@ -16,6 +16,7 @@ class ReportController extends Controller
     {
         $user = Auth::user();
         $month = $request->string('month')->toString();
+        $callSourceOptions = Deal::incomingPhoneSourceOptions();
 
         if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
             $month = now()->format('Y-m');
@@ -54,6 +55,7 @@ class ReportController extends Controller
                 'month' => $month,
                 'mode' => 'measurer',
                 'isManager' => $isManager,
+                'callSourceOptions' => $callSourceOptions,
                 'operatorSummary' => null,
                 'operatorRows' => collect(),
                 'measurementSummary' => $measurementSummary,
@@ -71,6 +73,7 @@ class ReportController extends Controller
                 'month' => $month,
                 'mode' => 'manager',
                 'isManager' => true,
+                'callSourceOptions' => $callSourceOptions,
                 'operatorSummary' => $operatorSummary,
                 'operatorRows' => $operatorRows,
                 'measurementSummary' => $measurementSummary,
@@ -85,6 +88,7 @@ class ReportController extends Controller
             'month' => $month,
             'mode' => 'operator',
             'isManager' => false,
+            'callSourceOptions' => $callSourceOptions,
             'operatorSummary' => $operatorSummary,
             'operatorRows' => $operatorRows,
             'measurementSummary' => null,
@@ -173,7 +177,9 @@ class ReportController extends Controller
                 ->whereHas('deal', function ($q) use ($u) {
                     $q->where('responsible_user_id', $u->id);
                 })
-                ->count();
+                ->get(['payload']);
+
+            $callSourceStats = $this->callSourceStats($callActivities);
 
             $winBase = $closedWon + $closedLost;
 
@@ -184,7 +190,9 @@ class ReportController extends Controller
                 'created' => $created,
                 'closedWon' => $closedWon,
                 'closedLost' => $closedLost,
-                'callActivities' => $callActivities,
+                'callActivities' => $callActivities->count(),
+                'callSourceCounts' => $callSourceStats['counts'],
+                'uncategorizedCallActivities' => $callSourceStats['uncategorized'],
                 'winRate' => $winBase > 0 ? round(($closedWon / $winBase) * 100, 1) : null,
             ];
         });
@@ -196,6 +204,14 @@ class ReportController extends Controller
         $closedWon = (int)$rows->sum('closedWon');
         $closedLost = (int)$rows->sum('closedLost');
         $callActivities = (int)$rows->sum('callActivities');
+        $callSourceCounts = Deal::emptyIncomingPhoneSourceCounts();
+        foreach ($rows as $row) {
+            foreach ($callSourceCounts as $key => $value) {
+                $callSourceCounts[$key] += (int) ($row['callSourceCounts'][$key] ?? 0);
+            }
+        }
+
+        $uncategorizedCallActivities = (int) $rows->sum('uncategorizedCallActivities');
         $winBase = $closedWon + $closedLost;
 
         return [
@@ -203,7 +219,33 @@ class ReportController extends Controller
             'closedWon' => $closedWon,
             'closedLost' => $closedLost,
             'callActivities' => $callActivities,
+            'callSourceCounts' => $callSourceCounts,
+            'uncategorizedCallActivities' => $uncategorizedCallActivities,
             'winRate' => $winBase > 0 ? round(($closedWon / $winBase) * 100, 1) : null,
+        ];
+    }
+
+    private function callSourceStats(Collection $activities): array
+    {
+        $counts = Deal::emptyIncomingPhoneSourceCounts();
+        $uncategorized = 0;
+
+        foreach ($activities as $activity) {
+            $key = Deal::resolveIncomingPhoneSourceFilterKeyFromPayload(
+                is_array($activity->payload ?? null) ? $activity->payload : []
+            );
+
+            if ($key !== null && array_key_exists($key, $counts)) {
+                $counts[$key]++;
+                continue;
+            }
+
+            $uncategorized++;
+        }
+
+        return [
+            'counts' => $counts,
+            'uncategorized' => $uncategorized,
         ];
     }
 
