@@ -42,14 +42,14 @@ class ReportController extends Controller
             ->whereIn('role', $operatorRoles)
             ->orderByRaw("FIELD(role,'operator','main_operator','admin')")
             ->orderBy('name')
-            ->get(['id', 'name', 'role']);
+            ->get(['id', 'account_id', 'name', 'role']);
 
         $measurerUsers = User::query()
             ->where('account_id', $user->account_id)
             ->where('is_active', true)
             ->where('role', 'measurer')
             ->orderBy('name')
-            ->get(['id', 'name', 'role']);
+            ->get(['id', 'account_id', 'name', 'role']);
 
         if ($isMeasurer) {
             $measurementRows = $this->measurementCompletionRows($measurerUsers->where('id', $user->id), $from, $to);
