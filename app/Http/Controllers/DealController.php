@@ -9,6 +9,7 @@ use App\Models\DealActivity;
 use App\Models\DealStageHistory;
 use App\Models\CallRecording;
 use App\Models\User;
+use App\Services\Tasks\TaskWorkflowService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -187,7 +188,7 @@ class DealController extends Controller
         return view('deals.create', compact('stages','users'));
     }
 
-    public function store(Request $request)
+    public function store(Request $request, TaskWorkflowService $taskWorkflow)
     {
         $data = $request->validate([
             'title' => ['required','string','max:255'],
@@ -196,7 +197,13 @@ class DealController extends Controller
             'contact_name' => ['nullable','string','max:255'],
             'contact_phone' => ['nullable','string','max:32'],
             'stage_id' => ['required','exists:pipeline_stages,id'],
+            'deal_date' => ['required', 'date_format:Y-m-d'],
             'comment' => ['nullable','string','max:5000'],
+            'create_task' => ['nullable', 'boolean'],
+            'task_title' => ['nullable', 'string', 'max:255', 'required_if:create_task,1'],
+            'task_description' => ['nullable', 'string'],
+            'task_due_at' => ['nullable', 'date', 'required_if:create_task,1'],
+            'task_assigned_user_id' => ['nullable', 'integer'],
         ]);
 
         $user = Auth::user();
@@ -218,6 +225,15 @@ class DealController extends Controller
             ->where('is_active', 1)
             ->findOrFail((int)$data['responsible_user_id']);
 
+        $createTask = $request->boolean('create_task');
+        $taskAssigneeId = $data['task_assigned_user_id'] ?? $responsible->id;
+        if ($createTask) {
+            $taskWorkflow->resolveAssigneeId($user->account_id, $taskAssigneeId, 'task_assigned_user_id');
+        }
+
+        $dealCreatedAt = Carbon::createFromFormat('Y-m-d', $data['deal_date'], config('app.timezone'))
+            ->setTimeFrom(now(config('app.timezone')));
+
         $deal = Deal::create([
             'account_id' => $user->account_id,
             'pipeline_id' => $stage->pipeline_id,
@@ -230,23 +246,56 @@ class DealController extends Controller
             'currency' => 'RUB',
         ]);
 
-        DealActivity::create([
+        Deal::query()
+            ->whereKey($deal->id)
+            ->update([
+                'created_at' => $dealCreatedAt,
+                'updated_at' => $dealCreatedAt,
+            ]);
+        $deal->forceFill([
+            'created_at' => $dealCreatedAt,
+            'updated_at' => $dealCreatedAt,
+        ]);
+
+        $systemActivity = DealActivity::create([
             'account_id' => $user->account_id,
             'deal_id' => $deal->id,
             'author_user_id' => $user->id,
             'type' => 'system',
             'body' => $this->dealCreatedActivityBody(),
         ]);
+        DealActivity::query()
+            ->whereKey($systemActivity->id)
+            ->update([
+                'created_at' => $dealCreatedAt,
+                'updated_at' => $dealCreatedAt,
+            ]);
 
         $comment = trim((string) ($data['comment'] ?? ''));
         if ($comment !== '') {
-            DealActivity::create([
+            $commentActivity = DealActivity::create([
                 'account_id' => $user->account_id,
                 'deal_id' => $deal->id,
                 'author_user_id' => $user->id,
                 'type' => 'comment',
                 'body' => $comment,
             ]);
+            DealActivity::query()
+                ->whereKey($commentActivity->id)
+                ->update([
+                    'created_at' => $dealCreatedAt,
+                    'updated_at' => $dealCreatedAt,
+                ]);
+        }
+
+        if ($createTask) {
+            $taskWorkflow->createTask($deal, [
+                'title' => $data['task_title'],
+                'description' => $data['task_description'] ?? null,
+                'due_at' => $data['task_due_at'],
+                'assigned_user_id' => $taskAssigneeId,
+                'created_at' => $dealCreatedAt,
+            ], $user);
         }
 
         DealStageHistory::create([
@@ -255,7 +304,7 @@ class DealController extends Controller
             'from_stage_id' => null,
             'to_stage_id' => $stage->id,
             'changed_by_user_id' => $user->id,
-            'changed_at' => now(),
+            'changed_at' => $dealCreatedAt,
         ]);
 
         return redirect()->route('deals.show', $deal);

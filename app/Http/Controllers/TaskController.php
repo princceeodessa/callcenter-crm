@@ -6,13 +6,11 @@ use App\Models\Deal;
 use App\Models\DealActivity;
 use App\Models\Task;
 use App\Models\User;
-use App\Models\UserNotification;
 use App\Services\Integrations\BitrixTaskSyncService;
+use App\Services\Tasks\TaskWorkflowService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
 
 class TaskController extends Controller
 {
@@ -99,19 +97,19 @@ class TaskController extends Controller
         ]);
     }
 
-    public function store(Request $request, Deal $deal)
+    public function store(Request $request, Deal $deal, TaskWorkflowService $taskWorkflow)
     {
         $data = $this->validateTaskData($request);
 
         $user = Auth::user();
         abort_unless($deal->account_id === $user->account_id, 403);
 
-        $this->createTask($deal, $data, $user);
+        $taskWorkflow->createTask($deal, $data, $user);
 
         return back();
     }
 
-    public function storeFromPage(Request $request)
+    public function storeFromPage(Request $request, TaskWorkflowService $taskWorkflow)
     {
         $data = $this->validateTaskData($request, true);
 
@@ -120,19 +118,19 @@ class TaskController extends Controller
             ->where('account_id', $user->account_id)
             ->findOrFail((int) $data['deal_id']);
 
-        $this->createTask($deal, $data, $user);
+        $taskWorkflow->createTask($deal, $data, $user);
 
-        return redirect()->route('tasks.index')->with('status', 'Дело добавлено');
+        return redirect()->route('tasks.index')->with('status', 'Р”РµР»Рѕ РґРѕР±Р°РІР»РµРЅРѕ');
     }
 
-    public function update(Request $request, Task $task, BitrixTaskSyncService $bitrixSync)
+    public function update(Request $request, Task $task, BitrixTaskSyncService $bitrixSync, TaskWorkflowService $taskWorkflow)
     {
         $user = Auth::user();
         abort_unless($task->account_id === $user->account_id, 403);
 
         $data = $this->validateTaskUpdateData($request);
 
-        $task->assigned_user_id = $this->resolveAssigneeId(
+        $task->assigned_user_id = $taskWorkflow->resolveAssigneeId(
             $user->account_id,
             $data['assigned_user_id'] ?? null,
             'edit_assigned_user_id'
@@ -143,14 +141,14 @@ class TaskController extends Controller
         $task->save();
 
         $task->load(['deal', 'assignedTo']);
-        $this->syncDueNotificationState($task);
+        $taskWorkflow->syncDueNotificationState($task);
 
         DealActivity::create([
             'account_id' => $user->account_id,
             'deal_id' => $task->deal_id,
             'author_user_id' => $user->id,
             'type' => 'task_updated',
-            'body' => 'Дело обновлено: '.$task->title,
+            'body' => 'Р”РµР»Рѕ РѕР±РЅРѕРІР»РµРЅРѕ: '.$task->title,
             'payload' => [
                 'task_id' => $task->id,
                 'assigned_user_id' => $task->assigned_user_id,
@@ -161,10 +159,10 @@ class TaskController extends Controller
 
         $bitrixSync->syncUpdatedTask($task, $user);
 
-        return back()->with('status', 'Дело обновлено');
+        return back()->with('status', 'Р”РµР»Рѕ РѕР±РЅРѕРІР»РµРЅРѕ');
     }
 
-    public function complete(Request $request, Task $task, BitrixTaskSyncService $bitrixSync)
+    public function complete(Request $request, Task $task, BitrixTaskSyncService $bitrixSync, TaskWorkflowService $taskWorkflow)
     {
         $user = Auth::user();
         abort_unless($task->account_id === $user->account_id, 403);
@@ -173,14 +171,14 @@ class TaskController extends Controller
         $task->completed_at = now();
         $task->save();
 
-        $this->syncDueNotificationState($task);
+        $taskWorkflow->syncDueNotificationState($task);
 
         DealActivity::create([
             'account_id' => $user->account_id,
             'deal_id' => $task->deal_id,
             'author_user_id' => $user->id,
             'type' => 'task_done',
-            'body' => 'Дело выполнено: '.$task->title,
+            'body' => 'Р”РµР»Рѕ РІС‹РїРѕР»РЅРµРЅРѕ: '.$task->title,
             'payload' => ['task_id' => $task->id],
         ]);
 
@@ -188,40 +186,6 @@ class TaskController extends Controller
         $bitrixSync->syncCompletedTask($task, $user);
 
         return back();
-    }
-
-    private function createTask(Deal $deal, array $data, User $user): Task
-    {
-        $assigneeId = $this->resolveAssigneeId($user->account_id, $data['assigned_user_id'] ?? null);
-
-        $task = Task::create([
-            'account_id' => $user->account_id,
-            'deal_id' => $deal->id,
-            'assigned_user_id' => $assigneeId,
-            'title' => $data['title'],
-            'description' => $data['description'] ?? null,
-            'status' => 'open',
-            'due_at' => $data['due_at'],
-        ]);
-
-        $this->syncDueNotificationState($task);
-
-        DealActivity::create([
-            'account_id' => $user->account_id,
-            'deal_id' => $deal->id,
-            'author_user_id' => $user->id,
-            'type' => 'task_created',
-            'body' => 'Создано дело: '.$task->title.' • Назначено: '.$task->assignee_label,
-            'payload' => [
-                'task_id' => $task->id,
-                'assigned_user_id' => $task->assigned_user_id,
-                'assigned_label' => $task->assignee_label,
-            ],
-        ]);
-
-        app(BitrixTaskSyncService::class)->syncCreatedTask($task, $deal, $user);
-
-        return $task;
     }
 
     private function validateTaskData(Request $request, bool $includeDealId = false): array
@@ -276,107 +240,5 @@ class TaskController extends Controller
         } catch (\Throwable) {
             return now()->startOfDay();
         }
-    }
-
-    private function syncDueNotificationState(Task $task): void
-    {
-        $notificationQuery = fn () => UserNotification::query()
-            ->where('account_id', $task->account_id)
-            ->where('type', 'task_due')
-            ->where('source_type', 'task')
-            ->where('source_id', $task->id);
-
-        if (
-            $task->status !== 'open'
-            || ! $task->assigned_user_id
-            || ! $task->due_at
-            || $task->due_at->gt(now())
-        ) {
-            $notificationQuery()->delete();
-
-            if ($task->notified_at !== null) {
-                $task->forceFill(['notified_at' => null])->save();
-            }
-
-            return;
-        }
-
-        DB::transaction(function () use ($task, $notificationQuery) {
-            $fresh = Task::query()
-                ->with('deal:id,title')
-                ->lockForUpdate()
-                ->find($task->id);
-
-            if (! $fresh) {
-                return;
-            }
-
-            if (
-                $fresh->status !== 'open'
-                || ! $fresh->assigned_user_id
-                || ! $fresh->due_at
-                || $fresh->due_at->gt(now())
-            ) {
-                $notificationQuery()->delete();
-
-                if ($fresh->notified_at !== null) {
-                    $fresh->notified_at = null;
-                    $fresh->save();
-                }
-
-                return;
-            }
-
-            $notificationQuery()
-                ->where('user_id', '!=', $fresh->assigned_user_id)
-                ->delete();
-
-            $dealTitle = $fresh->deal?->title ?? ('Сделка #'.$fresh->deal_id);
-
-            UserNotification::query()->updateOrCreate(
-                [
-                    'user_id' => $fresh->assigned_user_id,
-                    'type' => 'task_due',
-                    'source_type' => 'task',
-                    'source_id' => $fresh->id,
-                ],
-                [
-                    'account_id' => $fresh->account_id,
-                    'title' => 'Пора выполнить дело',
-                    'body' => "{$fresh->title} (сделка: {$dealTitle})",
-                    'payload' => [
-                        'task_id' => $fresh->id,
-                        'deal_id' => $fresh->deal_id,
-                        'due_at' => optional($fresh->due_at)->toISOString(),
-                    ],
-                    'is_read' => 0,
-                ]
-            );
-
-            $fresh->notified_at = now();
-            $fresh->save();
-        });
-    }
-
-    private function resolveAssigneeId(int $accountId, mixed $value, string $errorField = 'assigned_user_id'): ?int
-    {
-        if ($value === null || $value === '' || (string) $value === '0') {
-            return null;
-        }
-
-        $assigneeId = (int) $value;
-        $assigneeOk = User::query()
-            ->where('account_id', $accountId)
-            ->where('is_active', 1)
-            ->where('id', $assigneeId)
-            ->exists();
-
-        if (! $assigneeOk) {
-            throw ValidationException::withMessages([
-                $errorField => 'Нельзя назначить дело этому пользователю',
-            ]);
-        }
-
-        return $assigneeId;
     }
 }
