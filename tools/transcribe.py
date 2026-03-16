@@ -22,18 +22,32 @@ def prepare_ffmpeg() -> None:
         os.environ["PATH"] = ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
 
 
-def transcribe_with_faster_whisper(audio_path: str, model: str, language: Optional[str], model_dir: Optional[str]) -> str:
+def transcribe_with_faster_whisper(
+    audio_path: str,
+    model: str,
+    language: Optional[str],
+    model_dir: Optional[str],
+    device: str,
+    compute_type: str,
+    cpu_threads: int,
+    num_workers: int,
+    beam_size: int,
+) -> str:
     from faster_whisper import WhisperModel  # type: ignore
 
     kwargs = {
-        "device": "cpu",
-        "compute_type": "int8",
+        "device": device,
+        "compute_type": compute_type,
     }
     if model_dir:
         kwargs["download_root"] = model_dir
+    if cpu_threads > 0:
+        kwargs["cpu_threads"] = cpu_threads
+    if num_workers > 0:
+        kwargs["num_workers"] = num_workers
 
     whisper_model = WhisperModel(model, **kwargs)
-    segments, _ = whisper_model.transcribe(audio_path, language=language)
+    segments, _ = whisper_model.transcribe(audio_path, language=language, beam_size=beam_size)
     return " ".join(segment.text.strip() for segment in segments if getattr(segment, "text", "").strip()).strip()
 
 
@@ -51,6 +65,11 @@ def main() -> int:
     parser.add_argument("--model", default="small")
     parser.add_argument("--language", default=None)
     parser.add_argument("--model-dir", default=None)
+    parser.add_argument("--device", default="cpu")
+    parser.add_argument("--compute-type", default="int8")
+    parser.add_argument("--cpu-threads", type=int, default=0)
+    parser.add_argument("--num-workers", type=int, default=1)
+    parser.add_argument("--beam-size", type=int, default=5)
     args = parser.parse_args()
 
     audio_path = os.path.abspath(args.audio_path)
@@ -67,7 +86,17 @@ def main() -> int:
     errors: List[str] = []
 
     try:
-        text = transcribe_with_faster_whisper(audio_path, args.model, args.language, model_dir)
+        text = transcribe_with_faster_whisper(
+            audio_path,
+            args.model,
+            args.language,
+            model_dir,
+            args.device,
+            args.compute_type,
+            args.cpu_threads,
+            args.num_workers,
+            args.beam_size,
+        )
     except Exception as exc:
         errors.append(f"faster_whisper: {exc}")
 

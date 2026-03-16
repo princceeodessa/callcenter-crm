@@ -18,6 +18,11 @@ class WhisperCliTranscriber
         $model = config('transcription.whisper_cli.model', 'small');
         $modelDir = config('transcription.whisper_cli.model_dir');
         $language = config('transcription.whisper_cli.language', 'ru');
+        $device = config('transcription.whisper_cli.device', 'cpu');
+        $computeType = config('transcription.whisper_cli.compute_type', 'int8');
+        $cpuThreads = (int) config('transcription.whisper_cli.cpu_threads', 0);
+        $numWorkers = (int) config('transcription.whisper_cli.num_workers', 1);
+        $beamSize = (int) config('transcription.whisper_cli.beam_size', 5);
         $timeout = (int) config('transcription.whisper_cli.timeout_seconds', 300);
 
         if ($python === null) {
@@ -45,6 +50,31 @@ class WhisperCliTranscriber
         if (is_string($modelDir) && trim($modelDir) !== '') {
             $command[] = '--model-dir';
             $command[] = $modelDir;
+        }
+
+        if (is_string($device) && trim($device) !== '') {
+            $command[] = '--device';
+            $command[] = trim($device);
+        }
+
+        if (is_string($computeType) && trim($computeType) !== '') {
+            $command[] = '--compute-type';
+            $command[] = trim($computeType);
+        }
+
+        if ($cpuThreads > 0) {
+            $command[] = '--cpu-threads';
+            $command[] = (string) $cpuThreads;
+        }
+
+        if ($numWorkers > 0) {
+            $command[] = '--num-workers';
+            $command[] = (string) $numWorkers;
+        }
+
+        if ($beamSize > 0) {
+            $command[] = '--beam-size';
+            $command[] = (string) $beamSize;
         }
 
         $process = new Process($command, base_path());

@@ -33,6 +33,11 @@ return [
         'model' => env('WHISPER_MODEL', 'small'),
         'model_dir' => env('WHISPER_MODEL_DIR', storage_path('app/whisper-models')),
         'language' => env('WHISPER_LANGUAGE', 'ru'),
+        'device' => env('WHISPER_DEVICE', 'cpu'),
+        'compute_type' => env('WHISPER_COMPUTE_TYPE', 'int8'),
+        'cpu_threads' => (int) env('WHISPER_CPU_THREADS', 0),
+        'num_workers' => (int) env('WHISPER_NUM_WORKERS', 1),
+        'beam_size' => (int) env('WHISPER_BEAM_SIZE', 5),
         'timeout_seconds' => (int) env('WHISPER_TIMEOUT', 300),
     ],
 ];
