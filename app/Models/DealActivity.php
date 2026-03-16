@@ -51,6 +51,10 @@ class DealActivity extends Model
             default => strtoupper($provider),
         } : null;
 
+        if ($type === 'comment') {
+            return "\u{041A}\u{043E}\u{043C}\u{043C}\u{0435}\u{043D}\u{0442}\u{0430}\u{0440}\u{0438}\u{0439}";
+        }
+
         return match ($type) {
             'message_in' => 'Входящее сообщение'.($provLabel ? " ({$provLabel})" : ''),
             'message_out' => 'Исходящее сообщение'.($provLabel ? " ({$provLabel})" : ''),

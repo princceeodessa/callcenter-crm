@@ -185,6 +185,7 @@ class DealController extends Controller
             'contact_name' => ['nullable','string','max:255'],
             'contact_phone' => ['nullable','string','max:32'],
             'stage_id' => ['required','exists:pipeline_stages,id'],
+            'comment' => ['nullable','string','max:5000'],
         ]);
 
         $user = Auth::user();
@@ -225,6 +226,17 @@ class DealController extends Controller
             'type' => 'system',
             'body' => $this->dealCreatedActivityBody(),
         ]);
+
+        $comment = trim((string) ($data['comment'] ?? ''));
+        if ($comment !== '') {
+            DealActivity::create([
+                'account_id' => $user->account_id,
+                'deal_id' => $deal->id,
+                'author_user_id' => $user->id,
+                'type' => 'comment',
+                'body' => $comment,
+            ]);
+        }
 
         DealStageHistory::create([
             'account_id' => $user->account_id,
