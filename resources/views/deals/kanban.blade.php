@@ -33,7 +33,9 @@
 
         $ui = [
             'title' => "\u{0421}\u{0434}\u{0435}\u{043B}\u{043A}\u{0438} - \u{043A}\u{0430}\u{043D}\u{0431}\u{0430}\u{043D}",
-            'search_placeholder' => "\u{041F}\u{043E}\u{0438}\u{0441}\u{043A} \u{043F}\u{043E} \u{0438}\u{043C}\u{0435}\u{043D}\u{0438}, \u{0442}\u{0435}\u{043B}\u{0435}\u{0444}\u{043E}\u{043D}\u{0443}, \u{0441}\u{0434}\u{0435}\u{043B}\u{043A}\u{0435}, id, \u{043E}\u{0442}\u{0432}\u{0435}\u{0442}\u{0441}\u{0442}\u{0432}\u{0435}\u{043D}\u{043D}\u{043E}\u{043C}\u{0443}",
+            'search_placeholder' => $canSeeKanbanIds
+                ? 'Поиск по имени, телефону, сделке, id, ответственному'
+                : 'Поиск по имени, телефону, сделке, ответственному',
             'apply' => "\u{041F}\u{0440}\u{0438}\u{043C}\u{0435}\u{043D}\u{0438}\u{0442}\u{044C}",
             'yesterday' => "\u{0412}\u{0447}\u{0435}\u{0440}\u{0430}",
             'today' => "\u{0421}\u{0435}\u{0433}\u{043E}\u{0434}\u{043D}\u{044F}",
@@ -152,13 +154,24 @@
                     @foreach ($stageDeals as $deal)
                         @php($leadName = $deal->lead_display_name ?? $ui['no_name'])
                         @php($dealTitle = $deal->title_is_custom ? $deal->title : ($deal->lead_display_name ?: $deal->title))
-                        <div class="border rounded p-2 kanban-card {{ $deal->lead_source_surface_class }}" data-deal-id="{{ $deal->id }}" data-search="{{ mb_strtolower(trim(implode(' ', array_filter([$dealTitle, $leadName, $deal->contact?->phone, $deal->responsible?->name, $deal->id])))) }}">
+                        @php($answeredBy = $deal->latest_call_answered_by_label)
+                        @php($searchParts = array_filter([
+                            $dealTitle,
+                            $leadName,
+                            $deal->contact?->phone,
+                            $deal->responsible?->name,
+                            $answeredBy,
+                            $canSeeKanbanIds ? $deal->id : null,
+                        ]))
+                        <div class="border rounded p-2 kanban-card {{ $deal->lead_source_surface_class }}" data-deal-id="{{ $deal->id }}" data-search="{{ mb_strtolower(trim(implode(' ', $searchParts))) }}">
                             <div class="d-flex justify-content-between align-items-start gap-2">
                                 <div class="d-flex align-items-center gap-2 min-w-0">
                                     {!! $deal->lead_source_icon_html !!}
                                     <a class="fw-semibold text-decoration-none deal-title" href="{{ route('deals.show', $deal) }}">{{ $dealTitle }}</a>
                                 </div>
-                                <span class="text-muted small">#{{ $deal->id }}</span>
+                                @if($canSeeKanbanIds)
+                                    <span class="text-muted small">#{{ $deal->id }}</span>
+                                @endif
                             </div>
                             @if($leadName && $leadName !== $dealTitle)
                                 <div class="mt-2 small fw-semibold text-body-secondary">{{ $leadName }}</div>
@@ -166,6 +179,9 @@
                             <div class="text-muted small mt-1">
                                 @if($deal->contact?->phone){{ $deal->contact->phone }}@else {{ $ui['no_phone'] }} @endif
                             </div>
+                            @if($answeredBy)
+                                <div class="text-muted small mt-1">Ответил: {{ $answeredBy }}</div>
+                            @endif
                             <div class="text-muted small mt-2 kanban-last-moved">{{ $deal->last_moved_by_label }}</div>
                         </div>
                     @endforeach

@@ -1,0 +1,10 @@
+[Unit]
+Description=Callcenter CRM scheduler runner
+After=network.target
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/callcenter-crm
+ExecStart=/usr/bin/php artisan schedule:run --no-interaction

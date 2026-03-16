@@ -1,4 +1,4 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @push('styles')
 <style>
@@ -130,14 +130,19 @@
     </div>
   </div>
 
-  <form method="POST" action="{{ route('deals.stage', $deal) }}" class="d-flex gap-2">
+  <form method="POST" action="{{ route('deals.stage', $deal) }}" class="d-flex">
     @csrf
-    <select name="stage_id" class="form-select form-select-sm" style="min-width: 280px;">
+    <select
+      name="stage_id"
+      class="form-select form-select-sm"
+      style="min-width: 280px;"
+      onchange="this.form.submit()"
+      @disabled($deal->closed_at)
+    >
       @foreach($stages as $s)
         <option value="{{ $s->id }}" @selected($deal->stage_id === $s->id)>{{ $s->name }}</option>
       @endforeach
     </select>
-    <button class="btn btn-sm btn-outline-primary">Изменить стадию</button>
   </form>
 </div>
 
@@ -347,7 +352,7 @@
               <div>
                 <div class="fw-semibold">{{ $a->type_label }}</div>
                 @if($a->type === 'stage_changed')
-                  <div class="activity-meta mt-1">�зменил: {{ $actorName !== '' ? $actorName : 'Система' }}</div>
+                  <div class="activity-meta mt-1">�зменил: {{ $actorName !== '' ? $actorName : 'Система' }}</div>
                   <div class="small mt-1">{{ $stageNameById($payload['from_stage_id'] ?? null) }}  <b>{{ $stageNameById($payload['to_stage_id'] ?? null) }}</b></div>
                 @elseif($actorName !== '')
                   <div class="activity-meta mt-1">Автор: {{ $actorName }}</div>
@@ -363,11 +368,12 @@
                 $throughPhone = $payload['telnum'] ?? $payload['diversion'] ?? null;
                 $clientPhone = $payload['phone'] ?? $payload['client_phone'] ?? $payload['phone_client'] ?? $payload['caller'] ?? $deal->contact?->phone;
                 $callNumberSource = \App\Models\Deal::resolveIncomingPhoneSourceFromPayload($payload);
+                $callEmployee = \App\Models\Deal::resolveCallEmployeeFromPayload($payload);
               @endphp
               <div class="activity-call-card">
                 <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-3">
                   <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <span class="badge text-bg-success">{{ $callType === 'out' ? '�сходящий' : ($callType === 'missed' ? 'Пропущенный' : 'Входящий') }}</span>
+                    <span class="badge text-bg-success">{{ $callType === 'out' ? '�сходящий' : ($callType === 'missed' ? 'Пропущенный' : 'Входящий') }}</span>
                     @if($callStatus !== '')
                       <span class="badge text-bg-light">{{ $callStatus }}</span>
                     @endif
@@ -384,7 +390,7 @@
                   </div>
                   <div class="activity-call-field">
                     <span class="activity-call-label">Сотрудник</span>
-                    <span class="activity-call-value">{{ $formatEmployee($payload['user'] ?? '') }}</span>
+                    <span class="activity-call-value">{{ $callEmployee ?? '—' }}</span>
                   </div>
                   <div class="activity-call-field">
                     <span class="activity-call-label">Через</span>

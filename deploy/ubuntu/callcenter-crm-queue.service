@@ -1,0 +1,18 @@
+[Unit]
+Description=Callcenter CRM queue worker
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+Restart=always
+RestartSec=5
+WorkingDirectory=/var/www/callcenter-crm
+ExecStart=/usr/bin/php artisan queue:work database --queue=transcription,default --sleep=3 --tries=3 --timeout=420 --max-time=3600 --no-interaction
+ExecReload=/usr/bin/php artisan queue:restart
+KillMode=process
+TimeoutStopSec=3600
+
+[Install]
+WantedBy=multi-user.target

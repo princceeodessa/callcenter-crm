@@ -10,3 +10,4 @@
 /bootstrap/cache/*
 .env
 .phpunit.result.cache
+.whisper-venv/

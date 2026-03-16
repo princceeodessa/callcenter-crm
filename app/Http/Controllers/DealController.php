@@ -55,6 +55,7 @@ class DealController extends Controller
     public function kanban(Request $request)
     {
         $user = Auth::user();
+        $canSeeKanbanIds = $user->role === 'admin';
         $showSpam = $request->boolean('show_spam');
         $q = trim($request->string('q')->toString());
         $focusDate = $this->resolveKanbanFocusDate($request->string('focus_date')->toString());
@@ -91,20 +92,31 @@ class DealController extends Controller
         }
 
         $dealQuery = Deal::query()
-            ->with(['contact','responsible','latestStageHistory.changedBy:id,name','conversations' => fn($q) => $q->orderByDesc('last_message_at')])
+            ->with([
+                'contact',
+                'responsible',
+                'latestStageHistory.changedBy:id,name',
+                'latestCallActivity',
+                'conversations' => fn($q) => $q->orderByDesc('last_message_at'),
+            ])
             ->withCount([
                 'callRecordings as phone_call_recordings_count',
+                'activities as phone_call_activities_count' => fn ($query) => $query->where('type', 'call'),
                 'activities as tilda_lead_form_activities_count' => fn ($query) => $query->where('type', 'lead_form')->where('payload->provider', 'tilda'),
             ])
             ->where('account_id', $user->account_id)
             ->whereNull('closed_at')
-            ->when($q !== '', function ($query) use ($q) {
-                $query->where(function ($qq) use ($q) {
+            ->when($q !== '', function ($query) use ($q, $canSeeKanbanIds) {
+                $query->where(function ($qq) use ($q, $canSeeKanbanIds) {
                     $qq->where('title', 'like', "%{$q}%")
                         ->orWhereHas('contact', fn($c) => $c->where('phone', 'like', "%{$q}%")
                             ->orWhere('name', 'like', "%{$q}%"))
                         ->orWhereHas('responsible', fn($u) => $u->where('name', 'like', "%{$q}%"))
                         ->orWhereHas('conversations', fn($c) => $c->where('external_id', 'like', "%{$q}%"));
+
+                    if ($canSeeKanbanIds && ctype_digit($q)) {
+                        $qq->orWhere('id', (int) $q);
+                    }
                 });
             })
             ->orderByDesc('created_at')
@@ -144,7 +156,7 @@ class DealController extends Controller
             }
         }
 
-        return view('deals.kanban', compact('stages','dealsByStage','showSpam','q', 'dateFilteredStageIds', 'focusDate'));
+        return view('deals.kanban', compact('stages','dealsByStage','showSpam','q', 'dateFilteredStageIds', 'focusDate', 'canSeeKanbanIds'));
     }
 
     public function create()

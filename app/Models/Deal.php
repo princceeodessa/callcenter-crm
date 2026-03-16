@@ -46,6 +46,29 @@ class Deal extends Model
         'caller_id_dnis',
         'telnum',
     ];
+    private const CALL_EMPLOYEE_KEYS = [
+        'answered_by',
+        'answered_user',
+        'answeredUser',
+        'employee',
+        'employee_name',
+        'operator',
+        'operator_name',
+        'manager',
+        'manager_name',
+        'user',
+        'user_name',
+    ];
+    private const MISSED_CALL_STATUSES = [
+        'missed',
+        'no_answer',
+        'not_answered',
+        'unanswered',
+        'busy',
+        'cancelled',
+        'canceled',
+        'failed',
+    ];
     protected $fillable = [
         'account_id','pipeline_id','stage_id',
         'title','title_is_custom','contact_id','responsible_user_id',
@@ -134,6 +157,20 @@ class Deal extends Model
             $query->where('type', 'call');
         });
     }
+
+    public function getLatestCallAnsweredByLabelAttribute(): ?string
+    {
+        $activity = $this->relationLoaded('latestCallActivity')
+            ? $this->latestCallActivity
+            : $this->latestCallActivity()->first();
+
+        $payload = is_array($activity?->payload ?? null)
+            ? $activity->payload
+            : null;
+
+        return self::resolveCallEmployeeFromPayload($payload);
+    }
+
     public function primaryConversation(): ?Conversation
     {
         if ($this->relationLoaded('conversations')) {
@@ -275,6 +312,45 @@ class Deal extends Model
 
         return $binding;
     }
+
+    public static function resolveCallEmployeeFromPayload(?array $payload): ?string
+    {
+        if (!is_array($payload) || $payload === []) {
+            return null;
+        }
+
+        $callType = strtolower(trim((string) ($payload['type'] ?? '')));
+        $status = strtolower(trim((string) ($payload['status'] ?? '')));
+
+        if ($callType === 'out' || $callType === 'missed' || in_array($status, self::MISSED_CALL_STATUSES, true)) {
+            return null;
+        }
+
+        foreach (self::CALL_EMPLOYEE_KEYS as $key) {
+            if (!array_key_exists($key, $payload)) {
+                continue;
+            }
+
+            $formatted = self::formatCallEmployeeValue($payload[$key]);
+            if ($formatted !== null) {
+                return $formatted;
+            }
+        }
+
+        foreach ($payload as $value) {
+            if (!is_array($value)) {
+                continue;
+            }
+
+            $formatted = self::resolveCallEmployeeFromPayload($value);
+            if ($formatted !== null) {
+                return $formatted;
+            }
+        }
+
+        return null;
+    }
+
     private function fallbackLeadSourceMeta(): array
     {
         if ($this->hasTildaLeadSource()) {
@@ -419,6 +495,40 @@ class Deal extends Model
         }
 
         return null;
+    }
+
+    private static function formatCallEmployeeValue(mixed $value): ?string
+    {
+        if (is_array($value)) {
+            foreach (['name', 'full_name', 'fullName', 'login', 'username', 'user'] as $key) {
+                if (!array_key_exists($key, $value)) {
+                    continue;
+                }
+
+                $formatted = self::formatCallEmployeeValue($value[$key]);
+                if ($formatted !== null) {
+                    return $formatted;
+                }
+            }
+
+            return null;
+        }
+
+        if (!is_scalar($value)) {
+            return null;
+        }
+
+        $value = trim((string) $value);
+        if ($value === '') {
+            return null;
+        }
+
+        if (preg_match('/^[a-z0-9_.-]+$/i', $value) === 1) {
+            $value = str_replace(['_', '.', '-'], ' ', $value);
+            $value = mb_convert_case($value, MB_CASE_TITLE, 'UTF-8');
+        }
+
+        return $value;
     }
 
     private static function resolveIncomingPhoneSourceFromValue(mixed $value): ?array
