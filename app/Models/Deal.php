@@ -95,6 +95,10 @@ class Deal extends Model
 
     public function scopeWithClientAttentionMetrics(Builder $query): Builder
     {
+        if ($query->getQuery()->columns === null) {
+            $query->select('deals.*');
+        }
+
         $incomingMessageAt = Message::query()
             ->selectRaw('MAX(messages.created_at)')
             ->join('conversations', 'conversations.id', '=', 'messages.conversation_id')
