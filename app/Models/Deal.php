@@ -93,6 +93,45 @@ class Deal extends Model
         'missing_fields',
     ];
 
+    public function scopeWithClientAttentionMetrics(Builder $query): Builder
+    {
+        $incomingMessageAt = Message::query()
+            ->selectRaw('MAX(messages.created_at)')
+            ->join('conversations', 'conversations.id', '=', 'messages.conversation_id')
+            ->whereColumn('conversations.deal_id', 'deals.id')
+            ->where('messages.direction', 'in');
+
+        $incomingCallAt = DealActivity::query()
+            ->selectRaw('MAX(deal_activities.created_at)')
+            ->whereColumn('deal_activities.deal_id', 'deals.id')
+            ->where('deal_activities.type', 'call')
+            ->where(function (Builder $callQuery) {
+                $callQuery
+                    ->whereNull('payload->type')
+                    ->orWhereNotIn('payload->type', ['out', 'outgoing']);
+            });
+
+        return $query
+            ->selectSub($incomingMessageAt, 'last_incoming_message_at')
+            ->selectSub($incomingCallAt, 'last_incoming_call_at');
+    }
+
+    public function scopeOrderByClientAttention(Builder $query): Builder
+    {
+        $latestClientTouchSql = <<<SQL
+CASE
+    WHEN COALESCE(last_incoming_message_at, '1970-01-01 00:00:00') >= COALESCE(last_incoming_call_at, '1970-01-01 00:00:00')
+        THEN COALESCE(last_incoming_message_at, deals.created_at)
+    ELSE COALESCE(last_incoming_call_at, deals.created_at)
+END
+SQL;
+
+        return $query
+            ->orderByRaw($latestClientTouchSql.' DESC')
+            ->orderByDesc('is_unread')
+            ->orderByDesc('id');
+    }
+
     public static function sourceFilterOptions(): array
     {
         $options = [
@@ -231,6 +270,23 @@ class Deal extends Model
     public function getIsReadyAttribute(): bool
     {
         return count($this->missing_fields) === 0;
+    }
+
+    public function getClientAttentionCountAttribute(): int
+    {
+        $chatUnreadCount = 0;
+
+        if ($this->relationLoaded('conversations')) {
+            $chatUnreadCount = (int) $this->conversations->sum(fn ($conversation) => (int) ($conversation->unread_count ?? 0));
+        } else {
+            $chatUnreadCount = (int) $this->conversations()->sum('unread_count');
+        }
+
+        if ($chatUnreadCount > 0) {
+            return $chatUnreadCount;
+        }
+
+        return $this->is_unread ? 1 : 0;
     }
 
     public function closedBy()
@@ -479,6 +535,17 @@ class Deal extends Model
         }
 
         return null;
+    }
+
+    public static function isIncomingClientCallPayload(?array $payload): bool
+    {
+        if (!is_array($payload) || $payload === []) {
+            return true;
+        }
+
+        $callType = strtolower(trim((string) ($payload['type'] ?? '')));
+
+        return !in_array($callType, ['out', 'outgoing'], true);
     }
 
     private function fallbackLeadSourceMeta(): array

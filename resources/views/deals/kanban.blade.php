@@ -155,6 +155,7 @@
                         @php($leadName = $deal->lead_display_name ?? $ui['no_name'])
                         @php($dealTitle = $deal->title_is_custom ? $deal->title : ($deal->lead_display_name ?: $deal->title))
                         @php($answeredBy = $deal->latest_call_answered_by_label)
+                        @php($clientAttentionCount = (int) ($deal->client_attention_count ?? 0))
                         @php($searchParts = array_filter([
                             $dealTitle,
                             $leadName,
@@ -168,6 +169,9 @@
                                 <div class="d-flex align-items-center gap-2 min-w-0">
                                     {!! $deal->lead_source_icon_html !!}
                                     <a class="fw-semibold text-decoration-none deal-title" href="{{ route('deals.show', $deal) }}">{{ $dealTitle }}</a>
+                                    @if($clientAttentionCount > 0)
+                                        <span class="badge text-bg-success flex-shrink-0">{{ $clientAttentionCount }}</span>
+                                    @endif
                                 </div>
                                 @if($canSeeKanbanIds)
                                     <span class="text-muted small">#{{ $deal->id }}</span>

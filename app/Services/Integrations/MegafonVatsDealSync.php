@@ -182,7 +182,7 @@ class MegafonVatsDealSync
             );
         }
 
-        if ($status === 'missed') {
+        if (Deal::isIncomingClientCallPayload(is_array($payload) ? $payload : [])) {
             $deal->is_unread = true;
             $deal->save();
         }

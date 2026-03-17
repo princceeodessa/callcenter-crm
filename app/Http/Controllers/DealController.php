@@ -32,6 +32,7 @@ class DealController extends Controller
         }
 
         $dealsQuery = Deal::query()
+            ->withClientAttentionMetrics()
             ->with(['contact','stage','responsible','conversations' => fn($q) => $q->orderByDesc('last_message_at')])
             ->withCount([
                 'callRecordings as phone_call_recordings_count',
@@ -50,8 +51,19 @@ class DealController extends Controller
                         ->orWhereHas('contact', fn($c) => $c->where('phone','like',"%{$q}%")
                             ->orWhere('name','like',"%{$q}%"));
                 });
-            })
-            ->orderByDesc('id');
+            });
+
+        if ($status === 'closed') {
+            $dealsQuery
+                ->orderByDesc('closed_at')
+                ->orderByDesc('id');
+        } else {
+            if ($status === 'all') {
+                $dealsQuery->orderByRaw('closed_at IS NOT NULL');
+            }
+
+            $dealsQuery->orderByClientAttention();
+        }
 
         if ($source !== '') {
             Deal::applySourceFilter($dealsQuery, $source);
@@ -104,6 +116,7 @@ class DealController extends Controller
         }
 
         $dealQuery = Deal::query()
+            ->withClientAttentionMetrics()
             ->with([
                 'contact',
                 'responsible',
@@ -131,8 +144,7 @@ class DealController extends Controller
                     }
                 });
             })
-            ->orderByDesc('created_at')
-            ->orderByDesc('id');
+            ->orderByClientAttention();
 
         if (!empty($hiddenStageIds)) {
             $dealQuery->whereNotIn('stage_id', $hiddenStageIds);
@@ -371,6 +383,13 @@ class DealController extends Controller
             'conversations' => fn($q) => $q->with('lastMessage')->orderByDesc('last_message_at'),
             'callRecordings' => fn($q) => $q->orderByDesc('id'),
         ]);
+
+        $conversationUnreadCount = (int) $deal->conversations->sum(fn ($conversation) => (int) ($conversation->unread_count ?? 0));
+        if ($deal->is_unread && $conversationUnreadCount === 0) {
+            $deal->update(['is_unread' => false]);
+            $deal->forceFill(['is_unread' => false]);
+        }
+
         $stages = PipelineStage::query()
             ->where('account_id', $user->account_id)
             ->orderBy('sort')

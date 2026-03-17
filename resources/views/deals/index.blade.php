@@ -36,13 +36,16 @@
         @foreach ($deals as $deal)
           @php($leadName = $deal->lead_display_name ?? 'Без имени')
           @php($dealTitle = $deal->title_is_custom ? $deal->title : ($deal->lead_display_name ?: $deal->title))
+          @php($clientAttentionCount = (int) ($deal->client_attention_count ?? 0))
           <tr class="{{ $deal->lead_source_surface_class }}">
             <td>
               <div class="d-flex align-items-center gap-2 flex-wrap">
                 {!! $deal->lead_source_icon_html !!}
                 <a href="{{ route('deals.show', $deal) }}" class="fw-semibold text-decoration-none">{{ $dealTitle }}</a>
+                @if($clientAttentionCount > 0)
+                  <span class="badge text-bg-success">{{ $clientAttentionCount }}</span>
+                @endif
               </div>
-              @if($deal->is_unread) <span class="badge text-bg-warning ms-1">не прочитан</span> @endif
               @if($deal->has_script_deviation) <span class="badge text-bg-danger ms-1">отклонения</span> @endif
               @if(!$deal->is_ready) <span class="badge text-bg-warning ms-1">не заполнено</span> @endif
               @if($deal->closed_at)
