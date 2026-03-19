@@ -120,7 +120,7 @@ class TaskController extends Controller
 
         $taskWorkflow->createTask($deal, $data, $user);
 
-        return redirect()->route('tasks.index')->with('status', 'Р”РµР»Рѕ РґРѕР±Р°РІР»РµРЅРѕ');
+        return redirect()->route('tasks.index')->with('status', 'Дело добавлено');
     }
 
     public function update(Request $request, Task $task, BitrixTaskSyncService $bitrixSync, TaskWorkflowService $taskWorkflow)
@@ -148,7 +148,7 @@ class TaskController extends Controller
             'deal_id' => $task->deal_id,
             'author_user_id' => $user->id,
             'type' => 'task_updated',
-            'body' => 'Р”РµР»Рѕ РѕР±РЅРѕРІР»РµРЅРѕ: '.$task->title,
+            'body' => 'Дело обновлено: '.$task->title,
             'payload' => [
                 'task_id' => $task->id,
                 'assigned_user_id' => $task->assigned_user_id,
@@ -159,7 +159,7 @@ class TaskController extends Controller
 
         $bitrixSync->syncUpdatedTask($task, $user);
 
-        return back()->with('status', 'Р”РµР»Рѕ РѕР±РЅРѕРІР»РµРЅРѕ');
+        return back()->with('status', 'Дело обновлено');
     }
 
     public function complete(Request $request, Task $task, BitrixTaskSyncService $bitrixSync, TaskWorkflowService $taskWorkflow)
@@ -178,7 +178,7 @@ class TaskController extends Controller
             'deal_id' => $task->deal_id,
             'author_user_id' => $user->id,
             'type' => 'task_done',
-            'body' => 'Р”РµР»Рѕ РІС‹РїРѕР»РЅРµРЅРѕ: '.$task->title,
+            'body' => 'Дело выполнено: '.$task->title,
             'payload' => ['task_id' => $task->id],
         ]);
 

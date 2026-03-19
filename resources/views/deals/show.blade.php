@@ -99,21 +99,16 @@
       }
   };
 
-  $normalizeActivityText = function ($value) {
-      if (!is_scalar($value)) {
-          return '';
-      }
+  $mojibakeScore = function (string $value): int {
+      preg_match_all('/(?:[РС][\x{0400}-\x{040F}\x{0450}-\x{045F}\x{00A0}-\x{00FF}\x{2010}-\x{203A}\x{20AC}\x{2116}\x{2122}]|[ÐÑ][\x{0080}-\x{00FF}])/u', $value, $matches);
 
-      $value = html_entity_decode((string) $value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+      return count($matches[0]);
+  };
+
+  $decodeMojibakeChunk = function (string $value) use ($mojibakeScore) {
       $rawValue = $value;
       $value = trim(str_replace("\u{00A0}", ' ', $value));
-
-      if ($value === '') {
-          return '';
-      }
-
-      preg_match_all('/(?:[РС][\x{0400}-\x{040F}\x{0450}-\x{045F}\x{00A0}-\x{00FF}\x{2010}-\x{203A}\x{20AC}\x{2116}\x{2122}]|[ÐÑ][\x{0080}-\x{00FF}])/u', $value, $originalMatches);
-      if (count($originalMatches[0]) === 0) {
+      if ($value === '' || $mojibakeScore($value) === 0) {
           return $value;
       }
 
@@ -122,12 +117,45 @@
           return $value;
       }
 
-      preg_match_all('/(?:[РС][\x{0400}-\x{040F}\x{0450}-\x{045F}\x{00A0}-\x{00FF}\x{2010}-\x{203A}\x{20AC}\x{2116}\x{2122}]|[ÐÑ][\x{0080}-\x{00FF}])/u', $converted, $convertedMatches);
+      $converted = trim(str_replace("\u{00A0}", ' ', $converted));
       preg_match_all('/[\x{0410}-\x{044F}ЁёA-Za-z0-9]/u', $converted, $readableMatches);
 
-      return count($convertedMatches[0]) < count($originalMatches[0]) && count($readableMatches[0]) > 0
-          ? trim(str_replace("\u{00A0}", ' ', $converted))
+      return $mojibakeScore($converted) < $mojibakeScore($value) && count($readableMatches[0]) > 0
+          ? $converted
           : $value;
+  };
+
+  $normalizeActivityText = function ($value) use ($decodeMojibakeChunk) {
+      if (!is_scalar($value)) {
+          return '';
+      }
+
+      $value = html_entity_decode((string) $value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+      $value = trim(str_replace("\u{00A0}", ' ', $value));
+
+      if ($value === '') {
+          return '';
+      }
+
+      $decodedWhole = $decodeMojibakeChunk($value);
+      if ($decodedWhole !== $value) {
+          return $decodedWhole;
+      }
+
+      $parts = preg_split('/(\s+)/u', $value, -1, PREG_SPLIT_DELIM_CAPTURE);
+      if (!is_array($parts)) {
+          return $value;
+      }
+
+      foreach ($parts as $index => $part) {
+          if ($part === '' || preg_match('/^\s+$/u', $part) === 1) {
+              continue;
+          }
+
+          $parts[$index] = $decodeMojibakeChunk($part);
+      }
+
+      return trim(implode('', $parts));
   };
 
   $formatEmployee = function ($value) use ($normalizeActivityText) {
