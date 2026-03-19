@@ -99,8 +99,39 @@
       }
   };
 
-  $formatEmployee = function ($value) {
-      $value = trim((string) $value);
+  $normalizeActivityText = function ($value) {
+      if (!is_scalar($value)) {
+          return '';
+      }
+
+      $value = html_entity_decode((string) $value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+      $rawValue = $value;
+      $value = trim(str_replace("\u{00A0}", ' ', $value));
+
+      if ($value === '') {
+          return '';
+      }
+
+      preg_match_all('/(?:[РС][\x{0400}-\x{040F}\x{0450}-\x{045F}\x{00A0}-\x{00FF}\x{2010}-\x{203A}\x{20AC}\x{2116}\x{2122}]|[ÐÑ][\x{0080}-\x{00FF}])/u', $value, $originalMatches);
+      if (count($originalMatches[0]) === 0) {
+          return $value;
+      }
+
+      $converted = @mb_convert_encoding($rawValue, 'Windows-1251', 'UTF-8');
+      if (!is_string($converted) || $converted === '' || preg_match('//u', $converted) !== 1) {
+          return $value;
+      }
+
+      preg_match_all('/(?:[РС][\x{0400}-\x{040F}\x{0450}-\x{045F}\x{00A0}-\x{00FF}\x{2010}-\x{203A}\x{20AC}\x{2116}\x{2122}]|[ÐÑ][\x{0080}-\x{00FF}])/u', $converted, $convertedMatches);
+      preg_match_all('/[\x{0410}-\x{044F}ЁёA-Za-z0-9]/u', $converted, $readableMatches);
+
+      return count($convertedMatches[0]) < count($originalMatches[0]) && count($readableMatches[0]) > 0
+          ? trim(str_replace("\u{00A0}", ' ', $converted))
+          : $value;
+  };
+
+  $formatEmployee = function ($value) use ($normalizeActivityText) {
+      $value = $normalizeActivityText($value);
       if ($value === '') {
           return '—';
       }
@@ -116,6 +147,131 @@
           return '—';
       }
       return $stages->firstWhere('id', (int) $id)?->name ?? ('#'.$id);
+  };
+
+  $callGroupKey = function ($activity) {
+      $payload = is_array($activity->payload ?? null) ? $activity->payload : [];
+      $callId = trim((string) ($payload['callid'] ?? $payload['call_id'] ?? $payload['callId'] ?? $payload['uuid'] ?? ''));
+
+      return $callId !== '' ? 'callid:'.$callId : 'activity:'.$activity->id;
+  };
+
+  $callActivityGroups = $deal->activities
+      ->filter(fn ($activity) => $activity->type === 'call')
+      ->groupBy($callGroupKey);
+
+  $renderedCallKeys = [];
+
+  $hasDisplayValue = function ($value) {
+      if ($value === null) {
+          return false;
+      }
+
+      if (is_string($value)) {
+          return trim($value) !== '';
+      }
+
+      if (is_array($value)) {
+          return $value !== [];
+      }
+
+      return true;
+  };
+
+  $pickPayloadValue = function ($payloads, array $keys) use ($hasDisplayValue, $normalizeActivityText) {
+      foreach ($payloads as $payload) {
+          foreach ($keys as $key) {
+              $value = data_get($payload, $key);
+              if (!$hasDisplayValue($value)) {
+                  continue;
+              }
+
+              return is_scalar($value) ? $normalizeActivityText((string) $value) : $value;
+          }
+      }
+
+      return null;
+  };
+
+  $pickEmployeeFromPayloads = function ($payloads) use ($normalizeActivityText) {
+      foreach ($payloads as $payload) {
+          $employee = \App\Models\Deal::resolveCallEmployeeFromPayload($payload);
+          if (trim((string) $employee) !== '') {
+              return $normalizeActivityText((string) $employee);
+          }
+      }
+
+      return null;
+  };
+
+  $pickIncomingPhoneSourceFromPayloads = function ($payloads) {
+      foreach ($payloads as $payload) {
+          $source = \App\Models\Deal::resolveIncomingPhoneSourceFromPayload($payload);
+          if ($source) {
+              return $source;
+          }
+      }
+
+      return null;
+  };
+
+  $resolveCallTypeKey = function ($payloads) {
+      $types = collect($payloads)
+          ->map(fn ($payload) => strtolower(trim((string) ($payload['type'] ?? ''))))
+          ->filter();
+
+      if ($types->contains(fn ($type) => in_array($type, ['out', 'outgoing'], true))) {
+          return 'out';
+      }
+
+      $statuses = collect($payloads)
+          ->map(fn ($payload) => strtolower(trim((string) ($payload['status'] ?? ''))))
+          ->filter();
+
+      if (
+          $types->contains(fn ($type) => in_array($type, ['missed'], true))
+          || $statuses->contains(fn ($status) => in_array($status, ['missed', 'no_answer', 'not_answered', 'unanswered', 'busy', 'cancelled', 'canceled', 'failed'], true))
+      ) {
+          return 'missed';
+      }
+
+      return 'in';
+  };
+
+  $resolveCallTypeLabel = fn ($typeKey) => match ($typeKey) {
+      'out' => 'Исходящий',
+      'missed' => 'Пропущенный',
+      default => 'Входящий',
+  };
+
+  $resolveCallStatusMeta = function ($payloads, $callTypeKey) use ($normalizeActivityText) {
+      foreach ($payloads as $payload) {
+          $status = trim((string) ($payload['status'] ?? ''));
+          if ($status === '') {
+              continue;
+          }
+
+          return match (strtolower($status)) {
+              'success', 'ok', 'answered', 'connected' => ['label' => 'Успешно', 'badge' => 'success'],
+              'busy' => ['label' => 'Занято', 'badge' => 'warning'],
+              'failed' => ['label' => 'Ошибка', 'badge' => 'danger'],
+              'cancelled', 'canceled' => ['label' => 'Отменён', 'badge' => 'secondary'],
+              'missed', 'no_answer', 'not_answered', 'unanswered' => $callTypeKey === 'missed'
+                  ? null
+                  : ['label' => 'Пропущен', 'badge' => 'danger'],
+              default => ['label' => $normalizeActivityText($status), 'badge' => 'light'],
+          };
+      }
+
+      return null;
+  };
+
+  $transcriptStatusMeta = fn ($status) => match ((string) $status) {
+      'done' => ['label' => 'Расшифровано', 'badge' => 'success'],
+      'queued' => ['label' => 'В очереди', 'badge' => 'secondary'],
+      'processing' => ['label' => 'Обработка', 'badge' => 'warning'],
+      'failed' => ['label' => 'Ошибка расшифровки', 'badge' => 'danger'],
+      default => null,
   };
 @endphp
 
@@ -367,10 +523,89 @@
         @forelse($deal->activities as $a)
           @php
             $payload = is_array($a->payload ?? null) ? $a->payload : [];
+            $callGroupKeyValue = $a->type === 'call' ? $callGroupKey($a) : null;
+          @endphp
+          @continue($a->type === 'call' && isset($renderedCallKeys[$callGroupKeyValue]))
+
+          @php
+            $actorName = $normalizeActivityText($a->author?->name ?? '');
+            $activityBody = $normalizeActivityText($a->body ?? '');
+            $callActivities = collect([$a]);
             $callid = $payload['callid'] ?? null;
-            $recModel = ($callid && isset($recordingsByCallid[$callid])) ? $recordingsByCallid[$callid] : null;
-            $recUrl = $recModel?->recording_url ?? ($payload['recording_url'] ?? null);
-            $actorName = trim((string) ($a->author?->name ?? ''));
+            $recModel = null;
+            $recUrl = null;
+            $callTypeKey = null;
+            $callTypeLabel = null;
+            $callTypeBadge = 'success';
+            $callStatusMeta = null;
+            $callFields = [];
+            $hiddenCallEvents = 0;
+
+            if ($a->type === 'call') {
+                $renderedCallKeys[$callGroupKeyValue] = true;
+                $callActivities = $callActivityGroups[$callGroupKeyValue] ?? collect([$a]);
+                $callPayloads = $callActivities
+                    ->map(fn ($activity) => is_array($activity->payload ?? null) ? $activity->payload : [])
+                    ->values();
+
+                $callid = $pickPayloadValue($callPayloads, ['callid', 'call_id', 'callId', 'uuid', 'id']);
+                $recModel = ($callid && isset($recordingsByCallid[$callid])) ? $recordingsByCallid[$callid] : null;
+                $recUrl = $recModel?->recording_url ?? $pickPayloadValue($callPayloads, ['recording_url', 'record_url', 'recordUrl', 'recording', 'record', 'link', 'file_url', 'url']);
+                $callTypeKey = $resolveCallTypeKey($callPayloads);
+                $callTypeLabel = $resolveCallTypeLabel($callTypeKey);
+                $callTypeBadge = match ($callTypeKey) {
+                    'out' => 'primary',
+                    'missed' => 'danger',
+                    default => 'success',
+                };
+                $callStatusMeta = $resolveCallStatusMeta($callPayloads, $callTypeKey);
+                $throughPhone = $pickPayloadValue($callPayloads, ['telnum', 'diversion', 'to', 'dst', 'number', 'did']);
+                $clientPhone = $pickPayloadValue($callPayloads, ['phone', 'client_phone', 'phone_client', 'caller', 'callerid', 'caller_id']) ?? $deal->contact?->phone;
+                $callEmployee = $pickEmployeeFromPayloads($callPayloads);
+                $callNumberSource = $pickIncomingPhoneSourceFromPayloads($callPayloads);
+                $startRaw = $pickPayloadValue($callPayloads, ['start']);
+                $waitRaw = $pickPayloadValue($callPayloads, ['wait']);
+                $durationRaw = $pickPayloadValue($callPayloads, ['duration']);
+                $hiddenCallEvents = max(0, $callActivities->count() - 1);
+
+                $callFields = array_values(array_filter([
+                    [
+                        'label' => 'Клиент',
+                        'value' => $formatPhone($clientPhone),
+                        'show' => $hasDisplayValue($clientPhone),
+                    ],
+                    [
+                        'label' => 'Сотрудник',
+                        'value' => $formatEmployee($callEmployee),
+                        'show' => $hasDisplayValue($callEmployee),
+                    ],
+                    [
+                        'label' => 'Через',
+                        'value' => $formatPhone($throughPhone),
+                        'show' => $hasDisplayValue($throughPhone),
+                    ],
+                    [
+                        'label' => 'Источник номера',
+                        'value' => $callNumberSource ? ($callNumberSource['label'].' - '.$formatPhone($callNumberSource['number'])) : '',
+                        'show' => $callNumberSource !== null,
+                    ],
+                    [
+                        'label' => 'Начало',
+                        'value' => $formatCallMoment($startRaw),
+                        'show' => $hasDisplayValue($startRaw),
+                    ],
+                    [
+                        'label' => 'Ожидание',
+                        'value' => $formatDuration($waitRaw),
+                        'show' => $hasDisplayValue($waitRaw),
+                    ],
+                    [
+                        'label' => 'Длительность',
+                        'value' => $formatDuration($durationRaw),
+                        'show' => $hasDisplayValue($durationRaw),
+                    ],
+                ], fn ($field) => $field['show']));
+            }
           @endphp
 
           <div class="activity-item border-bottom pb-3 mb-3">
@@ -378,8 +613,8 @@
               <div>
                 <div class="fw-semibold">{{ $a->type_label }}</div>
                 @if($a->type === 'stage_changed')
-                  <div class="activity-meta mt-1">�зменил: {{ $actorName !== '' ? $actorName : 'Система' }}</div>
-                  <div class="small mt-1">{{ $stageNameById($payload['from_stage_id'] ?? null) }}  <b>{{ $stageNameById($payload['to_stage_id'] ?? null) }}</b></div>
+                  <div class="activity-meta mt-1">Изменил: {{ $actorName !== '' ? $actorName : 'Система' }}</div>
+                  <div class="small mt-1">{{ $stageNameById($payload['from_stage_id'] ?? null) }} → <b>{{ $stageNameById($payload['to_stage_id'] ?? null) }}</b></div>
                 @elseif($actorName !== '')
                   <div class="activity-meta mt-1">Автор: {{ $actorName }}</div>
                 @endif
@@ -388,20 +623,15 @@
             </div>
 
             @if($a->type === 'call')
-              @php
-                $callType = trim((string) ($payload['type'] ?? ''));
-                $callStatus = trim((string) ($payload['status'] ?? ''));
-                $throughPhone = $payload['telnum'] ?? $payload['diversion'] ?? null;
-                $clientPhone = $payload['phone'] ?? $payload['client_phone'] ?? $payload['phone_client'] ?? $payload['caller'] ?? $deal->contact?->phone;
-                $callNumberSource = \App\Models\Deal::resolveIncomingPhoneSourceFromPayload($payload);
-                $callEmployee = \App\Models\Deal::resolveCallEmployeeFromPayload($payload);
-              @endphp
               <div class="activity-call-card">
                 <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-3">
                   <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <span class="badge text-bg-success">{{ $callType === 'out' ? '�сходящий' : ($callType === 'missed' ? 'Пропущенный' : 'Входящий') }}</span>
-                    @if($callStatus !== '')
-                      <span class="badge text-bg-light">{{ $callStatus }}</span>
+                    <span class="badge text-bg-{{ $callTypeBadge }}">{{ $callTypeLabel }}</span>
+                    @if($callStatusMeta)
+                      <span class="badge text-bg-{{ $callStatusMeta['badge'] }}">{{ $callStatusMeta['label'] }}</span>
+                    @endif
+                    @if($hiddenCallEvents > 0)
+                      <span class="text-muted small">объединено событий: {{ $callActivities->count() }}</span>
                     @endif
                   </div>
                   @if($callid)
@@ -409,38 +639,18 @@
                   @endif
                 </div>
 
-                <div class="activity-call-grid">
-                  <div class="activity-call-field">
-                    <span class="activity-call-label">Клиент</span>
-                    <span class="activity-call-value">{{ $formatPhone($clientPhone) }}</span>
+                @if($callFields !== [])
+                  <div class="activity-call-grid">
+                    @foreach($callFields as $field)
+                      <div class="activity-call-field">
+                        <span class="activity-call-label">{{ $field['label'] }}</span>
+                        <span class="activity-call-value">{{ $field['value'] }}</span>
+                      </div>
+                    @endforeach
                   </div>
-                  <div class="activity-call-field">
-                    <span class="activity-call-label">Сотрудник</span>
-                    <span class="activity-call-value">{{ $callEmployee ?? '—' }}</span>
-                  </div>
-                  <div class="activity-call-field">
-                    <span class="activity-call-label">Через</span>
-                    <span class="activity-call-value">{{ $formatPhone($throughPhone) }}</span>
-                  </div>
-                  @if($callNumberSource)
-                    <div class="activity-call-field">
-                      <span class="activity-call-label">Источник номера</span>
-                      <span class="activity-call-value">{{ $callNumberSource['label'] }} - {{ $formatPhone($callNumberSource['number']) }}</span>
-                    </div>
-                  @endif
-                  <div class="activity-call-field">
-                    <span class="activity-call-label">Начало</span>
-                    <span class="activity-call-value">{{ $formatCallMoment($payload['start'] ?? '') }}</span>
-                  </div>
-                  <div class="activity-call-field">
-                    <span class="activity-call-label">Ожидание</span>
-                    <span class="activity-call-value">{{ $formatDuration($payload['wait'] ?? null) }}</span>
-                  </div>
-                  <div class="activity-call-field">
-                    <span class="activity-call-label">Длительность</span>
-                    <span class="activity-call-value">{{ $formatDuration($payload['duration'] ?? null) }}</span>
-                  </div>
-                </div>
+                @else
+                  <div class="text-muted small">Детали звонка не переданы провайдером.</div>
+                @endif
 
                 @if(is_string($recUrl) && $recUrl !== '')
                   <div class="activity-call-audio mt-3">
@@ -450,15 +660,12 @@
                       @if($recModel)
                         @php
                           $st = $recModel->transcript_status;
-                          $badge = match($st) {
-                            'done' => 'success',
-                            'queued' => 'secondary',
-                            'processing' => 'warning',
-                            'failed' => 'danger',
-                            default => 'light'
-                          };
+                          $transcriptMeta = $transcriptStatusMeta($st);
                         @endphp
-                        <span class="badge text-bg-{{ $badge }}">{{ $st }}</span>
+
+                        @if($transcriptMeta)
+                          <span class="badge text-bg-{{ $transcriptMeta['badge'] }}">{{ $transcriptMeta['label'] }}</span>
+                        @endif
 
                         @if($st === 'done' && $recModel->transcript_text)
                           <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#tr-{{ $recModel->id }}">
@@ -476,15 +683,13 @@
                             <div class="text-danger small">Ошибка: {{ $recModel->transcript_error }}</div>
                           @endif
                         @endif
-                      @else
-                        <span class="text-muted small">(нет записи в БД)</span>
                       @endif
                     </div>
                   </div>
                 @endif
               </div>
             @else
-              <div class="small mt-2">{!! nl2br(e($a->body ?? '')) !!}</div>
+              <div class="small mt-2">{!! nl2br(e($activityBody)) !!}</div>
             @endif
           </div>
         @empty

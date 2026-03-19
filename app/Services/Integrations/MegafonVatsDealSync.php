@@ -113,25 +113,8 @@ class MegafonVatsDealSync
             ]);
         }
 
-        // De-duplicate call activities
         $callId = self::firstString($p, ['callid', 'call_id', 'callId', 'uuid', 'id']) ?? $event->external_id;
-        $cmd = self::firstString($p, ['cmd']);
         $type = self::firstString($p, ['type']);
-        $start = self::firstString($p, ['start']);
-
-        $exists = DealActivity::query()
-            ->where('deal_id', $deal->id)
-            ->where('type', 'call')
-            ->when($callId, fn($q) => $q->where('payload->callid', (string)$callId))
-            ->when($cmd, fn($q) => $q->where('payload->cmd', (string)$cmd))
-            ->when($type, fn($q) => $q->where('payload->type', (string)$type))
-            ->when($start, fn($q) => $q->where('payload->start', (string)$start))
-            ->exists();
-
-        if ($exists) {
-            return;
-        }
-
         $status = self::firstString($p, ['status']);
         $duration = self::firstString($p, ['duration']);
         $employee = self::firstString($p, ['user']);
@@ -140,9 +123,32 @@ class MegafonVatsDealSync
         $diversion = self::normalizePhone(self::firstString($p, ['diversion']));
 
         $recordingUrl = self::findRecordingUrl($p);
-
-        // MegaFon often provides recording as `link` and sometimes relative
         $recordingUrl = self::absolutizeUrl($recordingUrl, $connection->settings['ats_api_base_url'] ?? null);
+
+        $payloadSignatureSource = $p;
+        if ($callId) {
+            $payloadSignatureSource['callid'] = (string) $callId;
+        }
+        if ($recordingUrl) {
+            $payloadSignatureSource['recording_url'] = $recordingUrl;
+        }
+
+        $duplicateQuery = DealActivity::query()
+            ->where('deal_id', $deal->id)
+            ->where('type', 'call')
+            ->when($callId, fn ($query) => $query->where('payload->callid', (string) $callId));
+
+        $duplicateExists = $duplicateQuery
+            ->get(['payload'])
+            ->contains(function (DealActivity $activity) use ($payloadSignatureSource) {
+                $existingPayload = is_array($activity->payload ?? null) ? $activity->payload : [];
+
+                return self::callDisplaySignature($existingPayload) === self::callDisplaySignature($payloadSignatureSource);
+            });
+
+        if ($duplicateExists) {
+            return;
+        }
 
         $parts = [];
         $parts[] = 'Звонок (МегаФон ВАТС)';
@@ -331,5 +337,21 @@ class MegafonVatsDealSync
             $url = '/'.$url;
         }
         return $prefix.$url;
+    }
+
+    private static function callDisplaySignature(array $payload): string
+    {
+        return json_encode([
+            'callid' => (string) (self::firstString($payload, ['callid', 'call_id', 'callId', 'uuid', 'id']) ?? ''),
+            'type' => strtolower((string) (self::firstString($payload, ['type']) ?? '')),
+            'status' => strtolower((string) (self::firstString($payload, ['status']) ?? '')),
+            'start' => (string) (self::firstString($payload, ['start']) ?? ''),
+            'wait' => (string) (self::firstString($payload, ['wait']) ?? ''),
+            'duration' => (string) (self::firstString($payload, ['duration']) ?? ''),
+            'employee' => strtolower(trim((string) (Deal::resolveCallEmployeeFromPayload($payload) ?? ''))),
+            'client_phone' => (string) (self::normalizePhone(self::firstString($payload, ['phone', 'client_phone', 'phone_client', 'caller', 'callerid', 'caller_id'])) ?? ''),
+            'through_phone' => (string) (self::normalizePhone(self::firstString($payload, ['telnum', 'diversion', 'to', 'dst', 'number', 'did'])) ?? ''),
+            'recording_url' => (string) (self::firstString($payload, ['recording_url']) ?? ''),
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '';
     }
 }

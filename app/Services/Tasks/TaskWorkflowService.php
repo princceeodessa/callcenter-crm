@@ -40,7 +40,7 @@ class TaskWorkflowService
             'deal_id' => $deal->id,
             'author_user_id' => $user->id,
             'type' => 'task_created',
-            'body' => 'РЎРѕР·РґР°РЅРѕ РґРµР»Рѕ: '.$task->title.' вЂў РќР°Р·РЅР°С‡РµРЅРѕ: '.$task->assignee_label,
+            'body' => 'Создано дело: '.$task->title.' • Назначено: '.$task->assignee_label,
             'payload' => [
                 'task_id' => $task->id,
                 'assigned_user_id' => $task->assigned_user_id,
@@ -106,7 +106,7 @@ class TaskWorkflowService
                 ->where('user_id', '!=', $fresh->assigned_user_id)
                 ->delete();
 
-            $dealTitle = $fresh->deal?->title ?? ('РЎРґРµР»РєР° #'.$fresh->deal_id);
+            $dealTitle = $fresh->deal?->title ?? ('Сделка #'.$fresh->deal_id);
 
             UserNotification::query()->updateOrCreate(
                 [
@@ -117,8 +117,8 @@ class TaskWorkflowService
                 ],
                 [
                     'account_id' => $fresh->account_id,
-                    'title' => 'РџРѕСЂР° РІС‹РїРѕР»РЅРёС‚СЊ РґРµР»Рѕ',
-                    'body' => "{$fresh->title} (СЃРґРµР»РєР°: {$dealTitle})",
+                    'title' => 'Пора выполнить дело',
+                    'body' => "{$fresh->title} (сделка: {$dealTitle})",
                     'payload' => [
                         'task_id' => $fresh->id,
                         'deal_id' => $fresh->deal_id,
@@ -148,7 +148,7 @@ class TaskWorkflowService
 
         if (! $assigneeOk) {
             throw ValidationException::withMessages([
-                $errorField => 'РќРµР»СЊР·СЏ РЅР°Р·РЅР°С‡РёС‚СЊ РґРµР»Рѕ СЌС‚РѕРјСѓ РїРѕР»СЊР·РѕРІР°С‚РµР»СЋ',
+                $errorField => 'Нельзя назначить дело этому пользователю',
             ]);
         }
 
