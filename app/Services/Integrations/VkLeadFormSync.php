@@ -17,10 +17,11 @@ class VkLeadFormSync
 {
     public function handle(IntegrationConnection $connection, IntegrationEvent $event): ?Deal
     {
-        $payload = is_array($event->payload) ? $event->payload : [];
+        $rawPayload = is_array($event->payload) ? $event->payload : [];
+        $payload = $this->normalizePayload($rawPayload);
         $object = is_array($payload['object'] ?? null) ? $payload['object'] : $payload;
 
-        return DB::transaction(function () use ($connection, $event, $payload, $object) {
+        return DB::transaction(function () use ($connection, $event, $rawPayload, $payload, $object) {
             $accountId = (int) $connection->account_id;
             $externalId = $this->extractExternalId($object, $event);
             $existingDeal = $this->findExistingDeal($accountId, $externalId);
@@ -62,7 +63,7 @@ class VkLeadFormSync
                     'form_name' => $formatted['form_name'],
                     'fields' => $formatted['fields'],
                     'meta' => $formatted['meta'],
-                    'raw' => $payload,
+                    'raw' => $rawPayload,
                     'integration_event_id' => $event->id,
                 ],
             ]);
@@ -172,7 +173,7 @@ class VkLeadFormSync
         if (!$contact) {
             return Contact::create([
                 'account_id' => $accountId,
-                'name' => $leadName ?: ($phone ? 'Р В РЎв„ўР В Р’В»Р В РЎвЂР В Р’ВµР В Р вЂ¦Р РЋРІР‚С™ '.$phone : ($email ?: 'Р В РІР‚С”Р В РЎвЂР В РўвЂ Р В РЎвЂР В Р’В· VK')),
+                'name' => $leadName ?: ($phone ? 'Клиент '.$phone : ($email ?: 'Лид из VK')),
                 'phone' => $phone,
                 'email' => $email,
             ]);
@@ -209,7 +210,7 @@ class VkLeadFormSync
             $position++;
             if (is_array($answer)) {
                 $label = $this->firstNonEmptyString($answer, ['label', 'question', 'question_text', 'title', 'text', 'name'])
-                    ?? ('Р СџР С•Р В»Р Вµ '.$position);
+                    ?? ('Поле '.$position);
 
                 $value = $this->flattenValue(
                     $answer['answer']
@@ -236,8 +237,8 @@ class VkLeadFormSync
             if (is_scalar($answer) && trim((string) $answer) !== '') {
                 $fields[] = [
                     'key' => (string) $index,
-                    'label' => 'Р СџР С•Р В»Р Вµ '.$position,
-                    'value' => trim((string) $answer),
+                    'label' => 'Поле '.$position,
+                    'value' => $this->normalizeText(trim((string) $answer)),
                 ];
             }
         }
@@ -268,7 +269,7 @@ class VkLeadFormSync
                 continue;
             }
 
-            foreach (['Р В РЎвЂР В РЎВР РЋР РЏ', 'Р РЋРІР‚С›Р В РЎвЂР В РЎвЂў', 'name', 'fullname', 'full_name'] as $needle) {
+            foreach (['имя', 'фио', 'name', 'fullname', 'full_name'] as $needle) {
                 if (str_contains($label, $needle) || str_contains($key, $needle)) {
                     return $value;
                 }
@@ -294,7 +295,7 @@ class VkLeadFormSync
                 continue;
             }
 
-            foreach (['Р РЋРІР‚С™Р В Р’ВµР В Р’В»Р В Р’ВµР РЋРІР‚С›Р В РЎвЂўР В Р вЂ¦', 'phone', 'mobile', 'whatsapp'] as $needle) {
+            foreach (['телефон', 'phone', 'mobile', 'whatsapp'] as $needle) {
                 if (str_contains($label, $needle) || str_contains($key, $needle)) {
                     return $value;
                 }
@@ -320,7 +321,7 @@ class VkLeadFormSync
                 continue;
             }
 
-            foreach (['email', 'e-mail', 'Р В РЎвЂ”Р В РЎвЂўР РЋРІР‚РЋР РЋРІР‚С™Р В Р’В°'] as $needle) {
+            foreach (['email', 'e-mail', 'почта'] as $needle) {
                 if ((str_contains($label, $needle) || str_contains($key, $needle))
                     && filter_var(trim(mb_strtolower($value)), FILTER_VALIDATE_EMAIL)) {
                     return trim(mb_strtolower($value));
@@ -333,7 +334,7 @@ class VkLeadFormSync
 
     private function formatSubmission(array $payload, array $object, array $answers): array
     {
-        $formName = $this->firstNonEmptyString($object, ['form_name', 'title', 'name']) ?: 'Р В Р’В¤Р В РЎвЂўР РЋР вЂљР В РЎВР В Р’В° VK';
+        $formName = $this->firstNonEmptyString($object, ['form_name', 'title', 'name']) ?: 'Форма VK';
         $groupId = $this->firstNonEmptyString($payload, ['group_id']) ?: $this->firstNonEmptyString($object, ['group_id']);
         $userId = $this->firstNonEmptyString($object, ['user_id']);
         $leadId = $this->firstNonEmptyString($object, ['lead_id', 'id']);
@@ -344,22 +345,22 @@ class VkLeadFormSync
 
         $meta = [];
         if ($groupId) {
-            $meta[] = ['label' => 'Р В Р Р‹Р В РЎвЂўР В РЎвЂўР В Р’В±Р РЋРІР‚В°Р В Р’ВµР РЋР С“Р РЋРІР‚С™Р В Р вЂ Р В РЎвЂў', 'value' => 'https://vk.com/club'.$groupId];
+            $meta[] = ['label' => 'Сообщество', 'value' => 'https://vk.com/club'.$groupId];
         }
         if ($userId) {
-            $meta[] = ['label' => 'Р В РЎСџР В РЎвЂўР В Р’В»Р РЋР Р‰Р В Р’В·Р В РЎвЂўР В Р вЂ Р В Р’В°Р РЋРІР‚С™Р В Р’ВµР В Р’В»Р РЋР Р‰', 'value' => 'https://vk.com/id'.$userId];
+            $meta[] = ['label' => 'Профиль', 'value' => 'https://vk.com/id'.$userId];
         }
         if ($createdAt) {
-            $meta[] = ['label' => 'Р В РІР‚СњР В Р’В°Р РЋРІР‚С™Р В Р’В° Р В РЎвЂўР РЋРІР‚С™Р В РЎвЂ”Р РЋР вЂљР В Р’В°Р В Р вЂ Р В РЎвЂќР В РЎвЂ', 'value' => $createdAt];
+            $meta[] = ['label' => 'Дата получения', 'value' => $createdAt];
         }
         if ($leadId) {
-            $meta[] = ['label' => 'Р В РЎв„ўР В РЎвЂўР В РўвЂ Р В Р’В·Р В Р’В°Р РЋР РЏР В Р вЂ Р В РЎвЂќР В РЎвЂ', 'value' => $leadId];
+            $meta[] = ['label' => 'ID заявки', 'value' => $leadId];
         }
         if ($formId) {
-            $meta[] = ['label' => 'Р В РЎв„ўР В РЎвЂўР В РўвЂ Р РЋРІР‚С›Р В РЎвЂўР РЋР вЂљР В РЎВР РЋРІР‚в„–', 'value' => $formId];
+            $meta[] = ['label' => 'ID формы', 'value' => $formId];
         }
 
-        $lines = ['Р В РЎСљР В РЎвЂўР В Р вЂ Р В Р’В°Р РЋР РЏ Р В Р’В·Р В Р’В°Р РЋР РЏР В Р вЂ Р В РЎвЂќР В Р’В° Р В РЎвЂ”Р В РЎвЂў Р РЋРІР‚С›Р В РЎвЂўР РЋР вЂљР В РЎВР В Р’Вµ: '.$formName];
+        $lines = ['Заявка с формы VK: '.$formName];
 
         if ($meta !== []) {
             $lines[] = '';
@@ -371,12 +372,12 @@ class VkLeadFormSync
         if ($answers !== []) {
             foreach ($answers as $field) {
                 $lines[] = '';
-                $lines[] = 'Р В РІР‚в„ўР В РЎвЂўР В РЎвЂ”Р РЋР вЂљР В РЎвЂўР РЋР С“: '.$field['label'];
-                $lines[] = 'Р В РЎвЂєР РЋРІР‚С™Р В Р вЂ Р В Р’ВµР РЋРІР‚С™: '.$field['value'];
+                $lines[] = 'Вопрос: '.$field['label'];
+                $lines[] = 'Ответ: '.$field['value'];
             }
         } else {
             $lines[] = '';
-            $lines[] = 'Р В РІР‚СњР В Р’В°Р В Р вЂ¦Р В Р вЂ¦Р РЋРІР‚в„–Р В Р’Вµ Р РЋРІР‚С›Р В РЎвЂўР РЋР вЂљР В РЎВР РЋРІР‚в„– Р В РЎвЂ”Р РЋР вЂљР В РЎвЂР РЋРІвЂљВ¬Р В Р’В»Р В РЎвЂ Р В Р’В±Р В Р’ВµР В Р’В· Р РЋР С“Р В РЎвЂ”Р В РЎвЂР РЋР С“Р В РЎвЂќР В Р’В° Р В Р вЂ Р В РЎвЂўР В РЎвЂ”Р РЋР вЂљР В РЎвЂўР РЋР С“Р В РЎвЂўР В Р вЂ  Р В РЎвЂ Р В РЎвЂўР РЋРІР‚С™Р В Р вЂ Р В Р’ВµР РЋРІР‚С™Р В РЎвЂўР В Р вЂ .';
+            $lines[] = 'В событии не удалось найти заполненные поля формы.';
         }
 
         return [
@@ -390,14 +391,14 @@ class VkLeadFormSync
     private function makeDealTitle(?string $leadName, ?string $phone, string $formName): string
     {
         if ($leadName) {
-            return $leadName.' - VK Р РЋРІР‚С›Р В РЎвЂўР РЋР вЂљР В РЎВР В Р’В°';
+            return $leadName.' - VK форма';
         }
 
         if ($phone) {
-            return 'Р В РІР‚вЂќР В Р’В°Р РЋР РЏР В Р вЂ Р В РЎвЂќР В Р’В° VK - '.$phone;
+            return 'Заявка VK - '.$phone;
         }
 
-        return 'Р В РІР‚вЂќР В Р’В°Р РЋР РЏР В Р вЂ Р В РЎвЂќР В Р’В° VK - '.$formName;
+        return 'Заявка VK - '.$formName;
     }
 
     private function shouldUpdateContactName(?string $value): bool
@@ -407,7 +408,7 @@ class VkLeadFormSync
             return true;
         }
 
-        if (preg_match('/^Р В РЎвЂќР В Р’В»Р В РЎвЂР В Р’ВµР В Р вЂ¦Р РЋРІР‚С™/iu', $value) === 1) {
+        if (preg_match('/^клиент\b/iu', $value) === 1) {
             return true;
         }
 
@@ -440,8 +441,13 @@ class VkLeadFormSync
     {
         foreach ($keys as $key) {
             $value = $source[$key] ?? null;
-            if (is_scalar($value) && trim((string) $value) !== '') {
-                return trim((string) $value);
+            if (!is_scalar($value)) {
+                continue;
+            }
+
+            $value = $this->normalizeText(trim((string) $value));
+            if ($value !== '') {
+                return $value;
             }
         }
 
@@ -455,11 +461,11 @@ class VkLeadFormSync
         }
 
         if (is_bool($value)) {
-            return $value ? 'yes' : 'no';
+            return $value ? 'да' : 'нет';
         }
 
         if (is_scalar($value)) {
-            return trim((string) $value);
+            return $this->normalizeText(trim((string) $value));
         }
 
         if (!is_array($value)) {
@@ -487,7 +493,9 @@ class VkLeadFormSync
             }
         }
 
-        $json = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $normalized = $this->normalizePayload($value);
+        $json = json_encode($normalized, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
         return is_string($json) ? $json : '';
     }
 
@@ -513,5 +521,68 @@ class VkLeadFormSync
         } catch (\Throwable) {
             return $value;
         }
+    }
+
+    private function normalizePayload(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            $normalized = [];
+            foreach ($value as $key => $item) {
+                $normalized[$key] = $this->normalizePayload($item);
+            }
+
+            return $normalized;
+        }
+
+        if (is_string($value)) {
+            return $this->normalizeText($value);
+        }
+
+        return $value;
+    }
+
+    private function normalizeText(string $value): string
+    {
+        $value = html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $rawValue = $value;
+        $value = trim(str_replace("\u{00A0}", ' ', $value));
+
+        if ($value === '' || !$this->looksLikeMojibake($value)) {
+            return $value;
+        }
+
+        $converted = @mb_convert_encoding($rawValue, 'Windows-1251', 'UTF-8');
+        if (!is_string($converted) || $converted === '' || preg_match('//u', $converted) !== 1) {
+            return $value;
+        }
+
+        return $this->normalizationLooksBetter($value, $converted)
+            ? trim(str_replace("\u{00A0}", ' ', $converted))
+            : $value;
+    }
+
+    private function looksLikeMojibake(string $value): bool
+    {
+        return $this->mojibakeScore($value) > 0;
+    }
+
+    private function normalizationLooksBetter(string $original, string $candidate): bool
+    {
+        return $this->mojibakeScore($candidate) < $this->mojibakeScore($original)
+            && $this->readableCharacterScore($candidate) > 0;
+    }
+
+    private function mojibakeScore(string $value): int
+    {
+        preg_match_all('/(?:[РС][\x{0400}-\x{040F}\x{0450}-\x{045F}\x{00A0}-\x{00FF}\x{2010}-\x{203A}\x{20AC}\x{2116}\x{2122}]|[ÐÑ][\x{0080}-\x{00FF}])/u', $value, $matches);
+
+        return count($matches[0]);
+    }
+
+    private function readableCharacterScore(string $value): int
+    {
+        preg_match_all('/[\x{0410}-\x{044F}ЁёA-Za-z0-9]/u', $value, $matches);
+
+        return count($matches[0]);
     }
 }

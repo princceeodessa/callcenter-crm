@@ -205,7 +205,7 @@ class DealController extends Controller
         $data = $request->validate([
             'title' => ['required','string','max:255'],
             'responsible_user_id' => ['required','integer','exists:users,id'],
-            'amount' => ['required','numeric','min:0.01'],
+            'amount' => ['nullable','numeric','min:0.01'],
             'contact_name' => ['nullable','string','max:255'],
             'contact_phone' => ['nullable','string','max:32'],
             'stage_id' => ['required','exists:pipeline_stages,id'],
@@ -254,7 +254,7 @@ class DealController extends Controller
             'title_is_custom' => 1,
             'contact_id' => $contact?->id,
             'responsible_user_id' => $responsible->id,
-            'amount' => $data['amount'],
+            'amount' => $data['amount'] ?? null,
             'currency' => 'RUB',
         ]);
 

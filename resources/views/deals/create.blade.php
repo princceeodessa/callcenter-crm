@@ -26,23 +26,20 @@
         </select>
       </div>
       <div class="col-md-3">
-        <label class="form-label">Сумма (RUB)</label>
+        <label class="form-label">Дата сделки</label>
         <input
-          name="amount"
-          type="number"
-          step="0.01"
-          min="0.01"
+          name="deal_date"
+          type="date"
           class="form-control"
-          placeholder="0"
-          value="{{ old('amount') }}"
+          value="{{ old('deal_date', now()->toDateString()) }}"
           required
         >
       </div>
-      <div class="col-md-3">
+      <div class="col-md-4">
         <label class="form-label">Имя клиента</label>
         <input name="contact_name" class="form-control" placeholder="Без имени" value="{{ old('contact_name') }}">
       </div>
-      <div class="col-md-3">
+      <div class="col-md-4">
         <label class="form-label">Телефон</label>
         <input name="contact_phone" class="form-control" placeholder="+7 ..." value="{{ old('contact_phone') }}">
       </div>
@@ -53,16 +50,6 @@
             <option value="{{ $s->id }}" @selected((int) old('stage_id') === $s->id)>{{ $s->name }}</option>
           @endforeach
         </select>
-      </div>
-      <div class="col-md-2">
-        <label class="form-label">Дата сделки</label>
-        <input
-          name="deal_date"
-          type="date"
-          class="form-control"
-          value="{{ old('deal_date', now()->toDateString()) }}"
-          required
-        >
       </div>
       <div class="col-12">
         <label class="form-label">Комментарий</label>
