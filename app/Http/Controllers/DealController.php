@@ -21,11 +21,15 @@ class DealController extends Controller
         $user = Auth::user();
         $q = $request->string('q')->toString();
         $status = $request->string('status')->toString(); // open|closed|all
+        $autoExpandSearch = $request->boolean('auto_expand_search');
         $source = trim($request->string('source')->toString());
         $sourceOptions = Deal::sourceFilterOptions();
 
         if (!in_array($status, ['open','closed','all'], true)) {
             $status = 'open';
+        }
+        if ($q !== '' && $status === 'open' && $autoExpandSearch) {
+            $status = 'all';
         }
         if ($source !== '' && !array_key_exists($source, $sourceOptions)) {
             $source = '';
@@ -369,7 +373,7 @@ class DealController extends Controller
         return back()->with('status', $this->dealUpdatedStatusMessage());
     }
 
-    public function show(Deal $deal)
+    public function show(Deal $deal, \App\Services\Ceiling\CeilingProjectCalculator $ceilingCalculator)
     {
         $user = Auth::user();
         abort_unless($deal->account_id === $user->account_id, 403);
@@ -378,6 +382,7 @@ class DealController extends Controller
             'contact',
             'stage',
             'responsible',
+            'ceilingProject.rooms',
             'tasks' => fn($q) => $q->with('assignedTo')->orderBy('status')->orderBy('due_at'),
             'activities' => fn($q) => $q->with('author')->orderByDesc('id'),
             'conversations' => fn($q) => $q->with('lastMessage')->orderByDesc('last_message_at'),
@@ -424,6 +429,11 @@ class DealController extends Controller
             $primaryConversation = $deal->primaryConversation();
         } catch (\Throwable) {
             $primaryConversation = null;
+        }
+
+        $ceilingProjectSummary = null;
+        if ($user->role === 'admin' && $deal->ceilingProject) {
+            $ceilingProjectSummary = $ceilingCalculator->calculateProject($deal->ceilingProject);
         }
 
         $dealLeadDisplayName = trim((string) ($deal->contact?->name ?? ''));
@@ -480,6 +490,7 @@ class DealController extends Controller
             'dealSourceChatUrl',
             'dealTitle',
             'dealConversations',
+            'ceilingProjectSummary',
         ));
     }
 

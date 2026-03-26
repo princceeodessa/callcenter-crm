@@ -18,6 +18,7 @@ use App\Http\Controllers\Webhooks\TildaWebhookController;
 use App\Http\Controllers\MediaController;
 use App\Http\Controllers\MeasurementController;
 use App\Http\Controllers\NonClosureController;
+use App\Http\Controllers\CeilingProjectController;
 use App\Http\Controllers\Settings\BitrixImportController;
 
 // Webhooks (public)
@@ -58,6 +59,9 @@ Route::middleware('auth')->group(function () {
         Route::patch('/deals/{deal}', [DealController::class, 'update'])->name('deals.update');
         Route::post('/deals/{deal}/stage', [DealController::class, 'changeStage'])->name('deals.stage');
         Route::post('/deals/{deal}/close', [DealController::class, 'close'])->name('deals.close');
+        Route::middleware('admin.only')->group(function () {
+            Route::get('/deals/{deal}/ceiling-project', [CeilingProjectController::class, 'showForDeal'])->name('deals.ceiling-project.show');
+        });
 
         // Kanban drag&drop move
         Route::post('/deals/{deal}/move', [DealController::class, 'move'])->name('deals.move');
@@ -83,6 +87,7 @@ Route::middleware('auth')->group(function () {
 
         // Chats (Messenger)
         Route::get('/chats', [ChatController::class, 'index'])->name('chats.index');
+        Route::post('/chats/read-all', [ChatController::class, 'markAllRead'])->name('chats.read-all');
         Route::get('/chats/{conversation}', [ChatController::class, 'show'])->name('chats.show');
         Route::get('/chats/{conversation}/poll', [ChatController::class, 'poll'])->name('chats.poll');
         Route::post('/chats/{conversation}/messages', [ChatController::class, 'send'])->name('chats.send');
@@ -91,6 +96,22 @@ Route::middleware('auth')->group(function () {
 
     // Settings: integrations (admin only)
     Route::middleware('admin.only')->group(function () {
+        Route::get('/ceiling-projects', [CeilingProjectController::class, 'index'])->name('ceiling-projects.index');
+        Route::post('/ceiling-projects', [CeilingProjectController::class, 'store'])->name('ceiling-projects.store');
+        Route::get('/ceiling-projects/{project}', [CeilingProjectController::class, 'show'])->name('ceiling-projects.show');
+        Route::get('/ceiling-projects/{project}/drafting', [CeilingProjectController::class, 'drafting'])->name('ceiling-projects.drafting');
+        Route::patch('/ceiling-projects/{project}', [CeilingProjectController::class, 'update'])->name('ceiling-projects.update');
+        Route::post('/ceiling-projects/{project}/apply-estimate', [CeilingProjectController::class, 'applyEstimate'])->name('ceiling-projects.apply-estimate');
+        Route::post('/ceiling-projects/{project}/reference-image', [CeilingProjectController::class, 'uploadReferenceImage'])->name('ceiling-projects.reference-image.upload');
+        Route::get('/ceiling-projects/{project}/reference-image', [CeilingProjectController::class, 'referenceImage'])->name('ceiling-projects.reference-image.show');
+        Route::post('/ceiling-projects/{project}/rooms', [CeilingProjectController::class, 'storeRoom'])->name('ceiling-projects.rooms.store');
+        Route::patch('/ceiling-projects/{project}/rooms/{room}', [CeilingProjectController::class, 'updateRoom'])->name('ceiling-projects.rooms.update');
+        Route::patch('/ceiling-projects/{project}/rooms/{room}/geometry', [CeilingProjectController::class, 'updateRoomGeometry'])->name('ceiling-projects.rooms.geometry.update');
+        Route::post('/ceiling-projects/{project}/rooms/{room}/elements', [CeilingProjectController::class, 'storeRoomElement'])->name('ceiling-projects.rooms.elements.store');
+        Route::patch('/ceiling-projects/{project}/rooms/{room}/elements/{element}', [CeilingProjectController::class, 'updateRoomElement'])->name('ceiling-projects.rooms.elements.update');
+        Route::delete('/ceiling-projects/{project}/rooms/{room}/elements/{element}', [CeilingProjectController::class, 'destroyRoomElement'])->name('ceiling-projects.rooms.elements.destroy');
+        Route::delete('/ceiling-projects/{project}/rooms/{room}', [CeilingProjectController::class, 'destroyRoom'])->name('ceiling-projects.rooms.destroy');
+
         Route::get('/settings/integrations', [IntegrationController::class, 'index'])->name('settings.integrations.index');
         Route::get('/settings/integrations/{provider}', [IntegrationController::class, 'show'])->name('settings.integrations.show');
         Route::post('/settings/integrations/{provider}/connect', [IntegrationController::class, 'connect'])->name('settings.integrations.connect');

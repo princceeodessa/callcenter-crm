@@ -38,6 +38,7 @@
 
 @php
   $editingTaskId = max(0, (int) request()->query('edit_task', 0));
+  $canUseCeilingProjects = auth()->user()?->role === 'admin';
 
   $buildDealUrl = function (array $changes = []) use ($deal) {
       $query = array_merge(request()->query(), $changes);
@@ -330,20 +331,27 @@
     </div>
   </div>
 
-  <form method="POST" action="{{ route('deals.stage', $deal) }}" class="d-flex">
-    @csrf
-    <select
-      name="stage_id"
-      class="form-select form-select-sm"
-      style="min-width: 280px;"
-      onchange="this.form.submit()"
-      @disabled($deal->closed_at)
-    >
-      @foreach($stages as $s)
-        <option value="{{ $s->id }}" @selected($deal->stage_id === $s->id)>{{ $s->name }}</option>
-      @endforeach
-    </select>
-  </form>
+  <div class="d-flex align-items-start gap-2 flex-wrap">
+    @if($canUseCeilingProjects)
+      <a href="{{ route('deals.ceiling-project.show', $deal) }}" class="btn btn-sm btn-outline-primary">
+        <i class="bi bi-grid-1x2 me-1"></i>{{ $deal->ceilingProject ? 'Проект потолка' : 'Создать проект потолка' }}
+      </a>
+    @endif
+    <form method="POST" action="{{ route('deals.stage', $deal) }}" class="d-flex">
+      @csrf
+      <select
+        name="stage_id"
+        class="form-select form-select-sm"
+        style="min-width: 280px;"
+        onchange="this.form.submit()"
+        @disabled($deal->closed_at)
+      >
+        @foreach($stages as $s)
+          <option value="{{ $s->id }}" @selected($deal->stage_id === $s->id)>{{ $s->name }}</option>
+        @endforeach
+      </select>
+    </form>
+  </div>
 </div>
 
 <div class="row g-3">
@@ -469,6 +477,29 @@
         @endif
       </div>
     </div>
+
+    @if($canUseCeilingProjects)
+      <div class="card shadow-sm mb-3">
+        <div class="card-header fw-semibold">Проект потолка</div>
+        <div class="card-body small">
+          @if($deal->ceilingProject)
+            <div class="mb-1"><b>Статус:</b> {{ \App\Models\CeilingProject::statusOptions()[$deal->ceilingProject->status] ?? $deal->ceilingProject->status }}</div>
+            <div class="mb-1"><b>Помещений:</b> {{ $deal->ceilingProject->rooms->count() }}</div>
+            <div class="mb-1"><b>Материал:</b> {{ \App\Models\CeilingProject::materialOptions()[$deal->ceilingProject->canvas_material] ?? $deal->ceilingProject->canvas_material }}</div>
+            @if($ceilingProjectSummary)
+              <div class="mb-1"><b>Смета:</b> {{ number_format($ceilingProjectSummary['estimate']['grand_total'], 2, ',', ' ') }} RUB</div>
+            @endif
+            @if($deal->ceilingProject->last_calculated_at)
+              <div class="mb-3"><b>Пересчитано:</b> {{ $deal->ceilingProject->last_calculated_at->format('d.m.Y H:i') }}</div>
+            @endif
+            <a href="{{ route('deals.ceiling-project.show', $deal) }}" class="btn btn-sm btn-outline-primary">Открыть проект</a>
+          @else
+            <div class="text-muted mb-3">Проект потолка еще не заведен. Можно привязать замер и начать по комнатам собирать геометрию и расчет.</div>
+            <a href="{{ route('deals.ceiling-project.show', $deal) }}" class="btn btn-sm btn-primary">Создать проект</a>
+          @endif
+        </div>
+      </div>
+    @endif
 
     <div class="card shadow-sm">
       <div class="card-header fw-semibold">Задачи / Дела</div>

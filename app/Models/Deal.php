@@ -326,6 +326,11 @@ SQL;
         return $this->hasMany(Task::class);
     }
 
+    public function ceilingProject()
+    {
+        return $this->hasOne(CeilingProject::class);
+    }
+
     public function activities()
     {
         return $this->hasMany(DealActivity::class);

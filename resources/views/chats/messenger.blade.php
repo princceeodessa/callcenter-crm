@@ -83,6 +83,11 @@
     }
     return $out;
   };
+
+  $markAllReadLabel = "\u{041F}\u{0440}\u{043E}\u{0447}\u{0438}\u{0442}\u{0430}\u{0442}\u{044C} \u{0432}\u{0441}\u{0435}";
+  $unreadSummaryText = ($unreadConversationCount ?? 0) > 0
+    ? "\u{041D}\u{0435}\u{043F}\u{0440}\u{043E}\u{0447}\u{0438}\u{0442}\u{0430}\u{043D}\u{043E}: ".($unreadConversationCount ?? 0)." \u{0447}\u{0430}\u{0442}\u{043E}\u{0432}, ".($unreadMessageCount ?? 0)." \u{0441}\u{043E}\u{043E}\u{0431}\u{0449}\u{0435}\u{043D}\u{0438}\u{0439}"
+    : "\u{041D}\u{0435}\u{043F}\u{0440}\u{043E}\u{0447}\u{0438}\u{0442}\u{0430}\u{043D}\u{043D}\u{044B}\u{0445} \u{0447}\u{0430}\u{0442}\u{043E}\u{0432} \u{043D}\u{0435}\u{0442}";
 @endphp
 
 <div class="d-flex gap-3 ccrm-chat-wrap flex-column flex-lg-row">
@@ -91,6 +96,20 @@
       <div class="fw-semibold">Чаты</div>
       @if($active)
         <a class="btn btn-sm btn-outline-secondary d-lg-none" href="{{ route('chats.index') }}">Список</a>
+      @endif
+    </div>
+    <div class="px-3 py-2 border-bottom d-flex align-items-center justify-content-between gap-2 flex-wrap">
+      <div class="text-muted small">{{ $unreadSummaryText }}</div>
+      @if(($unreadConversationCount ?? 0) > 0)
+        <form method="POST" action="{{ route('chats.read-all') }}" class="m-0">
+          @csrf
+          @if($activeId)
+            <input type="hidden" name="c" value="{{ $activeId }}">
+          @endif
+          <button type="submit" class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-check2-all me-1"></i>{{ $markAllReadLabel }}
+          </button>
+        </form>
       @endif
     </div>
     <div class="card-body p-0">

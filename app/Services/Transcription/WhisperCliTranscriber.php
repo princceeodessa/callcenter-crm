@@ -174,13 +174,13 @@ class WhisperCliTranscriber
         // Preserve virtualenv symlinks like ".venv/bin/python": resolving them
         // to the system interpreter breaks Python's virtualenv detection.
         if (file_exists($candidate) && is_executable($candidate)) {
-            return $candidate;
+            return $this->normalizeLocalPath($candidate);
         }
 
         if (!$this->isAbsolutePath($candidate)) {
             $relativeToBase = base_path($candidate);
             if (file_exists($relativeToBase) && is_executable($relativeToBase)) {
-                return $relativeToBase;
+                return $this->normalizeLocalPath($relativeToBase);
             }
         }
 
@@ -256,6 +256,13 @@ class WhisperCliTranscriber
         return str_contains($candidate, '\\')
             || str_contains($candidate, '/')
             || str_contains($candidate, ':');
+    }
+
+    private function normalizeLocalPath(string $path): string
+    {
+        return DIRECTORY_SEPARATOR === '\\'
+            ? str_replace('/', '\\', $path)
+            : $path;
     }
 
     private function isAbsolutePath(string $path): bool

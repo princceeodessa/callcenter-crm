@@ -3,8 +3,9 @@
 @section('content')
 <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
   <h4 class="mb-0">Список сделок</h4>
-  <form class="d-flex gap-2 flex-wrap" method="GET" action="{{ route('deals.index') }}">
-    <select class="form-select form-select-sm" name="status" style="width: 170px;">
+  <form class="d-flex gap-2 flex-wrap" method="GET" action="{{ route('deals.index') }}" id="dealSearchForm">
+    <input type="hidden" name="auto_expand_search" value="1" id="dealAutoExpandSearch">
+    <select class="form-select form-select-sm" name="status" style="width: 170px;" id="dealStatusFilter">
       <option value="open" @selected(($status ?? 'open') === 'open')>Открытые</option>
       <option value="closed" @selected(($status ?? 'open') === 'closed')>Завершённые</option>
       <option value="all" @selected(($status ?? 'open') === 'all')>Все</option>
@@ -15,10 +16,14 @@
         <option value="{{ $sourceKey }}" @selected(($source ?? '') === $sourceKey)>{{ $sourceLabel }}</option>
       @endforeach
     </select>
-    <input class="form-control form-control-sm" name="q" value="{{ $q }}" placeholder="поиск: имя, телефон, заголовок">
+    <input class="form-control form-control-sm" name="q" value="{{ $q }}" placeholder="поиск: имя, телефон, заголовок" id="dealSearchInput">
     <button class="btn btn-sm btn-outline-primary">Найти</button>
   </form>
 </div>
+
+@if(($q ?? '') !== '' && ($status ?? 'open') === 'all')
+  <div class="text-muted small mb-3">Поиск включает и завершённые сделки. Если нужен только открытый список, выберите статус вручную.</div>
+@endif
 
 <div class="card shadow-sm">
   <div class="table-responsive">
@@ -83,3 +88,26 @@
   {{ $deals->links() }}
 </div>
 @endsection
+
+@push('scripts')
+<script>
+(() => {
+  const form = document.getElementById('dealSearchForm');
+  const status = document.getElementById('dealStatusFilter');
+  const query = document.getElementById('dealSearchInput');
+  const autoExpand = document.getElementById('dealAutoExpandSearch');
+  if (!form || !status || !query || !autoExpand) return;
+
+  status.addEventListener('change', () => {
+    autoExpand.value = '0';
+  });
+
+  form.addEventListener('submit', () => {
+    const hasQuery = query.value.trim() !== '';
+    if (hasQuery && autoExpand.value === '1' && status.value === 'open') {
+      status.value = 'all';
+    }
+  });
+})();
+</script>
+@endpush

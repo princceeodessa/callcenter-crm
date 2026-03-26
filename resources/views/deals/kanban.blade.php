@@ -30,6 +30,10 @@
         $kanbanResetParams = array_filter([
             'show_spam' => !empty($showSpam) ? 1 : null,
         ], fn ($value) => !is_null($value) && $value !== '');
+        $allDealsSearchParams = array_filter([
+            'status' => 'all',
+            'q' => $q !== '' ? $q : null,
+        ], fn ($value) => !is_null($value) && $value !== '');
 
         $ui = [
             'title' => "\u{0421}\u{0434}\u{0435}\u{043B}\u{043A}\u{0438} - \u{043A}\u{0430}\u{043D}\u{0431}\u{0430}\u{043D}",
@@ -111,6 +115,9 @@
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="kbModeRow">{{ $ui['mode_row'] }}</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="kbModeWrap">{{ $ui['mode_wrap'] }}</button>
             </div>
+            @if($q !== '')
+                <a class="btn btn-sm btn-outline-dark" href="{{ route('deals.index', $allDealsSearchParams) }}">Все по запросу</a>
+            @endif
             <a class="btn btn-sm btn-outline-primary" href="{{ route('deals.closed') }}">{{ $ui['closed'] }}</a>
             @if(empty($showSpam))
                 <a class="btn btn-sm btn-outline-secondary" href="{{ route('deals.kanban', array_merge($kanbanParamsWithoutDate, ['show_spam' => 1])) }}">{{ $ui['show_non_target'] }}</a>

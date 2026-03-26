@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Conversation;
+use App\Models\Deal;
 use App\Models\Message;
 use App\Services\Chat\ChatHistorySyncService;
 use App\Services\Chat\ChatSendService;
@@ -45,16 +46,34 @@ class ChatController extends Controller
 
             $activeConversation->update(['unread_count' => 0]);
             $activeConversation->deal()->update(['is_unread' => false]);
+            $conversations->getCollection()->transform(function (Conversation $conversation) use ($activeConversation) {
+                if ((int) $conversation->id === (int) $activeConversation->id) {
+                    $conversation->forceFill(['unread_count' => 0]);
+                }
+
+                return $conversation;
+            });
 
             $messages = $activeConversation->messages()
                 ->orderBy('id')
                 ->get();
         }
 
+        $unreadConversationCount = Conversation::query()
+            ->where('account_id', $accountId)
+            ->where('unread_count', '>', 0)
+            ->count();
+
+        $unreadMessageCount = (int) Conversation::query()
+            ->where('account_id', $accountId)
+            ->sum('unread_count');
+
         return view('chats.messenger', [
             'conversations' => $conversations,
             'activeConversation' => $activeConversation,
             'messages' => $messages,
+            'unreadConversationCount' => $unreadConversationCount,
+            'unreadMessageCount' => $unreadMessageCount,
         ]);
     }
 
@@ -159,6 +178,46 @@ class ChatController extends Controller
         $conversation->deal()->update(['is_unread' => false]);
 
         return response()->json(['ok' => true]);
+    }
+
+    public function markAllRead(Request $request)
+    {
+        $accountId = $request->user()->account_id;
+        $activeId = (int) ($request->input('c') ?? 0);
+
+        $unreadQuery = Conversation::query()
+            ->where('account_id', $accountId)
+            ->where('unread_count', '>', 0);
+
+        $dealIds = (clone $unreadQuery)
+            ->whereNotNull('deal_id')
+            ->distinct()
+            ->pluck('deal_id')
+            ->map(fn ($dealId) => (int) $dealId)
+            ->filter(fn (int $dealId) => $dealId > 0)
+            ->values();
+
+        $updatedCount = $unreadQuery->update(['unread_count' => 0]);
+
+        if ($dealIds->isNotEmpty()) {
+            Deal::query()
+                ->where('account_id', $accountId)
+                ->whereIn('id', $dealIds->all())
+                ->update(['is_unread' => false]);
+        }
+
+        $routeParams = [];
+        if ($activeId > 0) {
+            $routeParams['c'] = $activeId;
+        }
+
+        $statusMessage = $updatedCount > 0
+            ? "\u{0412}\u{0441}\u{0435} \u{0447}\u{0430}\u{0442}\u{044B} \u{043E}\u{0442}\u{043C}\u{0435}\u{0447}\u{0435}\u{043D}\u{044B} \u{043F}\u{0440}\u{043E}\u{0447}\u{0438}\u{0442}\u{0430}\u{043D}\u{043D}\u{044B}\u{043C}\u{0438}."
+            : "\u{041D}\u{0435}\u{043F}\u{0440}\u{043E}\u{0447}\u{0438}\u{0442}\u{0430}\u{043D}\u{043D}\u{044B}\u{0445} \u{0447}\u{0430}\u{0442}\u{043E}\u{0432} \u{043D}\u{0435} \u{0431}\u{044B}\u{043B}\u{043E}.";
+
+        return redirect()
+            ->route('chats.index', $routeParams)
+            ->with('status', $statusMessage);
     }
 
     private function authorizeConversation(Request $request, Conversation $conversation): void

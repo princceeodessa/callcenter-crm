@@ -247,6 +247,7 @@
                     <a class="btn btn-sm btn-outline-light" href="{{ route('nonclosures.index') }}">Незаключёнки</a>
                 @endif
                 @if($isAdmin)
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('ceiling-projects.index') }}">Проектировка</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('settings.integrations.index') }}">Интеграции</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('settings.imports.bitrix.index') }}">Импорт Bitrix</a>
                 @endif
