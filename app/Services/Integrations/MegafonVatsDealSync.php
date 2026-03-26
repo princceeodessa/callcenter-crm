@@ -51,18 +51,8 @@ class MegafonVatsDealSync
             return;
         }
 
-        $contact = Contact::query()->firstOrCreate(
-            ['account_id' => $accountId, 'phone' => $clientPhone],
-            ['name' => 'Клиент '.$clientPhone]
-        );
-
-        // Find existing open deal for this contact (prevents duplicates)
-        $deal = Deal::query()
-            ->where('account_id', $accountId)
-            ->where('contact_id', $contact->id)
-            ->whereNull('closed_at')
-            ->orderByDesc('id')
-            ->first();
+        $contact = self::resolveContactByPhone($accountId, $clientPhone);
+        $deal = self::findOpenDealByPhone($accountId, $clientPhone, $contact?->id);
 
         if (!$deal) {
             $stage = PipelineStage::query()
@@ -99,7 +89,7 @@ class MegafonVatsDealSync
                 'stage_id' => $stage->id,
                 'title' => 'Звонки: '.$clientPhone,
                 'title_is_custom' => 0,
-                'contact_id' => $contact->id,
+                'contact_id' => $contact?->id,
                 'responsible_user_id' => $responsible?->id,
                 'is_unread' => true,
             ]);
@@ -194,6 +184,112 @@ class MegafonVatsDealSync
         }
     }
 
+    private static function resolveContactByPhone(int $accountId, string $clientPhone): ?Contact
+    {
+        $contact = self::findContactByPhone($accountId, $clientPhone);
+
+        if ($contact) {
+            return $contact;
+        }
+
+        return Contact::query()->create([
+            'account_id' => $accountId,
+            'name' => 'Клиент '.$clientPhone,
+            'phone' => $clientPhone,
+        ]);
+    }
+
+    private static function findContactByPhone(int $accountId, string $clientPhone): ?Contact
+    {
+        $variants = self::phoneSearchVariants($clientPhone);
+
+        $contacts = Contact::query()
+            ->where('account_id', $accountId)
+            ->where(function ($query) use ($variants) {
+                foreach ($variants as $index => $variant) {
+                    if ($index === 0) {
+                        $query->where('phone', 'like', '%'.$variant.'%');
+                    } else {
+                        $query->orWhere('phone', 'like', '%'.$variant.'%');
+                    }
+                }
+            })
+            ->orderBy('id')
+            ->get();
+
+        return $contacts->first(function (Contact $contact) use ($clientPhone) {
+            return self::normalizePhone((string) ($contact->phone ?? '')) === $clientPhone;
+        });
+    }
+
+    private static function findOpenDealByPhone(int $accountId, string $clientPhone, ?int $contactId = null): ?Deal
+    {
+        $variants = self::phoneSearchVariants($clientPhone);
+        $contactIds = Contact::query()
+            ->where('account_id', $accountId)
+            ->where(function ($query) use ($variants) {
+                foreach ($variants as $index => $variant) {
+                    if ($index === 0) {
+                        $query->where('phone', 'like', '%'.$variant.'%');
+                    } else {
+                        $query->orWhere('phone', 'like', '%'.$variant.'%');
+                    }
+                }
+            })
+            ->pluck('id')
+            ->filter()
+            ->values()
+            ->all();
+
+        if ($contactId && !in_array($contactId, $contactIds, true)) {
+            $contactIds[] = $contactId;
+        }
+
+        if (empty($contactIds)) {
+            $contactDeal = null;
+        } else {
+            $contactDeal = Deal::query()
+                ->where('account_id', $accountId)
+                ->whereNull('closed_at')
+                ->whereIn('contact_id', $contactIds)
+                ->with('contact:id,phone')
+                ->orderByRaw("CASE WHEN title LIKE 'Звонки:%' THEN 1 ELSE 0 END")
+                ->orderByDesc('updated_at')
+                ->orderByDesc('id')
+                ->get()
+                ->first(function (Deal $deal) use ($clientPhone) {
+                    return self::normalizePhone((string) ($deal->contact?->phone ?? '')) === $clientPhone;
+                });
+        }
+
+        if ($contactDeal) {
+            return $contactDeal;
+        }
+
+        return Deal::query()
+            ->where('account_id', $accountId)
+            ->whereNull('closed_at')
+            ->whereHas('activities', function ($query) use ($variants) {
+                $query->where(function ($activityQuery) use ($variants) {
+                    foreach ($variants as $index => $variant) {
+                        if ($index === 0) {
+                            $activityQuery
+                                ->where('body', 'like', '%'.$variant.'%')
+                                ->orWhereRaw('CAST(payload AS CHAR) LIKE ?', ['%'.$variant.'%']);
+                        } else {
+                            $activityQuery
+                                ->orWhere('body', 'like', '%'.$variant.'%')
+                                ->orWhereRaw('CAST(payload AS CHAR) LIKE ?', ['%'.$variant.'%']);
+                        }
+                    }
+                });
+            })
+            ->orderByRaw("CASE WHEN title LIKE 'Звонки:%' THEN 1 ELSE 0 END")
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->first();
+    }
+
     private static function firstString(array $payload, array $keys): ?string
     {
         foreach ($keys as $k) {
@@ -220,6 +316,18 @@ class MegafonVatsDealSync
         }
 
         return $digits;
+    }
+
+    private static function phoneSearchVariants(string $phone): array
+    {
+        $tail = strlen($phone) > 1 ? substr($phone, 1) : $phone;
+
+        return array_values(array_unique(array_filter([
+            $phone,
+            $tail,
+            '+'.$phone,
+            '8'.$tail,
+        ])));
     }
 
     private static function resolveClientPhone(IntegrationConnection $connection, array $payload): ?string

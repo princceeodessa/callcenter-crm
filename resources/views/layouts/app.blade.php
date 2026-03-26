@@ -391,13 +391,13 @@
         el.setAttribute('aria-atomic','true');
         el.innerHTML = `
           <div class="toast-header">
-            <strong class="me-auto">${title}</strong>
-            <small class="text-muted">СЃРµР№С‡Р°СЃ</small>
-            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+             <strong class="me-auto">${title}</strong>
+             <small class="text-muted">сейчас</small>
+             <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
           </div>
           <div class="toast-body">
-            <div>${(body || '').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
-            ${url ? `<div class="mt-2"><a class="btn btn-sm btn-primary" href="${url}">РћС‚РєСЂС‹С‚СЊ</a></div>` : ''}
+             <div>${(body || '').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+             ${url ? `<div class="mt-2"><a class="btn btn-sm btn-primary" href="${url}">Открыть</a></div>` : ''}
           </div>
         `;
         container.appendChild(el);
@@ -455,8 +455,8 @@
                 lastId = Math.max(lastId, Number(it.id));
                 localStorage.setItem(notifStorageKey, String(lastId));
 
-                try { showToast(it.title || 'РЈРІРµРґРѕРјР»РµРЅРёРµ', it.body || '', it.url || null); } catch (e) {}
-                try { showSystem(it.title || 'РЈРІРµРґРѕРјР»РµРЅРёРµ', it.body || '', it.url || null); } catch (e) {}
+                try { showToast(it.title || 'Уведомление', it.body || '', it.url || null); } catch (e) {}
+                try { showSystem(it.title || 'Уведомление', it.body || '', it.url || null); } catch (e) {}
                 try { playBeep(); } catch (e) {}
             }
         } catch (e) {

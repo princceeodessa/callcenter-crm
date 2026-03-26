@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToAccount;
+use App\Support\TextNormalizer;
 use Illuminate\Database\Eloquent\Model;
 
 class UserNotification extends Model
@@ -24,5 +25,15 @@ class UserNotification extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function getTitleAttribute(?string $value): string
+    {
+        return TextNormalizer::normalizeMojibake($value);
+    }
+
+    public function getBodyAttribute(?string $value): string
+    {
+        return TextNormalizer::normalizeMojibake($value);
     }
 }
