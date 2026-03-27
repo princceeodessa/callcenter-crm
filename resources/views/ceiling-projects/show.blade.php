@@ -626,14 +626,23 @@
                       <button type="button" class="btn btn-sm btn-outline-secondary tool-toggle is-active" id="contourModeBtn">Точка / угол</button>
                       <button type="button" class="btn btn-sm btn-outline-secondary tool-toggle" id="wallModeBtn">Сдвиг стены</button>
                       <button type="button" class="btn btn-sm btn-outline-secondary tool-toggle" id="elementModeBtn">Поставить элемент</button>
+                      <button type="button" class="btn btn-sm btn-outline-secondary tool-toggle" id="handModeBtn">Рука</button>
                       <button type="button" class="btn btn-sm btn-outline-secondary" id="splitSegmentBtn">Разрезать стену</button>
                       <button type="button" class="btn btn-sm btn-outline-secondary" id="snapToggleBtn">Ортоснап: вкл</button>
                       <button type="button" class="btn btn-sm btn-outline-secondary" id="editorResetRect">Сбросить в прямоугольник</button>
                     </div>
+                    <div class="d-flex gap-2 flex-wrap">
+                      <button type="button" class="btn btn-sm btn-outline-secondary" id="undoGeometryBtn">Отмена</button>
+                      <button type="button" class="btn btn-sm btn-outline-secondary" id="redoGeometryBtn">Повтор</button>
+                      <button type="button" class="btn btn-sm btn-outline-secondary" id="mirrorHorizontalBtn">Отразить X</button>
+                      <button type="button" class="btn btn-sm btn-outline-secondary" id="mirrorVerticalBtn">Отразить Y</button>
+                      <button type="button" class="btn btn-sm btn-outline-secondary" id="rotateLeftBtn">Повернуть -90°</button>
+                      <button type="button" class="btn btn-sm btn-outline-secondary" id="rotateRightBtn">Повернуть +90°</button>
+                    </div>
                     <div class="d-flex align-items-center flex-wrap geometry-toolbar-meta">
                       <div class="geometry-toolbar-zoom">
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="zoomOutBtn">-</button>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" id="zoomFitBtn">Вписать</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="zoomFitBtn">Весь чертеж</button>
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="zoomInBtn">+</button>
                       </div>
                       @if($referenceImageUrl)
@@ -650,7 +659,7 @@
                     </div>
                   </div>
                   <div class="geometry-toolbar-tip small text-muted px-3 py-2">
-                    Колесо мыши меняет масштаб. Пробел + перетаскивание или средняя кнопка мыши двигают чертеж. Клик по строке справа выбирает угол.
+                    Колесо мыши меняет масштаб. Пробел + перетаскивание, режим руки или средняя кнопка мыши двигают чертеж. Горячие клавиши: Ctrl+Z, Ctrl+Y, H, V, W, E.
                   </div>
                   <svg id="geometrySvg" class="geometry-svg" viewBox="0 0 {{ $editorWidth }} {{ $editorHeight }}" data-width="{{ $editorWidth }}" data-height="{{ $editorHeight }}">
                     <defs>
@@ -704,10 +713,22 @@
                             <input type="text" class="form-control form-control-sm" id="selectedAngleInput" readonly>
                           </div>
                         </div>
+                        <div class="row g-2 mt-1">
+                          <div class="col-4">
+                            <label class="form-label small mb-1">Шаг, см</label>
+                            <input type="number" step="1" min="1" class="form-control form-control-sm" id="segmentStepInput" value="5">
+                          </div>
+                          <div class="col-8 d-flex gap-2 align-items-end">
+                            <button type="button" class="btn btn-sm btn-outline-secondary flex-fill" id="decreaseSegmentLengthBtn">- шаг</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary flex-fill" id="increaseSegmentLengthBtn">+ шаг</button>
+                          </div>
+                        </div>
                         <button type="button" class="btn btn-sm btn-outline-dark w-100 mt-2" id="applySegmentLengthBtn">Изменить длину</button>
                       </div>
                     </div>
                     <div class="inspector-actions mb-3">
+                      <button type="button" class="btn btn-sm btn-outline-secondary" id="prevSegmentBtn">Пред. сторона</button>
+                      <button type="button" class="btn btn-sm btn-outline-secondary" id="nextSegmentBtn">След. сторона</button>
                       <button type="button" class="btn btn-sm btn-outline-secondary" id="insertPointAfterBtn">Добавить после</button>
                       <button type="button" class="btn btn-sm btn-outline-danger" id="deletePointBtn">Удалить точку</button>
                     </div>
@@ -943,8 +964,15 @@
   const contourModeBtn = document.getElementById('contourModeBtn');
   const wallModeBtn = document.getElementById('wallModeBtn');
   const elementModeBtn = document.getElementById('elementModeBtn');
+  const handModeBtn = document.getElementById('handModeBtn');
   const splitSegmentBtn = document.getElementById('splitSegmentBtn');
   const snapToggleBtn = document.getElementById('snapToggleBtn');
+  const undoGeometryBtn = document.getElementById('undoGeometryBtn');
+  const redoGeometryBtn = document.getElementById('redoGeometryBtn');
+  const mirrorHorizontalBtn = document.getElementById('mirrorHorizontalBtn');
+  const mirrorVerticalBtn = document.getElementById('mirrorVerticalBtn');
+  const rotateLeftBtn = document.getElementById('rotateLeftBtn');
+  const rotateRightBtn = document.getElementById('rotateRightBtn');
   const zoomOutBtn = document.getElementById('zoomOutBtn');
   const zoomFitBtn = document.getElementById('zoomFitBtn');
   const zoomInBtn = document.getElementById('zoomInBtn');
@@ -979,7 +1007,12 @@
   const selectedSegmentTitle = document.getElementById('selectedSegmentTitle');
   const selectedSegmentLengthInput = document.getElementById('selectedSegmentLengthInput');
   const selectedAngleInput = document.getElementById('selectedAngleInput');
+  const segmentStepInput = document.getElementById('segmentStepInput');
+  const decreaseSegmentLengthBtn = document.getElementById('decreaseSegmentLengthBtn');
+  const increaseSegmentLengthBtn = document.getElementById('increaseSegmentLengthBtn');
   const applySegmentLengthBtn = document.getElementById('applySegmentLengthBtn');
+  const prevSegmentBtn = document.getElementById('prevSegmentBtn');
+  const nextSegmentBtn = document.getElementById('nextSegmentBtn');
   if (!svg || !layer || !input || !list) return;
 
   const workspaceWidth = Number(svg.dataset.width || 8);
@@ -1028,6 +1061,8 @@
   let scheduledRenderOptions = { syncList: false, syncInput: false };
   let backgroundVisible = !!backgroundImage;
   let inspectorTab = 'points';
+  let undoStack = [];
+  let redoStack = [];
   let viewport = {
     x: 0,
     y: 0,
@@ -1048,6 +1083,64 @@
   const centimetersToMeters = (value) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? round(parsed / 100) : null;
+  };
+  const clonePoints = (items = points) => items.map((point) => ({
+    x: round(Number(point.x ?? 0)),
+    y: round(Number(point.y ?? 0)),
+  }));
+  const cloneElements = (items = roomElements) => items.map((element) => ({
+    ...element,
+    x_m: element.x_m === null || element.x_m === undefined ? null : round(Number(element.x_m)),
+    y_m: element.y_m === null || element.y_m === undefined ? null : round(Number(element.y_m)),
+    offset_m: element.offset_m === null || element.offset_m === undefined ? null : round(Number(element.offset_m)),
+    length_m: element.length_m === null || element.length_m === undefined ? null : round(Number(element.length_m)),
+  }));
+  const captureState = () => ({
+    points: clonePoints(),
+    roomElements: cloneElements(),
+    selectedSegmentIndex,
+    selectedPointIndex,
+    viewport: { ...viewport },
+  });
+  const restoreState = (state) => {
+    points = clonePoints(state.points ?? []);
+    const nextElements = cloneElements(state.roomElements ?? []);
+    roomElements.splice(0, roomElements.length, ...nextElements);
+    selectedSegmentIndex = Math.max(0, Math.min(Number(state.selectedSegmentIndex ?? 0), Math.max(points.length - 1, 0)));
+    selectedPointIndex = Math.max(0, Math.min(Number(state.selectedPointIndex ?? 0), Math.max(points.length - 1, 0)));
+    if (state.viewport) {
+      viewport = { ...viewport, ...state.viewport };
+    }
+    syncAllElementForms();
+    updateExistingPlacementFields();
+  };
+  const refreshHistoryButtons = () => {
+    if (undoGeometryBtn) undoGeometryBtn.disabled = undoStack.length === 0;
+    if (redoGeometryBtn) redoGeometryBtn.disabled = redoStack.length === 0;
+  };
+  const pushHistory = () => {
+    undoStack.push(captureState());
+    if (undoStack.length > 80) {
+      undoStack = undoStack.slice(-80);
+    }
+    redoStack = [];
+    refreshHistoryButtons();
+  };
+  const undoGeometry = () => {
+    if (undoStack.length === 0) return;
+    const previous = undoStack.pop();
+    redoStack.push(captureState());
+    restoreState(previous);
+    refreshHistoryButtons();
+    render({ syncList: true, syncInput: true });
+  };
+  const redoGeometry = () => {
+    if (redoStack.length === 0) return;
+    const next = redoStack.pop();
+    undoStack.push(captureState());
+    restoreState(next);
+    refreshHistoryButtons();
+    render({ syncList: true, syncInput: true });
   };
   const formatLength = (value) => `${metersToCentimeters(value)} см`;
   const pointLabel = (index) => {
@@ -1303,6 +1396,15 @@
     if (segmentInput) segmentInput.value = element.segment_index ?? '';
     if (offsetInput) offsetInput.value = element.offset_m === null || element.offset_m === undefined ? '' : metersToCentimeters(element.offset_m);
   };
+  const syncAllElementForms = () => {
+    roomElements.forEach((element) => {
+      if ((element.placement_mode ?? 'free') === 'wall') {
+        syncElementFormAttachment(element.id, element);
+      } else if (element.x_m !== null && element.y_m !== null) {
+        syncElementFormCoordinates(element.id, { x: element.x_m, y: element.y_m });
+      }
+    });
+  };
 
   const assignNewElementToSegment = (segmentIndex, point) => {
     const segment = getSegmentGeometry(segmentIndex);
@@ -1396,10 +1498,18 @@
     }
 
     if (svg) {
-      svg.style.cursor = panState ? 'grabbing' : (isSpacePressed ? 'grab' : (activeMode === 'element' ? 'crosshair' : 'default'));
+      svg.style.cursor = panState
+        ? 'grabbing'
+        : ((isSpacePressed || activeMode === 'hand') ? 'grab' : (activeMode === 'element' ? 'crosshair' : 'default'));
     }
 
     if (!geometryHint) return;
+
+    if (activeMode === 'hand') {
+      if (modePill) modePill.textContent = 'Режим: рука';
+      geometryHint.textContent = 'Режим руки: перетаскивайте холст левой кнопкой мыши. Колесо меняет масштаб, Вписать возвращает комнату в кадр.';
+      return;
+    }
 
     if (activeMode === 'wall') {
       if (modePill) modePill.textContent = 'Режим: стена';
@@ -1425,6 +1535,7 @@
     contourModeBtn?.classList.toggle('is-active', mode === 'contour');
     wallModeBtn?.classList.toggle('is-active', mode === 'wall');
     elementModeBtn?.classList.toggle('is-active', mode === 'element');
+    handModeBtn?.classList.toggle('is-active', mode === 'hand');
     updateGeometryHint();
   };
 
@@ -1454,7 +1565,7 @@
     return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(target.tagName);
   };
 
-  const shouldStartPan = (event) => event.button === 1 || (event.button === 0 && isSpacePressed);
+  const shouldStartPan = (event) => event.button === 1 || (event.button === 0 && (isSpacePressed || activeMode === 'hand'));
 
   const beginPan = (event) => {
     const rect = svg.getBoundingClientRect();
@@ -1468,6 +1579,11 @@
     updateGeometryHint();
     event.stopPropagation();
     event.preventDefault();
+  };
+
+  const getSegmentStepMeters = () => {
+    const nextStep = centimetersToMeters(segmentStepInput?.value || 0);
+    return nextStep && nextStep > 0 ? nextStep : 0.05;
   };
 
   const updateNewElementPlacementFields = () => {
@@ -1577,16 +1693,19 @@
       });
       xInput?.addEventListener('input', () => {
         setSelectedPoint(index);
+        pushHistory();
         points[index].x = clamp(centimetersToMeters(xInput.value || 0) ?? 0, 0, workspaceWidth);
         render();
       });
       yInput?.addEventListener('input', () => {
         setSelectedPoint(index);
+        pushHistory();
         points[index].y = clamp(centimetersToMeters(yInput.value || 0) ?? 0, 0, workspaceHeight);
         render();
       });
       removeBtn?.addEventListener('click', () => {
         if (points.length <= 3) return;
+        pushHistory();
         points.splice(index, 1);
         selectedPointIndex = Math.max(0, Math.min(selectedPointIndex, points.length - 1));
         setSelectedSegment(selectedPointIndex);
@@ -1626,6 +1745,7 @@
         if (nextLength === null) return;
         setSelectedSegment(index);
         setSelectedPoint(index);
+        pushHistory();
         setSegmentLength(index, nextLength);
         render();
       };
@@ -1701,6 +1821,85 @@
       x: round(sum.x / points.length),
       y: round(sum.y / points.length),
     };
+  };
+  const geometryBounds = (pointSet = points, elementSet = roomElements) => {
+    const freeElements = elementSet.filter((element) => (element.placement_mode ?? 'free') !== 'wall' && element.x_m !== null && element.y_m !== null);
+    return [...pointSet, ...freeElements.map((element) => ({ x: Number(element.x_m), y: Number(element.y_m) }))].reduce((carry, point) => ({
+      minX: Math.min(carry.minX, point.x),
+      minY: Math.min(carry.minY, point.y),
+      maxX: Math.max(carry.maxX, point.x),
+      maxY: Math.max(carry.maxY, point.y),
+    }), {
+      minX: Number.POSITIVE_INFINITY,
+      minY: Number.POSITIVE_INFINITY,
+      maxX: Number.NEGATIVE_INFINITY,
+      maxY: Number.NEGATIVE_INFINITY,
+    });
+  };
+  const normalizeGeometry = (nextPoints, nextElements) => {
+    const bounds = geometryBounds(nextPoints, nextElements);
+    if (!Number.isFinite(bounds.minX) || !Number.isFinite(bounds.minY)) {
+      return { points: nextPoints, elements: nextElements };
+    }
+
+    const padding = 0.35;
+    let shiftX = 0;
+    let shiftY = 0;
+
+    if (bounds.minX < padding) shiftX += padding - bounds.minX;
+    if (bounds.minY < padding) shiftY += padding - bounds.minY;
+    if ((bounds.maxX + shiftX) > (workspaceWidth - padding)) shiftX -= (bounds.maxX + shiftX) - (workspaceWidth - padding);
+    if ((bounds.maxY + shiftY) > (workspaceHeight - padding)) shiftY -= (bounds.maxY + shiftY) - (workspaceHeight - padding);
+
+    const normalizedPoints = nextPoints.map((point) => ({
+      x: round(clamp(point.x + shiftX, 0, workspaceWidth)),
+      y: round(clamp(point.y + shiftY, 0, workspaceHeight)),
+    }));
+
+    const normalizedElements = nextElements.map((element) => {
+      if ((element.placement_mode ?? 'free') === 'wall' || element.x_m === null || element.y_m === null) {
+        return element;
+      }
+
+      return {
+        ...element,
+        x_m: round(clamp(Number(element.x_m) + shiftX, 0, workspaceWidth)),
+        y_m: round(clamp(Number(element.y_m) + shiftY, 0, workspaceHeight)),
+      };
+    });
+
+    return {
+      points: normalizedPoints,
+      elements: normalizedElements,
+    };
+  };
+  const transformGeometry = (transformPoint) => {
+    pushHistory();
+
+    const nextPoints = clonePoints().map(transformPoint);
+    const nextElements = cloneElements().map((element) => {
+      if ((element.placement_mode ?? 'free') === 'wall' || element.x_m === null || element.y_m === null) {
+        return element;
+      }
+
+      const transformed = transformPoint({
+        x: Number(element.x_m),
+        y: Number(element.y_m),
+      });
+
+      return {
+        ...element,
+        x_m: transformed.x,
+        y_m: transformed.y,
+      };
+    });
+
+    const normalized = normalizeGeometry(nextPoints, nextElements);
+    points = normalized.points;
+    roomElements.splice(0, roomElements.length, ...normalized.elements);
+    syncAllElementForms();
+    fitViewport();
+    render({ syncList: true, syncInput: true });
   };
 
   const reindexWallAttachmentsOnInsert = (segmentIndex, insertedOffset) => {
@@ -1797,6 +1996,7 @@
           return;
         }
 
+        pushHistory();
         dragSegmentState = {
           index,
           startPointer: pointerToSvg(event.clientX, event.clientY),
@@ -1809,6 +2009,7 @@
       segmentHit.addEventListener('click', (event) => {
         if (suppressCanvasClick) return;
         event.stopPropagation();
+        if (activeMode === 'hand') return;
         setSelectedSegment(index);
         setInspectorTab(activeMode === 'element' ? inspectorTab : 'segments');
 
@@ -1872,12 +2073,14 @@
         event.stopPropagation();
         setSelectedPoint(index);
         setInspectorTab('points');
+        pushHistory();
         dragPointIndex = index;
       });
 
       hitHandle.addEventListener('dblclick', (event) => {
         event.stopPropagation();
         if (points.length <= 3) return;
+        pushHistory();
         points.splice(index, 1);
         selectedPointIndex = Math.max(0, Math.min(selectedPointIndex, points.length - 1));
         render();
@@ -1946,6 +2149,7 @@
 
         if (event.button !== 0) return;
         event.stopPropagation();
+        pushHistory();
         dragElementIndex = index;
       });
 
@@ -2029,6 +2233,9 @@
     if (tag !== 'svg' && tag !== 'rect' && tag !== 'image' && targetKind !== 'polygon') return;
 
     const point = pointerToSvg(event.clientX, event.clientY);
+    if (activeMode === 'hand') {
+      return;
+    }
       if (activeMode === 'element') {
         if (newElementPlacementMode?.value === 'wall') {
           assignNewElementToSegment(selectedSegmentIndex, point);
@@ -2042,6 +2249,7 @@
     }
 
     if (activeMode === 'contour') {
+      pushHistory();
       const segmentIndex = Math.max(0, findInsertionIndex(point) - 1);
       const segment = getSegmentGeometry(segmentIndex);
       const insertionIndex = findInsertionIndex(point);
@@ -2152,6 +2360,7 @@
   contourModeBtn?.addEventListener('click', () => setMode('contour'));
   wallModeBtn?.addEventListener('click', () => setMode('wall'));
   elementModeBtn?.addEventListener('click', () => setMode('element'));
+  handModeBtn?.addEventListener('click', () => setMode('hand'));
   pickElementPointBtn?.addEventListener('click', () => setMode('element'));
   zoomOutBtn?.addEventListener('click', () => {
     zoomViewport(1 / 1.15);
@@ -2176,6 +2385,7 @@
   selectedPointXInput?.addEventListener('change', () => {
     const currentPoint = points[selectedPointIndex];
     if (!currentPoint) return;
+    pushHistory();
     currentPoint.x = clamp(centimetersToMeters(selectedPointXInput.value || 0) ?? 0, 0, workspaceWidth);
     setInspectorTab('points');
     render();
@@ -2183,6 +2393,7 @@
   selectedPointYInput?.addEventListener('change', () => {
     const currentPoint = points[selectedPointIndex];
     if (!currentPoint) return;
+    pushHistory();
     currentPoint.y = clamp(centimetersToMeters(selectedPointYInput.value || 0) ?? 0, 0, workspaceHeight);
     setInspectorTab('points');
     render();
@@ -2191,12 +2402,44 @@
     const nextLength = centimetersToMeters(selectedSegmentLengthInput?.value);
     if (nextLength === null) return;
     setInspectorTab('segments');
+    pushHistory();
     setSegmentLength(selectedSegmentIndex, nextLength);
     render();
+  });
+  decreaseSegmentLengthBtn?.addEventListener('click', () => {
+    const segment = getSegmentGeometry(selectedSegmentIndex);
+    if (!segment) return;
+    const nextLength = Math.max(0.1, round(segment.length - getSegmentStepMeters()));
+    setInspectorTab('segments');
+    pushHistory();
+    setSegmentLength(selectedSegmentIndex, nextLength);
+    render();
+  });
+  increaseSegmentLengthBtn?.addEventListener('click', () => {
+    const segment = getSegmentGeometry(selectedSegmentIndex);
+    if (!segment) return;
+    const nextLength = round(segment.length + getSegmentStepMeters());
+    setInspectorTab('segments');
+    pushHistory();
+    setSegmentLength(selectedSegmentIndex, nextLength);
+    render();
+  });
+  prevSegmentBtn?.addEventListener('click', () => {
+    setSelectedSegment(selectedSegmentIndex - 1);
+    setSelectedPoint(selectedSegmentIndex);
+    setInspectorTab('segments');
+    render({ syncList: true, syncInput: false });
+  });
+  nextSegmentBtn?.addEventListener('click', () => {
+    setSelectedSegment(selectedSegmentIndex + 1);
+    setSelectedPoint(selectedSegmentIndex);
+    setInspectorTab('segments');
+    render({ syncList: true, syncInput: false });
   });
   insertPointAfterBtn?.addEventListener('click', () => {
     const segment = getSegmentGeometry(selectedSegmentIndex);
     if (!segment) return;
+    pushHistory();
     points.splice(segment.index + 1, 0, {
       x: round((segment.start.x + segment.end.x) / 2),
       y: round((segment.start.y + segment.end.y) / 2),
@@ -2209,6 +2452,7 @@
   });
   deletePointBtn?.addEventListener('click', () => {
     if (points.length <= 3) return;
+    pushHistory();
     points.splice(selectedPointIndex, 1);
     selectedPointIndex = Math.max(0, Math.min(selectedPointIndex, points.length - 1));
     setSelectedSegment(selectedPointIndex);
@@ -2219,6 +2463,7 @@
     const segment = getSegmentGeometry(selectedSegmentIndex);
     if (!segment) return;
 
+    pushHistory();
     points.splice(segment.index + 1, 0, {
       x: round((segment.start.x + segment.end.x) / 2),
       y: round((segment.start.y + segment.end.y) / 2),
@@ -2247,14 +2492,83 @@
   });
 
   resetRectBtn?.addEventListener('click', () => {
+    pushHistory();
     points = baseRect.map((point) => ({ ...point }));
     setSelectedSegment(0);
     setSelectedPoint(0);
     fitViewport();
     render();
   });
+  undoGeometryBtn?.addEventListener('click', undoGeometry);
+  redoGeometryBtn?.addEventListener('click', redoGeometry);
+  mirrorHorizontalBtn?.addEventListener('click', () => {
+    const bounds = geometryBounds();
+    if (!Number.isFinite(bounds.minX)) return;
+    const centerX = (bounds.minX + bounds.maxX) / 2;
+    transformGeometry((point) => ({
+      x: round(centerX - (point.x - centerX)),
+      y: round(point.y),
+    }));
+  });
+  mirrorVerticalBtn?.addEventListener('click', () => {
+    const bounds = geometryBounds();
+    if (!Number.isFinite(bounds.minY)) return;
+    const centerY = (bounds.minY + bounds.maxY) / 2;
+    transformGeometry((point) => ({
+      x: round(point.x),
+      y: round(centerY - (point.y - centerY)),
+    }));
+  });
+  rotateLeftBtn?.addEventListener('click', () => {
+    const bounds = geometryBounds();
+    if (!Number.isFinite(bounds.minX)) return;
+    const centerX = (bounds.minX + bounds.maxX) / 2;
+    const centerY = (bounds.minY + bounds.maxY) / 2;
+    transformGeometry((point) => ({
+      x: round(centerX - (point.y - centerY)),
+      y: round(centerY + (point.x - centerX)),
+    }));
+  });
+  rotateRightBtn?.addEventListener('click', () => {
+    const bounds = geometryBounds();
+    if (!Number.isFinite(bounds.minX)) return;
+    const centerX = (bounds.minX + bounds.maxX) / 2;
+    const centerY = (bounds.minY + bounds.maxY) / 2;
+    transformGeometry((point) => ({
+      x: round(centerX + (point.y - centerY)),
+      y: round(centerY - (point.x - centerX)),
+    }));
+  });
 
   window.addEventListener('keydown', (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.code === 'KeyZ' && !event.shiftKey) {
+      event.preventDefault();
+      undoGeometry();
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && (event.code === 'KeyY' || (event.code === 'KeyZ' && event.shiftKey))) {
+      event.preventDefault();
+      redoGeometry();
+      return;
+    }
+    if (!isTypingTarget(event.target)) {
+      if (event.code === 'KeyH') {
+        setMode('hand');
+        return;
+      }
+      if (event.code === 'KeyV') {
+        setMode('contour');
+        return;
+      }
+      if (event.code === 'KeyW') {
+        setMode('wall');
+        return;
+      }
+      if (event.code === 'KeyE') {
+        setMode('element');
+        return;
+      }
+    }
     if (event.code !== 'Space' || isTypingTarget(event.target)) return;
     if (!isSpacePressed) {
       isSpacePressed = true;
@@ -2272,6 +2586,7 @@
   updateNewElementPlacementFields();
   updateExistingPlacementFields();
   syncBackgroundState();
+  refreshHistoryButtons();
   setMode('contour');
   setSelectedSegment(0);
   setSelectedPoint(0);
