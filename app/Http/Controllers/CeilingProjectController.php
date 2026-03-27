@@ -9,6 +9,7 @@ use App\Models\Deal;
 use App\Models\DealActivity;
 use App\Models\Measurement;
 use App\Services\Ceiling\CeilingProjectCalculator;
+use App\Services\Ceiling\CeilingSketchRecognitionService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -244,6 +245,103 @@ class CeilingProjectController extends Controller
         }
 
         return response()->file(Storage::disk('public')->path($project->reference_image_path));
+    }
+
+    public function recognizeSketch(
+        Request $request,
+        CeilingProject $project,
+        CeilingSketchRecognitionService $recognitionService
+    ): RedirectResponse {
+        $this->authorizeProject($request, $project);
+
+        if (!$project->reference_image_path || !Storage::disk('public')->exists($project->reference_image_path)) {
+            return back()->withErrors([
+                'reference_image' => 'Сначала загрузите фото замера или эскиза.',
+            ]);
+        }
+
+        try {
+            $result = $recognitionService->recognize($project, Storage::disk('public')->path($project->reference_image_path));
+        } catch (RuntimeException $exception) {
+            return back()->withErrors([
+                'sketch_recognition' => $exception->getMessage(),
+            ]);
+        }
+
+        $project->forceFill([
+            'sketch_recognition' => $result,
+            'sketch_recognized_at' => now(),
+            'updated_by_user_id' => $request->user()->id,
+            'last_calculated_at' => now(),
+        ])->save();
+
+        return $this->redirectToProject($request, $project)
+            ->with('status', 'Эскиз распознан. Проверьте результат и примените черновик комнаты.');
+    }
+
+    public function applySketchRecognition(Request $request, CeilingProject $project): RedirectResponse
+    {
+        $this->authorizeProject($request, $project);
+
+        $recognition = $project->sketch_recognition;
+        if (!is_array($recognition)) {
+            return back()->withErrors([
+                'sketch_recognition' => 'Сначала выполните распознавание эскиза.',
+            ]);
+        }
+
+        $draft = $recognition['room_draft'] ?? null;
+        if (!is_array($draft) || !is_array($draft['shape_points'] ?? null) || count($draft['shape_points']) < 3) {
+            return back()->withErrors([
+                'sketch_recognition' => 'В распознавании нет готовой геометрии комнаты.',
+            ]);
+        }
+
+        $room = $project->rooms()
+            ->where('notes', 'like', '[sketch-recognition]%')
+            ->orderByDesc('id')
+            ->first();
+
+        $payload = [
+            'account_id' => $request->user()->account_id,
+            'ceiling_project_id' => $project->id,
+            'sort_order' => $room?->sort_order ?? ((int) $project->rooms()->max('sort_order') + 1),
+            'name' => trim((string) ($draft['name'] ?? 'Черновик по эскизу')),
+            'shape_type' => CeilingProjectRoom::SHAPE_POLYGON,
+            'width_m' => $this->nullableFloat($draft['width_m'] ?? null),
+            'length_m' => $this->nullableFloat($draft['length_m'] ?? null),
+            'height_m' => $this->nullableFloat($draft['height_m'] ?? null),
+            'corners_count' => count($draft['shape_points']),
+            'manual_area_m2' => $this->nullableFloat($draft['manual_area_m2'] ?? null),
+            'manual_perimeter_m' => $this->nullableFloat($draft['manual_perimeter_m'] ?? null),
+            'shape_points' => collect($draft['shape_points'])
+                ->map(fn ($point) => [
+                    'x' => round((float) ($point['x'] ?? 0), 2),
+                    'y' => round((float) ($point['y'] ?? 0), 2),
+                ])
+                ->values()
+                ->all(),
+            'spotlights_count' => 0,
+            'chandelier_points_count' => 0,
+            'pipes_count' => 0,
+            'curtain_niches_count' => 0,
+            'ventilation_holes_count' => 0,
+            'notes' => $this->buildRecognitionRoomNotes($recognition),
+        ];
+
+        if ($room) {
+            $room->update($payload);
+        } else {
+            $room = $project->rooms()->create($payload);
+        }
+
+        $project->forceFill([
+            'updated_by_user_id' => $request->user()->id,
+            'last_calculated_at' => now(),
+        ])->save();
+
+        return $this->redirectToProject($request, $project, $room)
+            ->with('status', 'Черновик комнаты создан из распознавания эскиза.');
     }
 
     public function applyEstimate(Request $request, CeilingProject $project, CeilingProjectCalculator $calculator): RedirectResponse
@@ -686,6 +784,50 @@ class CeilingProjectController extends Controller
             ->orderByDesc('scheduled_at')
             ->limit(100)
             ->get();
+    }
+
+    private function buildRecognitionRoomNotes(array $recognition): string
+    {
+        $measurements = $recognition['measurements'] ?? [];
+        $rawText = trim((string) ($recognition['text'] ?? ''));
+        $warnings = collect($recognition['warnings'] ?? [])
+            ->filter(fn ($warning) => trim((string) $warning) !== '')
+            ->map(fn ($warning) => '- '.trim((string) $warning))
+            ->implode("\n");
+
+        $lines = [
+            '[sketch-recognition]',
+            'OCR confidence: '.($recognition['confidence'] ?? 'n/a'),
+        ];
+
+        if (!empty($measurements['width_cm']) || !empty($measurements['length_cm'])) {
+            $lines[] = 'Размеры: '
+                .trim((string) ($measurements['width_cm'] ?? '—')).' x '
+                .trim((string) ($measurements['length_cm'] ?? '—')).' см';
+        }
+
+        if (!empty($measurements['area_m2'])) {
+            $lines[] = 'Площадь OCR: '.$measurements['area_m2'].' м2';
+        }
+
+        if (!empty($measurements['perimeter_m'])) {
+            $lines[] = 'Периметр OCR: '.$measurements['perimeter_m'].' м';
+        }
+
+        if ($rawText !== '') {
+            $lines[] = 'OCR текст: '.$rawText;
+        }
+
+        if ($warnings !== '') {
+            $lines[] = 'Предупреждения:'."\n".$warnings;
+        }
+
+        return implode("\n", $lines);
+    }
+
+    private function nullableFloat(mixed $value): ?float
+    {
+        return is_numeric($value) ? round((float) $value, 2) : null;
     }
 
     private function trimNullable(?string $value): ?string

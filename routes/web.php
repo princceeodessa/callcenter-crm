@@ -104,6 +104,8 @@ Route::middleware('auth')->group(function () {
         Route::post('/ceiling-projects/{project}/apply-estimate', [CeilingProjectController::class, 'applyEstimate'])->name('ceiling-projects.apply-estimate');
         Route::post('/ceiling-projects/{project}/reference-image', [CeilingProjectController::class, 'uploadReferenceImage'])->name('ceiling-projects.reference-image.upload');
         Route::get('/ceiling-projects/{project}/reference-image', [CeilingProjectController::class, 'referenceImage'])->name('ceiling-projects.reference-image.show');
+        Route::post('/ceiling-projects/{project}/sketch-recognition', [CeilingProjectController::class, 'recognizeSketch'])->name('ceiling-projects.sketch-recognition');
+        Route::post('/ceiling-projects/{project}/sketch-recognition/apply', [CeilingProjectController::class, 'applySketchRecognition'])->name('ceiling-projects.sketch-recognition.apply');
         Route::post('/ceiling-projects/{project}/rooms', [CeilingProjectController::class, 'storeRoom'])->name('ceiling-projects.rooms.store');
         Route::patch('/ceiling-projects/{project}/rooms/{room}', [CeilingProjectController::class, 'updateRoom'])->name('ceiling-projects.rooms.update');
         Route::patch('/ceiling-projects/{project}/rooms/{room}/geometry', [CeilingProjectController::class, 'updateRoomGeometry'])->name('ceiling-projects.rooms.geometry.update');

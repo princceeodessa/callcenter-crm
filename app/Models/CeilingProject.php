@@ -41,6 +41,8 @@ class CeilingProject extends Model
         'mounting_price_per_m2',
         'additional_cost',
         'reference_image_path',
+        'sketch_recognition',
+        'sketch_recognized_at',
         'notes',
         'last_calculated_at',
     ];
@@ -60,6 +62,8 @@ class CeilingProject extends Model
         'ventilation_hole_price' => 'decimal:2',
         'mounting_price_per_m2' => 'decimal:2',
         'additional_cost' => 'decimal:2',
+        'sketch_recognition' => 'array',
+        'sketch_recognized_at' => 'datetime',
         'last_calculated_at' => 'datetime',
     ];
 

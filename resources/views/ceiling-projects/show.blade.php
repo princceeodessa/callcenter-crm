@@ -62,6 +62,10 @@
       $number = preg_replace('/,00$/', '', $number);
       return trim($number.' '.$suffix);
   };
+  $formatCentimeters = function ($meters, $suffix = 'см') {
+      $number = number_format((float) $meters * 100, 0, ',', ' ');
+      return trim($number.' '.$suffix);
+  };
   $formatMoney = fn ($value) => $formatDecimal($value, 'руб.');
   $defaultRates = \App\Models\CeilingProject::defaultEstimateRates();
   $measurementLabel = function ($measurement) {
@@ -163,6 +167,10 @@
   }
   $standardProjectUrl = route('ceiling-projects.show', $activeRoomParams);
   $draftingProjectUrl = route('ceiling-projects.drafting', $activeRoomParams);
+  $sketchRecognition = is_array($project->sketch_recognition) ? $project->sketch_recognition : null;
+  $sketchMeasurements = $sketchRecognition['measurements'] ?? [];
+  $sketchRoomDraft = $sketchRecognition['room_draft'] ?? null;
+  $sketchWarnings = collect($sketchRecognition['warnings'] ?? [])->filter();
 @endphp
 
 @section('content')
@@ -293,6 +301,83 @@
             <input type="file" name="reference_image" class="form-control" accept="image/*" required>
             <button class="btn btn-outline-primary">Загрузить</button>
           </form>
+
+          @if($referenceImageUrl)
+            <div class="d-flex gap-2 flex-wrap mt-3">
+              <form method="POST" action="{{ route('ceiling-projects.sketch-recognition', $project) }}">
+                @csrf
+                <input type="hidden" name="view_mode" value="{{ $viewMode }}">
+                @if($selectedRoom)
+                  <input type="hidden" name="room" value="{{ $selectedRoom->id }}">
+                @endif
+                <button class="btn btn-dark">Распознать эскиз</button>
+              </form>
+
+              @if(is_array($sketchRoomDraft))
+                <form method="POST" action="{{ route('ceiling-projects.sketch-recognition.apply', $project) }}">
+                  @csrf
+                  <input type="hidden" name="view_mode" value="{{ $viewMode }}">
+                  @if($selectedRoom)
+                    <input type="hidden" name="room" value="{{ $selectedRoom->id }}">
+                  @endif
+                  <button class="btn btn-outline-success">Применить как черновик комнаты</button>
+                </form>
+              @endif
+            </div>
+          @endif
+
+          @if($sketchRecognition)
+            <div class="border rounded p-3 mt-3 bg-light-subtle">
+              <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                <div>
+                  <div class="fw-semibold">Последнее распознавание эскиза</div>
+                  <div class="small text-muted">
+                    @if($project->sketch_recognized_at)
+                      {{ $project->sketch_recognized_at->format('d.m.Y H:i') }}
+                    @endif
+                    @if(isset($sketchRecognition['confidence']))
+                      · confidence: {{ number_format((float) $sketchRecognition['confidence'], 2, ',', ' ') }}
+                    @endif
+                  </div>
+                </div>
+                @if(($sketchRecognition['shape']['type'] ?? null) === 'rectangle')
+                  <span class="badge text-bg-success">Прямоугольник</span>
+                @else
+                  <span class="badge text-bg-secondary">Черновик</span>
+                @endif
+              </div>
+
+              <div class="row g-2 small mt-1">
+                @if(!empty($sketchMeasurements['width_cm']))
+                  <div class="col-md-3"><b>Ширина:</b> {{ number_format((float) $sketchMeasurements['width_cm'], 0, ',', ' ') }} см</div>
+                @endif
+                @if(!empty($sketchMeasurements['length_cm']))
+                  <div class="col-md-3"><b>Длина:</b> {{ number_format((float) $sketchMeasurements['length_cm'], 0, ',', ' ') }} см</div>
+                @endif
+                @if(!empty($sketchMeasurements['area_m2']))
+                  <div class="col-md-3"><b>Площадь OCR:</b> {{ $formatDecimal($sketchMeasurements['area_m2'], 'м2') }}</div>
+                @endif
+                @if(!empty($sketchMeasurements['perimeter_m']))
+                  <div class="col-md-3"><b>Периметр OCR:</b> {{ $formatDecimal($sketchMeasurements['perimeter_m'], 'м') }}</div>
+                @endif
+              </div>
+
+              @if($sketchWarnings->isNotEmpty())
+                <div class="mt-3 small text-warning-emphasis">
+                  @foreach($sketchWarnings as $warning)
+                    <div>• {{ $warning }}</div>
+                  @endforeach
+                </div>
+              @endif
+
+              @if(!empty($sketchRecognition['text']))
+                <div class="mt-3">
+                  <div class="small fw-semibold mb-1">OCR текст</div>
+                  <pre class="small mb-0 p-2 border rounded bg-white" style="white-space: pre-wrap;">{{ $sketchRecognition['text'] }}</pre>
+                </div>
+              @endif
+            </div>
+          @endif
         </div>
       </div>
 
@@ -326,11 +411,11 @@
             <input type="hidden" name="view_mode" value="{{ $viewMode }}">
             <div class="col-md-4"><input type="text" name="name" class="form-control" placeholder="Название комнаты" required></div>
             <div class="col-md-2"><select name="shape_type" class="form-select">@foreach($shapeOptions as $value => $label)<option value="{{ $value }}">{{ $label }}</option>@endforeach</select></div>
-            <div class="col-md-2"><input type="number" step="0.01" min="0" name="width_m" class="form-control" placeholder="Ширина"></div>
-            <div class="col-md-2"><input type="number" step="0.01" min="0" name="length_m" class="form-control" placeholder="Длина"></div>
-            <div class="col-md-2"><input type="number" step="0.01" min="0" name="height_m" class="form-control" placeholder="Высота"></div>
+            <div class="col-md-2"><input type="number" step="0.01" min="0" name="width_m" class="form-control" placeholder="Ширина, см"></div>
+            <div class="col-md-2"><input type="number" step="0.01" min="0" name="length_m" class="form-control" placeholder="Длина, см"></div>
+            <div class="col-md-2"><input type="number" step="0.01" min="0" name="height_m" class="form-control" placeholder="Высота, см"></div>
             <div class="col-md-3"><input type="number" step="0.01" min="0" name="manual_area_m2" class="form-control" placeholder="Ручная площадь"></div>
-            <div class="col-md-3"><input type="number" step="0.01" min="0" name="manual_perimeter_m" class="form-control" placeholder="Ручной периметр"></div>
+            <div class="col-md-3"><input type="number" step="0.01" min="0" name="manual_perimeter_m" class="form-control" placeholder="Ручной периметр, см"></div>
             <div class="col-md-2"><input type="number" min="0" name="spotlights_count" class="form-control" placeholder="Споты"></div>
             <div class="col-md-2"><input type="number" min="0" name="chandelier_points_count" class="form-control" placeholder="Люстры"></div>
             <div class="col-md-2"><input type="number" min="0" name="pipes_count" class="form-control" placeholder="Трубы"></div>
@@ -358,17 +443,17 @@
                     <input type="hidden" name="room" value="{{ $room->id }}">
                     <div class="col-lg-3"><input type="text" name="name" class="form-control" value="{{ $room->name }}" required></div>
                     <div class="col-lg-2"><select name="shape_type" class="form-select">@foreach($shapeOptions as $value => $label)<option value="{{ $value }}" @selected($room->shape_type === $value)>{{ $label }}</option>@endforeach</select></div>
-                    <div class="col-lg-2"><input type="number" step="0.01" min="0" name="width_m" class="form-control" value="{{ $room->width_m }}" placeholder="Ширина"></div>
-                    <div class="col-lg-2"><input type="number" step="0.01" min="0" name="length_m" class="form-control" value="{{ $room->length_m }}" placeholder="Длина"></div>
-                    <div class="col-lg-2"><input type="number" step="0.01" min="0" name="height_m" class="form-control" value="{{ $room->height_m }}" placeholder="Высота"></div>
+                    <div class="col-lg-2"><input type="number" step="0.01" min="0" name="width_m" class="form-control" value="{{ $room->width_m }}" placeholder="Ширина, см"></div>
+                    <div class="col-lg-2"><input type="number" step="0.01" min="0" name="length_m" class="form-control" value="{{ $room->length_m }}" placeholder="Длина, см"></div>
+                    <div class="col-lg-2"><input type="number" step="0.01" min="0" name="height_m" class="form-control" value="{{ $room->height_m }}" placeholder="Высота, см"></div>
                     <div class="col-lg-1"><button class="btn btn-primary w-100">OK</button></div>
                   </form>
                   <div class="row g-2 mt-2 small">
                     <div class="col-md-4"><b>Площадь:</b> {{ $formatDecimal($metrics['area_m2'], 'м2') }}</div>
-                    <div class="col-md-4"><b>Периметр:</b> {{ $formatDecimal($metrics['perimeter_m'], 'м') }}</div>
+                    <div class="col-md-4"><b>Периметр:</b> {{ $formatCentimeters($metrics['perimeter_m']) }}</div>
                     <div class="col-md-4"><b>Свет:</b> {{ $metrics['lighting_points_total'] }}</div>
                     <div class="col-md-4"><b>Ниши:</b> {{ $metrics['curtain_niches_count'] }}</div>
-                    <div class="col-md-4"><b>Карнизы:</b> {{ $metrics['cornices_count'] }} / {{ $formatDecimal($metrics['cornice_length_m'], 'м') }}</div>
+                    <div class="col-md-4"><b>Карнизы:</b> {{ $metrics['cornices_count'] }} / {{ $formatCentimeters($metrics['cornice_length_m']) }}</div>
                     <div class="col-md-4"><b>Трубы:</b> {{ $metrics['pipes_count'] }}</div>
                   </div>
                   <div class="mt-3 d-flex justify-content-between gap-2 flex-wrap">
@@ -397,7 +482,7 @@
                 <div class="fw-semibold">{{ $selectedRoom->name }}</div>
                 <div class="small text-muted">Контур редактируется по фото: клик по схеме вставляет точку в ближайшее ребро, точки можно таскать. В режиме элементов клик ставит координату нового элемента, а существующие маркеры можно перетаскивать.</div>
               </div>
-              <div class="small text-muted">Область: {{ $formatDecimal($editorWidth, 'м') }} × {{ $formatDecimal($editorHeight, 'м') }}</div>
+              <div class="small text-muted">Область: {{ $formatCentimeters($editorWidth) }} × {{ $formatCentimeters($editorHeight) }}</div>
             </div>
             <div class="row g-3 mb-3 project-drawing-guide">
               <div class="col-lg-7">
@@ -430,7 +515,7 @@
                     <div><b>Разрезать стену</b>: выберите сегмент и нажмите кнопку, чтобы вставить новую точку посередине.</div>
                     <div><b>Ортоснап</b>: держит точку или стену ближе к вертикали/горизонтали, когда нужно рисовать ровно.</div>
                     <div><b>Сбросить в прямоугольник</b>: возвращает комнату к базовой прямоугольной форме.</div>
-                    <div><b>Размеры</b>: число над каждой стеной показывает ее текущую длину в метрах.</div>
+                    <div><b>Размеры</b>: число над каждой стеной показывает ее текущую длину в сантиметрах.</div>
                   </div>
                 </div>
               </div>
@@ -485,7 +570,7 @@
                     <input type="hidden" name="shape_points_json" id="shapePointsInput" value='@json($selectedRoomPoints)'>
                     <div class="fw-semibold mb-2">Точки</div>
                     <div class="d-grid gap-2 mb-3" id="pointsList"></div>
-                    <div class="small text-muted mb-3">Координаты в метрах. Изменения маркеров элементов сохраняются отдельной кнопкой у нужного элемента.</div>
+                    <div class="small text-muted mb-3">Координаты в сантиметрах. Изменения маркеров элементов сохраняются отдельной кнопкой у нужного элемента.</div>
                     <button class="btn btn-primary w-100">Сохранить геометрию</button>
                   </form>
                 </div>
@@ -530,11 +615,11 @@
                     <input type="number" min="1" name="quantity" class="form-control" value="1" id="newElementQuantity">
                   </div>
                   <div class="col-md-4">
-                    <label class="form-label">X, м</label>
+                    <label class="form-label">X, см</label>
                     <input type="number" step="0.01" min="0" name="x_m" class="form-control" placeholder="0.00" id="newElementX">
                   </div>
                   <div class="col-md-4">
-                    <label class="form-label">Y, м</label>
+                    <label class="form-label">Y, см</label>
                     <input type="number" step="0.01" min="0" name="y_m" class="form-control" placeholder="0.00" id="newElementY">
                   </div>
                   <div class="col-md-6">
@@ -550,11 +635,11 @@
                     <input type="number" min="0" name="segment_index" class="form-control" placeholder="№" id="newElementSegmentIndex">
                   </div>
                   <div class="col-md-3">
-                    <label class="form-label">Смещение, м</label>
+                    <label class="form-label">Смещение, см</label>
                     <input type="number" step="0.01" min="0" name="offset_m" class="form-control" placeholder="0.00" id="newElementOffset">
                   </div>
                   <div class="col-md-6">
-                    <label class="form-label">Длина, м</label>
+                    <label class="form-label">Длина, см</label>
                     <input type="number" step="0.01" min="0" name="length_m" class="form-control" placeholder="Для карниза/ниши" id="newElementLength">
                   </div>
                   <div class="col-md-6">
@@ -597,11 +682,11 @@
                               @endforeach
                             </select>
                           </div>
-                          <div class="col-md-2"><input type="number" step="0.01" min="0" name="x_m" class="form-control" value="{{ $element->x_m }}" placeholder="X" data-element-x="{{ $element->id }}"></div>
-                          <div class="col-md-2"><input type="number" step="0.01" min="0" name="y_m" class="form-control" value="{{ $element->y_m }}" placeholder="Y" data-element-y="{{ $element->id }}"></div>
+                          <div class="col-md-2"><input type="number" step="0.01" min="0" name="x_m" class="form-control" value="{{ $element->x_m }}" placeholder="X, см" data-element-x="{{ $element->id }}"></div>
+                          <div class="col-md-2"><input type="number" step="0.01" min="0" name="y_m" class="form-control" value="{{ $element->y_m }}" placeholder="Y, см" data-element-y="{{ $element->id }}"></div>
                           <div class="col-md-2"><input type="number" min="0" name="segment_index" class="form-control" value="{{ $element->segment_index }}" placeholder="Стена" data-element-segment="{{ $element->id }}"></div>
-                          <div class="col-md-3"><input type="number" step="0.01" min="0" name="offset_m" class="form-control" value="{{ $element->offset_m }}" placeholder="Смещение" data-element-offset="{{ $element->id }}"></div>
-                          <div class="col-md-3"><input type="number" step="0.01" min="0" name="length_m" class="form-control" value="{{ $element->length_m }}" placeholder="Длина"></div>
+                          <div class="col-md-3"><input type="number" step="0.01" min="0" name="offset_m" class="form-control" value="{{ $element->offset_m }}" placeholder="Смещение, см" data-element-offset="{{ $element->id }}"></div>
+                          <div class="col-md-3"><input type="number" step="0.01" min="0" name="length_m" class="form-control" value="{{ $element->length_m }}" placeholder="Длина, см"></div>
                           <div class="col-md-3"><input type="text" name="notes" class="form-control" value="{{ $element->notes }}" placeholder="Заметка"></div>
                           <div class="col-md-12 d-flex justify-content-between gap-2 flex-wrap">
                             <div class="small text-muted d-flex align-items-center">Маркеры на схеме можно перетаскивать, затем сохранить этот элемент.</div>
@@ -656,6 +741,39 @@
 })();
 </script>
 @endif
+<script>
+(() => {
+  const centimeterFieldNames = new Set(['width_m', 'length_m', 'height_m', 'manual_perimeter_m', 'x_m', 'y_m', 'offset_m']);
+  const toCentimeters = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.round(parsed * 100) : '';
+  };
+  const toMeters = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.round((parsed / 100) * 100) / 100 : '';
+  };
+
+  document.querySelectorAll('input[name]').forEach((input) => {
+    if (!(input instanceof HTMLInputElement) || !centimeterFieldNames.has(input.name)) return;
+
+    if (input.value !== '') {
+      input.value = toCentimeters(input.value);
+    }
+
+    input.step = '1';
+    input.dataset.centimeterField = '1';
+  });
+
+  document.querySelectorAll('form').forEach((form) => {
+    form.addEventListener('submit', () => {
+      form.querySelectorAll('input[data-centimeter-field="1"]').forEach((input) => {
+        if (!(input instanceof HTMLInputElement) || input.value === '') return;
+        input.value = toMeters(input.value);
+      });
+    });
+  });
+})();
+</script>
 @if($selectedRoom)
 <script>
 (() => {
@@ -745,6 +863,15 @@
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : null;
   };
+  const metersToCentimeters = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.round(parsed * 100) : '';
+  };
+  const centimetersToMeters = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? round(parsed / 100) : null;
+  };
+  const formatLength = (value) => `${metersToCentimeters(value)} см`;
 
   const pointerToSvg = (clientX, clientY) => {
     const point = svg.createSVGPoint();
@@ -924,8 +1051,8 @@
   const syncElementFormCoordinates = (elementId, point) => {
     const xInput = document.querySelector(`[data-element-x="${elementId}"]`);
     const yInput = document.querySelector(`[data-element-y="${elementId}"]`);
-    if (xInput) xInput.value = point.x;
-    if (yInput) yInput.value = point.y;
+    if (xInput) xInput.value = metersToCentimeters(point.x);
+    if (yInput) yInput.value = metersToCentimeters(point.y);
   };
 
   const syncElementFormAttachment = (elementId, element) => {
@@ -934,7 +1061,7 @@
     const offsetInput = document.querySelector(`[data-element-offset="${elementId}"]`);
     if (placementInput) placementInput.value = element.placement_mode ?? 'free';
     if (segmentInput) segmentInput.value = element.segment_index ?? '';
-    if (offsetInput) offsetInput.value = element.offset_m ?? '';
+    if (offsetInput) offsetInput.value = element.offset_m === null || element.offset_m === undefined ? '' : metersToCentimeters(element.offset_m);
   };
 
   const assignNewElementToSegment = (segmentIndex, point) => {
@@ -944,12 +1071,12 @@
     const projection = projectToSegment(point, segment);
     newElementPlacementMode.value = 'wall';
     newElementSegmentIndex.value = segment.index;
-    newElementOffset.value = projection.offset;
+    newElementOffset.value = metersToCentimeters(projection.offset);
     if (newElementX) newElementX.value = '';
     if (newElementY) newElementY.value = '';
 
     if (newElementLength && !newElementLength.value && (newElementType?.value === 'cornice' || newElementType?.value === 'curtain_niche')) {
-      newElementLength.value = round(Math.max(segment.length - projection.offset, 0));
+      newElementLength.value = metersToCentimeters(Math.max(segment.length - projection.offset, 0));
     }
   };
 
@@ -1013,10 +1140,10 @@
 
   const updateGeometryHint = () => {
     const segment = getSegmentGeometry(selectedSegmentIndex);
-    const segmentText = segment ? ` Стена #${segment.index + 1}: ${round(segment.length)} м.` : '';
+    const segmentText = segment ? ` Стена #${segment.index + 1}: ${formatLength(segment.length)}.` : '';
 
     if (segmentPill) {
-      segmentPill.textContent = segment ? `Стена: ${segment.index + 1} (${round(segment.length)} м)` : 'Стена: —';
+      segmentPill.textContent = segment ? `Стена: ${segment.index + 1} (${formatLength(segment.length)})` : 'Стена: —';
     }
 
     if (pointPill) {
@@ -1134,8 +1261,8 @@
       const row = document.createElement('div');
       row.className = `point-row${selectedPointIndex === index ? ' is-selected' : ''}`;
       row.innerHTML = `
-        <input type="number" step="0.01" min="0" max="${workspaceWidth}" class="form-control form-control-sm" value="${point.x}">
-        <input type="number" step="0.01" min="0" max="${workspaceHeight}" class="form-control form-control-sm" value="${point.y}">
+        <input type="number" step="1" min="0" max="${metersToCentimeters(workspaceWidth)}" class="form-control form-control-sm" value="${metersToCentimeters(point.x)}">
+        <input type="number" step="1" min="0" max="${metersToCentimeters(workspaceHeight)}" class="form-control form-control-sm" value="${metersToCentimeters(point.y)}">
         <button type="button" class="btn btn-sm btn-outline-danger" ${points.length <= 3 ? 'disabled' : ''}>×</button>
       `;
 
@@ -1147,12 +1274,12 @@
       });
       xInput.addEventListener('input', () => {
         setSelectedPoint(index);
-        points[index].x = round(clamp(Number(xInput.value || 0), 0, workspaceWidth));
+        points[index].x = clamp(centimetersToMeters(xInput.value || 0) ?? 0, 0, workspaceWidth);
         render();
       });
       yInput.addEventListener('input', () => {
         setSelectedPoint(index);
-        points[index].y = round(clamp(Number(yInput.value || 0), 0, workspaceHeight));
+        points[index].y = clamp(centimetersToMeters(yInput.value || 0) ?? 0, 0, workspaceHeight);
         render();
       });
       removeBtn.addEventListener('click', () => {
@@ -1348,7 +1475,7 @@
       sizeLabel.setAttribute('stroke', '#ffffff');
       sizeLabel.setAttribute('stroke-width', labelStrokeWidth);
       sizeLabel.style.pointerEvents = 'none';
-      sizeLabel.textContent = `#${index + 1} ${round(segment.length)} м`;
+      sizeLabel.textContent = `#${index + 1} ${metersToCentimeters(segment.length)} см`;
       layer.appendChild(sizeLabel);
     });
 
@@ -1514,12 +1641,12 @@
     if (tag !== 'svg' && tag !== 'rect' && tag !== 'image' && targetKind !== 'polygon') return;
 
     const point = pointerToSvg(event.clientX, event.clientY);
-    if (activeMode === 'element') {
-      if (newElementPlacementMode?.value === 'wall') {
-        assignNewElementToSegment(selectedSegmentIndex, point);
-      } else {
-        if (newElementX) newElementX.value = point.x;
-        if (newElementY) newElementY.value = point.y;
+      if (activeMode === 'element') {
+        if (newElementPlacementMode?.value === 'wall') {
+          assignNewElementToSegment(selectedSegmentIndex, point);
+        } else {
+        if (newElementX) newElementX.value = metersToCentimeters(point.x);
+        if (newElementY) newElementY.value = metersToCentimeters(point.y);
         if (newElementSegmentIndex) newElementSegmentIndex.value = '';
         if (newElementOffset) newElementOffset.value = '';
       }
