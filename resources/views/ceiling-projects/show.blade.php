@@ -167,10 +167,13 @@
   }
   $standardProjectUrl = route('ceiling-projects.show', $activeRoomParams);
   $draftingProjectUrl = route('ceiling-projects.drafting', $activeRoomParams);
-  $sketchRecognition = is_array($project->sketch_recognition) ? $project->sketch_recognition : null;
+  $sketchRecognition = is_array($sketchRecognition ?? null) ? $sketchRecognition : null;
   $sketchMeasurements = $sketchRecognition['measurements'] ?? [];
   $sketchRoomDraft = $sketchRecognition['room_draft'] ?? null;
   $sketchWarnings = collect($sketchRecognition['warnings'] ?? [])->filter();
+  $sketchRecognizedAt = isset($sketchRecognition['recognized_at'])
+      ? \Illuminate\Support\Carbon::parse($sketchRecognition['recognized_at'])->format('d.m.Y H:i')
+      : null;
 @endphp
 
 @section('content')
@@ -242,6 +245,10 @@
         <div class="card-body">
           <form method="POST" action="{{ route('ceiling-projects.update', $project) }}" class="row g-3">
             @csrf
+            <input type="hidden" name="view_mode" value="{{ $viewMode }}">
+            @if($selectedRoom)
+              <input type="hidden" name="room" value="{{ $selectedRoom->id }}">
+            @endif
             @method('PATCH')
             <div class="col-12"><label class="form-label">Название</label><input type="text" name="title" class="form-control" value="{{ old('title', $project->title) }}"></div>
             <div class="col-md-6">
@@ -298,6 +305,10 @@
           @endif
           <form method="POST" action="{{ route('ceiling-projects.reference-image.upload', $project) }}" enctype="multipart/form-data" class="d-flex gap-2">
             @csrf
+            <input type="hidden" name="view_mode" value="{{ $viewMode }}">
+            @if($selectedRoom)
+              <input type="hidden" name="room" value="{{ $selectedRoom->id }}">
+            @endif
             <input type="file" name="reference_image" class="form-control" accept="image/*" required>
             <button class="btn btn-outline-primary">Загрузить</button>
           </form>
@@ -332,8 +343,8 @@
                 <div>
                   <div class="fw-semibold">Последнее распознавание эскиза</div>
                   <div class="small text-muted">
-                    @if($project->sketch_recognized_at)
-                      {{ $project->sketch_recognized_at->format('d.m.Y H:i') }}
+                    @if($sketchRecognizedAt)
+                      {{ $sketchRecognizedAt }}
                     @endif
                     @if(isset($sketchRecognition['confidence']))
                       · confidence: {{ number_format((float) $sketchRecognition['confidence'], 2, ',', ' ') }}

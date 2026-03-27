@@ -15,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use RuntimeException;
 
 class CeilingProjectController extends Controller
 {
@@ -206,7 +207,11 @@ class CeilingProjectController extends Controller
             ->with('status', 'Проект сохранен.');
     }
 
-    public function uploadReferenceImage(Request $request, CeilingProject $project): RedirectResponse
+    public function uploadReferenceImage(
+        Request $request,
+        CeilingProject $project,
+        CeilingSketchRecognitionService $recognitionService
+    ): RedirectResponse
     {
         $this->authorizeProject($request, $project);
 
@@ -226,13 +231,33 @@ class CeilingProjectController extends Controller
             'last_calculated_at' => now(),
         ])->save();
 
-        if ($this->projectRouteName($request) !== 'ceiling-projects.show') {
-            return $this->redirectToProject($request, $project)
-                ->with('status', 'Reference image uploaded.');
+        $statusMessage = 'Картинка проекта загружена.';
+        $recognizedRoom = null;
+
+        try {
+            $result = $recognitionService->recognize($project, Storage::disk('public')->path($path));
+            $this->saveRecognitionResult($project, $result);
+            $recognizedRoom = $this->upsertRecognitionRoom($request, $project, $result);
+            $statusMessage = $recognizedRoom
+                ? 'Фото загружено, эскиз распознан и черновик комнаты обновлён.'
+                : 'Фото загружено, эскиз распознан.';
+        } catch (RuntimeException $exception) {
+            $statusMessage = 'Фото загружено, но распознать эскиз не удалось: '.$exception->getMessage();
         }
 
+        if ($this->projectRouteName($request) !== 'ceiling-projects.show') {
+            return $this->redirectToProject($request, $project, $recognizedRoom)
+                ->with('status', $statusMessage);
+        }
+
+        return $this->redirectToProject($request, $project, $recognizedRoom)
+            ->with('status', $statusMessage);
+
         return redirect()
-            ->route('ceiling-projects.show', $project)
+            ->route('ceiling-projects.show', array_filter([
+                'project' => $project,
+                'room' => $recognizedRoom?->id,
+            ]))
             ->with('status', 'Картинка проекта загружена.');
     }
 
@@ -268,14 +293,13 @@ class CeilingProjectController extends Controller
             ]);
         }
 
-        $project->forceFill([
-            'sketch_recognition' => $result,
-            'sketch_recognized_at' => now(),
-            'updated_by_user_id' => $request->user()->id,
-            'last_calculated_at' => now(),
-        ])->save();
+        $this->saveRecognitionResult($project, $result);
+        $room = $this->upsertRecognitionRoom($request, $project, $result);
 
-        return $this->redirectToProject($request, $project)
+        return $this->redirectToProject($request, $project, $room)
+            ->with('status', $room ? 'Sketch recognized and room draft updated.' : 'Sketch recognized, but room geometry was not created.');
+
+        return $this->redirectToProject($request, $project, $room)
             ->with('status', 'Эскиз распознан. Проверьте результат и примените черновик комнаты.');
     }
 
@@ -283,7 +307,7 @@ class CeilingProjectController extends Controller
     {
         $this->authorizeProject($request, $project);
 
-        $recognition = $project->sketch_recognition;
+        $recognition = $this->loadRecognitionResult($project);
         if (!is_array($recognition)) {
             return back()->withErrors([
                 'sketch_recognition' => 'Сначала выполните распознавание эскиза.',
@@ -296,6 +320,16 @@ class CeilingProjectController extends Controller
                 'sketch_recognition' => 'В распознавании нет готовой геометрии комнаты.',
             ]);
         }
+
+        $room = $this->upsertRecognitionRoom($request, $project, $recognition);
+
+        return $this->redirectToProject($request, $project, $room)
+            ->with('status', $room ? 'Room draft updated from sketch recognition.' : 'Sketch recognition was saved, but room geometry was not created.');
+
+        return $this->redirectToProject($request, $project, $room)
+            ->with('status', $room
+                ? 'Р§РµСЂРЅРѕРІРёРє РєРѕРјРЅР°С‚С‹ РѕР±РЅРѕРІР»РµРЅ РёР· СЂР°СЃРїРѕР·РЅР°РІР°РЅРёСЏ СЌСЃРєРёР·Р°.'
+                : 'Р Р°СЃРїРѕР·РЅР°РІР°РЅРёРµ СЃРѕС…СЂР°РЅРµРЅРѕ, РЅРѕ РєРѕРјРЅР°С‚Сѓ СЃРѕР±СЂР°С‚СЊ РЅРµ СѓРґР°Р»РѕСЃСЊ.');
 
         $room = $project->rooms()
             ->where('notes', 'like', '[sketch-recognition]%')
@@ -684,6 +718,7 @@ class CeilingProjectController extends Controller
             'summary' => $summary,
             'selectedRoom' => $selectedRoom,
             'viewMode' => $viewMode,
+            'sketchRecognition' => $this->loadRecognitionResult($project),
             'availableDeals' => $this->availableDeals($request->user()->account_id),
             'measurements' => $this->availableMeasurements($request->user()->account_id),
             'statusOptions' => CeilingProject::statusOptions(),
@@ -784,6 +819,134 @@ class CeilingProjectController extends Controller
             ->orderByDesc('scheduled_at')
             ->limit(100)
             ->get();
+    }
+
+    private function recognitionStoragePath(CeilingProject $project): string
+    {
+        return 'ceiling-projects/recognition/'.$project->account_id.'/project-'.$project->id.'.json';
+    }
+
+    private function saveRecognitionResult(CeilingProject $project, array $recognition): void
+    {
+        $payload = $recognition;
+        $payload['recognized_at'] = now()->toIso8601String();
+
+        Storage::disk('local')->put(
+            $this->recognitionStoragePath($project),
+            json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+        );
+
+        $project->forceFill([
+            'updated_by_user_id' => request()->user()?->id ?? $project->updated_by_user_id,
+            'last_calculated_at' => now(),
+        ])->save();
+    }
+
+    private function loadRecognitionResult(CeilingProject $project): ?array
+    {
+        $path = $this->recognitionStoragePath($project);
+
+        if (!Storage::disk('local')->exists($path)) {
+            $legacyPayload = $project->getAttribute('sketch_recognition');
+            return is_array($legacyPayload) ? $legacyPayload : null;
+        }
+
+        $payload = json_decode((string) Storage::disk('local')->get($path), true);
+
+        return is_array($payload) ? $payload : null;
+    }
+
+    private function upsertRecognitionRoom(Request $request, CeilingProject $project, array $recognition): ?CeilingProjectRoom
+    {
+        $draft = $recognition['room_draft'] ?? null;
+
+        if (!is_array($draft) || !is_array($draft['shape_points'] ?? null) || count($draft['shape_points']) < 3) {
+            return null;
+        }
+
+        $room = $this->resolveRecognitionTargetRoom($request, $project);
+
+        $payload = [
+            'account_id' => $request->user()->account_id,
+            'ceiling_project_id' => $project->id,
+            'sort_order' => $room?->sort_order ?? ((int) $project->rooms()->max('sort_order') + 1),
+            'name' => trim((string) ($draft['name'] ?? $room?->name ?? 'Черновик по эскизу')),
+            'shape_type' => CeilingProjectRoom::SHAPE_POLYGON,
+            'width_m' => $this->nullableFloat($draft['width_m'] ?? null),
+            'length_m' => $this->nullableFloat($draft['length_m'] ?? null),
+            'height_m' => $this->nullableFloat($draft['height_m'] ?? $room?->height_m),
+            'corners_count' => count($draft['shape_points']),
+            'manual_area_m2' => $this->nullableFloat($draft['manual_area_m2'] ?? null),
+            'manual_perimeter_m' => $this->nullableFloat($draft['manual_perimeter_m'] ?? null),
+            'shape_points' => collect($draft['shape_points'])
+                ->map(fn ($point) => [
+                    'x' => round((float) ($point['x'] ?? 0), 2),
+                    'y' => round((float) ($point['y'] ?? 0), 2),
+                ])
+                ->values()
+                ->all(),
+            'spotlights_count' => $room?->spotlights_count ?? 0,
+            'chandelier_points_count' => $room?->chandelier_points_count ?? 0,
+            'pipes_count' => $room?->pipes_count ?? 0,
+            'curtain_niches_count' => $room?->curtain_niches_count ?? 0,
+            'ventilation_holes_count' => $room?->ventilation_holes_count ?? 0,
+            'notes' => $this->mergeRecognitionNotes($room?->notes, $recognition),
+        ];
+
+        if ($room) {
+            $room->update($payload);
+        } else {
+            $room = $project->rooms()->create($payload);
+        }
+
+        $project->forceFill([
+            'updated_by_user_id' => $request->user()->id,
+            'last_calculated_at' => now(),
+        ])->save();
+
+        return $room->fresh();
+    }
+
+    private function resolveRecognitionTargetRoom(Request $request, CeilingProject $project): ?CeilingProjectRoom
+    {
+        $requestedRoomId = (int) $request->input('room', $request->query('room', 0));
+        if ($requestedRoomId > 0) {
+            $selectedRoom = $project->rooms()->whereKey($requestedRoomId)->first();
+            if ($selectedRoom) {
+                return $selectedRoom;
+            }
+        }
+
+        $recognizedRoom = $project->rooms()
+            ->where('notes', 'like', '[sketch-recognition]%')
+            ->orderByDesc('id')
+            ->first();
+
+        if ($recognizedRoom) {
+            return $recognizedRoom;
+        }
+
+        if ($project->rooms()->count() === 1) {
+            return $project->rooms()->first();
+        }
+
+        return null;
+    }
+
+    private function mergeRecognitionNotes(?string $existingNotes, array $recognition): string
+    {
+        $recognitionNotes = $this->buildRecognitionRoomNotes($recognition);
+        $existingNotes = trim((string) $existingNotes);
+
+        if ($existingNotes === '') {
+            return $recognitionNotes;
+        }
+
+        if (str_starts_with($existingNotes, '[sketch-recognition]')) {
+            return $recognitionNotes;
+        }
+
+        return trim($existingNotes)."\n\n".$recognitionNotes;
     }
 
     private function buildRecognitionRoomNotes(array $recognition): string
