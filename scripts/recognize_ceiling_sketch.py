@@ -209,6 +209,12 @@ def parse_marker_decimal(lines: List[Dict], markers: List[str]) -> Optional[floa
                     continue
 
                 token = match.group(1).replace(",", ".")
+                digits_only = re.sub(r"\D", "", token)
+                has_decimal_separator = "." in token or "," in match.group(1)
+
+                if not has_decimal_separator and len(digits_only) < 3:
+                    continue
+
                 if "." not in token and len(token) >= 3:
                     token = f"{token[:-2]}.{token[-2:]}"
 
