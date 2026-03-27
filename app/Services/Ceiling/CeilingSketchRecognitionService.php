@@ -18,7 +18,7 @@ class CeilingSketchRecognitionService
         $pythonBinary = $this->resolvePythonBinary();
         $scriptPath = base_path('scripts/recognize_ceiling_sketch.py');
 
-        if (false && !is_file($pythonBinary)) {
+        if (false) {
             throw new RuntimeException('OCR-окружение не найдено: отсутствует python.exe в .ceiling-ocr-venv.');
         }
 
@@ -70,7 +70,7 @@ class CeilingSketchRecognitionService
         ]);
 
         foreach ($candidates as $candidate) {
-            if (is_string($candidate) && $candidate !== '' && is_file($candidate)) {
+            if (is_string($candidate) && $candidate !== '' && $this->isUsablePythonBinary($candidate)) {
                 return $candidate;
             }
         }
@@ -86,5 +86,22 @@ class CeilingSketchRecognitionService
         }
 
         throw new RuntimeException('Не найден Python для OCR. Укажите CEILING_OCR_PYTHON или установите python/python3 и пакет rapidocr-onnxruntime.');
+    }
+
+    private function isUsablePythonBinary(string $candidate): bool
+    {
+        if (!is_file($candidate)) {
+            return false;
+        }
+
+        if (PHP_OS_FAMILY === 'Windows') {
+            return true;
+        }
+
+        if (str_ends_with(strtolower($candidate), '.exe')) {
+            return false;
+        }
+
+        return is_executable($candidate);
     }
 }
