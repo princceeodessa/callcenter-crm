@@ -212,8 +212,10 @@
         <h3 class="mb-2">{{ $projectTitle }}</h3>
         <div class="text-muted">
           Проект #{{ $project->id }}
-          @if($project->deal)
+          @if($project->deal && auth()->user()?->role !== 'constructor')
             · Сделка <a href="{{ route('deals.show', $project->deal) }}" class="text-decoration-none">#{{ $project->deal->id }} {{ $project->deal->title }}</a>
+          @elseif($project->deal)
+            &middot; #{{ $project->deal->id }} {{ $project->deal->title }}
           @else
             · Пока без сделки
           @endif
@@ -226,7 +228,7 @@
         @elseif($isDraftingMode)
           <a href="{{ $standardProjectUrl }}#geometry-editor" class="btn btn-outline-dark">Обычный режим</a>
         @endif
-        @if($project->deal)
+        @if($project->deal && auth()->user()?->role !== 'constructor')
           <a href="{{ route('deals.show', $project->deal) }}" class="btn btn-outline-primary">Открыть сделку</a>
         @endif
       </div>

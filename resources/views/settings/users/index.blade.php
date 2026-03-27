@@ -30,6 +30,7 @@
                         'admin' => 'text-bg-primary',
                         'main_operator' => 'text-bg-warning',
                         'measurer' => 'text-bg-info',
+                        'constructor' => 'text-bg-dark',
                         default => 'text-bg-secondary',
                       };
                     @endphp
@@ -102,6 +103,7 @@
               <option value="operator" @selected(old('role', 'operator') === 'operator')>operator (колл-центр)</option>
               <option value="main_operator" @selected(old('role') === 'main_operator')>main_operator (руководитель)</option>
               <option value="measurer" @selected(old('role') === 'measurer')>measurer (замерщик)</option>
+              <option value="constructor" @selected(old('role') === 'constructor')>constructor (проектирование)</option>
               <option value="admin" @selected(old('role') === 'admin')>admin</option>
             </select>
           </div>

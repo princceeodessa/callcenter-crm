@@ -27,11 +27,13 @@ class AuthController extends Controller
 
         if (Auth::attempt($credentials, true)) {
             $request->session()->regenerate();
-            if ($request->user()?->role === 'measurer') {
-                return redirect()->route('calendar.index');
-            }
+            $homeRoute = match ($request->user()?->role) {
+                'measurer' => 'calendar.index',
+                'constructor' => 'ceiling-projects.index',
+                default => 'deals.kanban',
+            };
 
-            return redirect()->intended(route('deals.kanban'));
+            return redirect()->intended(route($homeRoute));
         }
 
         return back()->withErrors(['login' => 'Неверный логин или пароль'])->onlyInput('login');

@@ -649,7 +649,7 @@ class CeilingProjectController extends Controller
 
     private function authorizeAdmin(Request $request): void
     {
-        abort_unless($request->user()?->role === 'admin', 403);
+        abort_unless(in_array($request->user()?->role, ['admin', 'constructor'], true), 403);
     }
 
     private function authorizeProject(Request $request, CeilingProject $project): void

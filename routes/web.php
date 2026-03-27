@@ -41,7 +41,15 @@ Route::post('/webhooks/tilda', [TildaWebhookController::class, 'handle'])
 Route::get('/', function () {
     $user = request()->user();
 
-    return redirect()->route($user && $user->role === 'measurer' ? 'calendar.index' : 'deals.kanban');
+    if (!$user) {
+        return redirect()->route('login');
+    }
+
+    return redirect()->route(match ($user->role) {
+        'measurer' => 'calendar.index',
+        'constructor' => 'ceiling-projects.index',
+        default => 'deals.kanban',
+    });
 })->middleware('auth');
 
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
@@ -94,8 +102,8 @@ Route::middleware('auth')->group(function () {
         Route::post('/chats/{conversation}/read', [ChatController::class, 'markRead'])->name('chats.read');
     });
 
-    // Settings: integrations (admin only)
-    Route::middleware('admin.only')->group(function () {
+    // Projecting (admin + constructor)
+    Route::middleware('projecting')->group(function () {
         Route::get('/ceiling-projects', [CeilingProjectController::class, 'index'])->name('ceiling-projects.index');
         Route::post('/ceiling-projects', [CeilingProjectController::class, 'store'])->name('ceiling-projects.store');
         Route::get('/ceiling-projects/{project}', [CeilingProjectController::class, 'show'])->name('ceiling-projects.show');
@@ -115,7 +123,10 @@ Route::middleware('auth')->group(function () {
         Route::patch('/ceiling-projects/{project}/rooms/{room}/elements/{element}', [CeilingProjectController::class, 'updateRoomElement'])->name('ceiling-projects.rooms.elements.update');
         Route::delete('/ceiling-projects/{project}/rooms/{room}/elements/{element}', [CeilingProjectController::class, 'destroyRoomElement'])->name('ceiling-projects.rooms.elements.destroy');
         Route::delete('/ceiling-projects/{project}/rooms/{room}', [CeilingProjectController::class, 'destroyRoom'])->name('ceiling-projects.rooms.destroy');
+    });
 
+    // Settings: integrations (admin only)
+    Route::middleware('admin.only')->group(function () {
         Route::get('/settings/integrations', [IntegrationController::class, 'index'])->name('settings.integrations.index');
         Route::get('/settings/integrations/{provider}', [IntegrationController::class, 'show'])->name('settings.integrations.show');
         Route::post('/settings/integrations/{provider}/connect', [IntegrationController::class, 'connect'])->name('settings.integrations.connect');
@@ -142,6 +153,7 @@ Route::middleware('auth')->group(function () {
 
     // Reports (personal for users, aggregated for main_operator/admin)
     Route::get('/reports/monthly', [ReportController::class, 'monthly'])
+        ->middleware('reports')
         ->name('reports.monthly');
 
     // Measurements calendar (admin + call-center + measurers)

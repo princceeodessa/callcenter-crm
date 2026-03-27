@@ -220,22 +220,41 @@
             display: inline-block;
             border: 1px solid rgba(255,255,255,.35);
         }
+
+        body[data-role="constructor"] .navbar a[href$="/calendar"],
+        body[data-role="constructor"] .navbar a[href$="/nonclosures"],
+        body[data-role="constructor"] .navbar a[href$="/reports/monthly"],
+        body[data-role="constructor"] .navbar a[href$="/settings/users"],
+        body[data-role="constructor"] .navbar a[href$="/settings/integrations"],
+        body[data-role="constructor"] .navbar a[href$="/settings/imports/bitrix"],
+        body[data-role="constructor"] .navbar a[href$="/notifications"],
+        body[data-role="constructor"] .navbar a[href$="/deals/create"],
+        body[data-role="constructor"] .navbar a[href$="/deals/kanban"],
+        body[data-role="constructor"] .navbar a[href$="/deals"],
+        body[data-role="constructor"] .navbar a[href$="/tasks"],
+        body[data-role="constructor"] .navbar a[href$="/deals/closed"],
+        body[data-role="constructor"] .navbar a[href$="/chats"],
+        body[data-role="constructor"] .navbar #enableNotifBtn {
+            display: none !important;
+        }
     </style>
     @stack('styles')
 </head>
-<body data-theme="sky">
+<body data-theme="sky" data-role="{{ auth()->user()?->role ?? 'guest' }}">
 <nav class="navbar navbar-expand-lg navbar-dark">
     <div class="container-fluid">
         @php($navUser = auth()->user())
         @php($isPriv = in_array($navUser?->role, ['admin','main_operator'], true))
         @php($isAdmin = $navUser?->role === 'admin')
+        @php($isConstructor = $navUser?->role === 'constructor')
         @php($isNc = in_array($navUser?->role, ['admin','main_operator','operator'], true))
         @php($isMeasurer = $navUser?->role === 'measurer')
-        @php($homeRoute = $isMeasurer ? 'calendar.index' : 'deals.kanban')
+        @php($canUseProjecting = $isConstructor)
+        @php($homeRoute = $isMeasurer ? 'calendar.index' : ($isConstructor ? 'ceiling-projects.index' : 'deals.kanban'))
         <a class="navbar-brand fw-semibold" href="{{ route($homeRoute) }}">{{ config('app.name') }}</a>
         <div class="d-flex gap-2 flex-wrap align-items-center">
             @auth
-                @if(!$isMeasurer)
+                @if(!$isMeasurer && !$isConstructor)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('deals.kanban') }}">Канбан</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('deals.index') }}">Список</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('tasks.index') }}">Дела</a>
@@ -245,6 +264,9 @@
                 <a class="btn btn-sm btn-outline-light" href="{{ route('calendar.index') }}">Календарь</a>
                 @if($isNc)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('nonclosures.index') }}">Незаключёнки</a>
+                @endif
+                @if($canUseProjecting)
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('ceiling-projects.index') }}">&#1055;&#1088;&#1086;&#1077;&#1082;&#1090;&#1080;&#1088;&#1086;&#1074;&#1082;&#1072;</a>
                 @endif
                 @if($isAdmin)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('ceiling-projects.index') }}">Проектировка</a>
@@ -268,7 +290,7 @@
                 </div>
 
                 <a class="btn btn-sm btn-outline-light" href="{{ route('reports.monthly') }}">Отчёты</a>
-                @if(!$isMeasurer)
+                @if(!$isMeasurer && !$isConstructor)
                     <a class="btn btn-sm btn-warning position-relative" href="{{ route('notifications.index') }}" title="Уведомления" aria-label="Уведомления">
                         <i class="bi bi-bell-fill"></i>
                         <span id="navNotifBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-danger d-none">0</span>
@@ -324,7 +346,7 @@
 </script>
 
 @auth
-@if(auth()->user()?->role !== 'measurer')
+@if(!in_array(auth()->user()?->role, ['measurer', 'constructor'], true))
 <script>
 (() => {
     const badgeEl = document.getElementById('navNotifBadge');

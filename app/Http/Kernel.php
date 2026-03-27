@@ -37,5 +37,7 @@ class Kernel extends HttpKernel
         'desk' => \App\Http\Middleware\RequireDeskAccess::class,
         'calendar' => \App\Http\Middleware\RequireCalendarAccess::class,
         'nonclosure' => \App\Http\Middleware\RequireNonClosureAccess::class,
+        'projecting' => \App\Http\Middleware\RequireProjectingAccess::class,
+        'reports' => \App\Http\Middleware\RequireReportAccess::class,
     ];
 }

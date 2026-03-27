@@ -5,13 +5,13 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 
-class RequireDeskAccess
+class RequireReportAccess
 {
     public function handle(Request $request, Closure $next)
     {
         $user = $request->user();
 
-        if (! $user || !in_array($user->role, ['admin', 'main_operator', 'operator'], true)) {
+        if (!$user || !in_array($user->role, ['admin', 'main_operator', 'operator', 'measurer'], true)) {
             abort(403);
         }
 
