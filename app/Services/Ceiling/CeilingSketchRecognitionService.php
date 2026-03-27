@@ -4,6 +4,7 @@ namespace App\Services\Ceiling;
 
 use App\Models\CeilingProject;
 use RuntimeException;
+use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\Process;
 
 class CeilingSketchRecognitionService
@@ -14,10 +15,10 @@ class CeilingSketchRecognitionService
             throw new RuntimeException('Файл эскиза не найден.');
         }
 
-        $pythonBinary = base_path('.ceiling-ocr-venv/Scripts/python.exe');
+        $pythonBinary = $this->resolvePythonBinary();
         $scriptPath = base_path('scripts/recognize_ceiling_sketch.py');
 
-        if (!is_file($pythonBinary)) {
+        if (false && !is_file($pythonBinary)) {
             throw new RuntimeException('OCR-окружение не найдено: отсутствует python.exe в .ceiling-ocr-venv.');
         }
 
@@ -57,5 +58,33 @@ class CeilingSketchRecognitionService
         }
 
         return $payload;
+    }
+
+    private function resolvePythonBinary(): string
+    {
+        $configured = trim((string) env('CEILING_OCR_PYTHON', ''));
+        $candidates = array_filter([
+            $configured !== '' ? $configured : null,
+            base_path('.ceiling-ocr-venv/Scripts/python.exe'),
+            base_path('.ceiling-ocr-venv/bin/python'),
+        ]);
+
+        foreach ($candidates as $candidate) {
+            if (is_string($candidate) && $candidate !== '' && is_file($candidate)) {
+                return $candidate;
+            }
+        }
+
+        $finder = new ExecutableFinder();
+
+        foreach (['python', 'python3', 'py'] as $name) {
+            $found = $finder->find($name);
+
+            if (is_string($found) && $found !== '') {
+                return $found;
+            }
+        }
+
+        throw new RuntimeException('Не найден Python для OCR. Укажите CEILING_OCR_PYTHON или установите python/python3 и пакет rapidocr-onnxruntime.');
     }
 }

@@ -313,6 +313,13 @@
             <button class="btn btn-outline-primary">Загрузить</button>
           </form>
 
+          @error('reference_image')
+            <div class="alert alert-danger mt-3 mb-0">{{ $message }}</div>
+          @enderror
+          @error('sketch_recognition')
+            <div class="alert alert-warning mt-3 mb-0">{{ $message }}</div>
+          @enderror
+
           @if($referenceImageUrl)
             <div class="d-flex gap-2 flex-wrap mt-3">
               <form method="POST" action="{{ route('ceiling-projects.sketch-recognition', $project) }}">
@@ -351,12 +358,21 @@
                     @endif
                   </div>
                 </div>
-                @if(($sketchRecognition['shape']['type'] ?? null) === 'rectangle')
+                @if(($sketchRecognition['success'] ?? true) === false)
+                  <span class="badge text-bg-danger">OCR error</span>
+                @elseif(($sketchRecognition['shape']['type'] ?? null) === 'rectangle')
                   <span class="badge text-bg-success">Прямоугольник</span>
                 @else
                   <span class="badge text-bg-secondary">Черновик</span>
                 @endif
               </div>
+
+              @if(($sketchRecognition['success'] ?? true) === false)
+                <div class="alert alert-warning mt-3 mb-0">
+                  <div class="fw-semibold mb-1">OCR не выполнился</div>
+                  <div>{{ $sketchRecognition['message'] ?? 'Не удалось распознать эскиз.' }}</div>
+                </div>
+              @endif
 
               <div class="row g-2 small mt-1">
                 @if(!empty($sketchMeasurements['width_cm']))

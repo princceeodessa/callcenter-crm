@@ -242,6 +242,7 @@ class CeilingProjectController extends Controller
                 ? 'Фото загружено, эскиз распознан и черновик комнаты обновлён.'
                 : 'Фото загружено, эскиз распознан.';
         } catch (RuntimeException $exception) {
+            $this->saveRecognitionResult($project, $this->buildRecognitionFailure($exception->getMessage()));
             $statusMessage = 'Фото загружено, но распознать эскиз не удалось: '.$exception->getMessage();
         }
 
@@ -288,9 +289,10 @@ class CeilingProjectController extends Controller
         try {
             $result = $recognitionService->recognize($project, Storage::disk('public')->path($project->reference_image_path));
         } catch (RuntimeException $exception) {
-            return back()->withErrors([
-                'sketch_recognition' => $exception->getMessage(),
-            ]);
+            $this->saveRecognitionResult($project, $this->buildRecognitionFailure($exception->getMessage()));
+
+            return $this->redirectToProject($request, $project)
+                ->with('status', 'Не удалось распознать эскиз. Подробность показана в блоке распознавания.');
         }
 
         $this->saveRecognitionResult($project, $result);
@@ -854,6 +856,16 @@ class CeilingProjectController extends Controller
         $payload = json_decode((string) Storage::disk('local')->get($path), true);
 
         return is_array($payload) ? $payload : null;
+    }
+
+    private function buildRecognitionFailure(string $message): array
+    {
+        return [
+            'success' => false,
+            'message' => trim($message) !== '' ? trim($message) : 'Не удалось распознать эскиз.',
+            'warnings' => [],
+            'shape' => ['type' => 'unknown'],
+        ];
     }
 
     private function upsertRecognitionRoom(Request $request, CeilingProject $project, array $recognition): ?CeilingProjectRoom
