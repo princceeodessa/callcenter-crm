@@ -41,6 +41,7 @@ class CeilingProject extends Model
         'mounting_price_per_m2',
         'additional_cost',
         'reference_image_path',
+        'sketch_image_path',
         'sketch_recognition',
         'sketch_recognized_at',
         'notes',

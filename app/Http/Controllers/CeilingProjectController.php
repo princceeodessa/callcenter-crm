@@ -207,7 +207,7 @@ class CeilingProjectController extends Controller
             ->with('status', 'Проект сохранен.');
     }
 
-    public function uploadReferenceImage(
+    public function uploadSketchImage(
         Request $request,
         CeilingProject $project,
         CeilingSketchRecognitionService $recognitionService
@@ -216,17 +216,17 @@ class CeilingProjectController extends Controller
         $this->authorizeProject($request, $project);
 
         $data = $request->validate([
-            'reference_image' => ['required', 'image', 'max:10240'],
+            'sketch_image' => ['required', 'image', 'max:10240'],
         ]);
 
-        if ($project->reference_image_path) {
-            Storage::disk('public')->delete($project->reference_image_path);
+        if ($project->sketch_image_path && $project->sketch_image_path !== $project->reference_image_path) {
+            Storage::disk('public')->delete($project->sketch_image_path);
         }
 
-        $path = $data['reference_image']->store('ceiling-projects/'.$project->account_id, 'public');
+        $path = $data['sketch_image']->store('ceiling-projects/'.$project->account_id, 'public');
 
         $project->forceFill([
-            'reference_image_path' => $path,
+            'sketch_image_path' => $path,
             'updated_by_user_id' => $request->user()->id,
             'last_calculated_at' => now(),
         ])->save();
@@ -262,6 +262,49 @@ class CeilingProjectController extends Controller
             ->with('status', 'Картинка проекта загружена.');
     }
 
+    public function uploadReferenceImage(Request $request, CeilingProject $project): RedirectResponse
+    {
+        $this->authorizeProject($request, $project);
+
+        $data = $request->validate([
+            'reference_image' => ['required', 'image', 'max:10240'],
+        ]);
+
+        if (!$project->sketch_image_path && $this->hasLegacySharedSketchImage($project)) {
+            $project->forceFill([
+                'sketch_image_path' => $project->reference_image_path,
+            ])->save();
+        }
+
+        if ($project->reference_image_path && $project->reference_image_path !== $project->sketch_image_path) {
+            Storage::disk('public')->delete($project->reference_image_path);
+        }
+
+        $path = $data['reference_image']->store('ceiling-projects/'.$project->account_id, 'public');
+
+        $project->forceFill([
+            'reference_image_path' => $path,
+            'updated_by_user_id' => $request->user()->id,
+            'last_calculated_at' => now(),
+        ])->save();
+
+        return $this->redirectToProject($request, $project)
+            ->with('status', 'Подложка для ручной обводки загружена.');
+    }
+
+    public function sketchImage(Request $request, CeilingProject $project)
+    {
+        $this->authorizeProject($request, $project);
+
+        $path = $this->resolveSketchImagePath($project);
+
+        if (!$path || !Storage::disk('public')->exists($path)) {
+            abort(404);
+        }
+
+        return response()->file(Storage::disk('public')->path($path));
+    }
+
     public function referenceImage(Request $request, CeilingProject $project)
     {
         $this->authorizeProject($request, $project);
@@ -280,14 +323,16 @@ class CeilingProjectController extends Controller
     ): RedirectResponse {
         $this->authorizeProject($request, $project);
 
-        if (!$project->reference_image_path || !Storage::disk('public')->exists($project->reference_image_path)) {
+        $sketchImagePath = $this->resolveSketchImagePath($project);
+
+        if (!$sketchImagePath || !Storage::disk('public')->exists($sketchImagePath)) {
             return back()->withErrors([
-                'reference_image' => 'Сначала загрузите фото замера или эскиза.',
+                'sketch_image' => 'Сначала загрузите фото эскиза для распознавания.',
             ]);
         }
 
         try {
-            $result = $recognitionService->recognize($project, Storage::disk('public')->path($project->reference_image_path));
+            $result = $recognitionService->recognize($project, Storage::disk('public')->path($sketchImagePath));
         } catch (RuntimeException $exception) {
             $this->saveRecognitionResult($project, $this->buildRecognitionFailure($exception->getMessage()));
 
@@ -729,6 +774,10 @@ class CeilingProjectController extends Controller
             'shapeOptions' => CeilingProjectRoom::shapeOptions(),
             'elementTypeOptions' => CeilingProjectRoomElement::typeOptions(),
             'elementPlacementOptions' => CeilingProjectRoomElement::placementOptions(),
+            'sketchImageUrl' => $this->resolveSketchImagePath($project)
+                ? route('ceiling-projects.sketch-image.show', $project)
+                : null,
+            'sketchImageSharedWithReference' => !$project->sketch_image_path && $this->hasLegacySharedSketchImage($project),
             'referenceImageUrl' => $project->reference_image_path
                 ? route('ceiling-projects.reference-image.show', $project)
                 : null,
@@ -826,6 +875,32 @@ class CeilingProjectController extends Controller
     private function recognitionStoragePath(CeilingProject $project): string
     {
         return 'ceiling-projects/recognition/'.$project->account_id.'/project-'.$project->id.'.json';
+    }
+
+    private function resolveSketchImagePath(CeilingProject $project): ?string
+    {
+        $path = $project->sketch_image_path;
+
+        if (!$path && $this->hasLegacySharedSketchImage($project)) {
+            $path = $project->reference_image_path;
+        }
+
+        return is_string($path) && trim($path) !== '' ? $path : null;
+    }
+
+    private function hasLegacySharedSketchImage(CeilingProject $project): bool
+    {
+        if (!$project->reference_image_path || $project->sketch_image_path) {
+            return false;
+        }
+
+        if (Storage::disk('local')->exists($this->recognitionStoragePath($project))) {
+            return true;
+        }
+
+        $legacyPayload = $project->getAttribute('sketch_recognition');
+
+        return is_array($legacyPayload) && $legacyPayload !== [];
     }
 
     private function saveRecognitionResult(CeilingProject $project, array $recognition): void

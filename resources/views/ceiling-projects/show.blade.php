@@ -15,15 +15,40 @@
   .geometry-toolbar-tip { border-top: 1px solid rgba(15,23,42,.06); background: rgba(248,250,252,.78); }
   .geometry-stage.is-pan-ready .geometry-svg { cursor: grab; }
   .geometry-stage.is-panning .geometry-svg { cursor: grabbing; }
-  .point-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: .5rem; align-items: center; border: 1px solid transparent; border-radius: .85rem; padding: .35rem; transition: background .15s ease, border-color .15s ease, box-shadow .15s ease; }
+  .point-row { display: grid; grid-template-columns: minmax(0, 1.2fr) 1fr 1fr auto; gap: .5rem; align-items: center; border: 1px solid transparent; border-radius: .85rem; padding: .35rem; transition: background .15s ease, border-color .15s ease, box-shadow .15s ease; }
   .point-row:hover { background: rgba(248,250,252,.9); border-color: rgba(148,163,184,.28); }
   .point-row.is-selected { background: rgba(219,234,254,.52); border-color: rgba(37,99,235,.28); box-shadow: inset 0 0 0 1px rgba(37,99,235,.12); }
+  .point-row-meta { display: flex; align-items: center; gap: .5rem; min-width: 0; }
+  .point-row-letter { width: 1.55rem; height: 1.55rem; border-radius: 999px; background: #0f172a; color: #fff; font-size: .8rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+  .point-row-title { font-size: .84rem; font-weight: 700; color: #0f172a; }
+  .point-row-subtitle { font-size: .72rem; color: #64748b; }
+  .inspector-quick-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+  .inspector-card { border: 1px solid rgba(15,23,42,.08); border-radius: 1rem; background: rgba(248,250,252,.94); padding: .85rem; }
+  .inspector-kicker { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: #64748b; margin-bottom: .3rem; }
+  .inspector-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+  .inspector-tabs { display: flex; gap: .35rem; flex-wrap: wrap; }
+  .inspector-tab.is-active { background: #0f172a; color: #fff; border-color: #0f172a; }
+  .inspector-panel { display: none; }
+  .inspector-panel.is-active { display: block; }
+  .inspector-stack { display: grid; gap: .65rem; }
+  .segment-row { display: grid; grid-template-columns: auto 1fr auto; gap: .5rem; align-items: center; border: 1px solid transparent; border-radius: .85rem; padding: .45rem; transition: background .15s ease, border-color .15s ease, box-shadow .15s ease; }
+  .segment-row:hover { background: rgba(248,250,252,.9); border-color: rgba(148,163,184,.28); }
+  .segment-row.is-selected { background: rgba(254,226,226,.65); border-color: rgba(220,38,38,.3); box-shadow: inset 0 0 0 1px rgba(220,38,38,.12); }
+  .segment-row-label { font-size: .82rem; font-weight: 700; color: #0f172a; min-width: 2.7rem; }
+  .angle-row { display: flex; justify-content: space-between; gap: .75rem; align-items: center; border: 1px solid rgba(15,23,42,.08); border-radius: .85rem; padding: .45rem .6rem; background: rgba(248,250,252,.9); }
+  .angle-row.is-selected { border-color: rgba(37,99,235,.28); background: rgba(219,234,254,.52); }
+  .angle-row-label { font-size: .82rem; font-weight: 700; color: #0f172a; }
   .tool-toggle.is-active { background: #0f172a; color: #fff; border-color: #0f172a; }
   .element-chip { display: inline-flex; align-items: center; gap: .35rem; border: 1px solid rgba(15,23,42,.08); border-radius: 999px; padding: .3rem .6rem; background: rgba(248,250,252,.95); font-size: .85rem; }
   .element-chip-dot { width: .6rem; height: .6rem; border-radius: 999px; display: inline-block; }
   .guide-card { border: 1px solid rgba(15,23,42,.08); border-radius: 1rem; background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(248,250,252,.96)); padding: 1rem; height: 100%; }
   .guide-step { display: grid; grid-template-columns: 1.6rem 1fr; gap: .65rem; align-items: start; }
   .guide-step-index { width: 1.6rem; height: 1.6rem; border-radius: 999px; background: #0f172a; color: #fff; font-size: .82rem; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; }
+  .workflow-preview { width: 100%; max-height: 260px; object-fit: contain; border-radius: 1rem; border: 1px solid rgba(15,23,42,.08); background: linear-gradient(180deg, rgba(248,250,252,.98), rgba(241,245,249,.92)); }
+  .workflow-note { font-size: .92rem; color: #475569; line-height: 1.45; }
+  .workflow-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+  .geometry-underlay-controls { display: inline-flex; align-items: center; gap: .5rem; }
+  .geometry-underlay-range { width: 110px; }
   .project-page.is-drafting .project-metrics-row,
   .project-page.is-drafting .project-open-card,
   .project-page.is-drafting .project-sidebar { display: none; }
@@ -171,6 +196,8 @@
   $sketchMeasurements = $sketchRecognition['measurements'] ?? [];
   $sketchRoomDraft = $sketchRecognition['room_draft'] ?? null;
   $sketchWarnings = collect($sketchRecognition['warnings'] ?? [])->filter();
+  $sketchImageUrl = $sketchImageUrl ?? null;
+  $sketchImageSharedWithReference = (bool) ($sketchImageSharedWithReference ?? false);
   $sketchRecognizedAt = isset($sketchRecognition['recognized_at'])
       ? \Illuminate\Support\Carbon::parse($sketchRecognition['recognized_at'])->format('d.m.Y H:i')
       : null;
@@ -227,7 +254,7 @@
     <div class="card-body d-flex justify-content-between align-items-start flex-wrap gap-3">
       <div>
         <div class="fw-semibold mb-1">Как открыть чертеж</div>
-        <div class="small text-muted">1. Загрузите фото замера. 2. Добавьте комнату. 3. Нажмите «Открыть чертеж комнаты» или кнопку справа. Внизу страницы откроется канвас, где можно тянуть углы, двигать стены и ставить элементы.</div>
+        <div class="small text-muted">1. Загрузите эскиз в блок распознавания, чтобы собрать черновик комнаты. 2. При необходимости отдельно загрузите подложку для ручной обводки. 3. Откройте комнату в чертеже и правьте геометрию уже без смешивания OCR и фонового фото.</div>
       </div>
       @if($selectedRoom && $isDraftingMode)
         <a href="{{ $standardProjectUrl }}#geometry-editor" class="btn btn-outline-dark">Вернуться к карточке</a>
@@ -295,40 +322,50 @@
       </div>
 
       <div class="card shadow-sm mb-3">
-        <div class="card-header fw-semibold">Фото замера / чертежа</div>
+        <div class="card-header fw-semibold">1. Эскиз для распознавания</div>
         <div class="card-body">
-          @if($referenceImageUrl)
-            <img src="{{ $referenceImageUrl }}" alt="Референс" class="img-fluid rounded border mb-3">
-            <div class="small text-muted mb-3">Фото используется как подложка. По нему можно обвести контур комнаты и расставить элементы прямо на схеме.</div>
-          @else
-            <div class="text-muted mb-3">Загрузите фото или план от замерщика, чтобы видеть его в проектировке и поверх него собирать геометрию.</div>
+          @if($sketchImageUrl)
+            <img src="{{ $sketchImageUrl }}" alt="Эскиз для распознавания" class="workflow-preview mb-3">
           @endif
-          <form method="POST" action="{{ route('ceiling-projects.reference-image.upload', $project) }}" enctype="multipart/form-data" class="d-flex gap-2">
+          <div class="workflow-note mb-3">
+            Этот файл идет только в OCR: по нему строится черновик комнаты и проверяются размеры.
+            На канвасе он не показывается, пока вы отдельно не загрузите подложку для ручной обводки.
+          </div>
+
+          @if($sketchImageSharedWithReference)
+            <div class="alert alert-secondary py-2 small">
+              Сейчас OCR использует старое общее фото проекта. Чтобы разделить распознавание и обводку, загрузите эскиз сюда отдельно.
+            </div>
+          @endif
+
+          <form method="POST" action="{{ route('ceiling-projects.sketch-image.upload', $project) }}" enctype="multipart/form-data" class="d-flex gap-2 flex-column">
             @csrf
             <input type="hidden" name="view_mode" value="{{ $viewMode }}">
             @if($selectedRoom)
               <input type="hidden" name="room" value="{{ $selectedRoom->id }}">
             @endif
-            <input type="file" name="reference_image" class="form-control" accept="image/*" required>
-            <button class="btn btn-outline-primary">Загрузить</button>
+            <input type="file" name="sketch_image" class="form-control" accept="image/*" required>
+            <div class="workflow-actions">
+              <button class="btn btn-dark">Загрузить и распознать</button>
+            </div>
           </form>
 
-          @error('reference_image')
+          @error('sketch_image')
             <div class="alert alert-danger mt-3 mb-0">{{ $message }}</div>
           @enderror
           @error('sketch_recognition')
             <div class="alert alert-warning mt-3 mb-0">{{ $message }}</div>
           @enderror
 
-          @if($referenceImageUrl)
-            <div class="d-flex gap-2 flex-wrap mt-3">
+          @if($sketchImageUrl)
+            <div class="workflow-actions mt-3">
               <form method="POST" action="{{ route('ceiling-projects.sketch-recognition', $project) }}">
                 @csrf
                 <input type="hidden" name="view_mode" value="{{ $viewMode }}">
                 @if($selectedRoom)
                   <input type="hidden" name="room" value="{{ $selectedRoom->id }}">
                 @endif
-                <button class="btn btn-dark">Распознать эскиз</button>
+                <button class="btn btn-outline-secondary">Распознать повторно</button>
               </form>
 
               @if(is_array($sketchRoomDraft))
@@ -404,6 +441,38 @@
                 </div>
               @endif
             </div>
+          @endif
+        </div>
+      </div>
+
+      <div class="card shadow-sm mb-3">
+        <div class="card-header fw-semibold">2. Подложка для ручной обводки</div>
+        <div class="card-body">
+          @if($referenceImageUrl)
+            <img src="{{ $referenceImageUrl }}" alt="Подложка для чертежа" class="workflow-preview mb-3">
+          @endif
+          <div class="workflow-note mb-3">
+            Эта картинка показывается только под контуром комнаты в чертеже.
+            Она не влияет на OCR и не перезаписывает распознанный черновик.
+          </div>
+          <form method="POST" action="{{ route('ceiling-projects.reference-image.upload', $project) }}" enctype="multipart/form-data" class="d-flex gap-2 flex-column">
+            @csrf
+            <input type="hidden" name="view_mode" value="{{ $viewMode }}">
+            @if($selectedRoom)
+              <input type="hidden" name="room" value="{{ $selectedRoom->id }}">
+            @endif
+            <input type="file" name="reference_image" class="form-control" accept="image/*" required>
+            <div class="workflow-actions">
+              <button class="btn btn-outline-primary">Загрузить подложку</button>
+            </div>
+          </form>
+
+          @error('reference_image')
+            <div class="alert alert-danger mt-3 mb-0">{{ $message }}</div>
+          @enderror
+
+          @if(!$referenceImageUrl)
+            <div class="small text-muted mt-3">Сейчас чертеж открыт без фоновой подложки. Можно сначала распознать эскиз, а потом отдельно загрузить удобное фото для ручной обводки.</div>
           @endif
         </div>
       </div>
@@ -565,6 +634,12 @@
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="zoomFitBtn">Вписать</button>
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="zoomInBtn">+</button>
                       </div>
+                      @if($referenceImageUrl)
+                        <div class="geometry-underlay-controls">
+                          <button type="button" class="btn btn-sm btn-outline-secondary" id="backgroundToggleBtn">Подложка: вкл</button>
+                          <input type="range" id="backgroundOpacityRange" class="form-range geometry-underlay-range" min="0" max="70" value="28">
+                        </div>
+                      @endif
                       <span class="badge text-bg-light" id="modePill">Режим: точка</span>
                       <span class="badge text-bg-light" id="segmentPill">Стена: 1</span>
                       <span class="badge text-bg-light" id="pointPill">Угол: 1</span>
@@ -581,7 +656,7 @@
                     </defs>
                     <rect x="0" y="0" width="{{ $editorWidth }}" height="{{ $editorHeight }}" fill="url(#gridPattern)"></rect>
                     @if($referenceImageUrl)
-                      <image href="{{ $referenceImageUrl }}" x="0" y="0" width="{{ $editorWidth }}" height="{{ $editorHeight }}" preserveAspectRatio="none" opacity="0.42"></image>
+                      <image id="geometryBackgroundImage" href="{{ $referenceImageUrl }}" x="0" y="0" width="{{ $editorWidth }}" height="{{ $editorHeight }}" preserveAspectRatio="none" opacity="0.28"></image>
                     @endif
                     <g id="geometryLayer"></g>
                   </svg>
@@ -595,9 +670,60 @@
                     <input type="hidden" name="view_mode" value="{{ $viewMode }}">
                     <input type="hidden" name="room" value="{{ $selectedRoom->id }}">
                     <input type="hidden" name="shape_points_json" id="shapePointsInput" value='@json($selectedRoomPoints)'>
-                    <div class="fw-semibold mb-2">Точки</div>
-                    <div class="d-grid gap-2 mb-3" id="pointsList"></div>
-                    <div class="small text-muted mb-3">Координаты в сантиметрах. Изменения маркеров элементов сохраняются отдельной кнопкой у нужного элемента.</div>
+                    <div class="fw-semibold mb-3">Редактор геометрии</div>
+                    <div class="inspector-quick-grid mb-3">
+                      <div class="inspector-card">
+                        <div class="inspector-kicker">Выбранная точка</div>
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                          <span class="point-row-letter" id="selectedPointLetter">A</span>
+                          <div class="small text-muted" id="selectedPointTitle">Угол A</div>
+                        </div>
+                        <div class="row g-2">
+                          <div class="col-6">
+                            <label class="form-label small mb-1">X, см</label>
+                            <input type="number" step="1" min="0" class="form-control form-control-sm" id="selectedPointXInput">
+                          </div>
+                          <div class="col-6">
+                            <label class="form-label small mb-1">Y, см</label>
+                            <input type="number" step="1" min="0" class="form-control form-control-sm" id="selectedPointYInput">
+                          </div>
+                        </div>
+                      </div>
+                      <div class="inspector-card">
+                        <div class="inspector-kicker">Выбранная сторона</div>
+                        <div class="small fw-semibold mb-2" id="selectedSegmentTitle">Сторона AB</div>
+                        <div class="row g-2">
+                          <div class="col-8">
+                            <label class="form-label small mb-1">Длина, см</label>
+                            <input type="number" step="1" min="1" class="form-control form-control-sm" id="selectedSegmentLengthInput">
+                          </div>
+                          <div class="col-4">
+                            <label class="form-label small mb-1">Угол</label>
+                            <input type="text" class="form-control form-control-sm" id="selectedAngleInput" readonly>
+                          </div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-dark w-100 mt-2" id="applySegmentLengthBtn">Изменить длину</button>
+                      </div>
+                    </div>
+                    <div class="inspector-actions mb-3">
+                      <button type="button" class="btn btn-sm btn-outline-secondary" id="insertPointAfterBtn">Добавить после</button>
+                      <button type="button" class="btn btn-sm btn-outline-danger" id="deletePointBtn">Удалить точку</button>
+                    </div>
+                    <div class="inspector-tabs mb-3">
+                      <button type="button" class="btn btn-sm btn-outline-secondary inspector-tab is-active" id="pointsTabBtn">Точки</button>
+                      <button type="button" class="btn btn-sm btn-outline-secondary inspector-tab" id="segmentsTabBtn">Стороны</button>
+                      <button type="button" class="btn btn-sm btn-outline-secondary inspector-tab" id="anglesTabBtn">Углы</button>
+                    </div>
+                    <div class="inspector-panel is-active mb-3" id="pointsInspectorPanel">
+                      <div class="inspector-stack" id="pointsList"></div>
+                    </div>
+                    <div class="inspector-panel mb-3" id="segmentsInspectorPanel">
+                      <div class="inspector-stack" id="segmentsList"></div>
+                    </div>
+                    <div class="inspector-panel mb-3" id="anglesInspectorPanel">
+                      <div class="inspector-stack" id="anglesList"></div>
+                    </div>
+                    <div class="small text-muted mb-3">Логика как в EasyCeiling: выберите вершину или сторону на схеме, затем правьте ее точно в панели справа. Изменения элементов комнаты сохраняются отдельной кнопкой у нужного элемента.</div>
                     <button class="btn btn-primary w-100">Сохранить геометрию</button>
                   </form>
                 </div>
@@ -809,6 +935,8 @@
   const layer = document.getElementById('geometryLayer');
   const input = document.getElementById('shapePointsInput');
   const list = document.getElementById('pointsList');
+  const segmentsList = document.getElementById('segmentsList');
+  const anglesList = document.getElementById('anglesList');
   const resetRectBtn = document.getElementById('editorResetRect');
   const contourModeBtn = document.getElementById('contourModeBtn');
   const wallModeBtn = document.getElementById('wallModeBtn');
@@ -818,6 +946,9 @@
   const zoomOutBtn = document.getElementById('zoomOutBtn');
   const zoomFitBtn = document.getElementById('zoomFitBtn');
   const zoomInBtn = document.getElementById('zoomInBtn');
+  const backgroundImage = document.getElementById('geometryBackgroundImage');
+  const backgroundToggleBtn = document.getElementById('backgroundToggleBtn');
+  const backgroundOpacityRange = document.getElementById('backgroundOpacityRange');
   const modePill = document.getElementById('modePill');
   const segmentPill = document.getElementById('segmentPill');
   const pointPill = document.getElementById('pointPill');
@@ -831,6 +962,22 @@
   const newElementLength = document.getElementById('newElementLength');
   const newElementX = document.getElementById('newElementX');
   const newElementY = document.getElementById('newElementY');
+  const pointsTabBtn = document.getElementById('pointsTabBtn');
+  const segmentsTabBtn = document.getElementById('segmentsTabBtn');
+  const anglesTabBtn = document.getElementById('anglesTabBtn');
+  const pointsInspectorPanel = document.getElementById('pointsInspectorPanel');
+  const segmentsInspectorPanel = document.getElementById('segmentsInspectorPanel');
+  const anglesInspectorPanel = document.getElementById('anglesInspectorPanel');
+  const insertPointAfterBtn = document.getElementById('insertPointAfterBtn');
+  const deletePointBtn = document.getElementById('deletePointBtn');
+  const selectedPointLetter = document.getElementById('selectedPointLetter');
+  const selectedPointTitle = document.getElementById('selectedPointTitle');
+  const selectedPointXInput = document.getElementById('selectedPointXInput');
+  const selectedPointYInput = document.getElementById('selectedPointYInput');
+  const selectedSegmentTitle = document.getElementById('selectedSegmentTitle');
+  const selectedSegmentLengthInput = document.getElementById('selectedSegmentLengthInput');
+  const selectedAngleInput = document.getElementById('selectedAngleInput');
+  const applySegmentLengthBtn = document.getElementById('applySegmentLengthBtn');
   if (!svg || !layer || !input || !list) return;
 
   const workspaceWidth = Number(svg.dataset.width || 8);
@@ -877,6 +1024,8 @@
   let snapEnabled = true;
   let renderFrame = null;
   let scheduledRenderOptions = { syncList: false, syncInput: false };
+  let backgroundVisible = !!backgroundImage;
+  let inspectorTab = 'points';
   let viewport = {
     x: 0,
     y: 0,
@@ -899,6 +1048,14 @@
     return Number.isFinite(parsed) ? round(parsed / 100) : null;
   };
   const formatLength = (value) => `${metersToCentimeters(value)} см`;
+  const pointLabel = (index) => {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const normalized = ((index % points.length) + points.length) % points.length;
+    const base = alphabet[normalized % alphabet.length];
+    const cycle = Math.floor(normalized / alphabet.length);
+    return cycle === 0 ? base : `${base}${cycle + 1}`;
+  };
+  const segmentLabel = (index) => `${pointLabel(index)}${pointLabel(index + 1)}`;
 
   const pointerToSvg = (clientX, clientY) => {
     const point = svg.createSVGPoint();
@@ -945,6 +1102,21 @@
     if (zoomPill) {
       const zoomPercent = Math.max(1, Math.round((workspaceWidth / viewport.width) * 100));
       zoomPill.textContent = `Масштаб: ${zoomPercent}%`;
+    }
+  };
+
+  const syncBackgroundState = () => {
+    if (!backgroundImage) return;
+
+    const opacity = Number(backgroundOpacityRange?.value ?? 28) / 100;
+    backgroundImage.setAttribute('opacity', backgroundVisible ? `${opacity}` : '0');
+
+    if (backgroundToggleBtn) {
+      backgroundToggleBtn.textContent = `Подложка: ${backgroundVisible ? 'вкл' : 'выкл'}`;
+    }
+
+    if (backgroundOpacityRange) {
+      backgroundOpacityRange.disabled = !backgroundVisible;
     }
   };
 
@@ -1044,6 +1216,45 @@
       directionX: length > 0 ? dx / length : 1,
       directionY: length > 0 ? dy / length : 0,
     };
+  };
+
+  const getPointAngle = (index) => {
+    if (!Array.isArray(points) || points.length < 3) return null;
+
+    const current = points[((index % points.length) + points.length) % points.length];
+    const previous = points[(index - 1 + points.length) % points.length];
+    const next = points[(index + 1) % points.length];
+    const a = { x: previous.x - current.x, y: previous.y - current.y };
+    const b = { x: next.x - current.x, y: next.y - current.y };
+    const lengthA = Math.hypot(a.x, a.y);
+    const lengthB = Math.hypot(b.x, b.y);
+    if (!lengthA || !lengthB) return null;
+
+    const cosine = clamp(((a.x * b.x) + (a.y * b.y)) / (lengthA * lengthB), -1, 1);
+    return Math.round((Math.acos(cosine) * (180 / Math.PI)) * 10) / 10;
+  };
+
+  const setSegmentLength = (index, nextLength) => {
+    const segment = getSegmentGeometry(index);
+    if (!segment || !Number.isFinite(nextLength) || nextLength <= 0) return;
+
+    const safeLength = clamp(round(nextLength), 0.1, Math.max(workspaceWidth, workspaceHeight) * 2);
+    const nextPoint = {
+      x: clamp(round(segment.start.x + (segment.directionX * safeLength)), 0, workspaceWidth),
+      y: clamp(round(segment.start.y + (segment.directionY * safeLength)), 0, workspaceHeight),
+    };
+
+    points[segment.nextIndex] = nextPoint;
+  };
+
+  const setInspectorTab = (tab) => {
+    inspectorTab = tab;
+    pointsTabBtn?.classList.toggle('is-active', tab === 'points');
+    segmentsTabBtn?.classList.toggle('is-active', tab === 'segments');
+    anglesTabBtn?.classList.toggle('is-active', tab === 'angles');
+    pointsInspectorPanel?.classList.toggle('is-active', tab === 'points');
+    segmentsInspectorPanel?.classList.toggle('is-active', tab === 'segments');
+    anglesInspectorPanel?.classList.toggle('is-active', tab === 'angles');
   };
 
   const projectToSegment = (point, segment) => {
@@ -1167,14 +1378,14 @@
 
   const updateGeometryHint = () => {
     const segment = getSegmentGeometry(selectedSegmentIndex);
-    const segmentText = segment ? ` Стена #${segment.index + 1}: ${formatLength(segment.length)}.` : '';
+    const segmentText = segment ? ` Сторона ${segmentLabel(segment.index)}: ${formatLength(segment.length)}.` : '';
 
     if (segmentPill) {
-      segmentPill.textContent = segment ? `Стена: ${segment.index + 1} (${formatLength(segment.length)})` : 'Стена: —';
+      segmentPill.textContent = segment ? `Сторона: ${segmentLabel(segment.index)} (${formatLength(segment.length)})` : 'Сторона: —';
     }
 
     if (pointPill) {
-      pointPill.textContent = points[selectedPointIndex] ? `Угол: ${selectedPointIndex + 1}` : 'Угол: —';
+      pointPill.textContent = points[selectedPointIndex] ? `Угол: ${pointLabel(selectedPointIndex)}` : 'Угол: —';
     }
 
     if (geometryStage) {
@@ -1282,7 +1493,7 @@
     });
   };
 
-  const renderList = () => {
+  const renderListLegacy = () => {
     list.innerHTML = '';
     points.forEach((point, index) => {
       const row = document.createElement('div');
@@ -1317,6 +1528,138 @@
       });
       list.appendChild(row);
     });
+  };
+
+  const syncSelectedInspector = () => {
+    const currentPoint = points[selectedPointIndex];
+    const currentSegment = getSegmentGeometry(selectedSegmentIndex);
+    const angle = getPointAngle(selectedPointIndex);
+
+    if (selectedPointLetter) selectedPointLetter.textContent = pointLabel(selectedPointIndex);
+    if (selectedPointTitle) selectedPointTitle.textContent = `Угол ${pointLabel(selectedPointIndex)}`;
+    if (selectedPointXInput && currentPoint) selectedPointXInput.value = metersToCentimeters(currentPoint.x);
+    if (selectedPointYInput && currentPoint) selectedPointYInput.value = metersToCentimeters(currentPoint.y);
+    if (selectedSegmentTitle) selectedSegmentTitle.textContent = currentSegment ? `Сторона ${segmentLabel(selectedSegmentIndex)}` : 'Сторона —';
+    if (selectedSegmentLengthInput) selectedSegmentLengthInput.value = currentSegment ? metersToCentimeters(currentSegment.length) : '';
+    if (selectedAngleInput) selectedAngleInput.value = angle === null ? '—' : `${String(angle).replace('.', ',')}°`;
+    if (deletePointBtn) deletePointBtn.disabled = points.length <= 3;
+  };
+
+  const renderPointsList = () => {
+    list.innerHTML = '';
+    points.forEach((point, index) => {
+      const row = document.createElement('div');
+      row.className = `point-row${selectedPointIndex === index ? ' is-selected' : ''}`;
+      row.innerHTML = `
+        <div class="point-row-meta">
+          <span class="point-row-letter">${pointLabel(index)}</span>
+          <div>
+            <div class="point-row-title">Угол ${pointLabel(index)}</div>
+            <div class="point-row-subtitle">X/Y в сантиметрах</div>
+          </div>
+        </div>
+        <input type="number" step="1" min="0" max="${metersToCentimeters(workspaceWidth)}" class="form-control form-control-sm" value="${metersToCentimeters(point.x)}">
+        <input type="number" step="1" min="0" max="${metersToCentimeters(workspaceHeight)}" class="form-control form-control-sm" value="${metersToCentimeters(point.y)}">
+        <button type="button" class="btn btn-sm btn-outline-danger" ${points.length <= 3 ? 'disabled' : ''}>x</button>
+      `;
+
+      const inputs = row.querySelectorAll('input');
+      const xInput = inputs[0];
+      const yInput = inputs[1];
+      const removeBtn = row.querySelector('button');
+      row.addEventListener('click', (event) => {
+        if (event.target.closest('button')) return;
+        setSelectedPoint(index);
+        setInspectorTab('points');
+        render({ syncList: true, syncInput: false });
+      });
+      xInput?.addEventListener('input', () => {
+        setSelectedPoint(index);
+        points[index].x = clamp(centimetersToMeters(xInput.value || 0) ?? 0, 0, workspaceWidth);
+        render();
+      });
+      yInput?.addEventListener('input', () => {
+        setSelectedPoint(index);
+        points[index].y = clamp(centimetersToMeters(yInput.value || 0) ?? 0, 0, workspaceHeight);
+        render();
+      });
+      removeBtn?.addEventListener('click', () => {
+        if (points.length <= 3) return;
+        points.splice(index, 1);
+        selectedPointIndex = Math.max(0, Math.min(selectedPointIndex, points.length - 1));
+        setSelectedSegment(selectedPointIndex);
+        render();
+      });
+      list.appendChild(row);
+    });
+  };
+
+  const renderSegmentsList = () => {
+    if (!segmentsList) return;
+    segmentsList.innerHTML = '';
+
+    points.forEach((_, index) => {
+      const segment = getSegmentGeometry(index);
+      if (!segment) return;
+
+      const row = document.createElement('div');
+      row.className = `segment-row${selectedSegmentIndex === index ? ' is-selected' : ''}`;
+      row.innerHTML = `
+        <div class="segment-row-label">${segmentLabel(index)}</div>
+        <input type="number" step="1" min="1" class="form-control form-control-sm" value="${metersToCentimeters(segment.length)}">
+        <button type="button" class="btn btn-sm btn-outline-dark">OK</button>
+      `;
+
+      const lengthInput = row.querySelector('input');
+      const applyBtn = row.querySelector('button');
+      row.addEventListener('click', (event) => {
+        if (event.target.closest('button') || event.target.closest('input')) return;
+        setSelectedSegment(index);
+        setSelectedPoint(index);
+        setInspectorTab('segments');
+        render({ syncList: true, syncInput: false });
+      });
+      const applyLength = () => {
+        const nextLength = centimetersToMeters(lengthInput?.value);
+        if (nextLength === null) return;
+        setSelectedSegment(index);
+        setSelectedPoint(index);
+        setSegmentLength(index, nextLength);
+        render();
+      };
+      applyBtn?.addEventListener('click', applyLength);
+      lengthInput?.addEventListener('change', applyLength);
+      segmentsList.appendChild(row);
+    });
+  };
+
+  const renderAnglesList = () => {
+    if (!anglesList) return;
+    anglesList.innerHTML = '';
+
+    points.forEach((_, index) => {
+      const angle = getPointAngle(index);
+      const row = document.createElement('div');
+      row.className = `angle-row${selectedPointIndex === index ? ' is-selected' : ''}`;
+      row.innerHTML = `
+        <span class="angle-row-label">Угол ${pointLabel(index)}</span>
+        <span>${angle === null ? '—' : `${String(angle).replace('.', ',')}°`}</span>
+      `;
+      row.addEventListener('click', () => {
+        setSelectedPoint(index);
+        setSelectedSegment(index);
+        setInspectorTab('angles');
+        render({ syncList: true, syncInput: false });
+      });
+      anglesList.appendChild(row);
+    });
+  };
+
+  const renderList = () => {
+    renderPointsList();
+    renderSegmentsList();
+    renderAnglesList();
+    syncSelectedInspector();
   };
 
   const distanceToSegment = (point, start, end) => {
@@ -1445,6 +1788,7 @@
         if (event.button !== 0) return;
         event.stopPropagation();
         setSelectedSegment(index);
+        setInspectorTab('segments');
 
         if (activeMode !== 'wall') {
           render({ syncList: true, syncInput: false });
@@ -1464,6 +1808,7 @@
         if (suppressCanvasClick) return;
         event.stopPropagation();
         setSelectedSegment(index);
+        setInspectorTab(activeMode === 'element' ? inspectorTab : 'segments');
 
         if (activeMode === 'element' && newElementPlacementMode?.value === 'wall') {
           assignNewElementToSegment(index, pointerToSvg(event.clientX, event.clientY));
@@ -1502,7 +1847,7 @@
       sizeLabel.setAttribute('stroke', '#ffffff');
       sizeLabel.setAttribute('stroke-width', labelStrokeWidth);
       sizeLabel.style.pointerEvents = 'none';
-      sizeLabel.textContent = `#${index + 1} ${metersToCentimeters(segment.length)} см`;
+      sizeLabel.textContent = `${segmentLabel(index)} ${metersToCentimeters(segment.length)} см`;
       layer.appendChild(sizeLabel);
     });
 
@@ -1524,6 +1869,7 @@
         if (event.button !== 0) return;
         event.stopPropagation();
         setSelectedPoint(index);
+        setInspectorTab('points');
         dragPointIndex = index;
       });
 
@@ -1547,6 +1893,19 @@
       handle.style.pointerEvents = 'none';
 
       layer.appendChild(handle);
+
+      const pointText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      pointText.setAttribute('x', round(point.x + labelOffset));
+      pointText.setAttribute('y', round(point.y - labelOffset));
+      pointText.setAttribute('fill', selectedPointIndex === index ? '#b91c1c' : '#0f172a');
+      pointText.setAttribute('font-size', labelFontSize);
+      pointText.setAttribute('font-weight', '700');
+      pointText.setAttribute('paint-order', 'stroke');
+      pointText.setAttribute('stroke', '#ffffff');
+      pointText.setAttribute('stroke-width', labelStrokeWidth);
+      pointText.style.pointerEvents = 'none';
+      pointText.textContent = pointLabel(index);
+      layer.appendChild(pointText);
     });
 
     roomElements.forEach((element, index) => {
@@ -1804,6 +2163,55 @@
     fitViewport();
     render({ syncList: false, syncInput: false });
   });
+  backgroundToggleBtn?.addEventListener('click', () => {
+    backgroundVisible = !backgroundVisible;
+    syncBackgroundState();
+  });
+  backgroundOpacityRange?.addEventListener('input', syncBackgroundState);
+  pointsTabBtn?.addEventListener('click', () => setInspectorTab('points'));
+  segmentsTabBtn?.addEventListener('click', () => setInspectorTab('segments'));
+  anglesTabBtn?.addEventListener('click', () => setInspectorTab('angles'));
+  selectedPointXInput?.addEventListener('change', () => {
+    const currentPoint = points[selectedPointIndex];
+    if (!currentPoint) return;
+    currentPoint.x = clamp(centimetersToMeters(selectedPointXInput.value || 0) ?? 0, 0, workspaceWidth);
+    setInspectorTab('points');
+    render();
+  });
+  selectedPointYInput?.addEventListener('change', () => {
+    const currentPoint = points[selectedPointIndex];
+    if (!currentPoint) return;
+    currentPoint.y = clamp(centimetersToMeters(selectedPointYInput.value || 0) ?? 0, 0, workspaceHeight);
+    setInspectorTab('points');
+    render();
+  });
+  applySegmentLengthBtn?.addEventListener('click', () => {
+    const nextLength = centimetersToMeters(selectedSegmentLengthInput?.value);
+    if (nextLength === null) return;
+    setInspectorTab('segments');
+    setSegmentLength(selectedSegmentIndex, nextLength);
+    render();
+  });
+  insertPointAfterBtn?.addEventListener('click', () => {
+    const segment = getSegmentGeometry(selectedSegmentIndex);
+    if (!segment) return;
+    points.splice(segment.index + 1, 0, {
+      x: round((segment.start.x + segment.end.x) / 2),
+      y: round((segment.start.y + segment.end.y) / 2),
+    });
+    reindexWallAttachmentsOnInsert(segment.index, round(segment.length / 2));
+    setSelectedSegment(segment.index + 1);
+    setSelectedPoint(segment.index + 1);
+    setInspectorTab('points');
+    render();
+  });
+  deletePointBtn?.addEventListener('click', () => {
+    if (points.length <= 3) return;
+    points.splice(selectedPointIndex, 1);
+    selectedPointIndex = Math.max(0, Math.min(selectedPointIndex, points.length - 1));
+    setSelectedSegment(selectedPointIndex);
+    render();
+  });
 
   splitSegmentBtn?.addEventListener('click', () => {
     const segment = getSegmentGeometry(selectedSegmentIndex);
@@ -1861,6 +2269,7 @@
 
   updateNewElementPlacementFields();
   updateExistingPlacementFields();
+  syncBackgroundState();
   setMode('contour');
   setSelectedSegment(0);
   setSelectedPoint(0);

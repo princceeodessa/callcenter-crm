@@ -102,6 +102,8 @@ Route::middleware('auth')->group(function () {
         Route::get('/ceiling-projects/{project}/drafting', [CeilingProjectController::class, 'drafting'])->name('ceiling-projects.drafting');
         Route::patch('/ceiling-projects/{project}', [CeilingProjectController::class, 'update'])->name('ceiling-projects.update');
         Route::post('/ceiling-projects/{project}/apply-estimate', [CeilingProjectController::class, 'applyEstimate'])->name('ceiling-projects.apply-estimate');
+        Route::post('/ceiling-projects/{project}/sketch-image', [CeilingProjectController::class, 'uploadSketchImage'])->name('ceiling-projects.sketch-image.upload');
+        Route::get('/ceiling-projects/{project}/sketch-image', [CeilingProjectController::class, 'sketchImage'])->name('ceiling-projects.sketch-image.show');
         Route::post('/ceiling-projects/{project}/reference-image', [CeilingProjectController::class, 'uploadReferenceImage'])->name('ceiling-projects.reference-image.upload');
         Route::get('/ceiling-projects/{project}/reference-image', [CeilingProjectController::class, 'referenceImage'])->name('ceiling-projects.reference-image.show');
         Route::post('/ceiling-projects/{project}/sketch-recognition', [CeilingProjectController::class, 'recognizeSketch'])->name('ceiling-projects.sketch-recognition');
