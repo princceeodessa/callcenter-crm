@@ -15,6 +15,27 @@ from rapidocr_onnxruntime import RapidOCR
 
 NUMERIC_TOKEN_RE = re.compile(r"(?<![\d])(\d{2,4})(?![\d])")
 DECIMAL_TOKEN_RE = re.compile(r"(\d{1,3}(?:[.,]\d{1,2})?)")
+AMBIGUOUS_DIGITS = {
+    "O": ["0"],
+    "Q": ["0"],
+    "I": ["1"],
+    "L": ["1"],
+    "|": ["1"],
+    "/": ["1"],
+    "\\": ["1"],
+    "!": ["1"],
+    "Z": ["2"],
+    "A": ["4", "1"],
+    "H": ["4"],
+    "$": ["5"],
+    "S": ["5"],
+    "G": ["6"],
+    "+": ["7"],
+    "T": ["7", "1"],
+    "Y": ["7"],
+    "?": ["7"],
+    "B": ["8"],
+}
 
 
 def pil_to_bgr(image: Image.Image) -> np.ndarray:
@@ -50,6 +71,12 @@ def build_variants(image_path: Path) -> List[Tuple[str, np.ndarray]]:
         9,
     )
     variants.append(("adaptive", cv2.cvtColor(adaptive, cv2.COLOR_GRAY2BGR)))
+
+    upscale = autocontrast.resize((source.width * 2, source.height * 2), Image.Resampling.LANCZOS)
+    variants.append(("upscale", pil_to_bgr(upscale)))
+
+    upscale_threshold = upscale.point(lambda pixel: 255 if pixel > 170 else 0)
+    variants.append(("upscale-threshold", pil_to_bgr(upscale_threshold)))
 
     return variants
 
@@ -129,6 +156,41 @@ def deduplicate_lines(lines: List[Dict], image_width: int, image_height: int) ->
     return sorted(best_by_text.values(), key=lambda item: (-item["score"], item["text"]))
 
 
+def expand_decimal_candidates(text: str) -> List[str]:
+    variants = [(text.upper(), 0)]
+
+    for source, replacements in {
+        "B": ["8"],
+        "O": ["0"],
+        "Q": ["0"],
+        "A": ["4"],
+        "S": ["5"],
+        "$": ["5"],
+        "+": ["7"],
+    }.items():
+        updated: List[Tuple[str, int]] = []
+        for current, penalty in variants:
+            if source not in current:
+                updated.append((current, penalty))
+                continue
+
+            for replacement in replacements:
+                updated.append((current.replace(source, replacement), penalty + 1))
+
+            updated.append((current.replace(source, ""), penalty + 1))
+        variants = updated[:12]
+
+    unique: List[str] = []
+    seen = set()
+    for current, _ in sorted(variants, key=lambda item: item[1]):
+        if current in seen:
+            continue
+        seen.add(current)
+        unique.append(current)
+
+    return unique
+
+
 def parse_marker_decimal(lines: List[Dict], markers: List[str]) -> Optional[float]:
     marker_set = {marker.upper() for marker in markers}
 
@@ -141,20 +203,55 @@ def parse_marker_decimal(lines: List[Dict], markers: List[str]) -> Optional[floa
             if marker not in compact:
                 continue
 
-            match = DECIMAL_TOKEN_RE.search(compact.replace(marker, " "))
-            if not match:
-                continue
+            for candidate_text in expand_decimal_candidates(compact.replace(marker, " ", 1)):
+                match = DECIMAL_TOKEN_RE.search(candidate_text)
+                if not match:
+                    continue
 
-            token = match.group(1).replace(",", ".")
-            if "." not in token and len(token) >= 3:
-                token = f"{token[:-2]}.{token[-2:]}"
+                token = match.group(1).replace(",", ".")
+                if "." not in token and len(token) >= 3:
+                    token = f"{token[:-2]}.{token[-2:]}"
 
-            try:
-                return round(float(token), 2)
-            except ValueError:
-                continue
+                try:
+                    return round(float(token), 2)
+                except ValueError:
+                    continue
 
     return None
+
+
+def expand_integer_candidates(token: str) -> List[Tuple[int, int]]:
+    variants: List[Tuple[str, int]] = [("", 0)]
+
+    for char in token.upper():
+        if char.isdigit():
+            options = [(char, 0)]
+        elif char in {"-", "_", "~"}:
+            options = [("", 1), ("7", 2)]
+        elif char in AMBIGUOUS_DIGITS:
+            options = [(replacement, 1) for replacement in AMBIGUOUS_DIGITS[char]]
+            options.append(("", 1))
+        else:
+            options = [("", 1)]
+
+        updated: List[Tuple[str, int]] = []
+        for current, penalty in variants:
+            for replacement, extra_penalty in options:
+                updated.append((current + replacement, penalty + extra_penalty))
+        variants = sorted(updated, key=lambda item: item[1])[:16]
+
+    results: List[Tuple[int, int]] = []
+    seen = set()
+    for digits, penalty in variants:
+        if len(digits) < 2 or len(digits) > 4:
+            continue
+        value_cm = int(digits)
+        if value_cm < 60 or value_cm > 2000 or value_cm in seen:
+            continue
+        seen.add(value_cm)
+        results.append((value_cm, penalty))
+
+    return results
 
 
 def build_dimension_candidates(lines: List[Dict]) -> List[Dict]:
@@ -165,17 +262,15 @@ def build_dimension_candidates(lines: List[Dict]) -> List[Dict]:
         if "S" in compact or "P" in compact or "С" in compact or "Р" in compact:
             continue
 
-        for match in NUMERIC_TOKEN_RE.finditer(compact):
-            value_cm = int(match.group(1))
-            if value_cm < 60 or value_cm > 2000:
-                continue
-
-            candidates.append({
-                "value_cm": value_cm,
-                "region": line["region"],
-                "score": float(line["score"]),
-                "text": line["text"],
-            })
+        raw_tokens = re.findall(r"[0-9A-Z$+\-_/\\|]{2,5}", compact)
+        for token in raw_tokens:
+            for value_cm, penalty in expand_integer_candidates(token):
+                candidates.append({
+                    "value_cm": value_cm,
+                    "region": line["region"],
+                    "score": max(0.05, float(line["score"]) - (penalty * 0.08)),
+                    "text": line["text"],
+                })
 
     if not candidates:
         return []
@@ -200,7 +295,50 @@ def merge_candidate_pools(primary: List[Dict], fallback: List[Dict], limit: int 
     return merged
 
 
-def select_rectangle_dimensions(candidates: List[Dict], area_m2: Optional[float], perimeter_m: Optional[float]) -> Tuple[Optional[int], Optional[int], float, List[str]]:
+def estimate_room_ratio(image: np.ndarray) -> Optional[float]:
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    gray = cv2.GaussianBlur(gray, (5, 5), 0)
+    edges = cv2.Canny(gray, 45, 150)
+    min_length = max(min(image.shape[0], image.shape[1]) * 0.18, 60)
+    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=55, minLineLength=int(min_length), maxLineGap=28)
+
+    if lines is None:
+        return None
+
+    horizontals: List[float] = []
+    verticals: List[float] = []
+
+    for raw_line in lines:
+        x1, y1, x2, y2 = raw_line[0]
+        dx = x2 - x1
+        dy = y2 - y1
+        length = math.hypot(dx, dy)
+        if length < min_length:
+            continue
+
+        if abs(dy) <= max(10, abs(dx) * 0.2):
+            horizontals.append(length)
+        elif abs(dx) <= max(10, abs(dy) * 0.2):
+            verticals.append(length)
+
+    if not horizontals or not verticals:
+        return None
+
+    width_px = float(np.median(sorted(horizontals, reverse=True)[:4]))
+    height_px = float(np.median(sorted(verticals, reverse=True)[:4]))
+    if height_px <= 0:
+        return None
+
+    ratio = width_px / height_px
+    return round(ratio, 3) if 0.2 <= ratio <= 4.0 else None
+
+
+def select_rectangle_dimensions(
+    candidates: List[Dict],
+    area_m2: Optional[float],
+    perimeter_m: Optional[float],
+    sketch_ratio: Optional[float] = None,
+) -> Tuple[Optional[int], Optional[int], float, List[str]]:
     warnings: List[str] = []
     if not candidates:
         warnings.append("Не удалось выделить числовые размеры стен.")
@@ -237,6 +375,10 @@ def select_rectangle_dimensions(candidates: List[Dict], area_m2: Optional[float]
             if perimeter_m is not None:
                 calculated_perimeter = round((2 * (width_cm + length_cm)) / 100, 2)
                 score += abs(calculated_perimeter - perimeter_m) / max(perimeter_m, 1)
+
+            if sketch_ratio is not None:
+                candidate_ratio = width_cm / max(length_cm, 1)
+                score += abs(candidate_ratio - sketch_ratio) * 1.4
 
             if width_candidate["region"] == length_candidate["region"]:
                 score += 0.08
@@ -303,10 +445,11 @@ def recognize(image_path: Path) -> Dict:
         return {"success": False, "message": "OCR не распознал текст на эскизе."}
 
     text = "\n".join(line["text"] for line in lines)
-    area_m2 = parse_marker_decimal(lines, ["S"])
-    perimeter_m = parse_marker_decimal(lines, ["P"])
+    area_m2 = parse_marker_decimal(lines, ["S", "$"])
+    perimeter_m = parse_marker_decimal(lines, ["P", "Р"])
     candidates = build_dimension_candidates(lines)
-    width_cm, length_cm, confidence, warnings = select_rectangle_dimensions(candidates, area_m2, perimeter_m)
+    sketch_ratio = estimate_room_ratio(image)
+    width_cm, length_cm, confidence, warnings = select_rectangle_dimensions(candidates, area_m2, perimeter_m, sketch_ratio)
 
     room_draft = None
     shape = {"type": "unknown"}
@@ -340,6 +483,7 @@ def recognize(image_path: Path) -> Dict:
             "length_cm": length_cm,
             "area_m2": area_m2,
             "perimeter_m": perimeter_m,
+            "sketch_ratio": sketch_ratio,
             "wall_candidates_cm": sorted({item["value_cm"] for item in candidates}),
         },
         "warnings": warnings,
