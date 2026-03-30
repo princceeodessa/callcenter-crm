@@ -6,32 +6,28 @@ class CeilingLightLinePanelSplitter
 {
     /**
      * @param  array<int, array{x: float|int, y: float|int}>  $polygon
-     * @param  array<int, array{points?: array<int, array{x: float|int, y: float|int}>, width_m?: float|int|string|null, closed?: bool}>  $shapes
+     * @param  array<int, mixed>  $shapes
      * @param  array<string, mixed>  $productionSettings
      * @return array<int, array<string, mixed>>
      */
-    public function split(array $polygon, array $shapes, array $productionSettings = []): array
+    public function split(array $polygon, array $shapes = [], array $productionSettings = []): array
     {
-        $normalizedPolygon = $this->normalizePoints($polygon, 3);
-        if (count($normalizedPolygon) < 3) {
+        $polygon = $this->normalizePoints($polygon, 3);
+        if ($polygon === []) {
             return [];
         }
 
-        $normalizedShapes = $this->normalizeShapes($shapes);
-        if ($normalizedShapes === []) {
-            return [$this->buildSinglePanel($normalizedPolygon, $productionSettings)];
+        $shapes = $this->normalizeShapes($shapes);
+        if ($shapes === []) {
+            return [$this->buildSinglePanel($polygon, $productionSettings)];
         }
 
-        $xs = array_column($normalizedPolygon, 'x');
-        $ys = array_column($normalizedPolygon, 'y');
-        if ($xs === [] || $ys === []) {
-            return [];
-        }
-
-        $minX = min($xs);
-        $maxX = max($xs);
-        $minY = min($ys);
-        $maxY = max($ys);
+        $xs = array_column($polygon, 'x');
+        $ys = array_column($polygon, 'y');
+        $minX = (float) min($xs);
+        $maxX = (float) max($xs);
+        $minY = (float) min($ys);
+        $maxY = (float) max($ys);
         $step = 0.05;
         $cols = max(1, (int) ceil(($maxX - $minX) / $step));
         $rows = max(1, (int) ceil(($maxY - $minY) / $step));
@@ -39,75 +35,81 @@ class CeilingLightLinePanelSplitter
 
         for ($row = 0; $row < $rows; $row++) {
             for ($col = 0; $col < $cols; $col++) {
-                $point = [
+                $center = [
                     'x' => $minX + (($col + 0.5) * $step),
                     'y' => $minY + (($row + 0.5) * $step),
                 ];
 
-                if (!$this->pointInsidePolygon($point, $normalizedPolygon)) {
+                if (!$this->pointInsidePolygon($center, $polygon)) {
                     $grid[$row][$col] = -1;
                     continue;
                 }
 
-                foreach ($normalizedShapes as $shape) {
-                    $halfWidth = max((float) $shape['width_m'], $step) / 2;
-                    if ($this->distanceToPolyline($point, $shape['points'], (bool) $shape['closed']) <= $halfWidth) {
-                        $grid[$row][$col] = -1;
+                $blocked = false;
+                foreach ($shapes as $shape) {
+                    $halfWidth = max((float) ($shape['width_m'] ?? 0.05), $step) / 2;
+                    if ($this->distanceToPolyline($center, $shape['points'], (bool) ($shape['closed'] ?? false)) <= $halfWidth) {
+                        $blocked = true;
                         break;
                     }
+                }
+
+                if ($blocked) {
+                    $grid[$row][$col] = -1;
                 }
             }
         }
 
         $panels = [];
-        $components = 0;
+        $nextId = 1;
         for ($row = 0; $row < $rows; $row++) {
             for ($col = 0; $col < $cols; $col++) {
                 if ($grid[$row][$col] !== 0) {
                     continue;
                 }
 
-                $components++;
                 $queue = [[$row, $col]];
-                $grid[$row][$col] = $components;
+                $grid[$row][$col] = $nextId;
                 $cells = [];
 
                 while ($queue !== []) {
                     [$currentRow, $currentCol] = array_shift($queue);
                     $cells[] = [$currentRow, $currentCol];
 
-                    foreach ([[-1, 0], [1, 0], [0, -1], [0, 1]] as [$rowOffset, $colOffset]) {
-                        $nextRow = $currentRow + $rowOffset;
-                        $nextCol = $currentCol + $colOffset;
-                        if ($nextRow < 0 || $nextCol < 0 || $nextRow >= $rows || $nextCol >= $cols) {
-                            continue;
-                        }
-                        if ($grid[$nextRow][$nextCol] !== 0) {
+                    foreach ([
+                        [$currentRow - 1, $currentCol],
+                        [$currentRow + 1, $currentCol],
+                        [$currentRow, $currentCol - 1],
+                        [$currentRow, $currentCol + 1],
+                    ] as [$nextRow, $nextCol]) {
+                        if ($nextRow < 0 || $nextRow >= $rows || $nextCol < 0 || $nextCol >= $cols || $grid[$nextRow][$nextCol] !== 0) {
                             continue;
                         }
 
-                        $grid[$nextRow][$nextCol] = $components;
+                        $grid[$nextRow][$nextCol] = $nextId;
                         $queue[] = [$nextRow, $nextCol];
                     }
                 }
 
-                $panels[] = $this->buildPanelFromCells($components, $cells, $minX, $minY, $step, $productionSettings);
+                $panel = $this->buildPanelFromCells($nextId, $cells, $minX, $minY, $step, $productionSettings);
+                if ((float) ($panel['area_m2'] ?? 0) > 0.02) {
+                    $panels[] = $panel;
+                }
+                $nextId++;
             }
         }
 
-        $panels = array_values(array_filter($panels, fn (array $panel) => (float) ($panel['area_m2'] ?? 0.0) > 0.02));
         if ($panels === []) {
-            return [$this->buildSinglePanel($normalizedPolygon, $productionSettings)];
+            return [$this->buildSinglePanel($polygon, $productionSettings)];
         }
 
-        usort($panels, fn (array $left, array $right) => ($right['area_m2'] <=> $left['area_m2']));
+        usort($panels, static fn (array $left, array $right) => (float) ($right['area_m2'] ?? 0) <=> (float) ($left['area_m2'] ?? 0));
 
-        return array_map(function (array $panel, int $index) {
+        return array_values(array_map(function (array $panel, int $index) {
             $panel['id'] = 'panel_'.($index + 1);
             $panel['label'] = 'Полотно '.($index + 1);
-
             return $panel;
-        }, $panels, array_keys($panels));
+        }, $panels, array_keys($panels)));
     }
 
     /**
@@ -128,12 +130,14 @@ class CeilingLightLinePanelSplitter
             'area_m2' => $this->round($area),
             'cells_count' => 0,
             'centroid' => $centroid,
+            'shape_points' => $polygon,
             'bounds' => [
                 'min_x' => $this->round(min($xs)),
                 'min_y' => $this->round(min($ys)),
                 'max_x' => $this->round(max($xs)),
                 'max_y' => $this->round(max($ys)),
             ],
+            'source' => 'room',
             'production' => $this->productionPayload($productionSettings),
         ];
     }
@@ -163,6 +167,12 @@ class CeilingLightLinePanelSplitter
         }
 
         $count = max(1, count($cells));
+        $shapePoints = [
+            ['x' => $this->round($minX + ($minCol * $step)), 'y' => $this->round($minY + ($minRow * $step))],
+            ['x' => $this->round($minX + (($maxCol + 1) * $step)), 'y' => $this->round($minY + ($minRow * $step))],
+            ['x' => $this->round($minX + (($maxCol + 1) * $step)), 'y' => $this->round($minY + (($maxRow + 1) * $step))],
+            ['x' => $this->round($minX + ($minCol * $step)), 'y' => $this->round($minY + (($maxRow + 1) * $step))],
+        ];
 
         return [
             'id' => 'panel_'.$id,
@@ -173,12 +183,14 @@ class CeilingLightLinePanelSplitter
                 'x' => $this->round($centroid['x'] / $count),
                 'y' => $this->round($centroid['y'] / $count),
             ],
+            'shape_points' => $shapePoints,
             'bounds' => [
                 'min_x' => $this->round($minX + ($minCol * $step)),
                 'min_y' => $this->round($minY + ($minRow * $step)),
                 'max_x' => $this->round($minX + (($maxCol + 1) * $step)),
                 'max_y' => $this->round($minY + (($maxRow + 1) * $step)),
             ],
+            'source' => 'light_line_split',
             'production' => $this->productionPayload($productionSettings),
         ];
     }

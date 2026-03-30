@@ -1,4 +1,4 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @push('styles')
 <style>
@@ -185,13 +185,16 @@
                   'shape_points' => is_array($shape['shape_points'] ?? null) ? array_values($shape['shape_points']) : null,
                   'source_segment_index' => isset($shape['source_segment_index']) ? (int) $shape['source_segment_index'] : null,
                   'source_point_index' => isset($shape['source_point_index']) ? (int) $shape['source_point_index'] : null,
+                  'cut_segment_index' => isset($shape['cut_segment_index']) ? (int) $shape['cut_segment_index'] : null,
                   'offset_m' => isset($shape['offset_m']) ? (float) $shape['offset_m'] : null,
+                  'cut_offset_m' => isset($shape['cut_offset_m']) ? (float) $shape['cut_offset_m'] : null,
                   'depth_m' => isset($shape['depth_m']) ? (float) $shape['depth_m'] : null,
                   'radius_m' => isset($shape['radius_m']) ? (float) $shape['radius_m'] : null,
                   'area_delta_m2' => isset($shape['area_delta_m2']) ? (float) $shape['area_delta_m2'] : null,
                   'perimeter_delta_m' => isset($shape['perimeter_delta_m']) ? (float) $shape['perimeter_delta_m'] : null,
                   'direction' => $shape['direction'] ?? null,
                   'cut_line' => (bool) ($shape['cut_line'] ?? false),
+                  'separate_panel' => (bool) ($shape['separate_panel'] ?? false),
                   'label' => $shape['label'] ?? null,
               ];
           })
@@ -229,6 +232,10 @@
                   'cells_count' => isset($panel['cells_count']) ? (int) $panel['cells_count'] : 0,
                   'centroid' => is_array($panel['centroid'] ?? null) ? $panel['centroid'] : null,
                   'bounds' => is_array($panel['bounds'] ?? null) ? $panel['bounds'] : null,
+                  'shape_points' => is_array($panel['shape_points'] ?? null) ? array_values($panel['shape_points']) : null,
+                  'source' => isset($panel['source']) ? (string) $panel['source'] : null,
+                  'source_shape_id' => isset($panel['source_shape_id']) ? (string) $panel['source_shape_id'] : null,
+                  'feature_kind' => isset($panel['feature_kind']) ? (string) $panel['feature_kind'] : null,
                   'production' => is_array($panel['production'] ?? null) ? $panel['production'] : [],
               ];
           })
@@ -635,7 +642,7 @@
                   <div class="small fw-semibold mb-1">OCR текст</div>
                   @if($sketchSegments->isNotEmpty())
                     <div class="mt-3">
-                      <div class="small fw-semibold mb-2">РЎС‚РѕСЂРѕРЅС‹ Рё СЂР°Р·РјРµСЂС‹ OCR</div>
+                      <div class="small fw-semibold mb-2">Стороны и размеры OCR</div>
                       <div class="row g-2">
                         @foreach($sketchSegments as $segment)
                           @php
@@ -648,18 +655,18 @@
                           <div class="col-md-6">
                             <div class="border rounded p-2 h-100 bg-white small">
                               <div class="d-flex justify-content-between align-items-center gap-2">
-                                <div class="fw-semibold">{{ $segment['label'] ?? 'СЃС‚РѕСЂРѕРЅР°' }}</div>
-                                <span class="badge text-bg-light">{{ ($segment['orientation'] ?? 'horizontal') === 'vertical' ? 'РІРµСЂС‚РёРєР°Р»СЊ' : 'РіРѕСЂРёР·РѕРЅС‚Р°Р»СЊ' }}</span>
+                                <div class="fw-semibold">{{ $segment['label'] ?? 'сторона' }}</div>
+                                <span class="badge text-bg-light">{{ ($segment['orientation'] ?? 'horizontal') === 'vertical' ? 'вертикаль' : 'горизонталь' }}</span>
                               </div>
                               <div class="mt-2">
                                 @if($segmentOcrValue !== null)
-                                  <div><b>OCR:</b> {{ number_format($segmentOcrValue, 0, ',', ' ') }} СЃРј</div>
+                                  <div><b>OCR:</b> {{ number_format($segmentOcrValue, 0, ',', ' ') }} см</div>
                                 @endif
                                 @if($segmentDraftValue !== null)
-                                  <div class="text-muted"><b>Р§РµСЂРЅРѕРІРёРє:</b> {{ number_format($segmentDraftValue, 0, ',', ' ') }} СЃРј</div>
+                                  <div class="text-muted"><b>Черновик:</b> {{ number_format($segmentDraftValue, 0, ',', ' ') }} см</div>
                                 @endif
                                 @if($segmentConfidence !== null)
-                                  <div class="text-muted"><b>РЈРІРµСЂРµРЅРЅРѕСЃС‚СЊ:</b> {{ number_format($segmentConfidence, 2, ',', ' ') }}</div>
+                                  <div class="text-muted"><b>Уверенность:</b> {{ number_format($segmentConfidence, 2, ',', ' ') }}</div>
                                 @endif
                               </div>
                             </div>
@@ -983,41 +990,41 @@
                       <button type="button" class="btn btn-sm btn-outline-danger" id="deletePointBtn">Удалить точку</button>
                     </div>
                     <div class="inspector-card mb-3">
-                      <div class="inspector-kicker">РџР°СЂР°РјРµС‚СЂРёС‡РµСЃРєРёРµ РѕРїРµСЂР°С†РёРё</div>
+                      <div class="inspector-kicker">Параметрические операции</div>
                       <div class="row g-2">
                         <div class="col-6">
-                          <label class="form-label small mb-1">РќРѕРІР°СЏ С‚РѕС‡РєР° X, СЃРј</label>
+                          <label class="form-label small mb-1">Новая точка X, см</label>
                           <input type="number" step="1" class="form-control form-control-sm" id="manualPointXInput">
                         </div>
                         <div class="col-6">
-                          <label class="form-label small mb-1">РќРѕРІР°СЏ С‚РѕС‡РєР° Y, СЃРј</label>
+                          <label class="form-label small mb-1">Новая точка Y, см</label>
                           <input type="number" step="1" class="form-control form-control-sm" id="manualPointYInput">
                         </div>
                         <div class="col-7">
-                          <label class="form-label small mb-1">РћС‚СЃС‚СѓРї РѕС‚ РЅР°С‡Р°Р»Р° СЃС‚РѕСЂРѕРЅС‹, СЃРј</label>
+                          <label class="form-label small mb-1">Отступ от начала стороны, см</label>
                           <input type="number" step="1" min="0" class="form-control form-control-sm" id="insertPointOffsetInput">
                         </div>
                         <div class="col-5 d-flex align-items-end">
-                          <button type="button" class="btn btn-sm btn-outline-dark w-100" id="insertPointAtOffsetBtn">РўРѕС‡РєР° РЅР° СЃС‚РѕСЂРѕРЅРµ</button>
+                          <button type="button" class="btn btn-sm btn-outline-dark w-100" id="insertPointAtOffsetBtn">Точка на стороне</button>
                         </div>
                         <div class="col-12">
-                          <button type="button" class="btn btn-sm btn-outline-secondary w-100" id="insertPointByCoordinatesBtn">РџРѕСЃС‚Р°РІРёС‚СЊ С‚РѕС‡РєСѓ РїРѕ X/Y</button>
+                          <button type="button" class="btn btn-sm btn-outline-secondary w-100" id="insertPointByCoordinatesBtn">Поставить точку по X/Y</button>
                         </div>
                         <div class="col-7">
-                          <label class="form-label small mb-1">РЎРґРІРёРі СЃС‚РµРЅС‹, СЃРј</label>
+                          <label class="form-label small mb-1">Сдвиг стены, см</label>
                           <input type="number" step="1" min="0" class="form-control form-control-sm" id="wallShiftOffsetInput" value="10">
                         </div>
                         <div class="col-5 d-flex align-items-end">
-                          <button type="button" class="btn btn-sm btn-outline-dark w-100" id="applyWallShiftBtn">РЎРґРІРёРЅСѓС‚СЊ</button>
+                          <button type="button" class="btn btn-sm btn-outline-dark w-100" id="applyWallShiftBtn">Создать сдвиг</button>
                         </div>
                         <div class="col-6">
-                          <button type="button" class="btn btn-sm btn-outline-secondary w-100" id="wallShiftInwardBtn">Р’РЅСѓС‚СЂСЊ</button>
+                          <button type="button" class="btn btn-sm btn-outline-secondary w-100" id="wallShiftInwardBtn">Сдвиг внутрь</button>
                         </div>
                         <div class="col-6">
-                          <button type="button" class="btn btn-sm btn-outline-secondary w-100" id="wallShiftOutwardBtn">РќР°СЂСѓР¶Сѓ</button>
+                          <button type="button" class="btn btn-sm btn-outline-secondary w-100" id="wallShiftOutwardBtn">Уровень наружу</button>
                         </div>
                       </div>
-                      <div class="small text-muted mt-2">РўРѕС‡РєСѓ РјРѕР¶РЅРѕ РІСЃС‚Р°РІРёС‚СЊ Р»РёР±Рѕ РїРѕ X/Y, Р»РёР±Рѕ РїРѕ РІС‹Р±СЂР°РЅРЅРѕР№ СЃС‚РѕСЂРѕРЅРµ РѕС‚ РµРµ РЅР°С‡Р°Р»Р°. РЎРґРІРёРі СЃС‚РµРЅС‹ РґРІРёРіР°РµС‚ РІС‹Р±СЂР°РЅРЅС‹Р№ СЃРµРіРјРµРЅС‚ РїР°СЂР°Р»Р»РµР»СЊРЅРѕ РЅР° С‚РѕС‡РЅРѕРµ Р·РЅР°С‡РµРЅРёРµ.</div>
+                      <div class="small text-muted mt-2">Точку можно поставить по X/Y или по выбранной стороне от ее начала. Ручной режим двигает саму сторону, а кнопки выше создают независимый сдвиг или уровень как отдельную форму без изменения соседних стен.</div>
                     </div>
                     <div class="inspector-card mb-3">
                       <div class="inspector-kicker">Дополнительные формы</div>
@@ -1055,7 +1062,7 @@
                           <input type="number" step="1" min="1" class="form-control form-control-sm" id="featureHeightInput" value="60">
                         </div>
                         <div class="col-6">
-                          <label class="form-label small mb-1">Р Р°РґРёСѓСЃ, СЃРј</label>
+                          <label class="form-label small mb-1">Радиус, см</label>
                           <input type="number" step="1" min="1" class="form-control form-control-sm" id="featureRadiusInput" value="25">
                         </div>
                         <div class="col-6">
@@ -1079,6 +1086,20 @@
                             <label class="form-check-label small" for="featureCutLineInput">Разрез к вырезу</label>
                           </div>
                         </div>
+                        <div class="col-6">
+                          <label class="form-label small mb-1">Разрез от стороны</label>
+                          <select class="form-select form-select-sm" id="featureCutSegmentInput"></select>
+                        </div>
+                        <div class="col-6">
+                          <label class="form-label small mb-1">Отступ разреза, см</label>
+                          <input type="number" step="1" min="0" class="form-control form-control-sm" id="featureCutOffsetInput" value="30">
+                        </div>
+                        <div class="col-6 d-flex align-items-end">
+                          <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="featureSeparatePanelInput">
+                            <label class="form-check-label small" for="featureSeparatePanelInput">Отдельное полотно</label>
+                          </div>
+                        </div>
                         <div class="col-12">
                           <label class="form-label small mb-1">Подпись</label>
                           <input type="text" class="form-control form-control-sm" id="featureLabelInput" placeholder="Напр.: внутренний вырез">
@@ -1093,7 +1114,7 @@
                           </div>
                         </div>
                       </div>
-                      <div class="small text-muted mt-2">Быстрые формы подходят для внутреннего выреза, уровня и сдвига. Сейчас доступны прямоугольник, круг и треугольник с последующей ручной правкой.</div>
+                      <div class="small text-muted mt-2">Быстрые формы подходят для внутреннего выреза, уровня, сдвига и отдельного полотна. Для сложной формы можно начать многоугольник, а для отдельного production-полотна включить флаг выше.</div>
                       <div class="inspector-stack mt-3" id="featureShapesList"></div>
                       <div class="d-grid gap-2 mt-3">
                         <button type="button" class="btn btn-sm btn-outline-primary" id="startPolygonFeatureBtn">Начать многоугольник</button>
@@ -1117,10 +1138,11 @@
                         <div class="col-6">
                           <label class="form-label small mb-1">Шаблон</label>
                           <select class="form-select form-select-sm" id="lightLineTemplateInput">
-                            <option value="circle">Circle</option>
+                            <option value="circle">Круг</option>
                             <option value="custom">Произвольная</option>
                             <option value="rectangle">Прямоугольник</option>
                             <option value="cross">Перекрестие</option>
+                            <option value="star">Звезда</option>
                           </select>
                         </div>
                         <div class="col-3">
@@ -1767,6 +1789,9 @@
   const featureDepthInput = document.getElementById('featureDepthInput');
   const featureDirectionInput = document.getElementById('featureDirectionInput');
   const featureCutLineInput = document.getElementById('featureCutLineInput');
+  const featureCutSegmentInput = document.getElementById('featureCutSegmentInput');
+  const featureCutOffsetInput = document.getElementById('featureCutOffsetInput');
+  const featureSeparatePanelInput = document.getElementById('featureSeparatePanelInput');
   const featureLabelInput = document.getElementById('featureLabelInput');
   const addFeatureShapeBtn = document.getElementById('addFeatureShapeBtn');
   const addFeatureFromWallBtn = document.getElementById('addFeatureFromWallBtn');
@@ -1887,13 +1912,16 @@
       shape_points: shapePoints.length >= 3 ? shapePoints : null,
       source_segment_index: Number.isInteger(shape.source_segment_index) ? shape.source_segment_index : (Number.isFinite(Number(shape.source_segment_index)) ? Number(shape.source_segment_index) : null),
       source_point_index: Number.isInteger(shape.source_point_index) ? shape.source_point_index : (Number.isFinite(Number(shape.source_point_index)) ? Number(shape.source_point_index) : null),
+      cut_segment_index: Number.isInteger(shape.cut_segment_index) ? shape.cut_segment_index : (Number.isFinite(Number(shape.cut_segment_index)) ? Number(shape.cut_segment_index) : null),
       offset_m: Number.isFinite(Number(shape.offset_m)) ? round(Number(shape.offset_m)) : null,
+      cut_offset_m: Number.isFinite(Number(shape.cut_offset_m)) ? round(Number(shape.cut_offset_m)) : null,
       depth_m: Number.isFinite(Number(shape.depth_m)) ? round(Number(shape.depth_m)) : null,
       radius_m: Number.isFinite(Number(shape.radius_m)) ? round(Number(shape.radius_m)) : null,
       area_delta_m2: Number.isFinite(Number(shape.area_delta_m2)) ? round(Number(shape.area_delta_m2)) : null,
       perimeter_delta_m: Number.isFinite(Number(shape.perimeter_delta_m)) ? round(Number(shape.perimeter_delta_m)) : null,
       direction: shape.direction === 'outward' ? 'outward' : 'inward',
       cut_line: Boolean(shape.cut_line),
+      separate_panel: Boolean(shape.separate_panel),
       label: shape.label ? String(shape.label) : '',
     };
   };
@@ -1923,7 +1951,7 @@
       label: shape.label ? String(shape.label) : '',
       width_m: Math.max(0.01, round(Number(shape.width_m ?? 0.05))),
       closed: Boolean(shape.closed),
-      template: ['custom', 'rectangle', 'cross', 'circle'].includes(String(shape.template ?? 'custom')) ? String(shape.template ?? 'custom') : 'custom',
+      template: ['custom', 'rectangle', 'cross', 'circle', 'star'].includes(String(shape.template ?? 'custom')) ? String(shape.template ?? 'custom') : 'custom',
       points,
     };
   };
@@ -1937,6 +1965,15 @@
     const centroid = panel.centroid && Number.isFinite(Number(panel.centroid.x)) && Number.isFinite(Number(panel.centroid.y))
       ? { x: round(Number(panel.centroid.x)), y: round(Number(panel.centroid.y)) }
       : null;
+    const shapePoints = Array.isArray(panel.shape_points)
+      ? panel.shape_points
+          .map((point) => ({
+            x: Number(point?.x ?? NaN),
+            y: Number(point?.y ?? NaN),
+          }))
+          .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
+          .map((point) => ({ x: round(point.x), y: round(point.y) }))
+      : [];
 
     if (!Number.isFinite(area) || area <= 0) {
       return null;
@@ -1949,6 +1986,12 @@
       cells_count: Number.isFinite(Number(panel.cells_count)) ? Number(panel.cells_count) : 0,
       centroid,
       bounds: panel.bounds && typeof panel.bounds === 'object' ? panel.bounds : null,
+      shape_points: shapePoints.length >= 3 ? shapePoints : null,
+      source: panel.source ? String(panel.source) : null,
+      source_shape_id: panel.source_shape_id ? String(panel.source_shape_id) : null,
+      feature_kind: panel.feature_kind ? String(panel.feature_kind) : null,
+      seam_parent_id: panel.seam_parent_id ? String(panel.seam_parent_id) : null,
+      seam_part_index: Number.isFinite(Number(panel.seam_part_index)) ? Number(panel.seam_part_index) : null,
       production: panel.production && typeof panel.production === 'object' ? panel.production : {},
     };
   };
@@ -2532,6 +2575,50 @@
     render();
   };
 
+  const buildWallOffsetFeature = (offsetMeters, inward = true) => {
+    const segment = getSegmentGeometry(selectedSegmentIndex);
+    const normal = getSegmentNormal(selectedSegmentIndex, inward);
+    if (!segment || !normal || !Number.isFinite(offsetMeters) || offsetMeters <= 0) {
+      return null;
+    }
+
+    const start = {
+      x: round(segment.start.x),
+      y: round(segment.start.y),
+    };
+    const end = {
+      x: round(segment.end.x),
+      y: round(segment.end.y),
+    };
+    const shiftedEnd = {
+      x: round(clamp(segment.end.x + (normal.x * offsetMeters), 0, workspaceWidth)),
+      y: round(clamp(segment.end.y + (normal.y * offsetMeters), 0, workspaceHeight)),
+    };
+    const shiftedStart = {
+      x: round(clamp(segment.start.x + (normal.x * offsetMeters), 0, workspaceWidth)),
+      y: round(clamp(segment.start.y + (normal.y * offsetMeters), 0, workspaceHeight)),
+    };
+    const kind = inward ? 'shift' : 'level';
+
+    return normalizeFeatureShape({
+      id: `feature_${Date.now()}`,
+      kind,
+      figure: 'rectangle',
+      shape_points: [start, end, shiftedEnd, shiftedStart],
+      x_m: Math.min(start.x, end.x, shiftedEnd.x, shiftedStart.x),
+      y_m: Math.min(start.y, end.y, shiftedEnd.y, shiftedStart.y),
+      width_m: Math.max(start.x, end.x, shiftedEnd.x, shiftedStart.x) - Math.min(start.x, end.x, shiftedEnd.x, shiftedStart.x),
+      height_m: Math.max(start.y, end.y, shiftedEnd.y, shiftedStart.y) - Math.min(start.y, end.y, shiftedEnd.y, shiftedStart.y),
+      source_segment_index: selectedSegmentIndex,
+      offset_m: round(segment.length / 2),
+      depth_m: round(offsetMeters),
+      direction: inward ? 'inward' : 'outward',
+      cut_line: false,
+      separate_panel: false,
+      label: featureLabelInput?.value ?? (inward ? `Сдвиг ${segmentLabel(selectedSegmentIndex)}` : `Уровень ${segmentLabel(selectedSegmentIndex)}`),
+    });
+  };
+
   const buildFeatureFromSelectedSegment = () => {
     const segment = getSegmentGeometry(selectedSegmentIndex);
     if (!segment) return null;
@@ -2543,6 +2630,12 @@
     const inward = direction === 'inward';
     const normal = getSegmentNormal(selectedSegmentIndex, inward);
     const kind = featureKindInput?.value ?? 'cutout';
+    const cutLine = Boolean(featureCutLineInput?.checked) && kind === 'cutout';
+    const selectedCutSegment = Number.isFinite(Number(featureCutSegmentInput?.value))
+      ? Number(featureCutSegmentInput.value)
+      : selectedSegmentIndex;
+    const cutSegment = getSegmentGeometry(selectedCutSegment);
+    const requestedCutOffset = centimetersToMeters(featureCutOffsetInput?.value);
     if (!normal || offset === null || span === null || depth === null || span <= 0 || depth <= 0) {
       return null;
     }
@@ -2605,12 +2698,21 @@
       width_m: payload.width_m ?? (Math.max(p1.x, p2.x, p3.x, p4.x) - Math.min(p1.x, p2.x, p3.x, p4.x)),
       height_m: payload.height_m ?? (Math.max(p1.y, p2.y, p3.y, p4.y) - Math.min(p1.y, p2.y, p3.y, p4.y)),
       source_segment_index: selectedSegmentIndex,
+      cut_segment_index: cutLine && cutSegment ? selectedCutSegment : null,
       offset_m: round(clampedOffset),
+      cut_offset_m: cutLine
+        ? round(clamp(
+            requestedCutOffset === null ? clampedOffset : requestedCutOffset,
+            0,
+            cutSegment?.length ?? segment.length
+          ))
+        : null,
       depth_m: round(depth),
       area_delta_m2: areaDelta,
       perimeter_delta_m: perimeterDelta,
       direction,
-      cut_line: Boolean(featureCutLineInput?.checked) && (kind === 'cutout'),
+      cut_line: cutLine,
+      separate_panel: Boolean(featureSeparatePanelInput?.checked),
       label: featureLabelInput?.value ?? '',
     });
   };
@@ -2716,6 +2818,7 @@
       perimeter_delta_m: round(curveLength - removedStraight),
       direction: 'inward',
       cut_line: false,
+      separate_panel: Boolean(featureSeparatePanelInput?.checked),
       label: featureLabelInput?.value ?? `Скругление ${pointLabel(cornerIndex)}`,
     });
   };
@@ -2782,6 +2885,7 @@
       height_m: round(bounds.maxY - bounds.minY),
       label: featureLabelInput?.value ?? '',
       cut_line: false,
+      separate_panel: Boolean(featureSeparatePanelInput?.checked),
     });
 
     if (!shape) {
@@ -2922,11 +3026,36 @@
 
       return [normalizeLightLineShape({
         id: `light_line_${Date.now()}`,
-        label: label !== '' ? label : 'Circle',
+        label: label !== '' ? label : 'Круг',
         width_m: width,
         closed: true,
         template,
         points: circlePoints,
+      })].filter(Boolean);
+    }
+
+    if (template === 'star') {
+      const outerRadius = Math.max(spanX, spanY) / 2;
+      const innerRadius = outerRadius * 0.42;
+      const starPoints = [];
+      const steps = 10;
+
+      for (let step = 0; step < steps; step += 1) {
+        const angle = (-Math.PI / 2) + ((Math.PI * 2 * step) / steps);
+        const radius = step % 2 === 0 ? outerRadius : innerRadius;
+        starPoints.push({
+          x: round(center.x + (Math.cos(angle) * radius)),
+          y: round(center.y + (Math.sin(angle) * radius)),
+        });
+      }
+
+      return [normalizeLightLineShape({
+        id: `light_line_${Date.now()}`,
+        label: label !== '' ? label : 'Звезда',
+        width_m: width,
+        closed: true,
+        template,
+        points: starPoints,
       })].filter(Boolean);
     }
 
@@ -3089,19 +3218,222 @@
     productionSummaryText.textContent = `Полотно: ${textureLabelMap[productionSettings.texture] ?? productionSettings.texture}, рулон ${productionSettings.roll_width_cm} см, гарпун ${productionSettings.harpoon_type}, усадка ${productionSettings.shrink_x_percent}%/${productionSettings.shrink_y_percent}%, ${orientationLabelMap[productionSettings.orientation_mode] ?? productionSettings.orientation_mode}${productionSettings.orientation_mode === 'center_room' ? '' : ` ${segment}`}, смещение ${metersToCentimeters(productionSettings.orientation_offset_m)} см${seamText}.`;
   };
 
+  const panelBoundsFromPointSet = (pointSet) => {
+    if (!Array.isArray(pointSet) || pointSet.length < 3) {
+      return null;
+    }
+
+    return pointSet.reduce((carry, point) => ({
+      min_x: Math.min(carry.min_x, Number(point.x ?? 0)),
+      min_y: Math.min(carry.min_y, Number(point.y ?? 0)),
+      max_x: Math.max(carry.max_x, Number(point.x ?? 0)),
+      max_y: Math.max(carry.max_y, Number(point.y ?? 0)),
+    }), {
+      min_x: Number.POSITIVE_INFINITY,
+      min_y: Number.POSITIVE_INFINITY,
+      max_x: Number.NEGATIVE_INFINITY,
+      max_y: Number.NEGATIVE_INFINITY,
+    });
+  };
+
+  const centroidFromPointSet = (pointSet) => {
+    if (!Array.isArray(pointSet) || pointSet.length === 0) {
+      return null;
+    }
+
+    const sum = pointSet.reduce((carry, point) => ({
+      x: carry.x + Number(point.x ?? 0),
+      y: carry.y + Number(point.y ?? 0),
+    }), { x: 0, y: 0 });
+
+    return {
+      x: round(sum.x / pointSet.length),
+      y: round(sum.y / pointSet.length),
+    };
+  };
+
+  const buildSeparateFeaturePanelsPreview = (offset = 0) => featureShapes
+    .filter((shape) => shape?.separate_panel)
+    .map((shape, index) => {
+      const shapePoints = featureShapePoints(shape);
+      const bounds = panelBoundsFromPointSet(shapePoints);
+      const area = round(Math.abs(polygonArea(shapePoints)));
+      if (!bounds || area <= 0) {
+        return null;
+      }
+
+      return normalizeDerivedPanel({
+        id: `panel_${offset + index + 1}`,
+        label: shape.label && shape.label.trim() !== '' ? shape.label : `Полотно ${offset + index + 1}`,
+        area_m2: area,
+        cells_count: 0,
+        centroid: centroidFromPointSet(shapePoints),
+        bounds,
+        shape_points: shapePoints,
+        source: 'feature',
+        source_shape_id: shape.id ?? null,
+        feature_kind: shape.kind ?? null,
+        production: { ...productionSettings },
+      }, offset + index);
+    })
+    .filter(Boolean);
+
+  const panelPointSet = (panel) => {
+    if (Array.isArray(panel?.shape_points) && panel.shape_points.length >= 3) {
+      return clonePoints(panel.shape_points);
+    }
+
+    if (panel?.bounds && Number.isFinite(Number(panel.bounds.min_x)) && Number.isFinite(Number(panel.bounds.min_y)) && Number.isFinite(Number(panel.bounds.max_x)) && Number.isFinite(Number(panel.bounds.max_y))) {
+      return [
+        { x: round(Number(panel.bounds.min_x)), y: round(Number(panel.bounds.min_y)) },
+        { x: round(Number(panel.bounds.max_x)), y: round(Number(panel.bounds.min_y)) },
+        { x: round(Number(panel.bounds.max_x)), y: round(Number(panel.bounds.max_y)) },
+        { x: round(Number(panel.bounds.min_x)), y: round(Number(panel.bounds.max_y)) },
+      ];
+    }
+
+    return [];
+  };
+
+  const uniquePolygonPreviewPoints = (pointSet) => {
+    const result = [];
+    pointSet.forEach((point) => {
+      if (!point || !Number.isFinite(Number(point.x)) || !Number.isFinite(Number(point.y))) return;
+      const normalizedPoint = { x: round(Number(point.x)), y: round(Number(point.y)) };
+      const last = result[result.length - 1];
+      if (last && Math.abs(last.x - normalizedPoint.x) < 0.0001 && Math.abs(last.y - normalizedPoint.y) < 0.0001) {
+        return;
+      }
+      result.push(normalizedPoint);
+    });
+
+    if (result.length > 1) {
+      const first = result[0];
+      const last = result[result.length - 1];
+      if (Math.abs(first.x - last.x) < 0.0001 && Math.abs(first.y - last.y) < 0.0001) {
+        result.pop();
+      }
+    }
+
+    return result.length >= 3 ? result : [];
+  };
+
+  const signedDistanceToGuide = (point, linePoint, normal) => ((Number(point.x) - Number(linePoint.x)) * Number(normal.x)) + ((Number(point.y) - Number(linePoint.y)) * Number(normal.y));
+
+  const clipPolygonByGuide = (pointSet, linePoint, normal, keepPositive = true) => {
+    if (!Array.isArray(pointSet) || pointSet.length < 3) {
+      return [];
+    }
+
+    const clipped = [];
+    for (let index = 0; index < pointSet.length; index += 1) {
+      const current = pointSet[index];
+      const next = pointSet[(index + 1) % pointSet.length];
+      const currentDistance = signedDistanceToGuide(current, linePoint, normal);
+      const nextDistance = signedDistanceToGuide(next, linePoint, normal);
+      const currentInside = keepPositive ? currentDistance >= -0.0001 : currentDistance <= 0.0001;
+      const nextInside = keepPositive ? nextDistance >= -0.0001 : nextDistance <= 0.0001;
+
+      if (currentInside) {
+        clipped.push({ x: round(Number(current.x)), y: round(Number(current.y)) });
+      }
+
+      if (currentInside !== nextInside) {
+        const denominator = currentDistance - nextDistance;
+        if (Math.abs(denominator) > 0.000001) {
+          const ratio = currentDistance / denominator;
+          clipped.push({
+            x: round(Number(current.x) + ((Number(next.x) - Number(current.x)) * ratio)),
+            y: round(Number(current.y) + ((Number(next.y) - Number(current.y)) * ratio)),
+          });
+        }
+      }
+    }
+
+    return uniquePolygonPreviewPoints(clipped);
+  };
+
+  const splitPanelByProductionSeam = (panel, index = 0) => {
+    if (!productionSettings.seam_enabled) {
+      return [panel];
+    }
+
+    const seamGuide = productionGuideGeometry(Number(productionSettings.orientation_offset_m ?? 0) + Number(productionSettings.seam_offset_m ?? 0));
+    if (!seamGuide) {
+      return [panel];
+    }
+
+    const shapePoints = panelPointSet(panel);
+    if (shapePoints.length < 3) {
+      return [panel];
+    }
+
+    const direction = normalizeVector({
+      x: Number(seamGuide.end.x) - Number(seamGuide.start.x),
+      y: Number(seamGuide.end.y) - Number(seamGuide.start.y),
+    });
+    if (!direction) {
+      return [panel];
+    }
+
+    const normal = normalizeVector({ x: -direction.y, y: direction.x });
+    if (!normal) {
+      return [panel];
+    }
+
+    const firstPart = clipPolygonByGuide(shapePoints, seamGuide.start, normal, true);
+    const secondPart = clipPolygonByGuide(shapePoints, seamGuide.start, normal, false);
+    const parts = [firstPart, secondPart].filter((part) => part.length >= 3 && polygonArea(part) > 0.01);
+
+    if (parts.length !== 2) {
+      return [panel];
+    }
+
+    return parts.map((part, partIndex) => normalizeDerivedPanel({
+      ...panel,
+      id: `${panel.id || `panel_${index + 1}`}_part_${partIndex + 1}`,
+      label: `${panel.label || `Полотно ${index + 1}`} ${partIndex === 0 ? 'A' : 'B'}`,
+      area_m2: round(polygonArea(part)),
+      centroid: centroidFromPointSet(part),
+      bounds: panelBoundsFromPointSet(part),
+      shape_points: part,
+      source: 'seam_split',
+      seam_parent_id: panel.id || `panel_${index + 1}`,
+      seam_part_index: partIndex + 1,
+      production: { ...productionSettings, seam_enabled: false, seam_offset_m: 0 },
+    }, index + partIndex)).filter(Boolean);
+  };
+
+  const applyProductionSeamToPanels = (panels) => {
+    if (!Array.isArray(panels) || panels.length === 0) {
+      return [];
+    }
+
+    return panels.flatMap((panel, index) => splitPanelByProductionSeam(panel, index)).filter(Boolean);
+  };
+
   const estimateLightLinePanels = () => {
     if (!Array.isArray(points) || points.length < 3) {
       return [];
     }
 
+    const featurePanels = buildSeparateFeaturePanelsPreview();
     const hasBlockingLines = lightLineShapes.some((shape) => Array.isArray(shape.points) && shape.points.length >= 2 && Number(shape.width_m ?? 0) > 0);
     if (!hasBlockingLines) {
-      return [{
+      const roomBounds = panelBoundsFromPointSet(points);
+      const roomPanel = normalizeDerivedPanel({
         id: 'panel_1',
+        label: 'Полотно 1',
         area_m2: round(polygonArea(points)),
-        cells: 0,
+        cells_count: 0,
         centroid: polygonCentroid(),
-      }];
+        bounds: roomBounds,
+        shape_points: clonePoints(points),
+        source: 'room',
+        production: { ...productionSettings },
+      });
+
+      return applyProductionSeamToPanels([roomPanel, ...buildSeparateFeaturePanelsPreview(roomPanel ? 1 : 0)].filter(Boolean));
     }
 
     const bounds = geometryBounds(points, [], [], []);
@@ -3177,20 +3509,43 @@
 
         panels.push({
           id: `panel_${nextId}`,
+          label: `Полотно ${nextId}`,
           area_m2: round(cells.length * step * step),
-          cells: cells.length,
+          cells_count: cells.length,
           centroid: cells.length > 0 ? {
             x: round(centroid.x / cells.length),
             y: round(centroid.y / cells.length),
           } : null,
+          bounds: cells.length > 0 ? {
+            min_x: round(bounds.minX + (Math.min(...cells.map((cell) => cell[1])) * step)),
+            min_y: round(bounds.minY + (Math.min(...cells.map((cell) => cell[0])) * step)),
+            max_x: round(bounds.minX + ((Math.max(...cells.map((cell) => cell[1])) + 1) * step)),
+            max_y: round(bounds.minY + ((Math.max(...cells.map((cell) => cell[0])) + 1) * step)),
+          } : null,
+          shape_points: cells.length > 0 ? [
+            { x: round(bounds.minX + (Math.min(...cells.map((cell) => cell[1])) * step)), y: round(bounds.minY + (Math.min(...cells.map((cell) => cell[0])) * step)) },
+            { x: round(bounds.minX + ((Math.max(...cells.map((cell) => cell[1])) + 1) * step)), y: round(bounds.minY + (Math.min(...cells.map((cell) => cell[0])) * step)) },
+            { x: round(bounds.minX + ((Math.max(...cells.map((cell) => cell[1])) + 1) * step)), y: round(bounds.minY + ((Math.max(...cells.map((cell) => cell[0])) + 1) * step)) },
+            { x: round(bounds.minX + (Math.min(...cells.map((cell) => cell[1])) * step)), y: round(bounds.minY + ((Math.max(...cells.map((cell) => cell[0])) + 1) * step)) },
+          ] : null,
+          source: 'light_line_split',
+          production: { ...productionSettings },
         });
         nextId += 1;
       }
     }
 
-    return panels
+    const normalizedPanels = panels
       .filter((panel) => panel.area_m2 > 0.02)
-      .sort((left, right) => right.area_m2 - left.area_m2);
+      .sort((left, right) => right.area_m2 - left.area_m2)
+      .map((panel, index) => normalizeDerivedPanel({
+        ...panel,
+        id: `panel_${index + 1}`,
+        label: panel.label ?? `Полотно ${index + 1}`,
+      }, index))
+      .filter(Boolean);
+
+    return applyProductionSeamToPanels([...normalizedPanels, ...buildSeparateFeaturePanelsPreview(normalizedPanels.length)].filter(Boolean));
   };
 
   const renderLightLinePanelsList = () => {
@@ -3212,13 +3567,21 @@
 
     lightLinePanelsSummary.textContent = `Предпросмотр: ${lightLinePanelsPreview.length} полотн, суммарно около ${String(round(totalArea)).replace('.', ',')} м2.`;
     lightLinePanelsPreview.forEach((panel, index) => {
+      const sourceLabelMap = {
+        room: 'контур',
+        feature: 'отдельная форма',
+        light_line_split: 'световые линии',
+        seam_split: 'шов',
+      };
+      const sourceText = sourceLabelMap[panel.source] ? `${sourceLabelMap[panel.source]}` : 'полотно';
+      const seamText = Number.isFinite(Number(panel.seam_part_index)) ? ` · часть ${panel.seam_part_index}` : '';
       const row = document.createElement('div');
       row.className = 'feature-row';
       row.innerHTML = `
         <span class="feature-row-dot" style="background:#059669"></span>
         <div>
           <div class="feature-row-title">${panel.label ? panel.label : `Полотно ${index + 1}`}</div>
-          <div class="feature-row-subtitle">Площадь ≈ ${String(panel.area_m2).replace('.', ',')} м2</div>
+          <div class="feature-row-subtitle">Площадь ≈ ${String(panel.area_m2).replace('.', ',')} м2 · ${sourceText}${seamText}</div>
         </div>
       `;
       lightLinePanelsList.appendChild(row);
@@ -3522,8 +3885,6 @@
       `;
 
       const [xInput, yInput, removeBtn] = row.querySelectorAll('input, button');
-      row.querySelector('.feature-row-title').textContent = `${shape.label && shape.label.trim() !== '' ? shape.label : (featureKindLabels[shape.kind] || shape.kind)} · ${featureFigureLabels[shape.figure] || shape.figure}`;
-      row.querySelector('.feature-row-subtitle').textContent = `${attachmentLabel} · ${sizeLabel}`;
 
       row.addEventListener('click', (event) => {
         if (event.target.closest('button')) return;
@@ -3599,6 +3960,69 @@
     ];
   };
 
+  const closestPointOnSegment = (point, start, end) => {
+    const dx = Number(end?.x ?? 0) - Number(start?.x ?? 0);
+    const dy = Number(end?.y ?? 0) - Number(start?.y ?? 0);
+    const denominator = (dx * dx) + (dy * dy);
+
+    if (denominator <= 0.000001) {
+      return {
+        x: round(Number(start?.x ?? 0)),
+        y: round(Number(start?.y ?? 0)),
+      };
+    }
+
+    const t = clamp((((Number(point?.x ?? 0) - Number(start?.x ?? 0)) * dx) + ((Number(point?.y ?? 0) - Number(start?.y ?? 0)) * dy)) / denominator, 0, 1);
+
+    return {
+      x: round(Number(start?.x ?? 0) + (dx * t)),
+      y: round(Number(start?.y ?? 0) + (dy * t)),
+    };
+  };
+
+  const featureCutConnector = (shape) => {
+    if (!shape?.cut_line) {
+      return null;
+    }
+
+    const segmentIndex = Number.isInteger(shape.cut_segment_index)
+      ? shape.cut_segment_index
+      : shape.source_segment_index;
+    if (!Number.isInteger(segmentIndex)) {
+      return null;
+    }
+
+    const segment = getSegmentGeometry(segmentIndex);
+    const shapePoints = featureShapePoints(shape);
+    if (!segment || shapePoints.length < 2) {
+      return null;
+    }
+
+    const baseOffset = Number.isFinite(Number(shape.cut_offset_m))
+      ? Number(shape.cut_offset_m)
+      : (Number.isFinite(Number(shape.offset_m))
+      ? Number(shape.offset_m) + (Number(shape.width_m ?? 0) / 2)
+      : (segment.length / 2));
+    const basePoint = pointAlongSegment(segmentIndex, clamp(baseOffset, 0, segment.length));
+    if (!basePoint) {
+      return null;
+    }
+
+    let bestPoint = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    shapePoints.forEach((point, index) => {
+      const nextPoint = shapePoints[(index + 1) % shapePoints.length];
+      const candidate = closestPointOnSegment(basePoint, point, nextPoint);
+      const distance = distanceBetweenPoints(basePoint, candidate);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestPoint = candidate;
+      }
+    });
+
+    return bestPoint ? { start: basePoint, end: bestPoint } : null;
+  };
+
   const translateFeatureShape = (shape, deltaX, deltaY) => {
     const nextX = round(clamp(Number(shape.x_m ?? 0) + deltaX, 0, workspaceWidth));
     const nextY = round(clamp(Number(shape.y_m ?? 0) + deltaY, 0, workspaceHeight));
@@ -3624,6 +4048,45 @@
       : Math.max(0, Math.min(index, featureShapes.length - 1));
   };
 
+  const syncFeatureCutControls = (currentShape = null) => {
+    const kind = currentShape?.kind ?? featureKindInput?.value ?? 'cutout';
+    const cutEnabled = Boolean(currentShape?.cut_line ?? featureCutLineInput?.checked) && kind === 'cutout';
+    const preferredSegmentIndex = Number.isInteger(currentShape?.cut_segment_index)
+      ? currentShape.cut_segment_index
+      : (Number.isInteger(currentShape?.source_segment_index) ? currentShape.source_segment_index : selectedSegmentIndex);
+
+    if (featureCutSegmentInput) {
+      const options = points.map((_, index) => {
+        const segment = getSegmentGeometry(index);
+        const lengthLabel = segment ? `${metersToCentimeters(segment.length)} см` : '0 см';
+        return `<option value="${index}">${segmentLabel(index)} · ${lengthLabel}</option>`;
+      }).join('');
+      featureCutSegmentInput.innerHTML = options;
+      const normalizedIndex = Math.max(0, Math.min(
+        Number.isInteger(preferredSegmentIndex) ? preferredSegmentIndex : 0,
+        Math.max(points.length - 1, 0),
+      ));
+      featureCutSegmentInput.value = String(normalizedIndex);
+      featureCutSegmentInput.disabled = !cutEnabled || points.length < 2;
+    }
+
+    const segmentIndex = Number.isInteger(preferredSegmentIndex) ? preferredSegmentIndex : selectedSegmentIndex;
+    const segment = getSegmentGeometry(segmentIndex);
+    const cutOffsetMeters = Number.isFinite(Number(currentShape?.cut_offset_m))
+      ? Number(currentShape.cut_offset_m)
+      : (Number.isFinite(Number(currentShape?.offset_m)) ? Number(currentShape.offset_m) : 0);
+
+    if (featureCutOffsetInput) {
+      featureCutOffsetInput.value = metersToCentimeters(cutOffsetMeters);
+      featureCutOffsetInput.disabled = !cutEnabled;
+      if (segment) {
+        featureCutOffsetInput.max = String(metersToCentimeters(segment.length));
+      } else {
+        featureCutOffsetInput.removeAttribute('max');
+      }
+    }
+  };
+
   const syncSelectedFeatureInspector = () => {
     const currentShape = selectedFeatureIndex >= 0 ? featureShapes[selectedFeatureIndex] : null;
     const bounds = geometryBounds();
@@ -3645,7 +4108,9 @@
     if (featureDepthInput) featureDepthInput.value = currentShape?.depth_m ? metersToCentimeters(currentShape.depth_m) : 40;
     if (featureDirectionInput) featureDirectionInput.value = currentShape?.direction === 'outward' ? 'outward' : 'inward';
     if (featureCutLineInput) featureCutLineInput.checked = Boolean(currentShape?.cut_line);
+    if (featureSeparatePanelInput) featureSeparatePanelInput.checked = Boolean(currentShape?.separate_panel);
     if (featureLabelInput) featureLabelInput.value = currentShape?.label ?? '';
+    syncFeatureCutControls(currentShape);
     if (updateFeatureShapeBtn) updateFeatureShapeBtn.disabled = !currentShape;
     if (deleteFeatureShapeBtn) deleteFeatureShapeBtn.disabled = !currentShape;
   };
@@ -3655,6 +4120,15 @@
     const y = centimetersToMeters(featureYInput?.value);
     const width = centimetersToMeters(featureWidthInput?.value);
     const height = centimetersToMeters(featureHeightInput?.value);
+    const kind = featureKindInput?.value ?? base.kind ?? 'cutout';
+    const direction = featureDirectionInput?.value === 'outward' ? 'outward' : 'inward';
+    const radius = centimetersToMeters(featureRadiusInput?.value);
+    const cutLine = Boolean(featureCutLineInput?.checked) && kind === 'cutout';
+    const cutSegmentIndex = Number.isFinite(Number(featureCutSegmentInput?.value))
+      ? Number(featureCutSegmentInput.value)
+      : (Number.isInteger(base.cut_segment_index) ? base.cut_segment_index : null);
+    const cutSegment = Number.isInteger(cutSegmentIndex) ? getSegmentGeometry(cutSegmentIndex) : null;
+    const requestedCutOffset = centimetersToMeters(featureCutOffsetInput?.value);
 
     if (x === null || y === null || width === null || height === null || width <= 0 || height <= 0) {
       return null;
@@ -3662,7 +4136,7 @@
 
     return normalizeFeatureShape({
       id: base.id ?? `feature_${Date.now()}`,
-      kind: featureKindInput?.value ?? base.kind ?? 'cutout',
+      kind,
       figure: featureFigureInput?.value ?? base.figure ?? 'rectangle',
       x_m: clamp(x, 0, workspaceWidth),
       y_m: clamp(y, 0, workspaceHeight),
@@ -3672,12 +4146,23 @@
       source_point_index: base.source_point_index ?? null,
       source_segment_index: base.source_segment_index ?? null,
       offset_m: base.offset_m ?? null,
+      cut_segment_index: cutLine ? cutSegmentIndex : null,
+      cut_offset_m: cutLine
+        ? round(clamp(
+            requestedCutOffset === null
+              ? (Number.isFinite(Number(base.cut_offset_m)) ? Number(base.cut_offset_m) : 0)
+              : requestedCutOffset,
+            0,
+            cutSegment?.length ?? workspaceWidth
+          ))
+        : null,
       depth_m: base.depth_m ?? null,
-      radius_m: base.radius_m ?? (centimetersToMeters(featureRadiusInput?.value) ?? null),
+      radius_m: radius ?? base.radius_m ?? null,
       area_delta_m2: base.area_delta_m2 ?? null,
       perimeter_delta_m: base.perimeter_delta_m ?? null,
-      direction: base.direction ?? (featureDirectionInput?.value === 'outward' ? 'outward' : 'inward'),
-      cut_line: base.cut_line ?? Boolean(featureCutLineInput?.checked),
+      direction,
+      cut_line: cutLine,
+      separate_panel: Boolean(featureSeparatePanelInput?.checked),
       label: featureLabelInput?.value ?? base.label ?? '',
     });
   };
@@ -3704,11 +4189,31 @@
       const sizeLabel = shape.figure === 'rounded_corner'
         ? `R ${metersToCentimeters(shape.radius_m ?? 0)} см`
         : `${metersToCentimeters(shape.width_m)}×${metersToCentimeters(shape.height_m)} см`;
+      const offsetBits = [];
+      if (Number.isFinite(Number(shape.offset_m))) {
+        offsetBits.push(`отступ ${metersToCentimeters(shape.offset_m)} см`);
+      }
+      if (Number.isFinite(Number(shape.depth_m))) {
+        offsetBits.push(`глубина ${metersToCentimeters(shape.depth_m)} см`);
+      }
+      if (shape.cut_line) {
+        const cutBits = [];
+        const cutSegmentIndex = Number.isInteger(shape.cut_segment_index) ? shape.cut_segment_index : shape.source_segment_index;
+        if (Number.isInteger(cutSegmentIndex)) {
+          cutBits.push(`разрез ${segmentLabel(cutSegmentIndex)}`);
+        }
+        if (Number.isFinite(Number(shape.cut_offset_m))) {
+          cutBits.push(`${metersToCentimeters(shape.cut_offset_m)} см`);
+        }
+        offsetBits.push(cutBits.length > 0 ? cutBits.join(' · ') : 'есть разрез');
+      }
+      const modeLabel = shape.separate_panel ? 'Отдельное полотно' : attachmentLabel;
+      const metaLabel = offsetBits.length > 0 ? `${modeLabel} · ${offsetBits.join(' · ')}` : modeLabel;
       row.innerHTML = `
         <span class="feature-row-dot" style="background:${featureKindColors[shape.kind] || '#7c3aed'}"></span>
         <div>
           <div class="feature-row-title">${shape.label && shape.label.trim() !== '' ? shape.label : (featureKindLabels[shape.kind] || shape.kind)} · ${featureFigureLabels[shape.figure] || shape.figure}</div>
-          <div class="feature-row-subtitle">X ${metersToCentimeters(shape.x_m)} / Y ${metersToCentimeters(shape.y_m)} / ${metersToCentimeters(shape.width_m)}×${metersToCentimeters(shape.height_m)} см</div>
+          <div class="feature-row-subtitle">${metaLabel} · ${sizeLabel}</div>
         </div>
         <button type="button" class="btn btn-sm btn-outline-danger">x</button>
       `;
@@ -4561,24 +5066,33 @@
       });
       layer.appendChild(hit);
 
-      if (shape.cut_line && Number.isInteger(shape.source_segment_index)) {
-        const segment = getSegmentGeometry(shape.source_segment_index);
-        if (segment) {
-          const basePoint = pointAlongSegment(shape.source_segment_index, Number(shape.offset_m ?? 0) + (Number(shape.width_m ?? 0) / 2));
-          if (basePoint) {
-            const centerX = round(shapePoints.reduce((sum, point) => sum + point.x, 0) / shapePoints.length);
-            const centerY = round(shapePoints.reduce((sum, point) => sum + point.y, 0) / shapePoints.length);
-            const cutLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            cutLine.setAttribute('x1', basePoint.x);
-            cutLine.setAttribute('y1', basePoint.y);
-            cutLine.setAttribute('x2', centerX);
-            cutLine.setAttribute('y2', centerY);
-            cutLine.setAttribute('stroke', color);
-            cutLine.setAttribute('stroke-width', pixelsToWorld(2));
-            cutLine.setAttribute('stroke-dasharray', `${pixelsToWorld(6)} ${pixelsToWorld(4)}`);
-            cutLine.style.pointerEvents = 'none';
-            layer.appendChild(cutLine);
-          }
+      if (shape.cut_line) {
+        const connector = featureCutConnector(shape);
+        if (connector) {
+          const cutLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          cutLine.setAttribute('x1', connector.start.x);
+          cutLine.setAttribute('y1', connector.start.y);
+          cutLine.setAttribute('x2', connector.end.x);
+          cutLine.setAttribute('y2', connector.end.y);
+          cutLine.setAttribute('stroke', color);
+          cutLine.setAttribute('stroke-width', pixelsToWorld(2));
+          cutLine.setAttribute('stroke-dasharray', `${pixelsToWorld(6)} ${pixelsToWorld(4)}`);
+          cutLine.style.pointerEvents = 'none';
+          layer.appendChild(cutLine);
+
+          const cutLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          cutLabel.setAttribute('x', round((connector.start.x + connector.end.x) / 2));
+          cutLabel.setAttribute('y', round((connector.start.y + connector.end.y) / 2) - pixelsToWorld(6));
+          cutLabel.setAttribute('fill', color);
+          cutLabel.setAttribute('font-size', pixelsToWorld(10));
+          cutLabel.setAttribute('font-weight', '700');
+          cutLabel.setAttribute('text-anchor', 'middle');
+          cutLabel.setAttribute('paint-order', 'stroke');
+          cutLabel.setAttribute('stroke', '#ffffff');
+          cutLabel.setAttribute('stroke-width', labelStrokeWidth);
+          cutLabel.style.pointerEvents = 'none';
+          cutLabel.textContent = 'Разрез';
+          layer.appendChild(cutLabel);
         }
       }
 
@@ -4730,11 +5244,23 @@
 
     if (Array.isArray(lightLinePanelsPreview) && lightLinePanelsPreview.length > 1) {
       lightLinePanelsPreview.forEach((panel, index) => {
+        if (Array.isArray(panel.shape_points) && panel.shape_points.length >= 3) {
+          const panelPolygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+          panelPolygon.setAttribute('points', panel.shape_points.map((point) => `${point.x},${point.y}`).join(' '));
+          panelPolygon.setAttribute('fill', panel.source === 'seam_split' ? 'rgba(124, 58, 237, 0.12)' : 'rgba(5, 150, 105, 0.08)');
+          panelPolygon.setAttribute('stroke', panel.source === 'seam_split' ? '#7c3aed' : '#059669');
+          panelPolygon.setAttribute('stroke-width', pixelsToWorld(panel.source === 'seam_split' ? 2.2 : 1.4));
+          panelPolygon.setAttribute('stroke-dasharray', panel.source === 'seam_split' ? `${pixelsToWorld(8)} ${pixelsToWorld(5)}` : `${pixelsToWorld(4)} ${pixelsToWorld(4)}`);
+          panelPolygon.setAttribute('opacity', panel.source === 'seam_split' ? '0.95' : '0.7');
+          panelPolygon.style.pointerEvents = 'none';
+          layer.appendChild(panelPolygon);
+        }
+
         if (!panel?.centroid) return;
         const panelLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         panelLabel.setAttribute('x', panel.centroid.x);
         panelLabel.setAttribute('y', panel.centroid.y + pixelsToWorld(22));
-        panelLabel.setAttribute('fill', '#047857');
+        panelLabel.setAttribute('fill', panel.source === 'seam_split' ? '#6d28d9' : '#047857');
         panelLabel.setAttribute('font-size', pixelsToWorld(12));
         panelLabel.setAttribute('font-weight', '700');
         panelLabel.setAttribute('text-anchor', 'middle');
@@ -4742,7 +5268,8 @@
         panelLabel.setAttribute('stroke', '#ffffff');
         panelLabel.setAttribute('stroke-width', labelStrokeWidth);
         panelLabel.style.pointerEvents = 'none';
-        panelLabel.textContent = `${panel.label ? panel.label : `П${index + 1}`} · ${String(panel.area_m2).replace('.', ',')} м2`;
+        const panelMeta = Number.isFinite(Number(panel.seam_part_index)) ? ` · часть ${panel.seam_part_index}` : '';
+        panelLabel.textContent = `${panel.label ? panel.label : `П${index + 1}`} · ${String(panel.area_m2).replace('.', ',')} м2${panelMeta}`;
         layer.appendChild(panelLabel);
       });
     }
@@ -5068,8 +5595,13 @@
   const applyWallShift = (inward = true) => {
     const offset = getWallShiftValueMeters();
     if (!offset) return;
-    setInspectorTab('segments');
-    shiftSegmentByOffset(selectedSegmentIndex, offset, inward);
+    const shape = buildWallOffsetFeature(offset, inward);
+    if (!shape) return;
+    pushHistory();
+    featureShapes.push(shape);
+    setSelectedFeature(featureShapes.length - 1);
+    setInspectorTab('features');
+    render();
   };
   applyWallShiftBtn?.addEventListener('click', () => applyWallShift(true));
   wallShiftInwardBtn?.addEventListener('click', () => applyWallShift(true));
@@ -5118,9 +5650,28 @@
   updateFeatureShapeBtn?.addEventListener('click', () => {
     if (selectedFeatureIndex < 0 || !featureShapes[selectedFeatureIndex]) return;
     if (featureShapes[selectedFeatureIndex]?.figure === 'polygon') {
+      const polygonKind = featureKindInput?.value ?? featureShapes[selectedFeatureIndex].kind;
+      const polygonCutLine = Boolean(featureCutLineInput?.checked) && polygonKind === 'cutout';
+      const polygonCutSegmentIndex = Number.isFinite(Number(featureCutSegmentInput?.value))
+        ? Number(featureCutSegmentInput.value)
+        : (Number.isInteger(featureShapes[selectedFeatureIndex]?.cut_segment_index) ? featureShapes[selectedFeatureIndex].cut_segment_index : null);
+      const polygonCutSegment = Number.isInteger(polygonCutSegmentIndex) ? getSegmentGeometry(polygonCutSegmentIndex) : null;
+      const polygonCutOffset = centimetersToMeters(featureCutOffsetInput?.value);
       const nextPolygonShape = normalizeFeatureShape({
         ...featureShapes[selectedFeatureIndex],
-        kind: featureKindInput?.value ?? featureShapes[selectedFeatureIndex].kind,
+        kind: polygonKind,
+        cut_line: polygonCutLine,
+        cut_segment_index: polygonCutLine ? polygonCutSegmentIndex : null,
+        cut_offset_m: polygonCutLine
+          ? round(clamp(
+              polygonCutOffset === null
+                ? (Number(featureShapes[selectedFeatureIndex]?.cut_offset_m ?? 0) || 0)
+                : polygonCutOffset,
+              0,
+              polygonCutSegment?.length ?? workspaceWidth
+            ))
+          : null,
+        separate_panel: Boolean(featureSeparatePanelInput?.checked),
         label: featureLabelInput?.value ?? featureShapes[selectedFeatureIndex].label ?? '',
       }, selectedFeatureIndex);
       if (!nextPolygonShape) return;
@@ -5142,6 +5693,9 @@
     setSelectedFeature(Math.min(selectedFeatureIndex, featureShapes.length - 1));
     render();
   });
+  featureKindInput?.addEventListener('change', () => syncFeatureCutControls(selectedFeatureIndex >= 0 ? featureShapes[selectedFeatureIndex] : null));
+  featureCutLineInput?.addEventListener('change', () => syncFeatureCutControls(selectedFeatureIndex >= 0 ? featureShapes[selectedFeatureIndex] : null));
+  featureCutSegmentInput?.addEventListener('change', () => syncFeatureCutControls(selectedFeatureIndex >= 0 ? featureShapes[selectedFeatureIndex] : null));
   startLightLineBtn?.addEventListener('click', startLightLineDraft);
   addLightLineTemplateBtn?.addEventListener('click', () => {
     const nextShapes = buildLightLineTemplate();
@@ -5371,6 +5925,8 @@
       featureWallOffsetInput,
       featureDepthInput,
       featureDirectionInput,
+      featureCutSegmentInput,
+      featureCutOffsetInput,
       featureLabelInput,
     ].includes(event.target)) {
       if (featureFigureInput?.value === 'polygon') {
@@ -5383,7 +5939,7 @@
       }
       if ([featureRadiusInput].includes(event.target) || (featureFigureInput?.value === 'rounded_corner' && [featureKindInput, featureFigureInput, featureLabelInput].includes(event.target))) {
         roundCornerFeatureBtn?.click();
-      } else if ([featureWallOffsetInput, featureDepthInput, featureDirectionInput].includes(event.target) || featureFigureInput?.value === 'arc') {
+      } else if ([featureWallOffsetInput, featureDepthInput, featureDirectionInput, featureCutSegmentInput, featureCutOffsetInput].includes(event.target) || featureFigureInput?.value === 'arc') {
         addFeatureFromWallBtn?.click();
       } else if (selectedFeatureIndex >= 0) {
         updateFeatureShapeBtn?.click();

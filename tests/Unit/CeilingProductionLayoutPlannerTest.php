@@ -44,7 +44,7 @@ class CeilingProductionLayoutPlannerTest extends TestCase
         $this->assertSame('AB', $plan['panels'][0]['orientation']['segment_label']);
     }
 
-    public function test_it_forces_seam_and_two_strips_when_requested(): void
+    public function test_it_splits_panel_into_two_real_parts_when_seam_is_enabled(): void
     {
         $planner = new CeilingProductionLayoutPlanner();
 
@@ -64,6 +64,12 @@ class CeilingProductionLayoutPlannerTest extends TestCase
             'id' => 'panel_1',
             'label' => 'Полотно 1',
             'area_m2' => 8.75,
+            'shape_points' => [
+                ['x' => 0.0, 'y' => 0.0],
+                ['x' => 3.5, 'y' => 0.0],
+                ['x' => 3.5, 'y' => 2.5],
+                ['x' => 0.0, 'y' => 2.5],
+            ],
             'bounds' => [
                 'min_x' => 0.0,
                 'min_y' => 0.0,
@@ -72,14 +78,18 @@ class CeilingProductionLayoutPlannerTest extends TestCase
             ],
         ]]);
 
-        $this->assertSame(1, $plan['summary']['panels_count']);
+        $this->assertSame(2, $plan['summary']['panels_count']);
         $this->assertSame(2, $plan['summary']['strips_count']);
         $this->assertSame(1, $plan['summary']['seamed_panels_count']);
-        $this->assertSame(2, $plan['panels'][0]['strips_count']);
-        $this->assertSame(1, $plan['panels'][0]['seams_count']);
-        $this->assertSame('seamed', $plan['panels'][0]['layout_type']);
-        $this->assertGreaterThan(0, $plan['panels'][0]['strips'][0]['width_m']);
-        $this->assertGreaterThan(0, $plan['panels'][0]['strips'][1]['width_m']);
         $this->assertSame('Центр помещения', $plan['orientation']['segment_label']);
+        $this->assertSame('panel_1', $plan['panels'][0]['seam_parent_id']);
+        $this->assertSame('panel_1', $plan['panels'][1]['seam_parent_id']);
+        $this->assertSame(1, $plan['panels'][0]['seam_part_index']);
+        $this->assertSame(2, $plan['panels'][1]['seam_part_index']);
+        $this->assertSame(1, $plan['panels'][0]['strips_count']);
+        $this->assertSame(1, $plan['panels'][1]['strips_count']);
+        $this->assertSame('single', $plan['panels'][0]['layout_type']);
+        $this->assertSame('single', $plan['panels'][1]['layout_type']);
+        $this->assertEqualsWithDelta(8.75, $plan['panels'][0]['finished_area_m2'] + $plan['panels'][1]['finished_area_m2'], 0.1);
     }
 }

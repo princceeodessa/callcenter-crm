@@ -1,20 +1,26 @@
 <?php
 
+
 namespace App\Models;
+
 
 use App\Models\Concerns\BelongsToAccount;
 use Illuminate\Database\Eloquent\Model;
+
 
 class CeilingProjectRoom extends Model
 {
     use BelongsToAccount;
 
+
     public const SHAPE_RECTANGLE = 'rectangle';
     public const SHAPE_POLYGON = 'polygon';
+
 
     public const FEATURE_CUTOUT = 'cutout';
     public const FEATURE_LEVEL = 'level';
     public const FEATURE_SHIFT = 'shift';
+
 
     public const FEATURE_RECTANGLE = 'rectangle';
     public const FEATURE_CIRCLE = 'circle';
@@ -22,6 +28,7 @@ class CeilingProjectRoom extends Model
     public const FEATURE_POLYGON = 'polygon';
     public const FEATURE_ARC = 'arc';
     public const FEATURE_ROUNDED_CORNER = 'rounded_corner';
+
 
     protected $fillable = [
         'account_id',
@@ -48,6 +55,7 @@ class CeilingProjectRoom extends Model
         'notes',
     ];
 
+
     protected $casts = [
         'width_m' => 'decimal:2',
         'length_m' => 'decimal:2',
@@ -61,13 +69,21 @@ class CeilingProjectRoom extends Model
         'production_settings' => 'array',
     ];
 
+
     public static function shapeOptions(): array
     {
         return [
             self::SHAPE_RECTANGLE => 'Прямоугольник',
             self::SHAPE_POLYGON => 'Сложная форма',
         ];
+
+
+        return [
+            self::SHAPE_RECTANGLE => 'Прямоугольник',
+            self::SHAPE_POLYGON => 'Сложная форма',
+        ];
     }
+
 
     public static function featureKindOptions(): array
     {
@@ -76,7 +92,15 @@ class CeilingProjectRoom extends Model
             self::FEATURE_LEVEL => 'Уровень',
             self::FEATURE_SHIFT => 'Сдвиг',
         ];
+
+
+        return [
+            self::FEATURE_CUTOUT => 'Вырез',
+            self::FEATURE_LEVEL => 'Уровень',
+            self::FEATURE_SHIFT => 'Сдвиг',
+        ];
     }
+
 
     public static function featureFigureOptions(): array
     {
@@ -88,12 +112,24 @@ class CeilingProjectRoom extends Model
             self::FEATURE_ARC => 'Дуга',
             self::FEATURE_ROUNDED_CORNER => 'Скругление угла',
         ];
+
+
+        return [
+            self::FEATURE_RECTANGLE => 'Прямоугольник',
+            self::FEATURE_CIRCLE => 'Круг',
+            self::FEATURE_TRIANGLE => 'Треугольник',
+            self::FEATURE_POLYGON => 'Многоугольник',
+            self::FEATURE_ARC => 'Дуга',
+            self::FEATURE_ROUNDED_CORNER => 'Скругление угла',
+        ];
     }
+
 
     public function project()
     {
         return $this->belongsTo(CeilingProject::class, 'ceiling_project_id');
     }
+
 
     public function elements()
     {

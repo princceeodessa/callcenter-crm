@@ -53,6 +53,13 @@
       'center_segment' => 'По центру стороны',
       'center_room' => 'По центру помещения',
   ];
+  $sourceLabelMap = [
+      'room' => 'Основной контур',
+      'feature' => 'Отдельная форма',
+      'light_line_split' => 'Разделение световыми линиями',
+      'seam_split' => 'Разделение швом',
+  ];
+  $featureKindLabelMap = \App\Models\CeilingProjectRoom::featureKindOptions();
   $lightLineShapes = is_array($room->light_line_shapes) ? $room->light_line_shapes : [];
   $production = $layoutPlan['settings'] ?? (is_array($room->production_settings) ? $room->production_settings : []);
   $layoutSummary = $layoutPlan['summary'] ?? [];
@@ -94,7 +101,7 @@
       <div class="panels-metric-value">{{ $layoutSummary['strips_count'] ?? 0 }}</div>
     </div>
     <div class="panels-metric">
-      <div class="panels-metric-label">Полотна со швом</div>
+      <div class="panels-metric-label">Шовных комплектов</div>
       <div class="panels-metric-value">{{ $layoutSummary['seamed_panels_count'] ?? 0 }}</div>
     </div>
     <div class="panels-metric">
@@ -126,7 +133,7 @@
         @endif
       </span>
       @if(!empty($production['same_roll_required']))
-        <span class="panel-chip">Один рулон обязательно</span>
+        <span class="panel-chip">Кроить из одного рулона</span>
       @endif
       @if(!empty($production['special_cutting']))
         <span class="panel-chip">Спецраскрой</span>
@@ -149,7 +156,7 @@
     <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-3">
       <div>
         <div class="fw-semibold">Раскрой по полотнам</div>
-        <div class="small text-muted">Для каждого полотна показаны готовый размер, размер заготовки после усадки, полосы рулона и необходимость шва.</div>
+        <div class="small text-muted">Для каждого полотна показаны готовый размер, заготовка после усадки, полосы рулона и происхождение панели.</div>
       </div>
     </div>
 
@@ -159,6 +166,8 @@
       <div class="d-grid gap-3">
         @foreach($plannedPanels as $panel)
           @php($panelProduction = is_array($panel['production'] ?? null) ? $panel['production'] : $production)
+          @php($panelSource = $sourceLabelMap[$panel['source'] ?? 'room'] ?? ($panel['source'] ?? 'Полотно'))
+          @php($panelFeatureKind = isset($panel['feature_kind']) ? ($featureKindLabelMap[$panel['feature_kind']] ?? $panel['feature_kind']) : null)
           <div class="panel-row">
             <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-2">
               <div>
@@ -178,6 +187,13 @@
                   } }}
                 </span>
                 <span class="panel-chip">{{ $textureLabelMap[$panelProduction['texture'] ?? 'matte'] ?? ($panelProduction['texture'] ?? 'Матовый') }}</span>
+                <span class="panel-chip">{{ $panelSource }}</span>
+                @if(isset($panel['seam_part_index']))
+                  <span class="panel-chip">Часть шва {{ $panel['seam_part_index'] }}</span>
+                @endif
+                @if($panelFeatureKind)
+                  <span class="panel-chip">{{ $panelFeatureKind }}</span>
+                @endif
               </div>
             </div>
 

@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Services\Ceiling;
 
 use App\Models\CeilingProject;
@@ -19,8 +18,8 @@ class CeilingSketchRecognitionService
         $payload = $this->runScript($project, $imagePath, 'recognize', $crop);
 
         if (!($payload['success'] ?? false)) {
-            $message = trim((string) ($payload['message'] ?? 'Не удалось распознать эскиз.'));
-            throw new RuntimeException($message !== '' ? $message : 'Не удалось распознать эскиз.');
+            $message = trim((string) ($payload['message'] ?? 'РќРµ СѓРґР°Р»РѕСЃСЊ СЂР°СЃРїРѕР·РЅР°С‚СЊ СЌСЃРєРёР·.'));
+            throw new RuntimeException($message !== '' ? $message : 'РќРµ СѓРґР°Р»РѕСЃСЊ СЂР°СЃРїРѕР·РЅР°С‚СЊ СЌСЃРєРёР·.');
         }
 
         return $payload;
@@ -29,14 +28,14 @@ class CeilingSketchRecognitionService
     private function runScript(CeilingProject $project, string $imagePath, string $mode, ?array $crop = null): array
     {
         if (!is_file($imagePath)) {
-            throw new RuntimeException('Файл эскиза не найден.');
+            throw new RuntimeException('Р¤Р°Р№Р» СЌСЃРєРёР·Р° РЅРµ РЅР°Р№РґРµРЅ.');
         }
 
         $pythonBinary = $this->resolvePythonBinary();
         $scriptPath = base_path('scripts/recognize_ceiling_sketch.py');
 
         if (!is_file($scriptPath)) {
-            throw new RuntimeException('Скрипт распознавания не найден.');
+            throw new RuntimeException('РЎРєСЂРёРїС‚ СЂР°СЃРїРѕР·РЅР°РІР°РЅРёСЏ РЅРµ РЅР°Р№РґРµРЅ.');
         }
 
         $command = [
@@ -55,7 +54,7 @@ class CeilingSketchRecognitionService
             $command[] = json_encode($crop, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         }
 
-        $process = new Process($command, base_path());
+        $process = new Process($command, base_path(), $this->pythonProcessEnvironment());
         $process->setTimeout(180);
         $process->run();
 
@@ -66,14 +65,31 @@ class CeilingSketchRecognitionService
                 throw new RuntimeException(trim((string) $payload['message']));
             }
 
-            throw new RuntimeException(trim($process->getErrorOutput()) ?: 'Не удалось выполнить OCR.');
+            throw new RuntimeException(trim($process->getErrorOutput()) ?: 'РќРµ СѓРґР°Р»РѕСЃСЊ РІС‹РїРѕР»РЅРёС‚СЊ OCR.');
         }
 
         if (!is_array($payload)) {
-            throw new RuntimeException('Скрипт распознавания вернул некорректный ответ.');
+            throw new RuntimeException('РЎРєСЂРёРїС‚ СЂР°СЃРїРѕР·РЅР°РІР°РЅРёСЏ РІРµСЂРЅСѓР» РЅРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РѕС‚РІРµС‚.');
         }
 
         return $payload;
+    }
+
+    /**
+     * РќР° РЅРµРєРѕС‚РѕСЂС‹С… СЃРµСЂРІРµСЂР°С… Python РїР°РґР°РµС‚ РµС‰С‘ РґРѕ Р·Р°РїСѓСЃРєР° СЃРєСЂРёРїС‚Р°,
+     * РµСЃР»Рё РЅРµ РјРѕР¶РµС‚ РїРѕР»СѓС‡РёС‚СЊ СЃР»СѓС‡Р°Р№РЅС‹Рµ Р±Р°Р№С‚С‹ РґР»СЏ hash randomization.
+     * Р¤РёРєСЃРёСЂРѕРІР°РЅРЅС‹Р№ seed СѓР±РёСЂР°РµС‚ СЌС‚Сѓ РїСЂРѕР±Р»РµРјСѓ.
+     *
+     * @return array<string, string>
+     */
+    private function pythonProcessEnvironment(): array
+    {
+        return [
+            'PYTHONHASHSEED' => trim((string) env('CEILING_OCR_PYTHONHASHSEED', '0')) ?: '0',
+            'PYTHONUTF8' => '1',
+            'PYTHONIOENCODING' => 'UTF-8',
+            'PYTHONDONTWRITEBYTECODE' => '1',
+        ];
     }
 
     private function resolvePythonBinary(): string
@@ -101,7 +117,7 @@ class CeilingSketchRecognitionService
             }
         }
 
-        throw new RuntimeException('Не найден Python для OCR. Укажите CEILING_OCR_PYTHON или установите python/python3 с пакетом rapidocr-onnxruntime.');
+        throw new RuntimeException('РќРµ РЅР°Р№РґРµРЅ Python РґР»СЏ OCR. РЈРєР°Р¶РёС‚Рµ CEILING_OCR_PYTHON РёР»Рё СѓСЃС‚Р°РЅРѕРІРёС‚Рµ python/python3 СЃ РїР°РєРµС‚РѕРј rapidocr-onnxruntime.');
     }
 
     private function isUsablePythonBinary(string $candidate): bool
