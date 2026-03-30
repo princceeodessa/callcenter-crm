@@ -1861,6 +1861,20 @@
   };
   const lightLineColor = '#f97316';
   const elementLabels = @json($elementTypeOptions);
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+  const round = (value) => Math.round(value * 100) / 100;
+  const toNumber = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  const metersToCentimeters = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.round(parsed * 100) : '';
+  };
+  const centimetersToMeters = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? round(parsed / 100) : null;
+  };
 
   let points;
   try {
@@ -2045,21 +2059,6 @@
     height: workspaceHeight,
   };
   const viewportAllowance = Math.max(workspaceWidth, workspaceHeight) * 0.45;
-
-  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
-  const round = (value) => Math.round(value * 100) / 100;
-  const toNumber = (value) => {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  };
-  const metersToCentimeters = (value) => {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? Math.round(parsed * 100) : '';
-  };
-  const centimetersToMeters = (value) => {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? round(parsed / 100) : null;
-  };
   const clonePoints = (items = points) => items.map((point) => ({
     x: round(Number(point.x ?? 0)),
     y: round(Number(point.y ?? 0)),
