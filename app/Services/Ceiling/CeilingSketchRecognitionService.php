@@ -9,7 +9,24 @@ use Symfony\Component\Process\Process;
 
 class CeilingSketchRecognitionService
 {
-    public function recognize(CeilingProject $project, string $imagePath): array
+    public function inspect(CeilingProject $project, string $imagePath): array
+    {
+        return $this->runScript($project, $imagePath, 'inspect');
+    }
+
+    public function recognize(CeilingProject $project, string $imagePath, ?array $crop = null): array
+    {
+        $payload = $this->runScript($project, $imagePath, 'recognize', $crop);
+
+        if (!($payload['success'] ?? false)) {
+            $message = trim((string) ($payload['message'] ?? 'Не удалось распознать эскиз.'));
+            throw new RuntimeException($message !== '' ? $message : 'Не удалось распознать эскиз.');
+        }
+
+        return $payload;
+    }
+
+    private function runScript(CeilingProject $project, string $imagePath, string $mode, ?array $crop = null): array
     {
         if (!is_file($imagePath)) {
             throw new RuntimeException('Файл эскиза не найден.');
@@ -18,23 +35,27 @@ class CeilingSketchRecognitionService
         $pythonBinary = $this->resolvePythonBinary();
         $scriptPath = base_path('scripts/recognize_ceiling_sketch.py');
 
-        if (false) {
-            throw new RuntimeException('OCR-окружение не найдено: отсутствует python.exe в .ceiling-ocr-venv.');
-        }
-
         if (!is_file($scriptPath)) {
             throw new RuntimeException('Скрипт распознавания не найден.');
         }
 
-        $process = new Process([
+        $command = [
             $pythonBinary,
             $scriptPath,
             '--image',
             $imagePath,
+            '--mode',
+            $mode,
             '--project-id',
             (string) $project->id,
-        ], base_path());
+        ];
 
+        if (is_array($crop) && $crop !== []) {
+            $command[] = '--crop';
+            $command[] = json_encode($crop, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        }
+
+        $process = new Process($command, base_path());
         $process->setTimeout(180);
         $process->run();
 
@@ -45,16 +66,11 @@ class CeilingSketchRecognitionService
                 throw new RuntimeException(trim((string) $payload['message']));
             }
 
-            throw new RuntimeException(trim($process->getErrorOutput()) ?: 'Не удалось распознать эскиз.');
+            throw new RuntimeException(trim($process->getErrorOutput()) ?: 'Не удалось выполнить OCR.');
         }
 
         if (!is_array($payload)) {
             throw new RuntimeException('Скрипт распознавания вернул некорректный ответ.');
-        }
-
-        if (!($payload['success'] ?? false)) {
-            $message = trim((string) ($payload['message'] ?? 'Не удалось распознать эскиз.'));
-            throw new RuntimeException($message !== '' ? $message : 'Не удалось распознать эскиз.');
         }
 
         return $payload;
@@ -65,8 +81,8 @@ class CeilingSketchRecognitionService
         $configured = trim((string) env('CEILING_OCR_PYTHON', ''));
         $candidates = array_filter([
             $configured !== '' ? $configured : null,
-            base_path('.ceiling-ocr-venv/Scripts/python.exe'),
             base_path('.ceiling-ocr-venv/bin/python'),
+            base_path('.ceiling-ocr-venv/Scripts/python.exe'),
         ]);
 
         foreach ($candidates as $candidate) {
@@ -85,7 +101,7 @@ class CeilingSketchRecognitionService
             }
         }
 
-        throw new RuntimeException('Не найден Python для OCR. Укажите CEILING_OCR_PYTHON или установите python/python3 и пакет rapidocr-onnxruntime.');
+        throw new RuntimeException('Не найден Python для OCR. Укажите CEILING_OCR_PYTHON или установите python/python3 с пакетом rapidocr-onnxruntime.');
     }
 
     private function isUsablePythonBinary(string $candidate): bool

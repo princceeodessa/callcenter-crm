@@ -8,6 +8,11 @@ use Illuminate\Support\Collection;
 
 class CeilingProjectCalculator
 {
+    public function __construct(
+        private readonly ?CeilingLightLinePanelSplitter $panelSplitter = null,
+    ) {
+    }
+
     public function calculateRoom(CeilingProjectRoom|array $room): array
     {
         $payload = $room instanceof CeilingProjectRoom ? $room->toArray() : $room;
@@ -19,6 +24,8 @@ class CeilingProjectCalculator
         $manualArea = $this->toFloat($payload['manual_area_m2'] ?? null);
         $manualPerimeter = $this->toFloat($payload['manual_perimeter_m'] ?? null);
         $shapePoints = $this->normalizePoints($payload['shape_points'] ?? null);
+        $featureShapes = $this->normalizeFeatureShapes($payload['feature_shapes'] ?? null);
+        $lightLineShapes = $this->normalizeLightLineShapes($payload['light_line_shapes'] ?? null);
         $elements = is_array($payload['elements'] ?? null) ? $payload['elements'] : [];
         $corners = max(4, (int) ($payload['corners_count'] ?? 4));
 
@@ -26,12 +33,29 @@ class CeilingProjectCalculator
         $polygonArea = $shapePoints !== [] ? $this->polygonArea($shapePoints) : 0.0;
         $polygonPerimeter = $shapePoints !== [] ? $this->polygonPerimeter($shapePoints) : 0.0;
 
-        $area = $manualArea > 0
+        $baseArea = $manualArea > 0
             ? $manualArea
             : ($isRectangle ? $width * $length : $polygonArea);
-        $perimeter = $manualPerimeter > 0
+        $basePerimeter = $manualPerimeter > 0
             ? $manualPerimeter
             : ($isRectangle ? ($width + $length) * 2 : $polygonPerimeter);
+        $featureMetrics = $this->calculateFeatureShapes($featureShapes);
+        $lightLineMetrics = $this->calculateLightLineShapes($lightLineShapes);
+        $lightLinePanelsCount = count(($this->panelSplitter ?? new CeilingLightLinePanelSplitter())->split(
+            $shapePoints !== []
+                ? $shapePoints
+                : ($isRectangle ? [
+                    ['x' => 0.0, 'y' => 0.0],
+                    ['x' => $width, 'y' => 0.0],
+                    ['x' => $width, 'y' => $length],
+                    ['x' => 0.0, 'y' => $length],
+                ] : []),
+            $lightLineShapes,
+            is_array($payload['production_settings'] ?? null) ? $payload['production_settings'] : []
+        ));
+
+        $area = max(0, $baseArea + $featureMetrics['area_delta_m2']);
+        $perimeter = max(0, $basePerimeter + $featureMetrics['perimeter_delta_m']);
 
         $spotlights = $this->sumElements($elements, 'spotlight');
         $chandeliers = $this->sumElements($elements, 'chandelier');
@@ -67,6 +91,14 @@ class CeilingProjectCalculator
             'pipes_count' => $pipes,
             'curtain_niches_count' => $curtainNiches,
             'ventilation_holes_count' => $ventilationHoles,
+            'feature_shapes_count' => count($featureShapes),
+            'feature_cutouts_count' => $featureMetrics['cutouts_count'],
+            'feature_levels_count' => $featureMetrics['levels_count'],
+            'feature_shifts_count' => $featureMetrics['shifts_count'],
+            'light_line_groups_count' => $lightLineMetrics['groups_count'],
+            'light_line_segments_count' => $lightLineMetrics['segments_count'],
+            'light_line_length_m' => $lightLineMetrics['length_m'],
+            'light_line_panels_count' => $lightLinePanelsCount,
             'cornices_count' => $cornices,
             'cornice_length_m' => $this->round($corniceLength),
             'lighting_points_total' => $spotlights + $chandeliers,
@@ -105,6 +137,14 @@ class CeilingProjectCalculator
         $pipesCount = (int) $calculatedRooms->sum(fn (array $room) => $room['metrics']['pipes_count']);
         $curtainNichesCount = (int) $calculatedRooms->sum(fn (array $room) => $room['metrics']['curtain_niches_count']);
         $ventilationHolesCount = (int) $calculatedRooms->sum(fn (array $room) => $room['metrics']['ventilation_holes_count']);
+        $featureShapesCount = (int) $calculatedRooms->sum(fn (array $room) => $room['metrics']['feature_shapes_count']);
+        $featureCutoutsCount = (int) $calculatedRooms->sum(fn (array $room) => $room['metrics']['feature_cutouts_count']);
+        $featureLevelsCount = (int) $calculatedRooms->sum(fn (array $room) => $room['metrics']['feature_levels_count']);
+        $featureShiftsCount = (int) $calculatedRooms->sum(fn (array $room) => $room['metrics']['feature_shifts_count']);
+        $lightLineGroupsCount = (int) $calculatedRooms->sum(fn (array $room) => $room['metrics']['light_line_groups_count']);
+        $lightLineSegmentsCount = (int) $calculatedRooms->sum(fn (array $room) => $room['metrics']['light_line_segments_count']);
+        $lightLineLength = (float) $calculatedRooms->sum(fn (array $room) => $room['metrics']['light_line_length_m']);
+        $lightLinePanelsCount = (int) $calculatedRooms->sum(fn (array $room) => $room['metrics']['light_line_panels_count']);
         $cornicesCount = (int) $calculatedRooms->sum(fn (array $room) => $room['metrics']['cornices_count']);
         $corniceLength = (float) $calculatedRooms->sum(fn (array $room) => $room['metrics']['cornice_length_m']);
 
@@ -166,6 +206,14 @@ class CeilingProjectCalculator
                 'pipes_count' => $pipesCount,
                 'curtain_niches_count' => $curtainNichesCount,
                 'ventilation_holes_count' => $ventilationHolesCount,
+                'feature_shapes_count' => $featureShapesCount,
+                'feature_cutouts_count' => $featureCutoutsCount,
+                'feature_levels_count' => $featureLevelsCount,
+                'feature_shifts_count' => $featureShiftsCount,
+                'light_line_groups_count' => $lightLineGroupsCount,
+                'light_line_segments_count' => $lightLineSegmentsCount,
+                'light_line_length_m' => $this->round($lightLineLength),
+                'light_line_panels_count' => $lightLinePanelsCount,
                 'cornices_count' => $cornicesCount,
                 'cornice_length_m' => $this->round($corniceLength),
                 'corners_count' => (int) $calculatedRooms->sum(fn (array $room) => $room['metrics']['corners_count']),
@@ -236,6 +284,204 @@ class CeilingProjectCalculator
         return count($points) >= 3 ? $points : [];
     }
 
+    private function normalizeFeatureShapes(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $shapes = [];
+
+        foreach ($value as $shape) {
+            if (!is_array($shape)) {
+                continue;
+            }
+
+            $kind = (string) ($shape['kind'] ?? '');
+            $figure = (string) ($shape['figure'] ?? '');
+            $x = $this->toFloat($shape['x_m'] ?? null);
+            $y = $this->toFloat($shape['y_m'] ?? null);
+            $width = $this->toFloat($shape['width_m'] ?? null);
+            $height = $this->toFloat($shape['height_m'] ?? null);
+            $shapePoints = $this->normalizePoints($shape['shape_points'] ?? null);
+
+            if (
+                !in_array($kind, [
+                    CeilingProjectRoom::FEATURE_CUTOUT,
+                    CeilingProjectRoom::FEATURE_LEVEL,
+                    CeilingProjectRoom::FEATURE_SHIFT,
+                ], true)
+                || !in_array($figure, array_keys(CeilingProjectRoom::featureFigureOptions()), true)
+                || (
+                    $shapePoints === []
+                    && ($x < 0 || $y < 0 || $width <= 0 || $height <= 0)
+                )
+            ) {
+                continue;
+            }
+
+            $shapes[] = [
+                'kind' => $kind,
+                'figure' => $figure,
+                'x_m' => $x,
+                'y_m' => $y,
+                'width_m' => $width,
+                'height_m' => $height,
+                'shape_points' => $shapePoints !== [] ? $shapePoints : null,
+                'area_delta_m2' => is_numeric($shape['area_delta_m2'] ?? null) ? $this->round((float) $shape['area_delta_m2']) : null,
+                'perimeter_delta_m' => is_numeric($shape['perimeter_delta_m'] ?? null) ? $this->round((float) $shape['perimeter_delta_m']) : null,
+            ];
+        }
+
+        return $shapes;
+    }
+
+    private function normalizeLightLineShapes(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $shapes = [];
+
+        foreach ($value as $shape) {
+            if (!is_array($shape)) {
+                continue;
+            }
+
+            $points = $this->normalizeLightLinePoints($shape['points'] ?? null);
+            if (count($points) < 2) {
+                continue;
+            }
+
+            $shapes[] = [
+                'points' => $points,
+                'closed' => (bool) ($shape['closed'] ?? false),
+                'width_m' => max(0.01, $this->toFloat($shape['width_m'] ?? null)),
+            ];
+        }
+
+        return $shapes;
+    }
+
+    private function calculateFeatureShapes(array $shapes): array
+    {
+        $areaDelta = 0.0;
+        $perimeterDelta = 0.0;
+        $cutouts = 0;
+        $levels = 0;
+        $shifts = 0;
+
+        foreach ($shapes as $shape) {
+            $metrics = $this->featureShapeMetrics($shape);
+            $areaOverride = $this->toFloat($shape['area_delta_m2'] ?? null);
+            $perimeterOverride = $this->toFloat($shape['perimeter_delta_m'] ?? null);
+
+            if ($areaOverride !== 0.0 || is_numeric($shape['area_delta_m2'] ?? null)) {
+                $areaDelta += $areaOverride;
+            } else {
+                $sign = in_array($shape['kind'], [
+                    CeilingProjectRoom::FEATURE_CUTOUT,
+                    CeilingProjectRoom::FEATURE_SHIFT,
+                ], true) ? -1 : 1;
+
+                $areaDelta += $metrics['area_m2'] * $sign;
+            }
+
+            if ($perimeterOverride !== 0.0 || is_numeric($shape['perimeter_delta_m'] ?? null)) {
+                $perimeterDelta += $perimeterOverride;
+            } else {
+                $perimeterDelta += $metrics['perimeter_m'];
+            }
+
+            if ($shape['kind'] === CeilingProjectRoom::FEATURE_CUTOUT) {
+                $cutouts++;
+            } elseif ($shape['kind'] === CeilingProjectRoom::FEATURE_LEVEL) {
+                $levels++;
+            } elseif ($shape['kind'] === CeilingProjectRoom::FEATURE_SHIFT) {
+                $shifts++;
+            }
+        }
+
+        return [
+            'area_delta_m2' => $this->round($areaDelta),
+            'perimeter_delta_m' => $this->round($perimeterDelta),
+            'cutouts_count' => $cutouts,
+            'levels_count' => $levels,
+            'shifts_count' => $shifts,
+        ];
+    }
+
+    private function calculateLightLineShapes(array $shapes): array
+    {
+        $groupsCount = count($shapes);
+        $segmentsCount = 0;
+        $length = 0.0;
+
+        foreach ($shapes as $shape) {
+            $points = $shape['points'] ?? [];
+            $count = count($points);
+            if ($count < 2) {
+                continue;
+            }
+
+            $segmentsCount += max(0, $count - 1) + ((bool) ($shape['closed'] ?? false) ? 1 : 0);
+            $length += $this->polylineLength($points, (bool) ($shape['closed'] ?? false));
+        }
+
+        return [
+            'groups_count' => $groupsCount,
+            'segments_count' => $segmentsCount,
+            'length_m' => $this->round($length),
+        ];
+    }
+
+    private function featureShapeMetrics(array $shape): array
+    {
+        $shapePoints = $this->normalizePoints($shape['shape_points'] ?? null);
+        if ($shapePoints !== []) {
+            return [
+                'area_m2' => $this->polygonArea($shapePoints),
+                'perimeter_m' => $this->polygonPerimeter($shapePoints),
+            ];
+        }
+
+        $width = $this->toFloat($shape['width_m'] ?? null);
+        $height = $this->toFloat($shape['height_m'] ?? null);
+
+        return match ((string) ($shape['figure'] ?? CeilingProjectRoom::FEATURE_RECTANGLE)) {
+            CeilingProjectRoom::FEATURE_CIRCLE => $this->circleMetrics(min($width, $height)),
+            CeilingProjectRoom::FEATURE_TRIANGLE => $this->triangleMetrics($width, $height),
+            default => $this->rectangleMetrics($width, $height),
+        };
+    }
+
+    private function rectangleMetrics(float $width, float $height): array
+    {
+        return [
+            'area_m2' => max(0.0, $width * $height),
+            'perimeter_m' => max(0.0, ($width * 2) + ($height * 2)),
+        ];
+    }
+
+    private function triangleMetrics(float $width, float $height): array
+    {
+        return [
+            'area_m2' => max(0.0, ($width * $height) / 2),
+            'perimeter_m' => max(0.0, $width + $height + sqrt(($width ** 2) + ($height ** 2))),
+        ];
+    }
+
+    private function circleMetrics(float $diameter): array
+    {
+        $radius = max(0.0, $diameter / 2);
+
+        return [
+            'area_m2' => max(0.0, pi() * ($radius ** 2)),
+            'perimeter_m' => max(0.0, 2 * pi() * $radius),
+        ];
+    }
+
     private function sumElements(array $elements, string $type): int
     {
         $sum = 0;
@@ -288,6 +534,50 @@ class CeilingProjectCalculator
             $next = ($index + 1) % $count;
             $dx = $points[$next]['x'] - $points[$index]['x'];
             $dy = $points[$next]['y'] - $points[$index]['y'];
+            $sum += sqrt(($dx ** 2) + ($dy ** 2));
+        }
+
+        return $sum;
+    }
+
+    private function normalizeLightLinePoints(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $points = [];
+
+        foreach ($value as $point) {
+            if (!is_array($point)) {
+                continue;
+            }
+
+            $x = $this->toFloat($point['x'] ?? null);
+            $y = $this->toFloat($point['y'] ?? null);
+            $points[] = ['x' => $x, 'y' => $y];
+        }
+
+        return count($points) >= 2 ? $points : [];
+    }
+
+    private function polylineLength(array $points, bool $closed = false): float
+    {
+        $sum = 0.0;
+        $count = count($points);
+        if ($count < 2) {
+            return 0.0;
+        }
+
+        for ($index = 1; $index < $count; $index++) {
+            $dx = $points[$index]['x'] - $points[$index - 1]['x'];
+            $dy = $points[$index]['y'] - $points[$index - 1]['y'];
+            $sum += sqrt(($dx ** 2) + ($dy ** 2));
+        }
+
+        if ($closed && $count > 2) {
+            $dx = $points[0]['x'] - $points[$count - 1]['x'];
+            $dy = $points[0]['y'] - $points[$count - 1]['y'];
             $sum += sqrt(($dx ** 2) + ($dy ** 2));
         }
 

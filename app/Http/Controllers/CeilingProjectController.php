@@ -8,6 +8,8 @@ use App\Models\CeilingProjectRoomElement;
 use App\Models\Deal;
 use App\Models\DealActivity;
 use App\Models\Measurement;
+use App\Services\Ceiling\CeilingLightLinePanelSplitter;
+use App\Services\Ceiling\CeilingProductionLayoutPlanner;
 use App\Services\Ceiling\CeilingProjectCalculator;
 use App\Services\Ceiling\CeilingSketchRecognitionService;
 use Illuminate\Http\RedirectResponse;
@@ -135,6 +137,33 @@ class CeilingProjectController extends Controller
         return view('ceiling-projects.show', $this->buildShowViewData($request, $project, $calculator, 'drafting'));
     }
 
+    public function roomPanels(
+        Request $request,
+        CeilingProject $project,
+        CeilingProjectRoom $room,
+        CeilingProjectCalculator $calculator,
+        CeilingProductionLayoutPlanner $layoutPlanner
+    ): View {
+        $this->authorizeProject($request, $project);
+        $this->authorizeRoom($project, $room);
+
+        $project->loadMissing(['deal.contact', 'measurement']);
+        $room->loadMissing('elements');
+
+        $derivedPanels = $this->buildDerivedPanelsForRoom($room);
+        if ($room->derived_panels !== $derivedPanels) {
+            $room->forceFill(['derived_panels' => $derivedPanels])->save();
+        }
+
+        return view('ceiling-projects.panels', [
+            'project' => $project,
+            'room' => $room,
+            'metrics' => $calculator->calculateRoom($room),
+            'panels' => $derivedPanels,
+            'layoutPlan' => $layoutPlanner->plan($room, $derivedPanels),
+        ]);
+    }
+
     public function update(Request $request, CeilingProject $project): RedirectResponse
     {
         $this->authorizeProject($request, $project);
@@ -213,6 +242,8 @@ class CeilingProjectController extends Controller
         CeilingSketchRecognitionService $recognitionService
     ): RedirectResponse
     {
+        return $this->uploadSketchSheet($request, $project, $recognitionService);
+
         $this->authorizeProject($request, $project);
 
         $data = $request->validate([
@@ -321,6 +352,8 @@ class CeilingProjectController extends Controller
         CeilingProject $project,
         CeilingSketchRecognitionService $recognitionService
     ): RedirectResponse {
+        return $this->recognizeSketchCrop($request, $project, $recognitionService);
+
         $this->authorizeProject($request, $project);
 
         $sketchImagePath = $this->resolveSketchImagePath($project);
@@ -371,7 +404,7 @@ class CeilingProjectController extends Controller
         $room = $this->upsertRecognitionRoom($request, $project, $recognition);
 
         return $this->redirectToProject($request, $project, $room)
-            ->with('status', $room ? 'Room draft updated from sketch recognition.' : 'Sketch recognition was saved, but room geometry was not created.');
+            ->with('status', $room ? 'Черновик комнаты обновлён из OCR.' : 'OCR сохранён, но геометрия комнаты не была создана.');
 
         return $this->redirectToProject($request, $project, $room)
             ->with('status', $room
@@ -423,6 +456,131 @@ class CeilingProjectController extends Controller
 
         return $this->redirectToProject($request, $project, $room)
             ->with('status', 'Черновик комнаты создан из распознавания эскиза.');
+    }
+
+    public function uploadSketchSheet(
+        Request $request,
+        CeilingProject $project,
+        CeilingSketchRecognitionService $recognitionService
+    ): RedirectResponse
+    {
+        $this->authorizeProject($request, $project);
+
+        $data = $request->validate([
+            'sketch_image' => ['required', 'image', 'max:10240'],
+        ]);
+
+        if ($project->sketch_image_path && $project->sketch_image_path !== $project->reference_image_path) {
+            Storage::disk('public')->delete($project->sketch_image_path);
+        }
+
+        $path = $data['sketch_image']->store('ceiling-projects/'.$project->account_id, 'public');
+
+        $project->forceFill([
+            'sketch_image_path' => $path,
+            'sketch_crop' => null,
+            'updated_by_user_id' => $request->user()->id,
+            'last_calculated_at' => now(),
+        ])->save();
+
+        $statusMessage = 'Лист замера загружен. Выделите одну комнату на фото и запустите OCR по выбранной области.';
+
+        try {
+            $inspection = $recognitionService->inspect($project, Storage::disk('public')->path($path));
+            $this->saveRecognitionResult($project, $inspection);
+
+            $candidatesCount = count($inspection['candidates'] ?? []);
+            if ($candidatesCount > 0) {
+                $statusMessage = 'Лист замера загружен. Найдены кандидаты комнат: '.$candidatesCount.'. Выберите нужную область и запустите OCR.';
+            }
+        } catch (RuntimeException $exception) {
+            $this->saveRecognitionResult($project, $this->buildRecognitionState(
+                false,
+                'Автопоиск комнат не сработал. Область можно выделить вручную.',
+                [
+                    'stage' => 'inspect',
+                    'warnings' => [$exception->getMessage()],
+                    'candidates' => [],
+                ],
+            ));
+
+            $statusMessage = 'Лист замера загружен, но автопоиск комнат не сработал. Область можно выделить вручную.';
+        }
+
+        return $this->redirectToProject($request, $project)
+            ->with('status', $statusMessage);
+    }
+
+    public function saveSketchCrop(Request $request, CeilingProject $project): RedirectResponse
+    {
+        $this->authorizeProject($request, $project);
+
+        $crop = $this->validateSketchCrop($request);
+
+        $project->forceFill([
+            'sketch_crop' => $crop,
+            'updated_by_user_id' => $request->user()->id,
+            'last_calculated_at' => now(),
+        ])->save();
+
+        return $this->redirectToProject($request, $project)
+            ->with('status', $crop ? 'Область OCR сохранена.' : 'Область OCR очищена.');
+    }
+
+    public function recognizeSketchCrop(
+        Request $request,
+        CeilingProject $project,
+        CeilingSketchRecognitionService $recognitionService
+    ): RedirectResponse {
+        $this->authorizeProject($request, $project);
+
+        $sketchImagePath = $this->resolveSketchImagePath($project);
+
+        if (!$sketchImagePath || !Storage::disk('public')->exists($sketchImagePath)) {
+            return back()->withErrors([
+                'sketch_image' => 'Сначала загрузите фото эскиза для распознавания.',
+            ]);
+        }
+
+        $crop = $this->validateSketchCrop($request) ?? $this->normalizeSketchCrop($project->sketch_crop);
+
+        if (!$crop) {
+            return back()->withErrors([
+                'sketch_crop' => 'Сначала выделите одну комнату на листе.',
+            ]);
+        }
+
+        $project->forceFill([
+            'sketch_crop' => $crop,
+            'updated_by_user_id' => $request->user()->id,
+            'last_calculated_at' => now(),
+        ])->save();
+
+        try {
+            $result = $recognitionService->recognize(
+                $project,
+                Storage::disk('public')->path($sketchImagePath),
+                $crop,
+            );
+        } catch (RuntimeException $exception) {
+            $this->saveRecognitionResult($project, $this->buildRecognitionState(
+                false,
+                'Не удалось распознать выбранную область.',
+                [
+                    'stage' => 'recognize',
+                    'crop' => $crop,
+                    'warnings' => [$exception->getMessage()],
+                ],
+            ));
+
+            return $this->redirectToProject($request, $project)
+                ->with('status', 'Не удалось распознать выбранную область. Подробности показаны в блоке OCR.');
+        }
+
+        $this->saveRecognitionResult($project, $result);
+
+        return $this->redirectToProject($request, $project)
+            ->with('status', 'Область распознана. Проверьте черновик и при необходимости примените его к комнате.');
     }
 
     public function applyEstimate(Request $request, CeilingProject $project, CeilingProjectCalculator $calculator): RedirectResponse
@@ -489,7 +647,10 @@ class CeilingProjectController extends Controller
         $data = $this->validateRoom($request);
         $nextSortOrder = (int) $project->rooms()->max('sort_order') + 1;
 
-        $room = $project->rooms()->create($this->roomPayload($request, $project, $data, $nextSortOrder));
+        $payload = $this->roomPayload($request, $project, $data, $nextSortOrder);
+        $payload['derived_panels'] = $this->buildDerivedPanelsForRoom($payload);
+
+        $room = $project->rooms()->create($payload);
         $project->forceFill(['last_calculated_at' => now(), 'updated_by_user_id' => $request->user()->id])->save();
 
         if ($this->projectRouteName($request) !== 'ceiling-projects.show') {
@@ -508,7 +669,17 @@ class CeilingProjectController extends Controller
         $this->authorizeRoom($project, $room);
 
         $data = $this->validateRoom($request);
-        $room->update($this->roomPayload($request, $project, $data, $room->sort_order));
+        $payload = $this->roomPayload($request, $project, $data, $room->sort_order);
+        if (($payload['shape_type'] ?? null) === CeilingProjectRoom::SHAPE_RECTANGLE) {
+            $payload['shape_points'] = null;
+            $payload['corners_count'] = 4;
+        }
+        $payload['derived_panels'] = $this->buildDerivedPanelsForRoom(array_merge(
+            $room->only(['shape_points', 'light_line_shapes', 'production_settings']),
+            $payload
+        ));
+
+        $room->update($payload);
         $project->forceFill(['last_calculated_at' => now(), 'updated_by_user_id' => $request->user()->id])->save();
 
         if ($this->projectRouteName($request) !== 'ceiling-projects.show') {
@@ -528,6 +699,9 @@ class CeilingProjectController extends Controller
 
         $data = $request->validate([
             'shape_points_json' => ['required', 'string'],
+            'feature_shapes_json' => ['nullable', 'string'],
+            'light_line_shapes_json' => ['nullable', 'string'],
+            'production_settings_json' => ['nullable', 'string'],
         ]);
 
         $points = json_decode($data['shape_points_json'], true);
@@ -551,9 +725,29 @@ class CeilingProjectController extends Controller
             return back()->withErrors(['shape_points_json' => 'Нужно минимум 3 точки для полигона.']);
         }
 
+        $featureShapes = $this->normalizeFeatureShapes(
+            json_decode((string) ($data['feature_shapes_json'] ?? '[]'), true)
+        );
+        $lightLineShapes = $this->normalizeLightLineShapes(
+            json_decode((string) ($data['light_line_shapes_json'] ?? '[]'), true)
+        );
+        $productionSettings = $this->normalizeProductionSettings(
+            json_decode((string) ($data['production_settings_json'] ?? '{}'), true)
+        );
+        $derivedPanels = $this->buildDerivedPanelsForRoom([
+            'shape_type' => CeilingProjectRoom::SHAPE_POLYGON,
+            'shape_points' => $normalized,
+            'light_line_shapes' => $lightLineShapes,
+            'production_settings' => $productionSettings,
+        ]);
+
         $room->forceFill([
             'shape_type' => CeilingProjectRoom::SHAPE_POLYGON,
             'shape_points' => $normalized,
+            'feature_shapes' => $featureShapes,
+            'light_line_shapes' => $lightLineShapes,
+            'derived_panels' => $derivedPanels,
+            'production_settings' => $productionSettings,
             'corners_count' => count($normalized),
         ])->save();
 
@@ -749,12 +943,366 @@ class CeilingProjectController extends Controller
         ];
     }
 
+    private function buildDerivedPanelsForRoom(CeilingProjectRoom|array $room): array
+    {
+        $payload = $room instanceof CeilingProjectRoom ? $room->toArray() : $room;
+        $points = $this->roomPolygonPoints($payload);
+        if ($points === []) {
+            return [];
+        }
+
+        $lightLineShapes = $this->normalizeLightLineShapes($payload['light_line_shapes'] ?? []);
+        $productionSettings = $this->normalizeProductionSettings($payload['production_settings'] ?? []);
+
+        return app(CeilingLightLinePanelSplitter::class)->split(
+            $points,
+            $lightLineShapes,
+            $productionSettings
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<int, array{x: float, y: float}>
+     */
+    private function roomPolygonPoints(array $payload): array
+    {
+        $shapeType = (string) ($payload['shape_type'] ?? CeilingProjectRoom::SHAPE_RECTANGLE);
+        $points = [];
+
+        if ($shapeType !== CeilingProjectRoom::SHAPE_RECTANGLE && is_array($payload['shape_points'] ?? null)) {
+            foreach ($payload['shape_points'] as $point) {
+                if (!is_array($point) || !isset($point['x'], $point['y']) || !is_numeric($point['x']) || !is_numeric($point['y'])) {
+                    continue;
+                }
+
+                $points[] = [
+                    'x' => round((float) $point['x'], 2),
+                    'y' => round((float) $point['y'], 2),
+                ];
+            }
+        }
+
+        if (count($points) >= 3) {
+            return $points;
+        }
+
+        $width = isset($payload['width_m']) && is_numeric($payload['width_m']) ? round((float) $payload['width_m'], 2) : 0.0;
+        $length = isset($payload['length_m']) && is_numeric($payload['length_m']) ? round((float) $payload['length_m'], 2) : 0.0;
+
+        if ($width <= 0 || $length <= 0) {
+            return [];
+        }
+
+        return [
+            ['x' => 0.0, 'y' => 0.0],
+            ['x' => $width, 'y' => 0.0],
+            ['x' => $width, 'y' => $length],
+            ['x' => 0.0, 'y' => $length],
+        ];
+    }
+
+    private function normalizeFeatureShapes(mixed $shapes): array
+    {
+        if (!is_array($shapes)) {
+            return [];
+        }
+
+        $normalized = [];
+
+        foreach ($shapes as $index => $shape) {
+            $item = $this->normalizeFeatureShape($shape, $index);
+            if ($item === null) {
+                continue;
+            }
+
+            $normalized[] = $item;
+        }
+
+        return array_values($normalized);
+    }
+
+    private function normalizeFeatureShape(mixed $shape, int $index = 0): ?array
+    {
+        if (!is_array($shape)) {
+            return null;
+        }
+
+        $kind = trim((string) ($shape['kind'] ?? CeilingProjectRoom::FEATURE_CUTOUT));
+        $figure = trim((string) ($shape['figure'] ?? CeilingProjectRoom::FEATURE_RECTANGLE));
+        $allowedKinds = array_keys(CeilingProjectRoom::featureKindOptions());
+        $allowedFigures = array_keys(CeilingProjectRoom::featureFigureOptions());
+
+        if (!in_array($kind, $allowedKinds, true) || !in_array($figure, $allowedFigures, true)) {
+            return null;
+        }
+
+        $shapePoints = [];
+        if (is_array($shape['shape_points'] ?? null)) {
+            foreach ($shape['shape_points'] as $point) {
+                if (!is_array($point) || !isset($point['x'], $point['y']) || !is_numeric($point['x']) || !is_numeric($point['y'])) {
+                    continue;
+                }
+
+                $shapePoints[] = [
+                    'x' => round((float) $point['x'], 2),
+                    'y' => round((float) $point['y'], 2),
+                ];
+            }
+        }
+
+        $x = isset($shape['x_m']) && is_numeric($shape['x_m']) ? round((float) $shape['x_m'], 2) : null;
+        $y = isset($shape['y_m']) && is_numeric($shape['y_m']) ? round((float) $shape['y_m'], 2) : null;
+        $width = isset($shape['width_m']) && is_numeric($shape['width_m']) ? round((float) $shape['width_m'], 2) : null;
+        $height = isset($shape['height_m']) && is_numeric($shape['height_m']) ? round((float) $shape['height_m'], 2) : null;
+
+        if (count($shapePoints) >= 3) {
+            $minX = min(array_column($shapePoints, 'x'));
+            $maxX = max(array_column($shapePoints, 'x'));
+            $minY = min(array_column($shapePoints, 'y'));
+            $maxY = max(array_column($shapePoints, 'y'));
+
+            $x = $x ?? round($minX, 2);
+            $y = $y ?? round($minY, 2);
+            $width = $width ?? round($maxX - $minX, 2);
+            $height = $height ?? round($maxY - $minY, 2);
+        }
+
+        if ($x === null || $y === null || $width === null || $height === null || $width <= 0 || $height <= 0) {
+            return null;
+        }
+
+        $id = trim((string) ($shape['id'] ?? ''));
+        if ($id === '') {
+            $id = 'feature_'.($index + 1);
+        }
+
+        return [
+            'id' => $id,
+            'kind' => $kind,
+            'figure' => $figure,
+            'x_m' => $x,
+            'y_m' => $y,
+            'width_m' => $width,
+            'height_m' => $height,
+            'shape_points' => count($shapePoints) >= 3 ? $shapePoints : null,
+            'source_segment_index' => isset($shape['source_segment_index']) && is_numeric($shape['source_segment_index']) ? (int) $shape['source_segment_index'] : null,
+            'source_point_index' => isset($shape['source_point_index']) && is_numeric($shape['source_point_index']) ? (int) $shape['source_point_index'] : null,
+            'offset_m' => isset($shape['offset_m']) && is_numeric($shape['offset_m']) ? round((float) $shape['offset_m'], 2) : null,
+            'depth_m' => isset($shape['depth_m']) && is_numeric($shape['depth_m']) ? round((float) $shape['depth_m'], 2) : null,
+            'radius_m' => isset($shape['radius_m']) && is_numeric($shape['radius_m']) ? round((float) $shape['radius_m'], 2) : null,
+            'area_delta_m2' => isset($shape['area_delta_m2']) && is_numeric($shape['area_delta_m2']) ? round((float) $shape['area_delta_m2'], 4) : null,
+            'perimeter_delta_m' => isset($shape['perimeter_delta_m']) && is_numeric($shape['perimeter_delta_m']) ? round((float) $shape['perimeter_delta_m'], 4) : null,
+            'direction' => in_array(($shape['direction'] ?? null), ['inward', 'outward'], true) ? $shape['direction'] : null,
+            'cut_line' => (bool) ($shape['cut_line'] ?? false),
+            'label' => $this->trimNullable($shape['label'] ?? null),
+        ];
+    }
+
+    private function normalizeLightLineShapes(mixed $shapes): array
+    {
+        if (!is_array($shapes)) {
+            return [];
+        }
+
+        $normalized = [];
+
+        foreach ($shapes as $index => $shape) {
+            $item = $this->normalizeLightLineShape($shape, $index);
+            if ($item === null) {
+                continue;
+            }
+
+            $normalized[] = $item;
+        }
+
+        return array_values($normalized);
+    }
+
+    private function normalizeLightLineShape(mixed $shape, int $index = 0): ?array
+    {
+        if (!is_array($shape)) {
+            return null;
+        }
+
+        $points = [];
+        if (is_array($shape['points'] ?? null)) {
+            foreach ($shape['points'] as $point) {
+                if (!is_array($point) || !isset($point['x'], $point['y']) || !is_numeric($point['x']) || !is_numeric($point['y'])) {
+                    continue;
+                }
+
+                $points[] = [
+                    'x' => round((float) $point['x'], 2),
+                    'y' => round((float) $point['y'], 2),
+                ];
+            }
+        }
+
+        if (count($points) < 2) {
+            return null;
+        }
+
+        $width = isset($shape['width_m']) && is_numeric($shape['width_m']) ? round((float) $shape['width_m'], 3) : null;
+        if ($width === null || $width <= 0) {
+            $width = 0.05;
+        }
+
+        $id = trim((string) ($shape['id'] ?? ''));
+        if ($id === '') {
+            $id = 'light_line_'.($index + 1);
+        }
+
+        $template = trim((string) ($shape['template'] ?? 'custom'));
+        if (!in_array($template, ['custom', 'rectangle', 'cross', 'circle'], true)) {
+            $template = 'custom';
+        }
+
+        return [
+            'id' => $id,
+            'label' => $this->trimNullable($shape['label'] ?? null),
+            'width_m' => $width,
+            'closed' => (bool) ($shape['closed'] ?? false),
+            'template' => $template,
+            'points' => $points,
+        ];
+    }
+
+    private function normalizeProductionSettings(mixed $settings): array
+    {
+        if (!is_array($settings)) {
+            $settings = [];
+        }
+
+        $texture = trim((string) ($settings['texture'] ?? 'matte'));
+        if (!in_array($texture, ['matte', 'satin', 'glossy', 'fabric', 'custom'], true)) {
+            $texture = 'matte';
+        }
+
+        $harpoonType = trim((string) ($settings['harpoon_type'] ?? 'standard'));
+        if (!in_array($harpoonType, ['standard', 'separate', 'none'], true)) {
+            $harpoonType = 'standard';
+        }
+
+        $orientationMode = trim((string) ($settings['orientation_mode'] ?? 'parallel_segment'));
+        if (!in_array($orientationMode, ['parallel_segment', 'perpendicular_segment', 'center_segment', 'center_room'], true)) {
+            $orientationMode = 'parallel_segment';
+        }
+
+        return [
+            'texture' => $texture,
+            'roll_width_cm' => isset($settings['roll_width_cm']) && is_numeric($settings['roll_width_cm']) ? max(50, min(1000, (int) round((float) $settings['roll_width_cm']))) : 320,
+            'harpoon_type' => $harpoonType,
+            'same_roll_required' => (bool) ($settings['same_roll_required'] ?? false),
+            'special_cutting' => (bool) ($settings['special_cutting'] ?? false),
+            'seam_enabled' => (bool) ($settings['seam_enabled'] ?? false),
+            'shrink_x_percent' => isset($settings['shrink_x_percent']) && is_numeric($settings['shrink_x_percent']) ? round((float) $settings['shrink_x_percent'], 2) : 7.0,
+            'shrink_y_percent' => isset($settings['shrink_y_percent']) && is_numeric($settings['shrink_y_percent']) ? round((float) $settings['shrink_y_percent'], 2) : 7.0,
+            'orientation_mode' => $orientationMode,
+            'orientation_segment_index' => isset($settings['orientation_segment_index']) && is_numeric($settings['orientation_segment_index']) ? max(0, (int) $settings['orientation_segment_index']) : 0,
+            'orientation_offset_m' => isset($settings['orientation_offset_m']) && is_numeric($settings['orientation_offset_m']) ? round((float) $settings['orientation_offset_m'], 2) : 0.0,
+            'seam_offset_m' => isset($settings['seam_offset_m']) && is_numeric($settings['seam_offset_m']) ? round((float) $settings['seam_offset_m'], 2) : 0.0,
+            'comment' => $this->trimNullable($settings['comment'] ?? null),
+        ];
+    }
+
+    private function validateSketchCrop(Request $request, bool $allowEmpty = true): ?array
+    {
+        $data = $request->validate([
+            'crop_x' => ['nullable', 'numeric', 'min:0', 'max:1'],
+            'crop_y' => ['nullable', 'numeric', 'min:0', 'max:1'],
+            'crop_width' => ['nullable', 'numeric', 'min:0', 'max:1'],
+            'crop_height' => ['nullable', 'numeric', 'min:0', 'max:1'],
+        ]);
+
+        $providedValues = array_filter([
+            $data['crop_x'] ?? null,
+            $data['crop_y'] ?? null,
+            $data['crop_width'] ?? null,
+            $data['crop_height'] ?? null,
+        ], static fn ($value) => $value !== null && $value !== '');
+
+        if ($providedValues === []) {
+            if ($allowEmpty) {
+                return null;
+            }
+
+            throw ValidationException::withMessages([
+                'sketch_crop' => 'Сначала выделите одну комнату на листе.',
+            ]);
+        }
+
+        if (
+            !isset($data['crop_x'], $data['crop_y'], $data['crop_width'], $data['crop_height'])
+            || $data['crop_x'] === ''
+            || $data['crop_y'] === ''
+            || $data['crop_width'] === ''
+            || $data['crop_height'] === ''
+        ) {
+            throw ValidationException::withMessages([
+                'sketch_crop' => 'Область OCR должна быть выделена целиком.',
+            ]);
+        }
+
+        return $this->normalizeSketchCrop([
+            'x' => $data['crop_x'],
+            'y' => $data['crop_y'],
+            'width' => $data['crop_width'],
+            'height' => $data['crop_height'],
+        ]);
+    }
+
+    private function normalizeSketchCrop(mixed $crop): ?array
+    {
+        if (!is_array($crop)) {
+            return null;
+        }
+
+        $x = isset($crop['x']) && is_numeric($crop['x']) ? (float) $crop['x'] : null;
+        $y = isset($crop['y']) && is_numeric($crop['y']) ? (float) $crop['y'] : null;
+        $width = isset($crop['width']) && is_numeric($crop['width']) ? (float) $crop['width'] : null;
+        $height = isset($crop['height']) && is_numeric($crop['height']) ? (float) $crop['height'] : null;
+
+        if ($x === null || $y === null || $width === null || $height === null) {
+            return null;
+        }
+
+        $x = max(0.0, min(0.98, $x));
+        $y = max(0.0, min(0.98, $y));
+        $width = max(0.0, min(1.0 - $x, $width));
+        $height = max(0.0, min(1.0 - $y, $height));
+
+        if ($width < 0.02 || $height < 0.02) {
+            return null;
+        }
+
+        return [
+            'x' => round($x, 5),
+            'y' => round($y, 5),
+            'width' => round($width, 5),
+            'height' => round($height, 5),
+        ];
+    }
+
+    private function buildRecognitionState(bool $success, string $message, array $extra = []): array
+    {
+        return array_merge([
+            'success' => $success,
+            'message' => trim($message) !== '' ? trim($message) : 'Не удалось распознать эскиз.',
+            'warnings' => [],
+            'shape' => ['type' => 'unknown'],
+            'stage' => 'recognize',
+            'candidates' => [],
+        ], $extra);
+    }
+
     private function buildShowViewData(Request $request, CeilingProject $project, CeilingProjectCalculator $calculator, string $viewMode): array
     {
         $project->load(['deal.contact', 'rooms', 'measurement']);
         $project->load('rooms.elements');
 
         $summary = $calculator->calculateProject($project);
+        $recognition = $this->loadRecognitionResult($project);
         $selectedRoomId = (int) $request->query('room', 0);
         $selectedRoom = $selectedRoomId > 0
             ? $project->rooms->firstWhere('id', $selectedRoomId)
@@ -765,13 +1313,17 @@ class CeilingProjectController extends Controller
             'summary' => $summary,
             'selectedRoom' => $selectedRoom,
             'viewMode' => $viewMode,
-            'sketchRecognition' => $this->loadRecognitionResult($project),
+            'sketchRecognition' => $recognition,
+            'sketchCrop' => $this->normalizeSketchCrop($project->sketch_crop)
+                ?? $this->normalizeSketchCrop($recognition['crop'] ?? null),
             'availableDeals' => $this->availableDeals($request->user()->account_id),
             'measurements' => $this->availableMeasurements($request->user()->account_id),
             'statusOptions' => CeilingProject::statusOptions(),
             'materialOptions' => CeilingProject::materialOptions(),
             'textureOptions' => CeilingProject::textureOptions(),
             'shapeOptions' => CeilingProjectRoom::shapeOptions(),
+            'featureKindOptions' => CeilingProjectRoom::featureKindOptions(),
+            'featureFigureOptions' => CeilingProjectRoom::featureFigureOptions(),
             'elementTypeOptions' => CeilingProjectRoomElement::typeOptions(),
             'elementPlacementOptions' => CeilingProjectRoomElement::placementOptions(),
             'sketchImageUrl' => $this->resolveSketchImagePath($project)
@@ -1039,6 +1591,23 @@ class CeilingProjectController extends Controller
     private function buildRecognitionRoomNotes(array $recognition): string
     {
         $measurements = $recognition['measurements'] ?? [];
+        $segments = collect($recognition['segments'] ?? [])
+            ->filter(fn ($segment) => is_array($segment))
+            ->map(function (array $segment) {
+                $label = trim((string) ($segment['label'] ?? ''));
+                $value = $segment['ocr_value_cm'] ?? $segment['resolved_value_cm'] ?? $segment['approx_value_cm'] ?? null;
+                $suffix = isset($segment['ocr_value_cm'])
+                    ? 'ocr'
+                    : (isset($segment['resolved_value_cm']) ? 'mix' : 'draft');
+
+                if ($label === '' || !is_numeric($value)) {
+                    return null;
+                }
+
+                return sprintf('%s: %s см (%s)', $label, (string) (int) round((float) $value), $suffix);
+            })
+            ->filter()
+            ->values();
         $rawText = trim((string) ($recognition['text'] ?? ''));
         $warnings = collect($recognition['warnings'] ?? [])
             ->filter(fn ($warning) => trim((string) $warning) !== '')
@@ -1062,6 +1631,10 @@ class CeilingProjectController extends Controller
 
         if (!empty($measurements['perimeter_m'])) {
             $lines[] = 'Периметр OCR: '.$measurements['perimeter_m'].' м';
+        }
+
+        if ($segments->isNotEmpty()) {
+            $lines[] = 'Стороны OCR: '.$segments->implode(', ');
         }
 
         if ($rawText !== '') {
