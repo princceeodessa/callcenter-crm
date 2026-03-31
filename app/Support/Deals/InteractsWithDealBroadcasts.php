@@ -47,6 +47,10 @@ trait InteractsWithDealBroadcasts
             ->get();
 
         foreach ($deals as $deal) {
+            if (!is_string($deal->product_category) || !array_key_exists($deal->product_category, $recipients)) {
+                continue;
+            }
+
             $conversations = $deal->conversations->values();
 
             if ($conversations->isEmpty()) {

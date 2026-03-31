@@ -86,13 +86,24 @@ class TaskController extends Controller
             ->get(['id', 'title', 'title_is_custom', 'contact_id', 'updated_at']);
 
         $productCategoryOptions = Deal::productCategoryOptions();
-        $broadcastTemplates = $this->broadcastTemplates();
-        $broadcastRecipients = $this->broadcastRecipientsByCategory($user->account_id);
-        $todayBroadcastCounts = [];
-        foreach ($productCategoryOptions as $categoryKey => $categoryLabel) {
-            $todayBroadcastCounts[$categoryKey] = count($broadcastRecipients[$categoryKey] ?? []);
+        $broadcastTemplates = [];
+        $broadcastRecipients = array_fill_keys(array_keys($productCategoryOptions), []);
+        $todayBroadcastCounts = array_fill_keys(array_keys($productCategoryOptions), 0);
+        $broadcastTargetModeOptions = [
+            'primary' => 'Один чат на сделку',
+            'all' => 'Все чаты сделки',
+        ];
+
+        try {
+            $broadcastTemplates = $this->broadcastTemplates();
+            $broadcastRecipients = $this->broadcastRecipientsByCategory($user->account_id);
+            foreach ($productCategoryOptions as $categoryKey => $categoryLabel) {
+                $todayBroadcastCounts[$categoryKey] = count($broadcastRecipients[$categoryKey] ?? []);
+            }
+            $broadcastTargetModeOptions = $this->broadcastTargetModeOptions();
+        } catch (\Throwable $e) {
+            report($e);
         }
-        $broadcastTargetModeOptions = $this->broadcastTargetModeOptions();
 
         return view('tasks.index', [
             'selectedTasks' => $selectedTasks,
