@@ -99,7 +99,17 @@
                         <div class="text-muted small" id="broadcastCategoryNote">Выберите категорию, чтобы увидеть адресатов на сегодня.</div>
                         <span class="badge text-bg-light" id="broadcastRecipientCounter">0</span>
                     </div>
+                    <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap mt-3" id="broadcastRecipientActions">
+                        <div class="text-muted small" id="broadcastSelectionSummary">Можно снять галочку с тех, кому не нужно отправлять.</div>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="broadcastSelectAllButton">Выбрать всех</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="broadcastClearAllButton">Снять всех</button>
+                        </div>
+                    </div>
                     <div class="broadcast-recipient-list d-flex flex-column gap-2 mt-3" id="broadcastRecipientList"></div>
+                    @error('broadcast_deal_ids')
+                        <div class="text-danger small mt-2">{{ $message }}</div>
+                    @enderror
                 </div>
             </div>
 

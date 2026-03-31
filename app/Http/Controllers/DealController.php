@@ -541,6 +541,8 @@ class DealController extends Controller
             'broadcast_template_key' => ['nullable', 'string', 'max:100'],
             'broadcast_target_mode' => ['required', Rule::in(array_keys($targetModeOptions))],
             'broadcast_text' => ['required', 'string', 'max:4000'],
+            'broadcast_deal_ids' => ['nullable', 'array'],
+            'broadcast_deal_ids.*' => ['integer'],
         ]);
 
         $text = trim((string) $data['broadcast_text']);
@@ -550,7 +552,20 @@ class DealController extends Controller
                 ->withInput();
         }
 
+        $selectedDealIds = collect($data['broadcast_deal_ids'] ?? [])
+            ->map(static fn ($dealId) => (int) $dealId)
+            ->filter(static fn ($dealId) => $dealId > 0)
+            ->unique()
+            ->values();
+
+        if ($selectedDealIds->isEmpty()) {
+            return back()
+                ->withErrors(['broadcast_deal_ids' => 'Выберите хотя бы одну сделку для рассылки.'])
+                ->withInput();
+        }
+
         $deals = $this->traitEligibleBroadcastDealsQuery($user->account_id, $data['broadcast_category'])
+            ->whereIn('id', $selectedDealIds->all())
             ->with([
                 'contact',
                 'conversations' => fn ($query) => $query
@@ -561,6 +576,12 @@ class DealController extends Controller
                     ->orderByDesc('id'),
             ])
             ->get();
+
+        if ($deals->isEmpty()) {
+            return back()
+                ->withErrors(['broadcast_deal_ids' => 'По выбранным сделкам на сегодня нет доступных адресатов.'])
+                ->withInput();
+        }
 
         $targetMode = $data['broadcast_target_mode'];
         $targetModeLabel = $targetModeOptions[$targetMode] ?? $targetMode;

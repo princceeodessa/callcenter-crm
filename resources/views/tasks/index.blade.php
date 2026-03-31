@@ -35,6 +35,18 @@
         max-height: 18rem;
         overflow: auto;
     }
+    .broadcast-recipient-card {
+        display: block;
+        transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
+    }
+    .broadcast-recipient-card:hover {
+        border-color: rgba(37, 99, 235, .35);
+    }
+    .broadcast-recipient-card.is-selected {
+        border-color: rgba(37, 99, 235, .65);
+        box-shadow: 0 10px 24px rgba(37, 99, 235, .08);
+        background: rgba(37, 99, 235, .04) !important;
+    }
 </style>
 @endpush
 
@@ -49,9 +61,15 @@
     $selectedBroadcastTemplate = old('broadcast_template_key', '');
     $selectedBroadcastTargetMode = old('broadcast_target_mode', array_key_first($broadcastTargetModeOptions) ?: 'primary');
     $selectedBroadcastText = old('broadcast_text', '');
+    $selectedBroadcastDealIds = collect(old('broadcast_deal_ids', []))
+        ->map(static fn ($dealId) => (int) $dealId)
+        ->filter(static fn ($dealId) => $dealId > 0)
+        ->values()
+        ->all();
     $broadcastTemplatesJson = $broadcastTemplates;
     $broadcastRecipientsJson = $broadcastRecipients;
     $broadcastCountsJson = $todayBroadcastCounts;
+    $selectedBroadcastDealIdsJson = $selectedBroadcastDealIds;
     $broadcastReport = session('broadcast_report');
     $broadcastPreviewError = $broadcastPreviewError ?? null;
 
@@ -342,25 +360,46 @@
 (() => {
     const templates = @json($broadcastTemplatesJson);
     const recipientsByCategory = @json($broadcastRecipientsJson);
-    const counts = @json($broadcastCountsJson);
+    const initialSelectedDealIds = @json($selectedBroadcastDealIdsJson);
     const categoryButtons = Array.from(document.querySelectorAll('[data-broadcast-category]'));
     const categoryInput = document.getElementById('broadcastCategoryInput');
     const templateInput = document.getElementById('broadcastTemplateInput');
     const templateList = document.getElementById('broadcastTemplateList');
     const recipientList = document.getElementById('broadcastRecipientList');
     const recipientCounter = document.getElementById('broadcastRecipientCounter');
+    const recipientActions = document.getElementById('broadcastRecipientActions');
+    const selectionSummary = document.getElementById('broadcastSelectionSummary');
     const textArea = document.getElementById('broadcastText');
     const submitButton = document.getElementById('broadcastSubmitButton');
     const eligibleSummary = document.getElementById('broadcastEligibleSummary');
     const categoryNote = document.getElementById('broadcastCategoryNote');
+    const selectAllButton = document.getElementById('broadcastSelectAllButton');
+    const clearAllButton = document.getElementById('broadcastClearAllButton');
     const targetModeInputs = Array.from(document.querySelectorAll('input[name="broadcast_target_mode"]'));
 
-    if (!categoryButtons.length || !categoryInput || !templateInput || !templateList || !recipientList || !recipientCounter || !textArea || !submitButton || !eligibleSummary || !categoryNote) {
+    if (
+        !categoryButtons.length
+        || !categoryInput
+        || !templateInput
+        || !templateList
+        || !recipientList
+        || !recipientCounter
+        || !recipientActions
+        || !selectionSummary
+        || !textArea
+        || !submitButton
+        || !eligibleSummary
+        || !categoryNote
+        || !selectAllButton
+        || !clearAllButton
+    ) {
         return;
     }
 
     let selectedCategory = categoryInput.value || categoryButtons[0].dataset.broadcastCategory;
     let selectedTemplateKey = templateInput.value || '';
+    const selectionSeedCategory = selectedCategory;
+    const selectedDealsByCategory = {};
 
     function escapeHtml(value) {
         return String(value ?? '')
@@ -379,8 +418,50 @@
         return targetModeInputs.find((input) => input.checked)?.value || 'primary';
     }
 
+    function recipientsForCategory(categoryKey) {
+        return Array.isArray(recipientsByCategory[categoryKey]) ? recipientsByCategory[categoryKey] : [];
+    }
+
     function recipientsForSelectedCategory() {
-        return Array.isArray(recipientsByCategory[selectedCategory]) ? recipientsByCategory[selectedCategory] : [];
+        return recipientsForCategory(selectedCategory);
+    }
+
+    function normalizedDealIds(items, rawIds = []) {
+        const availableIds = items
+            .map((item) => Number(item.deal_id || 0))
+            .filter((dealId) => Number.isInteger(dealId) && dealId > 0);
+        const availableIdSet = new Set(availableIds);
+
+        return Array.from(new Set(
+            rawIds
+                .map((dealId) => Number(dealId || 0))
+                .filter((dealId) => Number.isInteger(dealId) && dealId > 0 && availableIdSet.has(dealId))
+        ));
+    }
+
+    function ensureRecipientSelection(categoryKey) {
+        const items = recipientsForCategory(categoryKey);
+
+        if (Object.prototype.hasOwnProperty.call(selectedDealsByCategory, categoryKey)) {
+            selectedDealsByCategory[categoryKey] = normalizedDealIds(items, selectedDealsByCategory[categoryKey]);
+            return;
+        }
+
+        const seedIds = initialSelectedDealIds.length && categoryKey === selectionSeedCategory
+            ? initialSelectedDealIds
+            : items.map((item) => item.deal_id);
+
+        selectedDealsByCategory[categoryKey] = normalizedDealIds(items, seedIds);
+    }
+
+    function selectedDealIds() {
+        ensureRecipientSelection(selectedCategory);
+        return selectedDealsByCategory[selectedCategory] || [];
+    }
+
+    function selectedRecipients(items) {
+        const selectedIds = new Set(selectedDealIds());
+        return items.filter((item) => selectedIds.has(Number(item.deal_id || 0)));
     }
 
     function chatCount(items, mode) {
@@ -400,18 +481,35 @@
         });
     }
 
+    function updateRecipientSummary(items, selectedItems, mode) {
+        const totalDealCount = items.length;
+        const totalChatCount = chatCount(items, mode);
+        const selectedDealCount = selectedItems.length;
+        const selectedChatCount = chatCount(selectedItems, mode);
+        const category = categoryLabel(selectedCategory);
+
+        recipientCounter.textContent = `${selectedDealCount} сделок / ${selectedChatCount} чатов`;
+        eligibleSummary.textContent = `Получатели: ${selectedDealCount} сделок / ${selectedChatCount} чатов`;
+        selectionSummary.textContent = totalDealCount > 0
+            ? `Выбрано ${selectedDealCount} из ${totalDealCount} сделок (${selectedChatCount} из ${totalChatCount} чатов).`
+            : 'Можно снять галочку с тех, кому не нужно отправлять.';
+        categoryNote.textContent = totalDealCount > 0
+            ? `Категория «${category}»: снимите галочку у тех, кого нужно исключить из рассылки. Режим сейчас ${mode === 'all' ? 'во все чаты сделки' : 'в один чат на сделку'}.`
+            : `На сегодня нет открытых сделок категории «${category}» с делами и доступными чатами VK/Avito.`;
+
+        recipientActions.classList.toggle('d-none', totalDealCount <= 0);
+        selectAllButton.disabled = totalDealCount <= 0 || selectedDealCount === totalDealCount;
+        clearAllButton.disabled = totalDealCount <= 0 || selectedDealCount === 0;
+        submitButton.disabled = selectedDealCount <= 0;
+    }
+
     function renderRecipients() {
         const items = recipientsForSelectedCategory();
         const mode = selectedTargetMode();
-        const dealCount = Number(counts[selectedCategory] || items.length || 0);
-        const totalChatCount = chatCount(items, mode);
+        const selectedItems = selectedRecipients(items);
+        const selectedIds = new Set(selectedDealIds());
 
-        recipientCounter.textContent = `${dealCount} сделок / ${totalChatCount} чатов`;
-        eligibleSummary.textContent = `Получатели: ${dealCount} сделок / ${totalChatCount} чатов`;
-        categoryNote.textContent = dealCount > 0
-            ? `Категория «${categoryLabel(selectedCategory)}»: видно всех адресатов на сегодня. Режим сейчас ${mode === 'all' ? 'во все чаты сделки' : 'в один чат на сделку'}.`
-            : `На сегодня нет открытых сделок категории «${categoryLabel(selectedCategory)}» с делами и доступными чатами VK/Avito.`;
-        submitButton.disabled = dealCount <= 0;
+        updateRecipientSummary(items, selectedItems, mode);
 
         if (!items.length) {
             recipientList.innerHTML = '<div class="text-muted small">Список получателей пуст.</div>';
@@ -419,6 +517,8 @@
         }
 
         recipientList.innerHTML = items.map((item) => {
+            const dealId = Number(item.deal_id || 0);
+            const isSelected = selectedIds.has(dealId);
             const details = [item.contact_name, item.phone].filter(Boolean).join(' • ');
             const taskTimes = Array.isArray(item.task_times) && item.task_times.length
                 ? `Дело сегодня: ${item.task_times.join(', ')}`
@@ -431,18 +531,33 @@
                 }).join(' ')
                 : '';
             const primaryLabel = escapeHtml(item.primary_chat_label || 'Чат');
+            const modeNote = mode === 'all'
+                ? `Будет отправлено во все чаты сделки: ${Number(item.chat_count || 0)}.`
+                : 'Будет отправлено в один чат сделки.';
 
             return `
-                <div class="border rounded-3 bg-white p-3">
-                    <div class="d-flex align-items-start justify-content-between gap-2 flex-wrap">
-                        <div>
-                            <a class="fw-semibold text-decoration-none" href="${escapeHtml(item.url || '#')}">${escapeHtml(item.label || 'Сделка')}</a>
-                            <div class="text-muted small mt-1">${escapeHtml(details || 'Без контакта')}</div>
-                            <div class="text-muted small mt-1">${escapeHtml(taskTimes)}</div>
+                <div class="broadcast-recipient-card border rounded-3 bg-white p-3 ${isSelected ? 'is-selected' : ''}" data-deal-id="${dealId}">
+                    <div class="d-flex align-items-start gap-3">
+                        <input
+                            class="form-check-input mt-1 broadcast-recipient-checkbox"
+                            type="checkbox"
+                            name="broadcast_deal_ids[]"
+                            value="${dealId}"
+                            ${isSelected ? 'checked' : ''}
+                        >
+                        <div class="flex-grow-1">
+                            <div class="d-flex align-items-start justify-content-between gap-2 flex-wrap">
+                                <div>
+                                    <a class="fw-semibold text-decoration-none" href="${escapeHtml(item.url || '#')}">${escapeHtml(item.label || 'Сделка')}</a>
+                                    <div class="text-muted small mt-1">${escapeHtml(details || 'Без контакта')}</div>
+                                    <div class="text-muted small mt-1">${escapeHtml(taskTimes)}</div>
+                                    <div class="text-muted small mt-1">${escapeHtml(modeNote)}</div>
+                                </div>
+                                <div class="badge bg-light text-dark border">Основной чат: ${primaryLabel}</div>
+                            </div>
+                            <div class="d-flex gap-1 flex-wrap mt-2">${channelBadges}</div>
                         </div>
-                        <div class="badge bg-light text-dark border">Основной чат: ${primaryLabel}</div>
                     </div>
-                    <div class="d-flex gap-1 flex-wrap mt-2">${channelBadges}</div>
                 </div>
             `;
         }).join('');
@@ -501,6 +616,38 @@
             renderRecipients();
             renderTemplates();
         });
+    });
+
+    recipientList.addEventListener('change', (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement) || !target.classList.contains('broadcast-recipient-checkbox')) {
+            return;
+        }
+
+        ensureRecipientSelection(selectedCategory);
+
+        const dealId = Number(target.value || 0);
+        const updatedSelection = new Set(selectedDealsByCategory[selectedCategory] || []);
+
+        if (target.checked) {
+            updatedSelection.add(dealId);
+        } else {
+            updatedSelection.delete(dealId);
+        }
+
+        selectedDealsByCategory[selectedCategory] = Array.from(updatedSelection);
+        renderRecipients();
+    });
+
+    selectAllButton.addEventListener('click', () => {
+        const items = recipientsForSelectedCategory();
+        selectedDealsByCategory[selectedCategory] = normalizedDealIds(items, items.map((item) => item.deal_id));
+        renderRecipients();
+    });
+
+    clearAllButton.addEventListener('click', () => {
+        selectedDealsByCategory[selectedCategory] = [];
+        renderRecipients();
     });
 
     targetModeInputs.forEach((input) => {
