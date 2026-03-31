@@ -36,7 +36,7 @@ trait InteractsWithDealBroadcasts
                 },
                 'conversations' => function ($query) {
                     $query
-                        ->select(['id', 'deal_id', 'channel', 'source_label', 'external_id', 'last_message_at'])
+                        ->select(['id', 'deal_id', 'channel', 'external_id', 'last_message_at'])
                         ->whereIn('channel', ['vk', 'avito'])
                         ->whereNotNull('external_id')
                         ->where('external_id', '!=', '')
