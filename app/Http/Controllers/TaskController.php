@@ -8,12 +8,15 @@ use App\Models\Task;
 use App\Models\User;
 use App\Services\Integrations\BitrixTaskSyncService;
 use App\Services\Tasks\TaskWorkflowService;
+use App\Support\Deals\InteractsWithDealBroadcasts;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 
 class TaskController extends Controller
 {
+    use InteractsWithDealBroadcasts;
+
     public function index(Request $request)
     {
         $user = Auth::user();
@@ -82,6 +85,15 @@ class TaskController extends Controller
             ->limit(300)
             ->get(['id', 'title', 'title_is_custom', 'contact_id', 'updated_at']);
 
+        $productCategoryOptions = Deal::productCategoryOptions();
+        $broadcastTemplates = $this->broadcastTemplates();
+        $broadcastRecipients = $this->broadcastRecipientsByCategory($user->account_id);
+        $todayBroadcastCounts = [];
+        foreach ($productCategoryOptions as $categoryKey => $categoryLabel) {
+            $todayBroadcastCounts[$categoryKey] = count($broadcastRecipients[$categoryKey] ?? []);
+        }
+        $broadcastTargetModeOptions = $this->broadcastTargetModeOptions();
+
         return view('tasks.index', [
             'selectedTasks' => $selectedTasks,
             'previousTasks' => $previousTasks,
@@ -94,6 +106,11 @@ class TaskController extends Controller
             'focusDateLabel' => $dayStart->format('d.m.Y'),
             'isTodayFocusDate' => $dayStart->isSameDay(now()),
             'editingTaskId' => max(0, (int) $request->query('edit_task', 0)),
+            'productCategoryOptions' => $productCategoryOptions,
+            'broadcastTemplates' => $broadcastTemplates,
+            'broadcastRecipients' => $broadcastRecipients,
+            'todayBroadcastCounts' => $todayBroadcastCounts,
+            'broadcastTargetModeOptions' => $broadcastTargetModeOptions,
         ]);
     }
 

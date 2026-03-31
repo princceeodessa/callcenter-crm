@@ -1,6 +1,59 @@
 @extends('layouts.app')
 
+@push('styles')
+<style>
+    .broadcast-category-btn.active {
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,.12), 0 10px 24px rgba(15,23,42,.18);
+    }
+    .broadcast-template-option {
+        border: 1px solid rgba(15, 23, 42, .08);
+        border-radius: 1rem;
+        background: rgba(255,255,255,.75);
+        padding: .9rem 1rem;
+        text-align: left;
+        transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+    }
+    .broadcast-template-option:hover {
+        border-color: rgba(37, 99, 235, .45);
+        transform: translateY(-1px);
+    }
+    .broadcast-template-option.active {
+        border-color: rgba(37, 99, 235, .7);
+        box-shadow: 0 14px 28px rgba(37, 99, 235, .12);
+        background: rgba(37, 99, 235, .06);
+    }
+    .broadcast-template-title {
+        font-weight: 700;
+        margin-bottom: .35rem;
+    }
+    .broadcast-template-preview {
+        color: #64748b;
+        font-size: .9rem;
+        line-height: 1.35;
+    }
+    .broadcast-recipient-list {
+        max-height: 18rem;
+        overflow: auto;
+    }
+</style>
+@endpush
+
 @php
+    $productCategoryOptions = $productCategoryOptions ?? [];
+    $broadcastTemplates = $broadcastTemplates ?? [];
+    $broadcastRecipients = $broadcastRecipients ?? [];
+    $todayBroadcastCounts = $todayBroadcastCounts ?? [];
+    $broadcastTargetModeOptions = $broadcastTargetModeOptions ?? [];
+    $firstCategoryWithRecipients = collect($todayBroadcastCounts)->filter(fn ($count) => (int) $count > 0)->keys()->first();
+    $selectedBroadcastCategory = old('broadcast_category', $firstCategoryWithRecipients ?? array_key_first($broadcastTemplates) ?? array_key_first($productCategoryOptions));
+    $selectedBroadcastTemplate = old('broadcast_template_key', '');
+    $selectedBroadcastTargetMode = old('broadcast_target_mode', array_key_first($broadcastTargetModeOptions) ?: 'primary');
+    $selectedBroadcastText = old('broadcast_text', '');
+    $broadcastTemplatesJson = $broadcastTemplates;
+    $broadcastRecipientsJson = $broadcastRecipients;
+    $broadcastCountsJson = $todayBroadcastCounts;
+    $broadcastReport = session('broadcast_report');
+
     $dealLabel = function ($deal) {
         $contact = trim((string) ($deal->contact?->name ?? ''));
         $phone = trim((string) ($deal->contact?->phone ?? ''));
@@ -71,6 +124,8 @@
             @endif
         </form>
     </div>
+
+    @include('tasks._broadcast_panel')
 
     <div class="card shadow-sm">
         <div class="card-header fw-semibold">Новое дело</div>
@@ -280,3 +335,181 @@
     </div>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+(() => {
+    const templates = @json($broadcastTemplatesJson);
+    const recipientsByCategory = @json($broadcastRecipientsJson);
+    const counts = @json($broadcastCountsJson);
+    const categoryButtons = Array.from(document.querySelectorAll('[data-broadcast-category]'));
+    const categoryInput = document.getElementById('broadcastCategoryInput');
+    const templateInput = document.getElementById('broadcastTemplateInput');
+    const templateList = document.getElementById('broadcastTemplateList');
+    const recipientList = document.getElementById('broadcastRecipientList');
+    const recipientCounter = document.getElementById('broadcastRecipientCounter');
+    const textArea = document.getElementById('broadcastText');
+    const submitButton = document.getElementById('broadcastSubmitButton');
+    const eligibleSummary = document.getElementById('broadcastEligibleSummary');
+    const categoryNote = document.getElementById('broadcastCategoryNote');
+    const targetModeInputs = Array.from(document.querySelectorAll('input[name="broadcast_target_mode"]'));
+
+    if (!categoryButtons.length || !categoryInput || !templateInput || !templateList || !recipientList || !recipientCounter || !textArea || !submitButton || !eligibleSummary || !categoryNote) {
+        return;
+    }
+
+    let selectedCategory = categoryInput.value || categoryButtons[0].dataset.broadcastCategory;
+    let selectedTemplateKey = templateInput.value || '';
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function categoryLabel(categoryKey) {
+        const button = categoryButtons.find((item) => item.dataset.broadcastCategory === categoryKey);
+        return button ? (button.dataset.broadcastLabel || categoryKey) : categoryKey;
+    }
+
+    function selectedTargetMode() {
+        return targetModeInputs.find((input) => input.checked)?.value || 'primary';
+    }
+
+    function recipientsForSelectedCategory() {
+        return Array.isArray(recipientsByCategory[selectedCategory]) ? recipientsByCategory[selectedCategory] : [];
+    }
+
+    function chatCount(items, mode) {
+        if (mode !== 'all') {
+            return items.length;
+        }
+
+        return items.reduce((total, item) => total + Number(item.chat_count || 0), 0);
+    }
+
+    function updateCategoryButtons() {
+        categoryButtons.forEach((button) => {
+            const active = button.dataset.broadcastCategory === selectedCategory;
+            button.classList.toggle('active', active);
+            button.classList.toggle('btn-primary', active);
+            button.classList.toggle('btn-outline-primary', !active);
+        });
+    }
+
+    function renderRecipients() {
+        const items = recipientsForSelectedCategory();
+        const mode = selectedTargetMode();
+        const dealCount = Number(counts[selectedCategory] || items.length || 0);
+        const totalChatCount = chatCount(items, mode);
+
+        recipientCounter.textContent = `${dealCount} сделок / ${totalChatCount} чатов`;
+        eligibleSummary.textContent = `Получатели: ${dealCount} сделок / ${totalChatCount} чатов`;
+        categoryNote.textContent = dealCount > 0
+            ? `Категория «${categoryLabel(selectedCategory)}»: видно всех адресатов на сегодня. Режим сейчас ${mode === 'all' ? 'во все чаты сделки' : 'в один чат на сделку'}.`
+            : `На сегодня нет открытых сделок категории «${categoryLabel(selectedCategory)}» с делами и доступными чатами VK/Avito.`;
+        submitButton.disabled = dealCount <= 0;
+
+        if (!items.length) {
+            recipientList.innerHTML = '<div class="text-muted small">Список получателей пуст.</div>';
+            return;
+        }
+
+        recipientList.innerHTML = items.map((item) => {
+            const details = [item.contact_name, item.phone].filter(Boolean).join(' • ');
+            const taskTimes = Array.isArray(item.task_times) && item.task_times.length
+                ? `Дело сегодня: ${item.task_times.join(', ')}`
+                : 'Дело сегодня без времени';
+            const channelBadges = Array.isArray(item.channels)
+                ? item.channels.map((channel) => {
+                    const count = Number(channel.count || 0);
+                    const suffix = count > 1 ? ` ×${count}` : '';
+                    return `<span class="badge rounded-pill bg-light text-dark border">${escapeHtml(channel.label || channel.channel || 'Чат')}${suffix}</span>`;
+                }).join(' ')
+                : '';
+            const primaryLabel = escapeHtml(item.primary_chat_label || 'Чат');
+
+            return `
+                <div class="border rounded-3 bg-white p-3">
+                    <div class="d-flex align-items-start justify-content-between gap-2 flex-wrap">
+                        <div>
+                            <a class="fw-semibold text-decoration-none" href="${escapeHtml(item.url || '#')}">${escapeHtml(item.label || 'Сделка')}</a>
+                            <div class="text-muted small mt-1">${escapeHtml(details || 'Без контакта')}</div>
+                            <div class="text-muted small mt-1">${escapeHtml(taskTimes)}</div>
+                        </div>
+                        <div class="badge bg-light text-dark border">Основной чат: ${primaryLabel}</div>
+                    </div>
+                    <div class="d-flex gap-1 flex-wrap mt-2">${channelBadges}</div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function renderTemplates() {
+        const items = Array.isArray(templates[selectedCategory]) ? templates[selectedCategory] : [];
+        if (!items.length) {
+            templateList.innerHTML = '<div class="col-12"><div class="text-muted small">Для выбранной категории шаблонов пока нет.</div></div>';
+            templateInput.value = '';
+            return;
+        }
+
+        if (!items.some((item) => item.key === selectedTemplateKey)) {
+            selectedTemplateKey = items[0].key;
+            if (!textArea.value.trim()) {
+                textArea.value = items[0].text || '';
+            }
+        }
+
+        templateList.innerHTML = items.map((item) => {
+            const active = item.key === selectedTemplateKey;
+            return `
+                <div class="col-lg-6">
+                    <button type="button" class="w-100 broadcast-template-option ${active ? 'active' : ''}" data-template-key="${escapeHtml(item.key)}">
+                        <div class="broadcast-template-title">${escapeHtml(item.title || 'Шаблон')}</div>
+                        <div class="broadcast-template-preview">${escapeHtml(item.preview || '')}</div>
+                    </button>
+                </div>
+            `;
+        }).join('');
+
+        templateInput.value = selectedTemplateKey;
+
+        templateList.querySelectorAll('[data-template-key]').forEach((button) => {
+            button.addEventListener('click', () => {
+                const key = button.getAttribute('data-template-key') || '';
+                const template = items.find((item) => item.key === key);
+                selectedTemplateKey = key;
+                templateInput.value = key;
+                if (template) {
+                    textArea.value = template.text || '';
+                }
+                renderTemplates();
+            });
+        });
+    }
+
+    categoryButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            selectedCategory = button.dataset.broadcastCategory || '';
+            selectedTemplateKey = '';
+            categoryInput.value = selectedCategory;
+            textArea.value = '';
+            updateCategoryButtons();
+            renderRecipients();
+            renderTemplates();
+        });
+    });
+
+    targetModeInputs.forEach((input) => {
+        input.addEventListener('change', renderRecipients);
+    });
+
+    categoryInput.value = selectedCategory;
+    updateCategoryButtons();
+    renderRecipients();
+    renderTemplates();
+})();
+</script>
+@endpush

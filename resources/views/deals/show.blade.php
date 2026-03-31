@@ -380,7 +380,6 @@
         @php
           $missing = collect($deal->missing_fields)->map(fn($f) => match($f) {
             'title' => 'название сделки',
-            'amount' => 'сумма',
             'responsible' => 'ответственный',
             default => $f,
           })->values()->all();
@@ -411,7 +410,7 @@
           </div>
           <div class="col-5">
             <label class="form-label mb-1">Сумма (RUB)</label>
-            <input name="amount" type="number" step="0.01" min="0.01" class="form-control form-control-sm" value="{{ $deal->amount ?? '' }}" required>
+            <input name="amount" type="number" step="0.01" min="0.01" class="form-control form-control-sm" value="{{ $deal->amount ?? '' }}">
           </div>
           <div class="col-12">
             <label class="form-label mb-1">Категория</label>

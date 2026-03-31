@@ -283,7 +283,6 @@ SQL;
     {
         $missing = [];
         if (!$this->responsible_user_id) $missing[] = 'responsible';
-        if (!$this->amount || (float)$this->amount <= 0) $missing[] = 'amount';
         if (!$this->title_is_custom) $missing[] = 'title';
         return $missing;
     }

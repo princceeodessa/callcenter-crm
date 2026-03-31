@@ -11,6 +11,7 @@ use App\Models\CallRecording;
 use App\Models\User;
 use App\Services\Chat\ChatSendService;
 use App\Services\Tasks\TaskWorkflowService;
+use App\Support\Deals\InteractsWithDealBroadcasts;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -19,6 +20,12 @@ use Illuminate\Validation\Rule;
 
 class DealController extends Controller
 {
+    use InteractsWithDealBroadcasts {
+        eligibleBroadcastDealsQuery as private traitEligibleBroadcastDealsQuery;
+        broadcastTargetModeOptions as private traitBroadcastTargetModeOptions;
+        broadcastDealLabel as private traitBroadcastDealLabel;
+    }
+
     public function index(Request $request)
     {
         $user = Auth::user();
@@ -88,10 +95,6 @@ class DealController extends Controller
             ->paginate(25)
             ->withQueryString();
 
-        $broadcastTemplates = $this->broadcastTemplates();
-        $todayBroadcastCounts = $this->todayBroadcastCounts($user->account_id);
-        $broadcastTargetModeOptions = $this->broadcastTargetModeOptions();
-
         return view('deals.index', compact(
             'deals',
             'q',
@@ -100,9 +103,6 @@ class DealController extends Controller
             'sourceOptions',
             'productCategory',
             'productCategoryOptions',
-            'broadcastTemplates',
-            'todayBroadcastCounts',
-            'broadcastTargetModeOptions',
         ));
     }
 
@@ -364,7 +364,7 @@ class DealController extends Controller
         $data = $request->validate([
             'title' => ['required','string','max:255'],
             'responsible_user_id' => ['required','integer','exists:users,id'],
-            'amount' => ['required','numeric','min:0.01'],
+            'amount' => ['nullable','numeric','min:0.01'],
             'product_category' => ['required', Rule::in(array_keys(Deal::productCategoryOptions()))],
         ]);
 
@@ -383,7 +383,7 @@ class DealController extends Controller
         $deal->title = $data['title'];
         $deal->title_is_custom = 1;
         $deal->responsible_user_id = $responsible->id;
-        $deal->amount = $data['amount'];
+        $deal->amount = $data['amount'] ?? null;
         $deal->product_category = $data['product_category'];
         $deal->save();
 
@@ -534,7 +534,7 @@ class DealController extends Controller
     {
         $user = Auth::user();
         $productCategoryOptions = Deal::productCategoryOptions();
-        $targetModeOptions = $this->broadcastTargetModeOptions();
+        $targetModeOptions = $this->traitBroadcastTargetModeOptions();
 
         $data = $request->validate([
             'broadcast_category' => ['required', Rule::in(array_keys($productCategoryOptions))],
@@ -550,11 +550,13 @@ class DealController extends Controller
                 ->withInput();
         }
 
-        $deals = $this->eligibleBroadcastDealsQuery($user->account_id, $data['broadcast_category'])
+        $deals = $this->traitEligibleBroadcastDealsQuery($user->account_id, $data['broadcast_category'])
             ->with([
                 'contact',
                 'conversations' => fn ($query) => $query
                     ->whereIn('channel', ['vk', 'avito'])
+                    ->whereNotNull('external_id')
+                    ->where('external_id', '!=', '')
                     ->orderByDesc('last_message_at')
                     ->orderByDesc('id'),
             ])
