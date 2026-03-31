@@ -37,11 +37,17 @@
     </div>
 @endif
 
+@if($broadcastPreviewError)
+    <div class="alert alert-warning shadow-sm mb-0">
+        {{ $broadcastPreviewError }}
+    </div>
+@endif
+
 <div class="card shadow-sm">
     <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
         <div>
             <div class="fw-semibold">Рассылка по делам на сегодня</div>
-            <div class="text-muted small">Берутся только открытые сделки выбранной категории, у которых на сегодня есть открытое дело и доступен чат VK или Avito.</div>
+            <div class="text-muted small">Берутся только открытые сделки выбранной категории, у которых на сегодня есть открытое дело и есть отправляемый чат VK или Avito с непустым `external_id`.</div>
         </div>
         <div class="text-muted small" id="broadcastEligibleSummary">Получатели: —</div>
     </div>

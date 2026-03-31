@@ -53,6 +53,7 @@
     $broadcastRecipientsJson = $broadcastRecipients;
     $broadcastCountsJson = $todayBroadcastCounts;
     $broadcastReport = session('broadcast_report');
+    $broadcastPreviewError = $broadcastPreviewError ?? null;
 
     $dealLabel = function ($deal) {
         $contact = trim((string) ($deal->contact?->name ?? ''));

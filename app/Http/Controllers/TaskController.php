@@ -93,6 +93,7 @@ class TaskController extends Controller
             'primary' => 'Один чат на сделку',
             'all' => 'Все чаты сделки',
         ];
+        $broadcastPreviewError = null;
 
         try {
             $broadcastTemplates = $this->broadcastTemplates();
@@ -103,6 +104,7 @@ class TaskController extends Controller
             $broadcastTargetModeOptions = $this->broadcastTargetModeOptions();
         } catch (\Throwable $e) {
             report($e);
+            $broadcastPreviewError = 'Не удалось построить список адресатов для рассылки. Проверьте лог Laravel.';
         }
 
         return view('tasks.index', [
@@ -122,6 +124,7 @@ class TaskController extends Controller
             'broadcastRecipients' => $broadcastRecipients,
             'todayBroadcastCounts' => $todayBroadcastCounts,
             'broadcastTargetModeOptions' => $broadcastTargetModeOptions,
+            'broadcastPreviewError' => $broadcastPreviewError,
         ]);
     }
 
