@@ -51,6 +51,9 @@ continue;
 $plannedPanels[] = $this->planPanel($panel, $panelSettings, $orientation, count($plannedPanels));
 }
 
+$rollSequences = $this->buildRollSequences($plannedPanels, $settings);
+$plannedPanels = $this->attachRollSequences($plannedPanels, $rollSequences);
+
 
 $seamedParents = [];
 foreach ($plannedPanels as $panel) {
@@ -73,12 +76,15 @@ return [
 'panels' => $plannedPanels,
 'summary' => [
 'panels_count' => count($plannedPanels),
+'roll_sequences_count' => count($rollSequences),
+'roll_sequences' => $rollSequences,
 'seamed_panels_count' => count($seamedParents),
 'strips_count' => array_sum(array_map(fn (array $panel) => count($panel['strips'] ?? []), $plannedPanels)),
 'finished_area_m2' => $this->round(array_sum(array_map(fn (array $panel) => (float) ($panel['finished_area_m2'] ?? 0), $plannedPanels))),
 'consumed_area_m2' => $this->round(array_sum(array_map(fn (array $panel) => (float) ($panel['consumed_area_m2'] ?? 0), $plannedPanels))),
 'stretch_reserve_m2' => $this->round(array_sum(array_map(fn (array $panel) => (float) ($panel['stretch_reserve_m2'] ?? 0), $plannedPanels))),
 'roll_length_total_m' => $this->round(array_sum(array_map(fn (array $panel) => (float) ($panel['roll_length_total_m'] ?? 0), $plannedPanels))),
+'warnings' => $this->buildWarnings($settings, $plannedPanels),
 ],
 ];
 }
@@ -119,14 +125,14 @@ $strips = $this->buildStrips($cutWidth, $cutLength, $settings);
 $consumedArea = array_sum(array_map(fn (array $strip) => (float) $strip['area_m2'], $strips));
 $finishedArea = (float) ($panel['area_m2'] ?? 0.0);
 $orientationOffset = (float) ($settings['orientation_offset_m'] ?? 0.0);
-$panelLabel = is_string($panel['label'] ?? null) && trim((string) $panel['label']) !== ''
-? (string) $panel['label']
-: 'Полотно '.($index + 1);
+        $panelLabel = is_string($panel['label'] ?? null) && trim((string) $panel['label']) !== ''
+            ? (string) $panel['label']
+            : 'Полотно '.($index + 1);
 
 
 return [
 'id' => (string) ($panel['id'] ?? 'panel_'.($index + 1)),
-'label' => (string) ($panel['label'] ?? ('Полотно '.($index + 1))),
+            'label' => (string) ($panel['label'] ?? ('Полотно '.($index + 1))),
 'finished_area_m2' => $this->round($finishedArea),
 'finished_span_m' => [
 'length' => $this->round($finishedLength),
@@ -155,12 +161,14 @@ return [
 'bounds' => $bounds,
 'centroid' => $panel['centroid'] ?? null,
 'shape_points' => $shapePoints,
+'holes' => $panel['holes'] ?? [],
 'source' => $panel['source'] ?? null,
 'source_shape_id' => $panel['source_shape_id'] ?? null,
 'feature_kind' => $panel['feature_kind'] ?? null,
 'label' => \App\Support\TextNormalizer::normalizeMojibake($panelLabel),
 'seam_parent_id' => $panel['seam_parent_id'] ?? null,
 'seam_part_index' => $panel['seam_part_index'] ?? null,
+'roll_sequence' => $panel['roll_sequence'] ?? null,
 'production' => $panel['production'] ?? [],
 ];
 }
@@ -192,14 +200,14 @@ continue;
 }
 
 
-$panelLabel = is_string($panel['label'] ?? null) && trim((string) $panel['label']) !== ''
-? (string) $panel['label']
-: 'Полотно '.($index + 1);
+            $panelLabel = is_string($panel['label'] ?? null) && trim((string) $panel['label']) !== ''
+                ? (string) $panel['label']
+                : 'Полотно '.($index + 1);
 
 
 $normalized[] = [
 'id' => (string) ($panel['id'] ?? 'panel_'.($index + 1)),
-'label' => (string) ($panel['label'] ?? ('Полотно '.($index + 1))),
+                'label' => (string) ($panel['label'] ?? ('Полотно '.($index + 1))),
 'area_m2' => $this->round((float) ($panel['area_m2'] ?? 0.0)),
 'bounds' => [
 'min_x' => $this->round($minX),
@@ -209,12 +217,14 @@ $normalized[] = [
 ],
 'centroid' => is_array($panel['centroid'] ?? null) ? $panel['centroid'] : null,
 'shape_points' => $this->normalizePanelShapePoints($panel['shape_points'] ?? null),
+'holes' => $this->normalizePanelHoles($panel['holes'] ?? null),
 'source' => isset($panel['source']) ? (string) $panel['source'] : null,
 'source_shape_id' => isset($panel['source_shape_id']) ? (string) $panel['source_shape_id'] : null,
 'feature_kind' => isset($panel['feature_kind']) ? (string) $panel['feature_kind'] : null,
 'label' => \App\Support\TextNormalizer::normalizeMojibake($panelLabel),
 'seam_parent_id' => isset($panel['seam_parent_id']) ? (string) $panel['seam_parent_id'] : null,
 'seam_part_index' => isset($panel['seam_part_index']) ? (int) $panel['seam_part_index'] : null,
+'roll_sequence' => is_array($panel['roll_sequence'] ?? null) ? $panel['roll_sequence'] : null,
 'production' => is_array($panel['production'] ?? null) ? $panel['production'] : [],
 ];
 }
@@ -250,6 +260,27 @@ $normalized[] = [
 
 
 return count($normalized) >= 3 ? $normalized : null;
+}
+
+/**
+* @param  mixed  $holes
+* @return array<int, array<int, array{x: float, y: float}>>
+*/
+private function normalizePanelHoles(mixed $holes): array
+{
+if (!is_array($holes)) {
+return [];
+}
+
+$normalized = [];
+foreach ($holes as $hole) {
+$points = $this->normalizePanelShapePoints($hole);
+if ($points !== null) {
+$normalized[] = $points;
+}
+}
+
+return $normalized;
 }
 
 
@@ -338,9 +369,9 @@ return [
 'normal' => ['x' => $this->round(-$axis['y'], 6), 'y' => $this->round($axis['x'], 6)],
 'angle_deg' => $this->round(rad2deg(atan2($axis['y'], $axis['x']))),
 'segment_index' => $segmentIndex,
-'segment_label' => $mode === 'center_segment'
-? 'Центр стороны '.$this->segmentLabel($segmentIndex, $count)
-: $this->segmentLabel($segmentIndex, $count),
+            'segment_label' => $mode === 'center_segment'
+                ? 'Центр стороны '.$this->segmentLabel($segmentIndex, $count)
+                : $this->segmentLabel($segmentIndex, $count),
 ];
 }
 
@@ -362,7 +393,7 @@ $center = $this->polygonCentroid($polygon) ?? ['x' => 0.0, 'y' => 0.0];
 
 
 return array_merge($context, [
-'segment_label' => 'Центр помещения',
+                'segment_label' => 'Центр помещения',
 'anchor' => [
 'x' => $this->round((float) ($center['x'] ?? 0.0)),
 'y' => $this->round((float) ($center['y'] ?? 0.0)),
@@ -376,9 +407,9 @@ $end = $polygon[($segmentIndex + 1) % $count];
 
 
 return array_merge($context, [
-'segment_label' => $mode === 'center_segment'
-? 'Центр стороны '.$this->segmentLabel($segmentIndex, $count)
-: $this->segmentLabel($segmentIndex, $count),
+            'segment_label' => $mode === 'center_segment'
+                ? 'Центр стороны '.$this->segmentLabel($segmentIndex, $count)
+                : $this->segmentLabel($segmentIndex, $count),
 'anchor' => [
 'x' => $this->round(($start['x'] + $end['x']) / 2),
 'y' => $this->round(($start['y'] + $end['y']) / 2),
@@ -426,9 +457,9 @@ $this->clipPolygonByHalfPlane($shapePoints, $linePoint, $normal, false),
 ];
 
 
-$baseLabel = is_string($panel['label'] ?? null) && trim((string) $panel['label']) !== ''
-? (string) $panel['label']
-: 'Полотно';
+        $baseLabel = is_string($panel['label'] ?? null) && trim((string) $panel['label']) !== ''
+            ? (string) $panel['label']
+            : 'Полотно';
 $splitPanels = [];
 
 
@@ -628,11 +659,129 @@ return [
 ];
 }
 
+/**
+* @param  array<string, mixed>  $settings
+* @param  array<int, array<string, mixed>>  $panels
+* @return array<int, string>
+*/
+private function buildWarnings(array $settings, array $panels): array
+{
+    $warnings = [];
+
+    if ($panels === []) {
+        return $warnings;
+    }
+
+    $hasMultiStripPanels = count(array_filter(
+        $panels,
+        static fn (array $panel) => ((int) ($panel['strips_count'] ?? 0)) > 1
+    )) > 0;
+
+    if ($hasMultiStripPanels) {
+        $warnings[] = (bool) ($settings['seam_enabled'] ?? false)
+            ? 'Часть полотен будет собрана из нескольких полос или со швом.'
+            : 'Часть полотен требует несколько полос рулона. Проверьте, нужен ли для них шов или спецраскрой.';
+    }
+
+    if ((bool) ($settings['same_roll_required'] ?? false) && count($panels) > 1) {
+        $warnings[] = 'Для комнаты включена настройка "Кроить из одного рулона". Проверьте суммарную длину и совместимость всех полотен.';
+    }
+
+    if ((bool) ($settings['special_cutting'] ?? false)) {
+        $warnings[] = 'Для комнаты включён спецраскрой. Передайте комментарий и схему полос в производство.';
+    }
+
+    return $warnings;
+}
 
 /**
-* @param  array<int, array{x: float, y: float}>  $points
-* @return array{x: float, y: float}|null
-*/
+ * @param  array<int, array<string, mixed>>  $panels
+ * @return array<int, array<string, mixed>>
+ */
+private function buildRollSequences(array $panels, array $settings): array
+{
+    if ($panels === []) {
+        return [];
+    }
+
+    $groups = [];
+    foreach ($panels as $panel) {
+        $panelId = (string) ($panel['id'] ?? uniqid('panel_', true));
+        $groupKey = (bool) ($settings['same_roll_required'] ?? false)
+            ? 'shared_roll'
+            : ((isset($panel['seam_parent_id']) && trim((string) ($panel['seam_parent_id'] ?? '')) !== '')
+                ? 'seam:'.trim((string) $panel['seam_parent_id'])
+                : 'panel:'.$panelId);
+
+        $groups[$groupKey][] = $panel;
+    }
+
+    $sequences = [];
+    $sequenceIndex = 1;
+    foreach ($groups as $groupKey => $groupPanels) {
+        $panelIds = [];
+        $panelLabels = [];
+        $stripsCount = 0;
+        $rollLength = 0.0;
+        $consumedArea = 0.0;
+        $containsSeam = false;
+
+        foreach ($groupPanels as $panel) {
+            $panelIds[] = (string) ($panel['id'] ?? uniqid('panel_', true));
+            $panelLabels[] = \App\Support\TextNormalizer::normalizeMojibake((string) ($panel['label'] ?? 'Полотно'));
+            $stripsCount += count($panel['strips'] ?? []);
+            $rollLength += (float) ($panel['roll_length_total_m'] ?? 0.0);
+            $consumedArea += (float) ($panel['consumed_area_m2'] ?? 0.0);
+            $containsSeam = $containsSeam || (($panel['seam_parent_id'] ?? null) !== null);
+        }
+
+        $sequences[] = [
+            'key' => $groupKey,
+            'index' => $sequenceIndex,
+            'label' => (bool) ($settings['same_roll_required'] ?? false) ? 'Общий рулон' : 'Рулон '.$sequenceIndex,
+            'panel_ids' => $panelIds,
+            'panel_labels' => $panelLabels,
+            'panels_count' => count($groupPanels),
+            'strips_count' => $stripsCount,
+            'roll_length_total_m' => $this->round($rollLength),
+            'consumed_area_m2' => $this->round($consumedArea),
+            'contains_seam' => $containsSeam,
+            'same_roll_required' => (bool) ($settings['same_roll_required'] ?? false),
+        ];
+
+        $sequenceIndex++;
+    }
+
+    return $sequences;
+}
+
+private function attachRollSequences(array $panels, array $sequences): array
+{
+if ($panels === [] || $sequences === []) {
+return $panels;
+}
+
+$sequenceByPanelId = [];
+foreach ($sequences as $sequence) {
+foreach ($sequence['panel_ids'] ?? [] as $panelId) {
+$sequenceByPanelId[(string) $panelId] = [
+'index' => (int) ($sequence['index'] ?? 0),
+'label' => (string) ($sequence['label'] ?? ''),
+'key' => (string) ($sequence['key'] ?? ''),
+];
+}
+}
+
+return array_map(function (array $panel) use ($sequenceByPanelId) {
+$panelId = (string) ($panel['id'] ?? '');
+if ($panelId !== '' && isset($sequenceByPanelId[$panelId])) {
+$panel['roll_sequence'] = $sequenceByPanelId[$panelId];
+}
+
+return $panel;
+}, $panels);
+}
+
 private function polygonCentroid(array $points): ?array
 {
 if (count($points) < 3) {

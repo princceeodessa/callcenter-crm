@@ -51,6 +51,15 @@
           @endforeach
         </select>
       </div>
+      <div class="col-md-4">
+        <label class="form-label">Категория</label>
+        <select name="product_category" class="form-select" required>
+          <option value="">Выберите категорию</option>
+          @foreach(($productCategoryOptions ?? []) as $categoryKey => $categoryLabel)
+            <option value="{{ $categoryKey }}" @selected(old('product_category') === $categoryKey)>{{ $categoryLabel }}</option>
+          @endforeach
+        </select>
+      </div>
       <div class="col-12">
         <label class="form-label">Комментарий</label>
         <textarea

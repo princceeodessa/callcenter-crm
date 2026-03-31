@@ -371,6 +371,7 @@
         @if($deal->incoming_phone_source_display)
           <div class="mb-1"><b>Источник номера:</b> {{ $deal->incoming_phone_source_display }}</div>
         @endif
+        <div class="mb-1"><b>Категория:</b> {{ $deal->product_category_label ?? '—' }}</div>
         <div class="mb-1"><b>Клиент:</b> {{ $dealLeadDisplayName !== '' ? $dealLeadDisplayName : 'Без имени' }}</div>
         <div class="mb-1"><b>Создано:</b> {{ optional($deal->created_at)->format('d.m.Y H:i') }}</div>
         <div class="mb-1"><b>Сумма:</b> {{ $deal->amount ? number_format($deal->amount,2,',',' ') : '—' }} {{ $deal->currency ?? 'RUB' }}</div>
@@ -411,6 +412,14 @@
           <div class="col-5">
             <label class="form-label mb-1">Сумма (RUB)</label>
             <input name="amount" type="number" step="0.01" min="0.01" class="form-control form-control-sm" value="{{ $deal->amount ?? '' }}" required>
+          </div>
+          <div class="col-12">
+            <label class="form-label mb-1">Категория</label>
+            <select name="product_category" class="form-select form-select-sm" required>
+              @foreach(($productCategoryOptions ?? []) as $categoryKey => $categoryLabel)
+                <option value="{{ $categoryKey }}" @selected($deal->product_category === $categoryKey)>{{ $categoryLabel }}</option>
+              @endforeach
+            </select>
           </div>
           <div class="col-12">
             <button class="btn btn-sm btn-primary">Сохранить</button>

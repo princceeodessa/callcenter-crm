@@ -62,4 +62,35 @@ class CeilingLightLinePanelSplitterTest extends TestCase
         $this->assertEqualsWithDelta(7.84, $panels[0]['area_m2'], 0.15);
         $this->assertEqualsWithDelta(7.84, $panels[1]['area_m2'], 0.15);
     }
+
+    public function test_it_preserves_irregular_panel_contour_after_split(): void
+    {
+        $splitter = new CeilingLightLinePanelSplitter();
+
+        $panels = $splitter->split(
+            [
+                ['x' => 0.0, 'y' => 0.0],
+                ['x' => 5.0, 'y' => 0.0],
+                ['x' => 5.0, 'y' => 2.0],
+                ['x' => 2.0, 'y' => 2.0],
+                ['x' => 2.0, 'y' => 5.0],
+                ['x' => 0.0, 'y' => 5.0],
+            ],
+            [[
+                'width_m' => 0.08,
+                'closed' => false,
+                'points' => [
+                    ['x' => 1.0, 'y' => 0.0],
+                    ['x' => 1.0, 'y' => 5.0],
+                ],
+            ]],
+        );
+
+        $this->assertCount(2, $panels);
+
+        $complexPanels = array_values(array_filter($panels, static fn (array $panel) => count($panel['shape_points'] ?? []) > 4));
+        $this->assertNotEmpty($complexPanels);
+        $this->assertGreaterThanOrEqual(6, count($complexPanels[0]['shape_points']));
+        $this->assertEqualsWithDelta(15.6, $panels[0]['area_m2'] + $panels[1]['area_m2'], 0.2);
+    }
 }

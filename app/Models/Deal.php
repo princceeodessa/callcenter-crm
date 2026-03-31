@@ -10,6 +10,12 @@ class Deal extends Model
 {
     use BelongsToAccount;
 
+    private const PRODUCT_CATEGORY_OPTIONS = [
+        'ceiling' => 'Потолок',
+        'soundproofing' => 'Шумоизоляция',
+        'air_conditioner' => 'Кондиционер',
+    ];
+
     private const SOURCE_FILTER_PHONE = 'phone';
     private const SOURCE_FILTER_CRM = 'crm';
     private const PHONE_SOURCE_FILTER_PREFIX = 'phone:';
@@ -77,6 +83,7 @@ class Deal extends Model
         'account_id','pipeline_id','stage_id',
         'title','title_is_custom','contact_id','responsible_user_id',
         'amount','currency',
+        'product_category',
         'readiness_status','is_unread','has_script_deviation',
         'closed_at','closed_result','closed_reason','closed_by_user_id'
     ];
@@ -154,6 +161,16 @@ SQL;
         $options[self::SOURCE_FILTER_CRM] = self::DEFAULT_SOURCE_LABEL;
 
         return $options;
+    }
+
+    public static function productCategoryOptions(): array
+    {
+        return self::PRODUCT_CATEGORY_OPTIONS;
+    }
+
+    public static function isValidProductCategory(?string $category): bool
+    {
+        return is_string($category) && array_key_exists($category, self::PRODUCT_CATEGORY_OPTIONS);
     }
 
     public static function incomingPhoneSourceOptions(): array
@@ -291,6 +308,21 @@ SQL;
         }
 
         return $this->is_unread ? 1 : 0;
+    }
+
+    public function getProductCategoryLabelAttribute(): ?string
+    {
+        return self::PRODUCT_CATEGORY_OPTIONS[$this->product_category] ?? null;
+    }
+
+    public function getProductCategoryBadgeClassAttribute(): string
+    {
+        return match ((string) $this->product_category) {
+            'ceiling' => 'text-bg-primary',
+            'soundproofing' => 'text-bg-dark',
+            'air_conditioner' => 'text-bg-info',
+            default => 'text-bg-secondary',
+        };
     }
 
     public function closedBy()

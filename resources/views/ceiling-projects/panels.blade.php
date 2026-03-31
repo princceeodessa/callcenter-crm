@@ -26,6 +26,7 @@
 @endpush
 
 @php
+  $clean = fn ($value) => \App\Support\TextNormalizer::normalizeMojibake((string) $value);
   $formatDecimal = function ($value, $suffix = '') {
       $number = number_format((float) $value, 2, ',', ' ');
       $number = preg_replace('/,00$/', '', $number);
@@ -65,6 +66,7 @@
   $layoutSummary = $layoutPlan['summary'] ?? [];
   $orientation = $layoutPlan['orientation'] ?? [];
   $plannedPanels = $layoutPlan['panels'] ?? [];
+  $rollSequences = $layoutSummary['roll_sequences'] ?? [];
 @endphp
 
 @section('content')
@@ -72,9 +74,9 @@
   <div class="panels-hero d-flex justify-content-between align-items-start gap-3 flex-wrap">
     <div>
       <div class="text-uppercase text-muted small fw-semibold">Полотна комнаты</div>
-      <h1 class="h3 mb-2">{{ $room->name }}</h1>
+      <h1 class="h3 mb-2">{{ $clean($room->name) }}</h1>
       <div class="text-muted">
-        Проект: {{ trim((string) ($project->title ?? '')) !== '' ? $project->title : ('Проект #'.$project->id) }}
+        Проект: {{ trim((string) ($project->title ?? '')) !== '' ? $clean($project->title) : ('Проект #'.$project->id) }}
         @if($project->deal)
           · Сделка #{{ $project->deal->id }}
         @endif
@@ -82,7 +84,7 @@
     </div>
     <div class="d-flex gap-2 flex-wrap">
       <a href="{{ route('ceiling-projects.show', ['project' => $project, 'room' => $room->id]) }}#geometry-editor" class="btn btn-outline-secondary">К комнате</a>
-      <a href="{{ route('ceiling-projects.index') }}" class="btn btn-outline-secondary">Все проекты</a>
+      <a href="{{ route('ceiling-projects.production.show', $project) }}" class="btn btn-outline-dark">Пакет проекта</a>
       <button type="button" class="btn btn-dark" onclick="window.print()">Печать</button>
     </div>
   </div>
@@ -101,7 +103,7 @@
       <div class="panels-metric-value">{{ $layoutSummary['strips_count'] ?? 0 }}</div>
     </div>
     <div class="panels-metric">
-      <div class="panels-metric-label">Шовных комплектов</div>
+      <div class="panels-metric-label">Шовные комплекты</div>
       <div class="panels-metric-value">{{ $layoutSummary['seamed_panels_count'] ?? 0 }}</div>
     </div>
     <div class="panels-metric">
@@ -112,7 +114,47 @@
       <div class="panels-metric-label">Запас на усадку</div>
       <div class="panels-metric-value">{{ $formatDecimal($layoutSummary['stretch_reserve_m2'] ?? 0, 'м2') }}</div>
     </div>
+    <div class="panels-metric">
+      <div class="panels-metric-label">Сценарии рулона</div>
+      <div class="panels-metric-value">{{ $layoutSummary['roll_sequences_count'] ?? 0 }}</div>
+    </div>
   </div>
+
+  @if(!empty($layoutSummary['warnings']))
+    <div class="alert alert-warning mb-0">
+      <div class="fw-semibold mb-2">Что проверить перед отдачей в производство</div>
+      <ul class="mb-0 ps-3">
+        @foreach($layoutSummary['warnings'] as $warning)
+          <li>{{ $clean($warning) }}</li>
+        @endforeach
+      </ul>
+    </div>
+  @endif
+
+  @if(!empty($rollSequences))
+    <div class="panels-card">
+      <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-3">
+        <div>
+          <div class="fw-semibold">Сценарии рулона</div>
+          <div class="small text-muted">Группы полотен, которые должны идти как один рулонный комплект или отдельные последовательности раскроя.</div>
+        </div>
+      </div>
+      <div class="panels-grid">
+        @foreach($rollSequences as $sequence)
+          <div class="panels-metric">
+            <div class="panels-metric-label">{{ $clean($sequence['label'] ?? ('Рулон '.($loop->iteration))) }}</div>
+            <div class="panels-metric-value">{{ (int) ($sequence['panels_count'] ?? 0) }}</div>
+            <div class="small text-muted mt-2">
+              Полотен: {{ (int) ($sequence['panels_count'] ?? 0) }}
+              · Полос: {{ (int) ($sequence['strips_count'] ?? 0) }}
+              · Длина: {{ $formatDecimal((float) ($sequence['roll_length_total_m'] ?? 0), 'м') }}
+            </div>
+            <div class="small text-muted mt-2">{{ $clean(implode(', ', $sequence['panel_labels'] ?? [])) }}</div>
+          </div>
+        @endforeach
+      </div>
+    </div>
+  @endif
 
   <div class="panels-card">
     <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-3">
@@ -122,14 +164,14 @@
       </div>
     </div>
     <div class="d-flex flex-wrap gap-2 mb-3">
-      <span class="panel-chip"><span class="panel-chip-dot"></span>{{ $textureLabelMap[$production['texture'] ?? 'matte'] ?? ($production['texture'] ?? 'Матовый') }}</span>
+      <span class="panel-chip"><span class="panel-chip-dot"></span>{{ $textureLabelMap[$production['texture'] ?? 'matte'] ?? $clean($production['texture'] ?? 'Матовый') }}</span>
       <span class="panel-chip">Рулон {{ (int) ($production['roll_width_cm'] ?? 320) }} см</span>
-      <span class="panel-chip">Гарпун {{ $harpoonLabelMap[$production['harpoon_type'] ?? 'standard'] ?? ($production['harpoon_type'] ?? 'Стандарт') }}</span>
+      <span class="panel-chip">Гарпун {{ $harpoonLabelMap[$production['harpoon_type'] ?? 'standard'] ?? $clean($production['harpoon_type'] ?? 'Стандарт') }}</span>
       <span class="panel-chip">Усадка {{ $formatDecimal((float) ($production['shrink_x_percent'] ?? 7), '%') }} / {{ $formatDecimal((float) ($production['shrink_y_percent'] ?? 7), '%') }}</span>
       <span class="panel-chip">
         {{ $orientationLabelMap[$production['orientation_mode'] ?? 'parallel_segment'] ?? 'Параллельно стороне' }}
         @if(!empty($orientation['segment_label']))
-          · {{ $orientation['segment_label'] }}
+          · {{ $clean($orientation['segment_label']) }}
         @endif
       </span>
       @if(!empty($production['same_roll_required']))
@@ -142,7 +184,7 @@
         <span class="panel-chip">Шов {{ $formatCentimeters((float) ($production['seam_offset_m'] ?? 0)) }}</span>
       @endif
       @if(trim((string) ($production['comment'] ?? '')) !== '')
-        <span class="panel-chip">{{ $production['comment'] }}</span>
+        <span class="panel-chip">{{ $clean($production['comment']) }}</span>
       @endif
     </div>
     <div class="row g-2 small">
@@ -166,12 +208,13 @@
       <div class="d-grid gap-3">
         @foreach($plannedPanels as $panel)
           @php($panelProduction = is_array($panel['production'] ?? null) ? $panel['production'] : $production)
-          @php($panelSource = $sourceLabelMap[$panel['source'] ?? 'room'] ?? ($panel['source'] ?? 'Полотно'))
-          @php($panelFeatureKind = isset($panel['feature_kind']) ? ($featureKindLabelMap[$panel['feature_kind']] ?? $panel['feature_kind']) : null)
+          @php($panelSource = $sourceLabelMap[$panel['source'] ?? 'room'] ?? $clean($panel['source'] ?? 'Полотно'))
+          @php($panelFeatureKind = isset($panel['feature_kind']) ? ($featureKindLabelMap[$panel['feature_kind']] ?? $clean($panel['feature_kind'])) : null)
+          @php($rollSequence = is_array($panel['roll_sequence'] ?? null) ? $panel['roll_sequence'] : null)
           <div class="panel-row">
             <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-2">
               <div>
-                <div class="fw-semibold">{{ $panel['label'] }}</div>
+                <div class="fw-semibold">{{ $clean($panel['label']) }}</div>
                 <div class="small text-muted">
                   Готовая площадь: {{ $formatDecimal((float) ($panel['finished_area_m2'] ?? 0), 'м2') }}
                   · Заготовка: {{ $formatDecimal((float) ($panel['consumed_area_m2'] ?? 0), 'м2') }}
@@ -186,13 +229,16 @@
                     default => 'Одно полотно',
                   } }}
                 </span>
-                <span class="panel-chip">{{ $textureLabelMap[$panelProduction['texture'] ?? 'matte'] ?? ($panelProduction['texture'] ?? 'Матовый') }}</span>
-                <span class="panel-chip">{{ $panelSource }}</span>
+                <span class="panel-chip">{{ $textureLabelMap[$panelProduction['texture'] ?? 'matte'] ?? $clean($panelProduction['texture'] ?? 'Матовый') }}</span>
+                <span class="panel-chip">{{ $clean($panelSource) }}</span>
+                @if($rollSequence)
+                  <span class="panel-chip">{{ $clean($rollSequence['label'] ?? ('Рулон '.($rollSequence['index'] ?? ''))) }}</span>
+                @endif
                 @if(isset($panel['seam_part_index']))
                   <span class="panel-chip">Часть шва {{ $panel['seam_part_index'] }}</span>
                 @endif
                 @if($panelFeatureKind)
-                  <span class="panel-chip">{{ $panelFeatureKind }}</span>
+                  <span class="panel-chip">{{ $clean($panelFeatureKind) }}</span>
                 @endif
               </div>
             </div>
@@ -205,7 +251,7 @@
               <div class="col-md-3"><b>Рулон:</b> {{ $formatCentimeters((float) ($panel['roll_width_m'] ?? 0)) }}</div>
               <div class="col-md-3"><b>Длина расхода:</b> {{ $formatDecimal((float) ($panel['roll_length_total_m'] ?? 0), 'м') }}</div>
               <div class="col-md-3"><b>Ориентация:</b> {{ $orientationLabelMap[$panel['orientation']['mode'] ?? 'parallel_segment'] ?? 'Параллельно стороне' }}</div>
-              <div class="col-md-3"><b>Опорная сторона:</b> {{ $panel['orientation']['segment_label'] ?? 'Центр помещения' }}</div>
+              <div class="col-md-3"><b>Опорная сторона:</b> {{ $clean($panel['orientation']['segment_label'] ?? 'Центр помещения') }}</div>
             </div>
 
             <div class="layout-preview mb-3">
@@ -246,7 +292,7 @@
                 <div class="col-md-4"><b>Центр:</b> X {{ $formatCentimeters((float) ($panel['centroid']['x'] ?? 0)) }}, Y {{ $formatCentimeters((float) ($panel['centroid']['y'] ?? 0)) }}</div>
               @endif
               @if(trim((string) ($panelProduction['comment'] ?? '')) !== '')
-                <div class="col-12"><b>Комментарий:</b> {{ $panelProduction['comment'] }}</div>
+                <div class="col-12"><b>Комментарий:</b> {{ $clean($panelProduction['comment']) }}</div>
               @endif
             </div>
           </div>

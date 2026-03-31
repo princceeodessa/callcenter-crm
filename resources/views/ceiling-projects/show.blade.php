@@ -233,6 +233,7 @@
                   'centroid' => is_array($panel['centroid'] ?? null) ? $panel['centroid'] : null,
                   'bounds' => is_array($panel['bounds'] ?? null) ? $panel['bounds'] : null,
                   'shape_points' => is_array($panel['shape_points'] ?? null) ? array_values($panel['shape_points']) : null,
+                  'holes' => is_array($panel['holes'] ?? null) ? array_values($panel['holes']) : [],
                   'source' => isset($panel['source']) ? (string) $panel['source'] : null,
                   'source_shape_id' => isset($panel['source_shape_id']) ? (string) $panel['source_shape_id'] : null,
                   'feature_kind' => isset($panel['feature_kind']) ? (string) $panel['feature_kind'] : null,
@@ -352,6 +353,9 @@
       </div>
       <div class="d-flex gap-2 flex-wrap">
         <a href="{{ route('ceiling-projects.index') }}" class="btn btn-outline-secondary">Все проекты</a>
+        @if($project->rooms->count() > 0)
+          <a href="{{ route('ceiling-projects.production.show', $project) }}" class="btn btn-outline-dark">Пакет производства</a>
+        @endif
         @if($selectedRoom && !$isDraftingMode)
           <a href="{{ $draftingProjectUrl }}" class="btn btn-dark">Большой чертеж</a>
         @elseif($isDraftingMode)
@@ -760,7 +764,12 @@
       </div>
 
       <div class="card shadow-sm mb-3 project-room-list-card">
-        <div class="card-header fw-semibold">Комнаты</div>
+        <div class="card-header fw-semibold d-flex justify-content-between align-items-center gap-2 flex-wrap">
+          <span>Комнаты</span>
+          @if($project->rooms->count() > 0)
+            <a href="{{ route('ceiling-projects.production.show', $project) }}" class="btn btn-sm btn-outline-dark">Печать по всем комнатам</a>
+          @endif
+        </div>
         <div class="card-body">
           @if($project->rooms->count() === 0)
             <div class="text-muted">Пока нет ни одной комнаты.</div>
@@ -809,6 +818,7 @@
                     <div class="d-flex gap-2 flex-wrap">
                       <a href="{{ route('ceiling-projects.show', ['project' => $project, 'room' => $room->id]) }}#geometry-editor" class="btn btn-sm btn-outline-primary">Открыть чертеж комнаты</a>
                       <a href="{{ route('ceiling-projects.rooms.panels.show', [$project, $room]) }}" class="btn btn-sm btn-outline-dark">Полотна комнаты</a>
+                      <a href="{{ route('ceiling-projects.production.show', $project) }}#room-{{ $room->id }}" class="btn btn-sm btn-outline-secondary">Пакет проекта</a>
                     </div>
                     <form method="POST" action="{{ route('ceiling-projects.rooms.destroy', [$project, $room]) }}" onsubmit="return confirm('Удалить комнату?');">
                       @csrf
@@ -913,7 +923,7 @@
                     </div>
                   </div>
                   <div class="geometry-toolbar-tip small text-muted px-3 py-2">
-                    Колесо мыши меняет масштаб. Пробел + перетаскивание, режим руки или средняя кнопка мыши двигают чертеж. Горячие клавиши: Ctrl+Z, Ctrl+Y, H, V, W, E.
+                    Колесо мыши меняет масштаб. Пробел + перетаскивание, режим руки или средняя кнопка мыши двигают чертеж. Горячие клавиши: Ctrl+Z, Ctrl+Y, H, V, W, E, F, G, 0.
                   </div>
                   <svg id="geometrySvg" class="geometry-svg" viewBox="0 0 {{ $editorWidth }} {{ $editorHeight }}" data-width="{{ $editorWidth }}" data-height="{{ $editorHeight }}">
                     <defs>
@@ -956,6 +966,7 @@
                             <input type="number" step="1" min="0" class="form-control form-control-sm" id="selectedPointYInput">
                           </div>
                         </div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary w-100 mt-2" id="focusPointBtn">Фокус на точке</button>
                       </div>
                       <div class="inspector-card">
                         <div class="inspector-kicker">Выбранная сторона</div>
@@ -981,6 +992,19 @@
                           </div>
                         </div>
                         <button type="button" class="btn btn-sm btn-outline-dark w-100 mt-2" id="applySegmentLengthBtn">Изменить длину</button>
+                        <div class="row g-2 mt-2">
+                          <div class="col-7">
+                            <label class="form-label small mb-1">Калибровка, см</label>
+                            <input type="number" step="1" min="1" class="form-control form-control-sm" id="segmentScaleLengthInput">
+                          </div>
+                          <div class="col-5 d-flex align-items-end">
+                            <button type="button" class="btn btn-sm btn-outline-secondary w-100" id="scaleBySegmentBtn">Масштаб</button>
+                          </div>
+                        </div>
+                        <div class="d-grid gap-2 mt-2">
+                          <button type="button" class="btn btn-sm btn-outline-secondary" id="focusSegmentBtn">Фокус на стороне</button>
+                        </div>
+                        <div class="small text-muted mt-2">Изменить длину тянет только выбранную стену. Калибровка масштабирует всю комнату, формы, световые линии и свободные элементы по реальному размеру выбранной стороны.</div>
                       </div>
                     </div>
                     <div class="inspector-actions mb-3">
@@ -1762,13 +1786,17 @@
   const selectedPointTitle = document.getElementById('selectedPointTitle');
   const selectedPointXInput = document.getElementById('selectedPointXInput');
   const selectedPointYInput = document.getElementById('selectedPointYInput');
+  const focusPointBtn = document.getElementById('focusPointBtn');
   const selectedSegmentTitle = document.getElementById('selectedSegmentTitle');
   const selectedSegmentLengthInput = document.getElementById('selectedSegmentLengthInput');
+  const segmentScaleLengthInput = document.getElementById('segmentScaleLengthInput');
   const selectedAngleInput = document.getElementById('selectedAngleInput');
   const segmentStepInput = document.getElementById('segmentStepInput');
   const decreaseSegmentLengthBtn = document.getElementById('decreaseSegmentLengthBtn');
   const increaseSegmentLengthBtn = document.getElementById('increaseSegmentLengthBtn');
   const applySegmentLengthBtn = document.getElementById('applySegmentLengthBtn');
+  const scaleBySegmentBtn = document.getElementById('scaleBySegmentBtn');
+  const focusSegmentBtn = document.getElementById('focusSegmentBtn');
   const manualPointXInput = document.getElementById('manualPointXInput');
   const manualPointYInput = document.getElementById('manualPointYInput');
   const insertPointOffsetInput = document.getElementById('insertPointOffsetInput');
@@ -1988,6 +2016,20 @@
           .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
           .map((point) => ({ x: round(point.x), y: round(point.y) }))
       : [];
+    const holes = Array.isArray(panel.holes)
+      ? panel.holes
+          .map((hole) => Array.isArray(hole)
+            ? hole
+                .map((point) => ({
+                  x: Number(point?.x ?? NaN),
+                  y: Number(point?.y ?? NaN),
+                }))
+                .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
+                .map((point) => ({ x: round(point.x), y: round(point.y) }))
+            : []
+          )
+          .filter((hole) => hole.length >= 3)
+      : [];
 
     if (!Number.isFinite(area) || area <= 0) {
       return null;
@@ -2001,6 +2043,7 @@
       centroid,
       bounds: panel.bounds && typeof panel.bounds === 'object' ? panel.bounds : null,
       shape_points: shapePoints.length >= 3 ? shapePoints : null,
+      holes,
       source: panel.source ? String(panel.source) : null,
       source_shape_id: panel.source_shape_id ? String(panel.source_shape_id) : null,
       feature_kind: panel.feature_kind ? String(panel.feature_kind) : null,
@@ -2215,28 +2258,18 @@
     }
   };
 
-  const fitViewport = (paddingMeters = 1.2) => {
-    const bounds = points.reduce((carry, point) => ({
-      minX: Math.min(carry.minX, point.x),
-      minY: Math.min(carry.minY, point.y),
-      maxX: Math.max(carry.maxX, point.x),
-      maxY: Math.max(carry.maxY, point.y),
-    }), {
-      minX: Number.POSITIVE_INFINITY,
-      minY: Number.POSITIVE_INFINITY,
-      maxX: Number.NEGATIVE_INFINITY,
-      maxY: Number.NEGATIVE_INFINITY,
-    });
-
-    if (!Number.isFinite(bounds.minX) || !Number.isFinite(bounds.minY)) {
+  const focusViewportOnBounds = (rawBounds, paddingMeters = 1.2, minSpanMeters = 1.4) => {
+    if (!rawBounds || !Number.isFinite(rawBounds.minX) || !Number.isFinite(rawBounds.minY) || !Number.isFinite(rawBounds.maxX) || !Number.isFinite(rawBounds.maxY)) {
       applyViewport({ x: 0, y: 0, width: workspaceWidth, height: workspaceHeight });
       return;
     }
 
     const rect = svg.getBoundingClientRect();
     const aspectRatio = rect.width > 0 && rect.height > 0 ? rect.width / rect.height : (workspaceWidth / workspaceHeight);
-    let nextWidth = Math.max(bounds.maxX - bounds.minX + (paddingMeters * 2), 1.4);
-    let nextHeight = Math.max(bounds.maxY - bounds.minY + (paddingMeters * 2), 1.4);
+    const spanX = Math.max(rawBounds.maxX - rawBounds.minX, 0.01);
+    const spanY = Math.max(rawBounds.maxY - rawBounds.minY, 0.01);
+    let nextWidth = Math.max(spanX + (paddingMeters * 2), minSpanMeters);
+    let nextHeight = Math.max(spanY + (paddingMeters * 2), minSpanMeters);
 
     if ((nextWidth / nextHeight) > aspectRatio) {
       nextHeight = nextWidth / aspectRatio;
@@ -2245,11 +2278,40 @@
     }
 
     applyViewport({
-      x: bounds.minX - ((nextWidth - (bounds.maxX - bounds.minX)) / 2),
-      y: bounds.minY - ((nextHeight - (bounds.maxY - bounds.minY)) / 2),
+      x: rawBounds.minX - ((nextWidth - spanX) / 2),
+      y: rawBounds.minY - ((nextHeight - spanY) / 2),
       width: nextWidth,
       height: nextHeight,
     });
+  };
+
+  const fitViewport = (paddingMeters = 1.2) => {
+    const bounds = geometryBounds(points, roomElements, featureShapes, lightLineShapes);
+    focusViewportOnBounds(bounds, paddingMeters);
+  };
+
+  const focusViewportOnPoint = (index, paddingMeters = 0.75) => {
+    const point = points[index];
+    if (!point) return;
+
+    focusViewportOnBounds({
+      minX: point.x,
+      minY: point.y,
+      maxX: point.x,
+      maxY: point.y,
+    }, paddingMeters, 1.2);
+  };
+
+  const focusViewportOnSegment = (index, paddingMeters = 0.9) => {
+    const segment = getSegmentGeometry(index);
+    if (!segment) return;
+
+    focusViewportOnBounds({
+      minX: Math.min(segment.start.x, segment.end.x),
+      minY: Math.min(segment.start.y, segment.end.y),
+      maxX: Math.max(segment.start.x, segment.end.x),
+      maxY: Math.max(segment.start.y, segment.end.y),
+    }, Math.max(paddingMeters, segment.length * 0.25), 1.6);
   };
 
   const zoomViewport = (factor, anchorClientX = null, anchorClientY = null) => {
@@ -2956,6 +3018,32 @@
       maxX: Number.NEGATIVE_INFINITY,
       maxY: Number.NEGATIVE_INFINITY,
     });
+  };
+
+  const polygonPathData = (points) => {
+    if (!Array.isArray(points) || points.length < 3) {
+      return '';
+    }
+
+    const [first, ...rest] = points;
+    return [`M ${first.x} ${first.y}`, ...rest.map((point) => `L ${point.x} ${point.y}`), 'Z'].join(' ');
+  };
+
+  const panelPathData = (panel) => {
+    const segments = [];
+    if (Array.isArray(panel?.shape_points) && panel.shape_points.length >= 3) {
+      segments.push(polygonPathData(panel.shape_points));
+    }
+
+    if (Array.isArray(panel?.holes)) {
+      panel.holes.forEach((hole) => {
+        if (Array.isArray(hole) && hole.length >= 3) {
+          segments.push(polygonPathData(hole));
+        }
+      });
+    }
+
+    return segments.join(' ');
   };
 
   const buildLightLineTemplate = () => {
@@ -3921,6 +4009,9 @@
     if (selectedPointYInput && currentPoint) selectedPointYInput.value = metersToCentimeters(currentPoint.y);
     if (selectedSegmentTitle) selectedSegmentTitle.textContent = currentSegment ? `Сторона ${segmentLabel(selectedSegmentIndex)}` : 'Сторона —';
     if (selectedSegmentLengthInput) selectedSegmentLengthInput.value = currentSegment ? metersToCentimeters(currentSegment.length) : '';
+    if (segmentScaleLengthInput && document.activeElement !== segmentScaleLengthInput) {
+      segmentScaleLengthInput.value = currentSegment ? metersToCentimeters(currentSegment.length) : '';
+    }
     if (selectedAngleInput) selectedAngleInput.value = angle === null ? '—' : `${String(angle).replace('.', ',')}°`;
     if (deletePointBtn) deletePointBtn.disabled = points.length <= 3;
   };
@@ -4508,6 +4599,52 @@
       lightLineShapes: normalizedLightLines,
     };
   };
+  const transformFeatureShapeGeometry = (shape, index, transformPoint, scaleFactor = 1) => {
+    const normalizedScale = Number.isFinite(Number(scaleFactor)) && Number(scaleFactor) > 0 ? Number(scaleFactor) : 1;
+    let nextShape = { ...shape };
+
+    if (Array.isArray(shape.shape_points) && shape.shape_points.length >= 3) {
+      const nextShapePoints = shape.shape_points.map((point) => transformPoint({
+        x: Number(point.x ?? 0),
+        y: Number(point.y ?? 0),
+      }));
+      const bounds = polygonDraftBounds(nextShapePoints);
+      nextShape = {
+        ...nextShape,
+        shape_points: nextShapePoints,
+        x_m: bounds ? round(bounds.minX) : round(Number(shape.x_m ?? 0)),
+        y_m: bounds ? round(bounds.minY) : round(Number(shape.y_m ?? 0)),
+        width_m: bounds ? round(bounds.maxX - bounds.minX) : round(Number(shape.width_m ?? 0)),
+        height_m: bounds ? round(bounds.maxY - bounds.minY) : round(Number(shape.height_m ?? 0)),
+      };
+    } else {
+      const topLeft = transformPoint({
+        x: Number(shape.x_m ?? 0),
+        y: Number(shape.y_m ?? 0),
+      });
+      const bottomRight = transformPoint({
+        x: Number(shape.x_m ?? 0) + Number(shape.width_m ?? 0),
+        y: Number(shape.y_m ?? 0) + Number(shape.height_m ?? 0),
+      });
+
+      nextShape = {
+        ...nextShape,
+        x_m: Math.min(topLeft.x, bottomRight.x),
+        y_m: Math.min(topLeft.y, bottomRight.y),
+        width_m: Math.abs(bottomRight.x - topLeft.x),
+        height_m: Math.abs(bottomRight.y - topLeft.y),
+      };
+    }
+
+    if (Number.isFinite(Number(shape.offset_m))) nextShape.offset_m = round(Number(shape.offset_m) * normalizedScale);
+    if (Number.isFinite(Number(shape.cut_offset_m))) nextShape.cut_offset_m = round(Number(shape.cut_offset_m) * normalizedScale);
+    if (Number.isFinite(Number(shape.depth_m))) nextShape.depth_m = round(Number(shape.depth_m) * normalizedScale);
+    if (Number.isFinite(Number(shape.radius_m))) nextShape.radius_m = round(Number(shape.radius_m) * normalizedScale);
+    if (Number.isFinite(Number(shape.area_delta_m2))) nextShape.area_delta_m2 = round(Number(shape.area_delta_m2) * normalizedScale * normalizedScale, 4);
+    if (Number.isFinite(Number(shape.perimeter_delta_m))) nextShape.perimeter_delta_m = round(Number(shape.perimeter_delta_m) * normalizedScale, 4);
+
+    return normalizeFeatureShape(nextShape, index);
+  };
   const transformGeometry = (transformPoint) => {
     pushHistory();
 
@@ -4528,24 +4665,9 @@
         y_m: transformed.y,
       };
     });
-    const nextFeatureShapes = cloneFeatureShapes().map((shape, index) => {
-      const topLeft = transformPoint({
-        x: Number(shape.x_m),
-        y: Number(shape.y_m),
-      });
-      const bottomRight = transformPoint({
-        x: Number(shape.x_m) + Number(shape.width_m),
-        y: Number(shape.y_m) + Number(shape.height_m),
-      });
-
-      return normalizeFeatureShape({
-        ...shape,
-        x_m: Math.min(topLeft.x, bottomRight.x),
-        y_m: Math.min(topLeft.y, bottomRight.y),
-        width_m: Math.abs(bottomRight.x - topLeft.x),
-        height_m: Math.abs(bottomRight.y - topLeft.y),
-      }, index);
-    }).filter(Boolean);
+    const nextFeatureShapes = cloneFeatureShapes()
+      .map((shape, index) => transformFeatureShapeGeometry(shape, index, transformPoint, 1))
+      .filter(Boolean);
     const nextLightLines = cloneLightLineShapes().map((shape, index) => normalizeLightLineShape({
       ...shape,
       points: (shape.points ?? []).map(transformPoint),
@@ -4559,6 +4681,82 @@
     syncAllElementForms();
     fitViewport();
     render({ syncList: true, syncInput: true });
+  };
+  const scaleGeometryByFactor = (factor, anchorPoint = null) => {
+    const safeFactor = Number(factor);
+    if (!Number.isFinite(safeFactor) || safeFactor <= 0 || Math.abs(safeFactor - 1) < 0.0001) {
+      return false;
+    }
+
+    const bounds = geometryBounds(points, roomElements, featureShapes, lightLineShapes);
+    if (!Number.isFinite(bounds.minX) || !Number.isFinite(bounds.minY)) {
+      return false;
+    }
+
+    const anchor = anchorPoint && Number.isFinite(anchorPoint.x) && Number.isFinite(anchorPoint.y)
+      ? anchorPoint
+      : {
+          x: round((bounds.minX + bounds.maxX) / 2),
+          y: round((bounds.minY + bounds.maxY) / 2),
+        };
+
+    const scalePoint = (point) => ({
+      x: round(anchor.x + ((Number(point.x ?? 0) - anchor.x) * safeFactor)),
+      y: round(anchor.y + ((Number(point.y ?? 0) - anchor.y) * safeFactor)),
+    });
+
+    pushHistory();
+
+    const nextPoints = clonePoints().map(scalePoint);
+    const nextElements = cloneElements().map((element) => {
+      const nextElement = { ...element };
+      if (Number.isFinite(Number(element.length_m))) {
+        nextElement.length_m = round(Number(element.length_m) * safeFactor);
+      }
+      if ((element.placement_mode ?? 'free') === 'wall') {
+        if (Number.isFinite(Number(element.offset_m))) {
+          nextElement.offset_m = round(Number(element.offset_m) * safeFactor);
+        }
+        return nextElement;
+      }
+      if (element.x_m === null || element.y_m === null) {
+        return nextElement;
+      }
+
+      const transformed = scalePoint({
+        x: Number(element.x_m),
+        y: Number(element.y_m),
+      });
+
+      nextElement.x_m = transformed.x;
+      nextElement.y_m = transformed.y;
+      return nextElement;
+    });
+    const nextFeatureShapes = cloneFeatureShapes()
+      .map((shape, index) => transformFeatureShapeGeometry(shape, index, scalePoint, safeFactor))
+      .filter(Boolean);
+    const nextLightLines = cloneLightLineShapes().map((shape, index) => normalizeLightLineShape({
+      ...shape,
+      width_m: Number.isFinite(Number(shape.width_m)) ? round(Number(shape.width_m) * safeFactor, 3) : shape.width_m,
+      points: (shape.points ?? []).map(scalePoint),
+    }, index)).filter(Boolean);
+
+    if (Number.isFinite(Number(productionSettings.orientation_offset_m))) {
+      productionSettings.orientation_offset_m = round(Number(productionSettings.orientation_offset_m) * safeFactor);
+    }
+    if (Number.isFinite(Number(productionSettings.seam_offset_m))) {
+      productionSettings.seam_offset_m = round(Number(productionSettings.seam_offset_m) * safeFactor);
+    }
+
+    const normalized = normalizeGeometry(nextPoints, nextElements, nextFeatureShapes, nextLightLines);
+    points = normalized.points;
+    roomElements.splice(0, roomElements.length, ...normalized.elements);
+    featureShapes.splice(0, featureShapes.length, ...(normalized.featureShapes ?? []));
+    lightLineShapes.splice(0, lightLineShapes.length, ...(normalized.lightLineShapes ?? []));
+    syncAllElementForms();
+    fitViewport();
+    render({ syncList: true, syncInput: true });
+    return true;
   };
 
   const reindexWallAttachmentsOnInsert = (segmentIndex, insertedOffset) => {
@@ -5244,15 +5442,19 @@
     if (Array.isArray(lightLinePanelsPreview) && lightLinePanelsPreview.length > 1) {
       lightLinePanelsPreview.forEach((panel, index) => {
         if (Array.isArray(panel.shape_points) && panel.shape_points.length >= 3) {
-          const panelPolygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-          panelPolygon.setAttribute('points', panel.shape_points.map((point) => `${point.x},${point.y}`).join(' '));
-          panelPolygon.setAttribute('fill', panel.source === 'seam_split' ? 'rgba(124, 58, 237, 0.12)' : 'rgba(5, 150, 105, 0.08)');
-          panelPolygon.setAttribute('stroke', panel.source === 'seam_split' ? '#7c3aed' : '#059669');
-          panelPolygon.setAttribute('stroke-width', pixelsToWorld(panel.source === 'seam_split' ? 2.2 : 1.4));
-          panelPolygon.setAttribute('stroke-dasharray', panel.source === 'seam_split' ? `${pixelsToWorld(8)} ${pixelsToWorld(5)}` : `${pixelsToWorld(4)} ${pixelsToWorld(4)}`);
-          panelPolygon.setAttribute('opacity', panel.source === 'seam_split' ? '0.95' : '0.7');
-          panelPolygon.style.pointerEvents = 'none';
-          layer.appendChild(panelPolygon);
+          const pathData = panelPathData(panel);
+          if (pathData !== '') {
+            const panelPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            panelPath.setAttribute('d', pathData);
+            panelPath.setAttribute('fill', panel.source === 'seam_split' ? 'rgba(124, 58, 237, 0.12)' : 'rgba(5, 150, 105, 0.08)');
+            panelPath.setAttribute('stroke', panel.source === 'seam_split' ? '#7c3aed' : '#059669');
+            panelPath.setAttribute('stroke-width', pixelsToWorld(panel.source === 'seam_split' ? 2.2 : 1.4));
+            panelPath.setAttribute('stroke-dasharray', panel.source === 'seam_split' ? `${pixelsToWorld(8)} ${pixelsToWorld(5)}` : `${pixelsToWorld(4)} ${pixelsToWorld(4)}`);
+            panelPath.setAttribute('opacity', panel.source === 'seam_split' ? '0.95' : '0.7');
+            panelPath.setAttribute('fill-rule', 'evenodd');
+            panelPath.style.pointerEvents = 'none';
+            layer.appendChild(panelPath);
+          }
         }
 
         if (!panel?.centroid) return;
@@ -5569,6 +5771,10 @@
     setInspectorTab('points');
     render();
   });
+  focusPointBtn?.addEventListener('click', () => {
+    focusViewportOnPoint(selectedPointIndex);
+    render({ syncList: false, syncInput: false });
+  });
   applySegmentLengthBtn?.addEventListener('click', () => {
     const nextLength = centimetersToMeters(selectedSegmentLengthInput?.value);
     if (nextLength === null) return;
@@ -5576,6 +5782,17 @@
     pushHistory();
     setSegmentLength(selectedSegmentIndex, nextLength);
     render();
+  });
+  scaleBySegmentBtn?.addEventListener('click', () => {
+    const targetLength = centimetersToMeters(segmentScaleLengthInput?.value);
+    const segment = getSegmentGeometry(selectedSegmentIndex);
+    if (!segment || targetLength === null || targetLength <= 0) return;
+    setInspectorTab('segments');
+    scaleGeometryByFactor(targetLength / Math.max(segment.length, 0.001), { ...segment.start });
+  });
+  focusSegmentBtn?.addEventListener('click', () => {
+    focusViewportOnSegment(selectedSegmentIndex);
+    render({ syncList: false, syncInput: false });
   });
   insertPointAtOffsetBtn?.addEventListener('click', () => {
     const segment = getSegmentGeometry(selectedSegmentIndex);
@@ -5897,6 +6114,10 @@
       applySegmentLengthBtn?.click();
       return;
     }
+    if (event.target === segmentScaleLengthInput) {
+      scaleBySegmentBtn?.click();
+      return;
+    }
     if (event.target === selectedPointXInput || event.target === selectedPointYInput) {
       event.target.dispatchEvent(new Event('change', { bubbles: true }));
       return;
@@ -6013,6 +6234,21 @@
       }
       if (event.code === 'KeyE') {
         setMode('element');
+        return;
+      }
+      if (event.code === 'KeyF') {
+        focusViewportOnSegment(selectedSegmentIndex);
+        render({ syncList: false, syncInput: false });
+        return;
+      }
+      if (event.code === 'KeyG') {
+        focusViewportOnPoint(selectedPointIndex);
+        render({ syncList: false, syncInput: false });
+        return;
+      }
+      if (event.code === 'Digit0' || event.code === 'Numpad0') {
+        fitViewport();
+        render({ syncList: false, syncInput: false });
         return;
       }
     }

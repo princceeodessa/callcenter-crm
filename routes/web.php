@@ -67,6 +67,7 @@ Route::middleware('auth')->group(function () {
         Route::patch('/deals/{deal}', [DealController::class, 'update'])->name('deals.update');
         Route::post('/deals/{deal}/stage', [DealController::class, 'changeStage'])->name('deals.stage');
         Route::post('/deals/{deal}/close', [DealController::class, 'close'])->name('deals.close');
+        Route::post('/deals/broadcast-today', [DealController::class, 'broadcastToday'])->name('deals.broadcast-today');
         Route::middleware('admin.only')->group(function () {
             Route::get('/deals/{deal}/ceiling-project', [CeilingProjectController::class, 'showForDeal'])->name('deals.ceiling-project.show');
         });
@@ -121,6 +122,7 @@ Route::middleware('auth')->group(function () {
         Route::patch('/ceiling-projects/{project}/rooms/{room}', [CeilingProjectController::class, 'updateRoom'])->name('ceiling-projects.rooms.update');
         Route::patch('/ceiling-projects/{project}/rooms/{room}/geometry', [CeilingProjectController::class, 'updateRoomGeometry'])->name('ceiling-projects.rooms.geometry.update');
         Route::get('/ceiling-projects/{project}/rooms/{room}/panels', [CeilingProjectController::class, 'roomPanels'])->name('ceiling-projects.rooms.panels.show');
+        Route::get('/ceiling-projects/{project}/production', [CeilingProjectController::class, 'productionPacket'])->name('ceiling-projects.production.show');
         Route::post('/ceiling-projects/{project}/rooms/{room}/elements', [CeilingProjectController::class, 'storeRoomElement'])->name('ceiling-projects.rooms.elements.store');
         Route::patch('/ceiling-projects/{project}/rooms/{room}/elements/{element}', [CeilingProjectController::class, 'updateRoomElement'])->name('ceiling-projects.rooms.elements.update');
         Route::delete('/ceiling-projects/{project}/rooms/{room}/elements/{element}', [CeilingProjectController::class, 'destroyRoomElement'])->name('ceiling-projects.rooms.elements.destroy');

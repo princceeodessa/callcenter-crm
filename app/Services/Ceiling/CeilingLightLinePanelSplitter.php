@@ -167,11 +167,18 @@ class CeilingLightLinePanelSplitter
         }
 
         $count = max(1, count($cells));
-        $shapePoints = [
+        $contours = $this->tracePanelContours($cells, $minX, $minY, $step);
+        $shapePoints = $contours['outer'] ?? [
             ['x' => $this->round($minX + ($minCol * $step)), 'y' => $this->round($minY + ($minRow * $step))],
             ['x' => $this->round($minX + (($maxCol + 1) * $step)), 'y' => $this->round($minY + ($minRow * $step))],
             ['x' => $this->round($minX + (($maxCol + 1) * $step)), 'y' => $this->round($minY + (($maxRow + 1) * $step))],
             ['x' => $this->round($minX + ($minCol * $step)), 'y' => $this->round($minY + (($maxRow + 1) * $step))],
+        ];
+        $bounds = $this->boundsFromPoints($shapePoints) ?? [
+            'min_x' => $this->round($minX + ($minCol * $step)),
+            'min_y' => $this->round($minY + ($minRow * $step)),
+            'max_x' => $this->round($minX + (($maxCol + 1) * $step)),
+            'max_y' => $this->round($minY + (($maxRow + 1) * $step)),
         ];
 
         return [
@@ -184,15 +191,279 @@ class CeilingLightLinePanelSplitter
                 'y' => $this->round($centroid['y'] / $count),
             ],
             'shape_points' => $shapePoints,
-            'bounds' => [
-                'min_x' => $this->round($minX + ($minCol * $step)),
-                'min_y' => $this->round($minY + ($minRow * $step)),
-                'max_x' => $this->round($minX + (($maxCol + 1) * $step)),
-                'max_y' => $this->round($minY + (($maxRow + 1) * $step)),
-            ],
+            'holes' => $contours['holes'] ?? [],
+            'bounds' => $bounds,
             'source' => 'light_line_split',
             'production' => $this->productionPayload($productionSettings),
         ];
+    }
+
+    /**
+     * @param  array<int, array{0:int, 1:int}>  $cells
+     * @return array{outer: array<int, array{x: float, y: float}>|null, holes: array<int, array<int, array{x: float, y: float}>>}
+     */
+    private function tracePanelContours(array $cells, float $minX, float $minY, float $step): array
+    {
+        $edges = $this->buildBoundaryEdges($cells);
+        if ($edges === []) {
+            return ['outer' => null, 'holes' => []];
+        }
+
+        $loops = $this->traceBoundaryLoops($edges);
+        if ($loops === []) {
+            return ['outer' => null, 'holes' => []];
+        }
+
+        $worldLoops = [];
+        foreach ($loops as $loop) {
+            $simplifiedLoop = $this->simplifyGridLoop($loop);
+            if (count($simplifiedLoop) < 3) {
+                continue;
+            }
+
+            $points = array_map(function (array $vertex) use ($minX, $minY, $step) {
+                return [
+                    'x' => $this->round($minX + ($vertex['x'] * $step)),
+                    'y' => $this->round($minY + ($vertex['y'] * $step)),
+                ];
+            }, $simplifiedLoop);
+
+            if (count($points) >= 3) {
+                $worldLoops[] = $points;
+            }
+        }
+
+        if ($worldLoops === []) {
+            return ['outer' => null, 'holes' => []];
+        }
+
+        usort($worldLoops, fn (array $left, array $right) => $this->polygonArea($right) <=> $this->polygonArea($left));
+
+        return [
+            'outer' => $worldLoops[0],
+            'holes' => array_values(array_slice($worldLoops, 1)),
+        ];
+    }
+
+    /**
+     * @param  array<int, array{0:int, 1:int}>  $cells
+     * @return array<int, array{0: array{x: int, y: int}, 1: array{x: int, y: int}}>
+     */
+    private function buildBoundaryEdges(array $cells): array
+    {
+        $filled = [];
+        foreach ($cells as [$row, $col]) {
+            $filled[$row.':'.$col] = true;
+        }
+
+        $edges = [];
+        foreach ($cells as [$row, $col]) {
+            if (!isset($filled[($row - 1).':'.$col])) {
+                $edges[] = [['x' => $col, 'y' => $row], ['x' => $col + 1, 'y' => $row]];
+            }
+
+            if (!isset($filled[$row.':'.($col + 1)])) {
+                $edges[] = [['x' => $col + 1, 'y' => $row], ['x' => $col + 1, 'y' => $row + 1]];
+            }
+
+            if (!isset($filled[($row + 1).':'.$col])) {
+                $edges[] = [['x' => $col + 1, 'y' => $row + 1], ['x' => $col, 'y' => $row + 1]];
+            }
+
+            if (!isset($filled[$row.':'.($col - 1)])) {
+                $edges[] = [['x' => $col, 'y' => $row + 1], ['x' => $col, 'y' => $row]];
+            }
+        }
+
+        return $edges;
+    }
+
+    /**
+     * @param  array<int, array{0: array{x: int, y: int}, 1: array{x: int, y: int}}>  $edges
+     * @return array<int, array<int, array{x: int, y: int}>>
+     */
+    private function traceBoundaryLoops(array $edges): array
+    {
+        $outgoing = [];
+        foreach ($edges as [$start, $end]) {
+            $outgoing[$this->gridVertexKey($start)][] = $end;
+        }
+
+        $visited = [];
+        $loops = [];
+        $maxIterations = max(20, count($edges) * 4);
+
+        foreach ($edges as [$start, $end]) {
+            $edgeKey = $this->gridEdgeKey($start, $end);
+            if (isset($visited[$edgeKey])) {
+                continue;
+            }
+
+            $loop = [$start];
+            $currentStart = $start;
+            $currentEnd = $end;
+            $iterations = 0;
+
+            while ($iterations < $maxIterations) {
+                $visited[$this->gridEdgeKey($currentStart, $currentEnd)] = true;
+                $loop[] = $currentEnd;
+
+                if ($this->sameGridVertex($currentEnd, $start)) {
+                    break;
+                }
+
+                $candidates = array_values(array_filter(
+                    $outgoing[$this->gridVertexKey($currentEnd)] ?? [],
+                    fn (array $candidate) => !isset($visited[$this->gridEdgeKey($currentEnd, $candidate)])
+                ));
+
+                if ($candidates === []) {
+                    break;
+                }
+
+                $nextEnd = count($candidates) === 1
+                    ? $candidates[0]
+                    : $this->selectNextBoundaryVertex($currentStart, $currentEnd, $candidates);
+
+                $currentStart = $currentEnd;
+                $currentEnd = $nextEnd;
+                $iterations++;
+            }
+
+            if (count($loop) >= 4 && $this->sameGridVertex($loop[0], $loop[count($loop) - 1])) {
+                $loops[] = $loop;
+            }
+        }
+
+        return $loops;
+    }
+
+    /**
+     * @param  array{x: int, y: int}  $previous
+     * @param  array{x: int, y: int}  $current
+     * @param  array<int, array{x: int, y: int}>  $candidates
+     * @return array{x: int, y: int}
+     */
+    private function selectNextBoundaryVertex(array $previous, array $current, array $candidates): array
+    {
+        $incoming = [
+            'x' => $current['x'] - $previous['x'],
+            'y' => $current['y'] - $previous['y'],
+        ];
+
+        usort($candidates, function (array $left, array $right) use ($current, $incoming) {
+            $leftPriority = $this->boundaryTurnPriority($incoming, [
+                'x' => $left['x'] - $current['x'],
+                'y' => $left['y'] - $current['y'],
+            ]);
+            $rightPriority = $this->boundaryTurnPriority($incoming, [
+                'x' => $right['x'] - $current['x'],
+                'y' => $right['y'] - $current['y'],
+            ]);
+
+            return $leftPriority <=> $rightPriority;
+        });
+
+        return $candidates[0];
+    }
+
+    /**
+     * @param  array{x: int, y: int}  $incoming
+     * @param  array{x: int, y: int}  $outgoing
+     */
+    private function boundaryTurnPriority(array $incoming, array $outgoing): int
+    {
+        $incomingIndex = $this->boundaryDirectionIndex($incoming);
+        $outgoingIndex = $this->boundaryDirectionIndex($outgoing);
+        $turn = ($outgoingIndex - $incomingIndex + 4) % 4;
+
+        return match ($turn) {
+            1 => 0,
+            0 => 1,
+            3 => 2,
+            default => 3,
+        };
+    }
+
+    /**
+     * @param  array{x: int, y: int}  $vector
+     */
+    private function boundaryDirectionIndex(array $vector): int
+    {
+        if (abs($vector['x']) >= abs($vector['y'])) {
+            return $vector['x'] >= 0 ? 0 : 2;
+        }
+
+        return $vector['y'] >= 0 ? 1 : 3;
+    }
+
+    /**
+     * @param  array<int, array{x: int, y: int}>  $loop
+     * @return array<int, array{x: int, y: int}>
+     */
+    private function simplifyGridLoop(array $loop): array
+    {
+        $normalized = [];
+        foreach ($loop as $vertex) {
+            if ($normalized !== [] && $this->sameGridVertex($normalized[count($normalized) - 1], $vertex)) {
+                continue;
+            }
+
+            $normalized[] = $vertex;
+        }
+
+        if (count($normalized) > 1 && $this->sameGridVertex($normalized[0], $normalized[count($normalized) - 1])) {
+            array_pop($normalized);
+        }
+
+        if (count($normalized) < 3) {
+            return $normalized;
+        }
+
+        $simplified = [];
+        $count = count($normalized);
+        for ($index = 0; $index < $count; $index++) {
+            $previous = $normalized[($index - 1 + $count) % $count];
+            $current = $normalized[$index];
+            $next = $normalized[($index + 1) % $count];
+
+            $isCollinear = ($previous['x'] === $current['x'] && $current['x'] === $next['x'])
+                || ($previous['y'] === $current['y'] && $current['y'] === $next['y']);
+
+            if ($isCollinear) {
+                continue;
+            }
+
+            $simplified[] = $current;
+        }
+
+        return count($simplified) >= 3 ? $simplified : $normalized;
+    }
+
+    /**
+     * @param  array{x: int, y: int}  $vertex
+     */
+    private function gridVertexKey(array $vertex): string
+    {
+        return $vertex['x'].':'.$vertex['y'];
+    }
+
+    /**
+     * @param  array{x: int, y: int}  $start
+     * @param  array{x: int, y: int}  $end
+     */
+    private function gridEdgeKey(array $start, array $end): string
+    {
+        return $this->gridVertexKey($start).'->'.$this->gridVertexKey($end);
+    }
+
+    /**
+     * @param  array{x: int, y: int}  $left
+     * @param  array{x: int, y: int}  $right
+     */
+    private function sameGridVertex(array $left, array $right): bool
+    {
+        return $left['x'] === $right['x'] && $left['y'] === $right['y'];
     }
 
     /**
@@ -306,6 +577,27 @@ class CeilingLightLinePanelSplitter
         return [
             'x' => $this->round($sum['x'] / count($points)),
             'y' => $this->round($sum['y'] / count($points)),
+        ];
+    }
+
+    /**
+     * @param  array<int, array{x: float, y: float}>  $points
+     * @return array{min_x: float, min_y: float, max_x: float, max_y: float}|null
+     */
+    private function boundsFromPoints(array $points): ?array
+    {
+        if (count($points) < 3) {
+            return null;
+        }
+
+        $xs = array_column($points, 'x');
+        $ys = array_column($points, 'y');
+
+        return [
+            'min_x' => $this->round((float) min($xs)),
+            'min_y' => $this->round((float) min($ys)),
+            'max_x' => $this->round((float) max($xs)),
+            'max_y' => $this->round((float) max($ys)),
         ];
     }
 

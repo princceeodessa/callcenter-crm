@@ -9,10 +9,13 @@ use App\Models\DealActivity;
 use App\Models\DealStageHistory;
 use App\Models\CallRecording;
 use App\Models\User;
+use App\Services\Chat\ChatSendService;
 use App\Services\Tasks\TaskWorkflowService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 
 class DealController extends Controller
 {
@@ -23,7 +26,9 @@ class DealController extends Controller
         $status = $request->string('status')->toString(); // open|closed|all
         $autoExpandSearch = $request->boolean('auto_expand_search');
         $source = trim($request->string('source')->toString());
+        $productCategory = trim($request->string('product_category')->toString());
         $sourceOptions = Deal::sourceFilterOptions();
+        $productCategoryOptions = Deal::productCategoryOptions();
 
         if (!in_array($status, ['open','closed','all'], true)) {
             $status = 'open';
@@ -33,6 +38,9 @@ class DealController extends Controller
         }
         if ($source !== '' && !array_key_exists($source, $sourceOptions)) {
             $source = '';
+        }
+        if ($productCategory !== '' && !Deal::isValidProductCategory($productCategory)) {
+            $productCategory = '';
         }
 
         $dealsQuery = Deal::query()
@@ -72,12 +80,30 @@ class DealController extends Controller
         if ($source !== '') {
             Deal::applySourceFilter($dealsQuery, $source);
         }
+        if ($productCategory !== '') {
+            $dealsQuery->where('product_category', $productCategory);
+        }
 
         $deals = $dealsQuery
             ->paginate(25)
             ->withQueryString();
 
-        return view('deals.index', compact('deals','q','status','source','sourceOptions'));
+        $broadcastTemplates = $this->broadcastTemplates();
+        $todayBroadcastCounts = $this->todayBroadcastCounts($user->account_id);
+        $broadcastTargetModeOptions = $this->broadcastTargetModeOptions();
+
+        return view('deals.index', compact(
+            'deals',
+            'q',
+            'status',
+            'source',
+            'sourceOptions',
+            'productCategory',
+            'productCategoryOptions',
+            'broadcastTemplates',
+            'todayBroadcastCounts',
+            'broadcastTargetModeOptions',
+        ));
     }
 
     public function kanban(Request $request)
@@ -201,7 +227,9 @@ class DealController extends Controller
             ->orderBy('name')
             ->get();
 
-        return view('deals.create', compact('stages','users'));
+        $productCategoryOptions = Deal::productCategoryOptions();
+
+        return view('deals.create', compact('stages','users', 'productCategoryOptions'));
     }
 
     public function store(Request $request, TaskWorkflowService $taskWorkflow)
@@ -210,6 +238,7 @@ class DealController extends Controller
             'title' => ['required','string','max:255'],
             'responsible_user_id' => ['required','integer','exists:users,id'],
             'amount' => ['nullable','numeric','min:0.01'],
+            'product_category' => ['required', Rule::in(array_keys(Deal::productCategoryOptions()))],
             'contact_name' => ['nullable','string','max:255'],
             'contact_phone' => ['nullable','string','max:32'],
             'stage_id' => ['required','exists:pipeline_stages,id'],
@@ -260,6 +289,7 @@ class DealController extends Controller
             'responsible_user_id' => $responsible->id,
             'amount' => $data['amount'] ?? null,
             'currency' => 'RUB',
+            'product_category' => $data['product_category'],
         ]);
 
         Deal::query()
@@ -335,6 +365,7 @@ class DealController extends Controller
             'title' => ['required','string','max:255'],
             'responsible_user_id' => ['required','integer','exists:users,id'],
             'amount' => ['required','numeric','min:0.01'],
+            'product_category' => ['required', Rule::in(array_keys(Deal::productCategoryOptions()))],
         ]);
 
         $responsible = User::query()
@@ -346,12 +377,14 @@ class DealController extends Controller
             'title' => $deal->title,
             'responsible_user_id' => $deal->responsible_user_id,
             'amount' => $deal->amount,
+            'product_category' => $deal->product_category,
         ];
 
         $deal->title = $data['title'];
         $deal->title_is_custom = 1;
         $deal->responsible_user_id = $responsible->id;
         $deal->amount = $data['amount'];
+        $deal->product_category = $data['product_category'];
         $deal->save();
 
         DealActivity::create([
@@ -366,6 +399,7 @@ class DealController extends Controller
                     'title' => $deal->title,
                     'responsible_user_id' => $deal->responsible_user_id,
                     'amount' => $deal->amount,
+                    'product_category' => $deal->product_category,
                 ],
             ],
         ]);
@@ -405,6 +439,7 @@ class DealController extends Controller
             ->where('is_active', 1)
             ->orderBy('name')
             ->get();
+        $productCategoryOptions = Deal::productCategoryOptions();
 
         // If we have call activities with recording_url but no call_recordings row yet, create it.
         foreach ($deal->activities as $a) {
@@ -491,7 +526,109 @@ class DealController extends Controller
             'dealTitle',
             'dealConversations',
             'ceilingProjectSummary',
+            'productCategoryOptions',
         ));
+    }
+
+    public function broadcastToday(Request $request, ChatSendService $chatSendService)
+    {
+        $user = Auth::user();
+        $productCategoryOptions = Deal::productCategoryOptions();
+        $targetModeOptions = $this->broadcastTargetModeOptions();
+
+        $data = $request->validate([
+            'broadcast_category' => ['required', Rule::in(array_keys($productCategoryOptions))],
+            'broadcast_template_key' => ['nullable', 'string', 'max:100'],
+            'broadcast_target_mode' => ['required', Rule::in(array_keys($targetModeOptions))],
+            'broadcast_text' => ['required', 'string', 'max:4000'],
+        ]);
+
+        $text = trim((string) $data['broadcast_text']);
+        if ($text === '') {
+            return back()
+                ->withErrors(['broadcast_text' => 'Введите текст рассылки.'])
+                ->withInput();
+        }
+
+        $deals = $this->eligibleBroadcastDealsQuery($user->account_id, $data['broadcast_category'])
+            ->with([
+                'contact',
+                'conversations' => fn ($query) => $query
+                    ->whereIn('channel', ['vk', 'avito'])
+                    ->orderByDesc('last_message_at')
+                    ->orderByDesc('id'),
+            ])
+            ->get();
+
+        $targetMode = $data['broadcast_target_mode'];
+        $targetModeLabel = $targetModeOptions[$targetMode] ?? $targetMode;
+        $sentCount = 0;
+        $sentDealCount = 0;
+        $skippedItems = [];
+        $errorItems = [];
+        $sentByChannel = [
+            'vk' => 0,
+            'avito' => 0,
+        ];
+
+        foreach ($deals as $deal) {
+            $conversations = $deal->conversations->filter(function ($item) {
+                return trim((string) $item->external_id) !== '';
+            })->values();
+
+            if ($conversations->isEmpty()) {
+                $skippedItems[] = $this->broadcastDealLabel($deal).': нет чата VK/Avito для отправки.';
+                continue;
+            }
+
+            if ($targetMode !== 'all') {
+                $conversations = $conversations->take(1)->values();
+            }
+
+            $dealSent = false;
+
+            foreach ($conversations as $conversation) {
+                try {
+                    $chatSendService->sendText($conversation, (int) $user->id, $text);
+                    $sentCount++;
+                    $dealSent = true;
+                    if (array_key_exists($conversation->channel, $sentByChannel)) {
+                        $sentByChannel[$conversation->channel]++;
+                    }
+                } catch (\Throwable $e) {
+                    $errorItems[] = $this->broadcastDealLabel($deal).' / '.($conversation->source_label ?? $conversation->channel).': '.$e->getMessage();
+                }
+            }
+
+            if ($dealSent) {
+                $sentDealCount++;
+            }
+        }
+
+        $skippedCount = count($skippedItems);
+        $errorCount = count($errorItems);
+        $categoryLabel = $productCategoryOptions[$data['broadcast_category']] ?? $data['broadcast_category'];
+
+        $report = [
+            'category_label' => $categoryLabel,
+            'date_label' => now(config('app.timezone'))->format('d.m.Y'),
+            'target_mode' => $targetMode,
+            'target_mode_label' => $targetModeLabel,
+            'sent_count' => $sentCount,
+            'sent_deal_count' => $sentDealCount,
+            'skipped_count' => $skippedCount,
+            'error_count' => $errorCount,
+            'sent_by_channel' => $sentByChannel,
+            'skipped_items' => array_slice($skippedItems, 0, 8),
+            'error_items' => array_slice($errorItems, 0, 8),
+        ];
+
+        $statusMessage = 'Рассылка по категории «'.$categoryLabel.'», режим «'.$targetModeLabel.'»: отправлено в '.$sentCount.' чатов по '.$sentDealCount.' сделкам, пропущено '.$skippedCount.', ошибок '.$errorCount.'.';
+
+        return back()
+            ->with('status', $statusMessage)
+            ->with('broadcast_report', $report)
+            ->withInput();
     }
 
     public function closed(Request $request)
@@ -774,5 +911,159 @@ class DealController extends Controller
 
         return str_contains($name, "\u{043A}\u{0432}\u{0430}\u{043B}")
             && str_contains($name, "\u{0437}\u{0430}\u{043C}\u{0435}\u{0440}");
+    }
+
+    private function todayBroadcastCounts(int $accountId): array
+    {
+        $counts = array_fill_keys(array_keys(Deal::productCategoryOptions()), 0);
+        [$startAt, $endAt] = $this->todayTaskWindow();
+
+        $rawCounts = Deal::query()
+            ->selectRaw('product_category, COUNT(*) as aggregate')
+            ->where('account_id', $accountId)
+            ->whereNull('closed_at')
+            ->whereIn('product_category', array_keys($counts))
+            ->whereHas('conversations', function ($query) {
+                $query->whereIn('channel', ['vk', 'avito']);
+            })
+            ->whereHas('tasks', function ($query) use ($startAt, $endAt) {
+                $query
+                    ->where('status', 'open')
+                    ->whereNotNull('due_at')
+                    ->where('due_at', '>=', $startAt)
+                    ->where('due_at', '<', $endAt);
+            })
+            ->groupBy('product_category')
+            ->pluck('aggregate', 'product_category')
+            ->all();
+
+        foreach ($rawCounts as $category => $value) {
+            if (array_key_exists($category, $counts)) {
+                $counts[$category] = (int) $value;
+            }
+        }
+
+        return $counts;
+    }
+
+    private function eligibleBroadcastDealsQuery(int $accountId, string $category)
+    {
+        [$startAt, $endAt] = $this->todayTaskWindow();
+
+        return Deal::query()
+            ->where('account_id', $accountId)
+            ->whereNull('closed_at')
+            ->where('product_category', $category)
+            ->whereHas('conversations', function ($query) {
+                $query->whereIn('channel', ['vk', 'avito']);
+            })
+            ->whereHas('tasks', function ($query) use ($startAt, $endAt) {
+                $query
+                    ->where('status', 'open')
+                    ->whereNotNull('due_at')
+                    ->where('due_at', '>=', $startAt)
+                    ->where('due_at', '<', $endAt);
+            });
+    }
+
+    private function todayTaskWindow(): array
+    {
+        $startAt = now(config('app.timezone'))->startOfDay();
+        $endAt = $startAt->copy()->addDay();
+
+        return [$startAt, $endAt];
+    }
+
+    private function broadcastDealLabel(Deal $deal): string
+    {
+        $lead = trim((string) ($deal->lead_display_name ?? ''));
+        $title = trim((string) ($deal->title ?? ''));
+
+        return $lead !== '' ? $lead.' (#'.$deal->id.')' : ($title !== '' ? $title.' (#'.$deal->id.')' : 'Сделка #'.$deal->id);
+    }
+
+    private function broadcastTemplates(): array
+    {
+        return [
+            'ceiling' => [
+                $this->makeBroadcastTemplate(
+                    'ceiling_1',
+                    'Шаблон 1',
+                    "Добрый день! 🌸😊\nПодскажите, пожалуйста, выезд мастера на замеры актуален для Вас?"
+                ),
+                $this->makeBroadcastTemplate(
+                    'ceiling_2',
+                    'Шаблон 2',
+                    "Добрый день! Ранее интересовались стоимостью натяжных потолков. Запись на замеры актуальна еще для вас?🙌😊"
+                ),
+                $this->makeBroadcastTemplate(
+                    'ceiling_3',
+                    'Шаблон 3',
+                    "Добрый день!\nПодскажите, готовы ли принять нашего специалиста на бесплатный замер и консультацию?\nГотовы выехать к вам в ближайшие дни 😇"
+                ),
+                $this->makeBroadcastTemplate(
+                    'ceiling_4',
+                    'Шаблон 4',
+                    "Добрый день ❤️\nУспевайте воспользоваться сразу 🔥ДВУМЯ ВЫГОДНЫМИ ПРЕДЛОЖЕНИЯМИ🔥\nКаждое 2 и 3 помещение, в подарок идет полотно, а при заключении договора на потолки, будет дополнительная скидка на ВСЮ светотехнику от 20% до 50%🥰❤️\nПодберем для Вас время на бесплатный замер?"
+                ),
+                $this->makeBroadcastTemplate(
+                    'ceiling_5',
+                    'Шаблон 5',
+                    "Добрый день ✨🙌🏻 Напоминаем что до АКТУАЛЬНАЯ ДАТА у нас проходит АКЦИЯ 2 и 3 потолок в подарок 🎁 плюс скидка на светотехнику!😉 просчет с учетом акций делает специалист по замерам, давайте подберем для вас время?📝"
+                ),
+            ],
+            'air_conditioner' => [
+                $this->makeBroadcastTemplate(
+                    'air_conditioner_1',
+                    'Шаблон 1',
+                    "Добрый день! Ранее интересовались стоимостью кондиционеров, подскажите, уже готовы принять специалиста для выбора кондиционера и просчет стоимости?📝❤️"
+                ),
+                $this->makeBroadcastTemplate(
+                    'air_conditioner_2',
+                    'Шаблон 2',
+                    "Добрый день! Ранее интересовались стоимостью установки кондиционера, подскажите, уже готовы принять специалиста для просчета стоимости?📝❤️"
+                ),
+                $this->makeBroadcastTemplate(
+                    'air_conditioner_3',
+                    'Шаблон 3',
+                    "Добрый день! 🌸😊\nПодскажите, пожалуйста, выезд мастера на замеры актуален для Вас? Просто почему интересуемся уже начинается сезон кондиционеров 🔥🔥🔥 и запись на монтажи уже на 10 дней вперед, поэтому если планируете установку в ближайшее время, лучше уже пригласить специалиста на просчет и консультацию стоимости и закрепить за собой цену😉🙌"
+                ),
+                $this->makeBroadcastTemplate(
+                    'air_conditioner_4',
+                    'Шаблон 4',
+                    "Добрый день! Ранее интересовались стоимостью установки кондиционера. Подскажите, когда было бы удобно принять специалиста на консультацию и просчет точной стоимости? 📒💛"
+                ),
+            ],
+            'soundproofing' => [
+                $this->makeBroadcastTemplate(
+                    'soundproofing_1',
+                    'Шаблон 1',
+                    "Добрый день! Ранее интересовались стоимостью шумоизоляции. Запись на замеры актуальна еще для вас? Замеры и консультация проходят бесплатно 🌸📝🙌"
+                ),
+                $this->makeBroadcastTemplate(
+                    'soundproofing_2',
+                    'Шаблон 2',
+                    "Добрый день ☀️ Установка шумоизоляции актуальна еще для вас? Давайте подберем время на консультацию и просчет стоимости?📝"
+                ),
+            ],
+        ];
+    }
+
+    private function makeBroadcastTemplate(string $key, string $title, string $text): array
+    {
+        return [
+            'key' => $key,
+            'title' => $title,
+            'text' => $text,
+            'preview' => Str::limit(preg_replace('/\s+/u', ' ', trim($text)) ?: $text, 120),
+        ];
+    }
+
+    private function broadcastTargetModeOptions(): array
+    {
+        return [
+            'primary' => 'Один чат на сделку',
+            'all' => 'Все чаты сделки',
+        ];
     }
 }

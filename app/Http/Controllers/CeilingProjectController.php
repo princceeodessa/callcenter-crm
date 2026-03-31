@@ -168,23 +168,39 @@ CeilingProductionLayoutPlanner $layoutPlanner
 $this->authorizeProject($request, $project);
 $this->authorizeRoom($project, $room);
 
-
 $project->loadMissing(['deal.contact', 'measurement']);
-$room->loadMissing('elements');
-
-
-$derivedPanels = $this->buildDerivedPanelsForRoom($room);
-if ($room->derived_panels !== $derivedPanels) {
-$room->forceFill(['derived_panels' => $derivedPanels])->save();
-}
-
+$roomPacket = $this->buildRoomProductionContext($room, $calculator, $layoutPlanner);
 
 return view('ceiling-projects.panels', [
 'project' => $project,
-'room' => $room,
-'metrics' => $calculator->calculateRoom($room),
-'panels' => $derivedPanels,
-'layoutPlan' => $layoutPlanner->plan($room, $derivedPanels),
+'room' => $roomPacket['room'],
+'metrics' => $roomPacket['metrics'],
+'panels' => $roomPacket['panels'],
+'layoutPlan' => $roomPacket['layoutPlan'],
+]);
+}
+
+
+public function productionPacket(
+Request $request,
+CeilingProject $project,
+CeilingProjectCalculator $calculator,
+CeilingProductionLayoutPlanner $layoutPlanner
+): View {
+$this->authorizeProject($request, $project);
+
+$project->loadMissing(['deal.contact', 'measurement', 'rooms', 'rooms.elements']);
+
+$roomPackets = [];
+foreach ($project->rooms as $room) {
+$roomPackets[] = $this->buildRoomProductionContext($room, $calculator, $layoutPlanner);
+}
+
+return view('ceiling-projects.production-packet', [
+'project' => $project,
+'summary' => $calculator->calculateProject($project),
+'roomPackets' => $roomPackets,
+'packetSummary' => $this->buildProductionPacketSummary($roomPackets),
 ]);
 }
 
@@ -257,7 +273,7 @@ $project->fill([
 
 if ($this->projectRouteName($request) !== 'ceiling-projects.show') {
 return $this->redirectToProject($request, $project)
-->with('status', 'Project saved.');
+->with('status', 'Проект сохранен.');
 }
 
 
@@ -274,64 +290,6 @@ CeilingSketchRecognitionService $recognitionService
 ): RedirectResponse
 {
 return $this->uploadSketchSheet($request, $project, $recognitionService);
-
-
-$this->authorizeProject($request, $project);
-
-
-$data = $request->validate([
-'sketch_image' => ['required', 'image', 'max:10240'],
-]);
-
-
-if ($project->sketch_image_path && $project->sketch_image_path !== $project->reference_image_path) {
-Storage::disk('public')->delete($project->sketch_image_path);
-}
-
-
-$path = $data['sketch_image']->store('ceiling-projects/'.$project->account_id, 'public');
-
-
-$project->forceFill([
-'sketch_image_path' => $path,
-'updated_by_user_id' => $request->user()->id,
-'last_calculated_at' => now(),
-])->save();
-
-
-$statusMessage = 'Картинка проекта загружена.';
-$recognizedRoom = null;
-
-
-try {
-$result = $recognitionService->recognize($project, Storage::disk('public')->path($path));
-$this->saveRecognitionResult($project, $result);
-$recognizedRoom = $this->upsertRecognitionRoom($request, $project, $result);
-$statusMessage = $recognizedRoom
-? 'Фото загружено, эскиз распознан и черновик комнаты обновлён.'
-: 'Фото загружено, эскиз распознан.';
-} catch (RuntimeException $exception) {
-$this->saveRecognitionResult($project, $this->buildRecognitionFailure($exception->getMessage()));
-$statusMessage = 'Фото загружено, но распознать эскиз не удалось: '.$exception->getMessage();
-}
-
-
-if ($this->projectRouteName($request) !== 'ceiling-projects.show') {
-return $this->redirectToProject($request, $project, $recognizedRoom)
-->with('status', $statusMessage);
-}
-
-
-return $this->redirectToProject($request, $project, $recognizedRoom)
-->with('status', $statusMessage);
-
-
-return redirect()
-->route('ceiling-projects.show', array_filter([
-'project' => $project,
-'room' => $recognizedRoom?->id,
-]))
-->with('status', 'Картинка проекта загружена.');
 }
 
 
@@ -409,346 +367,215 @@ CeilingProject $project,
 CeilingSketchRecognitionService $recognitionService
 ): RedirectResponse {
 return $this->recognizeSketchCrop($request, $project, $recognitionService);
-
-
-$this->authorizeProject($request, $project);
-
-
-$sketchImagePath = $this->resolveSketchImagePath($project);
-
-
-if (!$sketchImagePath || !Storage::disk('public')->exists($sketchImagePath)) {
-return back()->withErrors([
-'sketch_image' => 'Сначала загрузите фото эскиза для распознавания.',
-]);
-}
-
-
-try {
-$result = $recognitionService->recognize($project, Storage::disk('public')->path($sketchImagePath));
-} catch (RuntimeException $exception) {
-$this->saveRecognitionResult($project, $this->buildRecognitionFailure($exception->getMessage()));
-
-
-return $this->redirectToProject($request, $project)
-->with('status', 'Не удалось распознать эскиз. Подробность показана в блоке распознавания.');
-}
-
-
-$this->saveRecognitionResult($project, $result);
-$room = $this->upsertRecognitionRoom($request, $project, $result);
-
-
-return $this->redirectToProject($request, $project, $room)
-->with('status', $room ? 'Sketch recognized and room draft updated.' : 'Sketch recognized, but room geometry was not created.');
-
-
-return $this->redirectToProject($request, $project, $room)
-->with('status', 'Эскиз распознан. Проверьте результат и примените черновик комнаты.');
 }
 
 
 public function applySketchRecognition(Request $request, CeilingProject $project): RedirectResponse
 {
-$this->authorizeProject($request, $project);
+    $this->authorizeProject($request, $project);
 
+    $recognition = $this->loadRecognitionResult($project);
+    if (!is_array($recognition)) {
+        return back()->withErrors([
+            'sketch_recognition' => 'Сначала выполните распознавание эскиза.',
+        ]);
+    }
 
-$recognition = $this->loadRecognitionResult($project);
-if (!is_array($recognition)) {
-return back()->withErrors([
-'sketch_recognition' => 'Сначала выполните распознавание эскиза.',
-]);
+    $draft = $recognition['room_draft'] ?? null;
+    if (!is_array($draft) || !is_array($draft['shape_points'] ?? null) || count($draft['shape_points']) < 3) {
+        return back()->withErrors([
+            'sketch_recognition' => 'В распознавании нет готового черновика комнаты.',
+        ]);
+    }
+
+    $room = $this->upsertRecognitionRoom($request, $project, $recognition);
+
+    return $this->redirectToProject($request, $project, $room)
+        ->with('status', $room ? 'Черновик комнаты применён по OCR.' : 'OCR распознан, но геометрия комнаты не была создана.');
 }
-
-
-$draft = $recognition['room_draft'] ?? null;
-if (!is_array($draft) || !is_array($draft['shape_points'] ?? null) || count($draft['shape_points']) < 3) {
-return back()->withErrors([
-'sketch_recognition' => 'В распознавании нет готовой геометрии комнаты.',
-]);
-}
-
-
-$room = $this->upsertRecognitionRoom($request, $project, $recognition);
-
-
-return $this->redirectToProject($request, $project, $room)
-->with('status', $room ? 'Черновик комнаты обновлён из OCR.' : 'OCR сохранён, но геометрия комнаты не была создана.');
-
-
-return $this->redirectToProject($request, $project, $room)
-->with('status', $room
-? 'Черновик комнаты обновлён из распознавания эскиза.'
-: 'Р  аспознавание сохранено, но комнату собрать не удалось.');
-
-
-$room = $project->rooms()
-->where('notes', 'like', '[sketch-recognition]%')
-->orderByDesc('id')
-->first();
-
-
-$payload = [
-'account_id' => $request->user()->account_id,
-'ceiling_project_id' => $project->id,
-'sort_order' => $room?->sort_order ?? ((int) $project->rooms()->max('sort_order') + 1),
-'name' => trim((string) ($draft['name'] ?? 'Черновик по эскизу')),
-'shape_type' => CeilingProjectRoom::SHAPE_POLYGON,
-'width_m' => $this->nullableFloat($draft['width_m'] ?? null),
-'length_m' => $this->nullableFloat($draft['length_m'] ?? null),
-'height_m' => $this->nullableFloat($draft['height_m'] ?? null),
-'corners_count' => count($draft['shape_points']),
-'manual_area_m2' => $this->nullableFloat($draft['manual_area_m2'] ?? null),
-'manual_perimeter_m' => $this->nullableFloat($draft['manual_perimeter_m'] ?? null),
-'shape_points' => collect($draft['shape_points'])
-->map(fn ($point) => [
-'x' => round((float) ($point['x'] ?? 0), 2),
-'y' => round((float) ($point['y'] ?? 0), 2),
-])
-->values()
-->all(),
-'spotlights_count' => 0,
-'chandelier_points_count' => 0,
-'pipes_count' => 0,
-'curtain_niches_count' => 0,
-'ventilation_holes_count' => 0,
-'notes' => $this->buildRecognitionRoomNotes($recognition),
-];
-
-
-if ($room) {
-$room->update($payload);
-} else {
-$room = $project->rooms()->create($payload);
-}
-
-
-$project->forceFill([
-'updated_by_user_id' => $request->user()->id,
-'last_calculated_at' => now(),
-])->save();
-
-
-return $this->redirectToProject($request, $project, $room)
-->with('status', 'Черновик комнаты создан из распознавания эскиза.');
-}
-
 
 public function uploadSketchSheet(
-Request $request,
-CeilingProject $project,
-CeilingSketchRecognitionService $recognitionService
+    Request $request,
+    CeilingProject $project,
+    CeilingSketchRecognitionService $recognitionService
 ): RedirectResponse
 {
-$this->authorizeProject($request, $project);
+    $this->authorizeProject($request, $project);
 
+    $data = $request->validate([
+        'sketch_image' => ['required', 'image', 'max:10240'],
+    ]);
 
-$data = $request->validate([
-'sketch_image' => ['required', 'image', 'max:10240'],
-]);
+    if ($project->sketch_image_path && $project->sketch_image_path !== $project->reference_image_path) {
+        Storage::disk('public')->delete($project->sketch_image_path);
+    }
 
+    $path = $data['sketch_image']->store('ceiling-projects/'.$project->account_id, 'public');
 
-if ($project->sketch_image_path && $project->sketch_image_path !== $project->reference_image_path) {
-Storage::disk('public')->delete($project->sketch_image_path);
+    $project->forceFill([
+        'sketch_image_path' => $path,
+        'sketch_crop' => null,
+        'updated_by_user_id' => $request->user()->id,
+        'last_calculated_at' => now(),
+    ])->save();
+
+    $statusMessage = 'Лист эскиза загружен. Выделите одну комнату на фото и запустите OCR по выбранной области.';
+
+    try {
+        $inspection = $recognitionService->inspect($project, Storage::disk('public')->path($path));
+        $this->saveRecognitionResult($project, $inspection);
+
+        $candidatesCount = count($inspection['candidates'] ?? []);
+        if ($candidatesCount > 0) {
+            $statusMessage = 'Лист эскиза загружен. Найдено кандидатов комнат: '.$candidatesCount.'. Выделите нужную комнату и запустите OCR.';
+        }
+    } catch (RuntimeException $exception) {
+        $this->saveRecognitionResult($project, $this->buildRecognitionState(
+            false,
+            'Автопоиск комнат не сработал. Область можно выделить вручную.',
+            [
+                'stage' => 'inspect',
+                'warnings' => [$exception->getMessage()],
+                'candidates' => [],
+            ],
+        ));
+
+        $statusMessage = 'Лист эскиза загружен, но автопоиск комнат не сработал. Область можно выделить вручную.';
+    }
+
+    return $this->redirectToProject($request, $project)
+        ->with('status', $statusMessage);
 }
-
-
-$path = $data['sketch_image']->store('ceiling-projects/'.$project->account_id, 'public');
-
-
-$project->forceFill([
-'sketch_image_path' => $path,
-'sketch_crop' => null,
-'updated_by_user_id' => $request->user()->id,
-'last_calculated_at' => now(),
-])->save();
-
-
-$statusMessage = 'Лист замера загружен. Выделите одну комнату на фото и запустите OCR по выбранной области.';
-
-
-try {
-$inspection = $recognitionService->inspect($project, Storage::disk('public')->path($path));
-$this->saveRecognitionResult($project, $inspection);
-
-
-$candidatesCount = count($inspection['candidates'] ?? []);
-if ($candidatesCount > 0) {
-$statusMessage = 'Лист замера загружен. Найдены кандидаты комнат: '.$candidatesCount.'. Выберите нужную область и запустите OCR.';
-}
-} catch (RuntimeException $exception) {
-$this->saveRecognitionResult($project, $this->buildRecognitionState(
-false,
-'Автопоиск комнат не сработал. Область можно выделить вручную.',
-[
-'stage' => 'inspect',
-'warnings' => [$exception->getMessage()],
-'candidates' => [],
-],
-));
-
-
-$statusMessage = 'Лист замера загружен, но автопоиск комнат не сработал. Область можно выделить вручную.';
-}
-
-
-return $this->redirectToProject($request, $project)
-->with('status', $statusMessage);
-}
-
 
 public function saveSketchCrop(Request $request, CeilingProject $project): RedirectResponse
 {
-$this->authorizeProject($request, $project);
+    $this->authorizeProject($request, $project);
 
+    $crop = $this->validateSketchCrop($request);
 
-$crop = $this->validateSketchCrop($request);
+    $project->forceFill([
+        'sketch_crop' => $crop,
+        'updated_by_user_id' => $request->user()->id,
+        'last_calculated_at' => now(),
+    ])->save();
 
-
-$project->forceFill([
-'sketch_crop' => $crop,
-'updated_by_user_id' => $request->user()->id,
-'last_calculated_at' => now(),
-])->save();
-
-
-return $this->redirectToProject($request, $project)
-->with('status', $crop ? 'Область OCR сохранена.' : 'Область OCR очищена.');
+    return $this->redirectToProject($request, $project)
+        ->with('status', $crop ? 'Область OCR сохранена.' : 'Область OCR очищена.');
 }
-
 
 public function recognizeSketchCrop(
-Request $request,
-CeilingProject $project,
-CeilingSketchRecognitionService $recognitionService
-): RedirectResponse {
-$this->authorizeProject($request, $project);
+    Request $request,
+    CeilingProject $project,
+    CeilingSketchRecognitionService $recognitionService
+): RedirectResponse
+{
+    $this->authorizeProject($request, $project);
 
+    $sketchImagePath = $this->resolveSketchImagePath($project);
 
-$sketchImagePath = $this->resolveSketchImagePath($project);
+    if (!$sketchImagePath || !Storage::disk('public')->exists($sketchImagePath)) {
+        return back()->withErrors([
+            'sketch_image' => 'Сначала загрузите лист эскиза для распознавания.',
+        ]);
+    }
 
+    $crop = $this->validateSketchCrop($request) ?? $this->normalizeSketchCrop($project->sketch_crop);
 
-if (!$sketchImagePath || !Storage::disk('public')->exists($sketchImagePath)) {
-return back()->withErrors([
-'sketch_image' => 'Сначала загрузите фото эскиза для распознавания.',
-]);
+    if (!$crop) {
+        return back()->withErrors([
+            'sketch_crop' => 'Сначала выделите одну комнату на листе.',
+        ]);
+    }
+
+    $project->forceFill([
+        'sketch_crop' => $crop,
+        'updated_by_user_id' => $request->user()->id,
+        'last_calculated_at' => now(),
+    ])->save();
+
+    try {
+        $result = $recognitionService->recognize(
+            $project,
+            Storage::disk('public')->path($sketchImagePath),
+            $crop,
+        );
+    } catch (RuntimeException $exception) {
+        $this->saveRecognitionResult($project, $this->buildRecognitionState(
+            false,
+            'Не удалось выполнить распознавание области.',
+            [
+                'stage' => 'recognize',
+                'crop' => $crop,
+                'warnings' => [$exception->getMessage()],
+            ],
+        ));
+
+        return $this->redirectToProject($request, $project)
+            ->with('status', 'Не удалось выполнить распознавание области. Подробности смотрите в блоке OCR.');
+    }
+
+    $this->saveRecognitionResult($project, $result);
+
+    return $this->redirectToProject($request, $project)
+        ->with('status', 'Область распознана. Проверьте черновик и при необходимости примените его к комнате.');
 }
-
-
-$crop = $this->validateSketchCrop($request) ?? $this->normalizeSketchCrop($project->sketch_crop);
-
-
-if (!$crop) {
-return back()->withErrors([
-'sketch_crop' => 'Сначала выделите одну комнату на листе.',
-]);
-}
-
-
-$project->forceFill([
-'sketch_crop' => $crop,
-'updated_by_user_id' => $request->user()->id,
-'last_calculated_at' => now(),
-])->save();
-
-
-try {
-$result = $recognitionService->recognize(
-$project,
-Storage::disk('public')->path($sketchImagePath),
-$crop,
-);
-} catch (RuntimeException $exception) {
-$this->saveRecognitionResult($project, $this->buildRecognitionState(
-false,
-'Не удалось распознать выбранную область.',
-[
-'stage' => 'recognize',
-'crop' => $crop,
-'warnings' => [$exception->getMessage()],
-],
-));
-
-
-return $this->redirectToProject($request, $project)
-->with('status', 'Не удалось распознать выбранную область. Подробности показаны в блоке OCR.');
-}
-
-
-$this->saveRecognitionResult($project, $result);
-
-
-return $this->redirectToProject($request, $project)
-->with('status', 'Область распознана. Проверьте черновик и при необходимости примените его к комнате.');
-}
-
 
 public function applyEstimate(Request $request, CeilingProject $project, CeilingProjectCalculator $calculator): RedirectResponse
 {
-$this->authorizeProject($request, $project);
-$project->load('deal', 'rooms');
+    $this->authorizeProject($request, $project);
+    $project->load('deal', 'rooms');
 
+    if (!$project->deal) {
+        return back()->withErrors([
+            'deal_id' => 'Сначала привяжите сделку к проекту.',
+        ]);
+    }
 
-if (!$project->deal) {
-return back()->withErrors([
-'deal_id' => 'Сначала привяжите сделку к проекту.',
-]);
+    $summary = $calculator->calculateProject($project);
+    $grandTotal = (float) ($summary['estimate']['grand_total'] ?? 0);
+
+    if ($grandTotal <= 0) {
+        return back()->withErrors([
+            'estimate' => 'Смета пока равна нулю. Заполните прайс проекта и геометрию.',
+        ]);
+    }
+
+    $deal = $project->deal;
+    $beforeAmount = $deal->amount;
+
+    $deal->forceFill([
+        'amount' => $grandTotal,
+        'currency' => 'RUB',
+    ])->save();
+
+    $project->forceFill([
+        'updated_by_user_id' => $request->user()->id,
+        'last_calculated_at' => now(),
+    ])->save();
+
+    DealActivity::create([
+        'account_id' => $request->user()->account_id,
+        'deal_id' => $deal->id,
+        'author_user_id' => $request->user()->id,
+        'type' => 'deal_updated',
+        'body' => 'Сумма сделки обновлена из проектировки потолка.',
+        'payload' => [
+            'source' => 'ceiling_project',
+            'ceiling_project_id' => $project->id,
+            'before' => ['amount' => $beforeAmount],
+            'after' => ['amount' => $deal->amount],
+        ],
+    ]);
+
+    if ($this->projectRouteName($request) !== 'ceiling-projects.show') {
+        return $this->redirectToProject($request, $project)
+            ->with('status', 'Смета перенесена в сделку.');
+    }
+
+    return redirect()
+        ->route('ceiling-projects.show', $project)
+        ->with('status', 'Итоговая сумма перенесена в сделку.');
 }
-
-
-$summary = $calculator->calculateProject($project);
-$grandTotal = (float) ($summary['estimate']['grand_total'] ?? 0);
-
-
-if ($grandTotal <= 0) {
-return back()->withErrors([
-'estimate' => 'Смета пока равна нулю. Заполните прайс проекта и геометрию.',
-]);
-}
-
-
-$deal = $project->deal;
-$beforeAmount = $deal->amount;
-
-
-$deal->forceFill([
-'amount' => $grandTotal,
-'currency' => 'RUB',
-])->save();
-
-
-$project->forceFill([
-'updated_by_user_id' => $request->user()->id,
-'last_calculated_at' => now(),
-])->save();
-
-
-DealActivity::create([
-'account_id' => $request->user()->account_id,
-'deal_id' => $deal->id,
-'author_user_id' => $request->user()->id,
-'type' => 'deal_updated',
-'body' => 'Сумма сделки обновлена из проектировки потолка.',
-'payload' => [
-'source' => 'ceiling_project',
-'ceiling_project_id' => $project->id,
-'before' => ['amount' => $beforeAmount],
-'after' => ['amount' => $deal->amount],
-],
-]);
-
-
-if ($this->projectRouteName($request) !== 'ceiling-projects.show') {
-return $this->redirectToProject($request, $project)
-->with('status', 'Estimate transferred to deal.');
-}
-
-
-return redirect()
-->route('ceiling-projects.show', $project)
-->with('status', 'Итоговая сумма перенесена в сделку.');
-}
-
 
 public function storeRoom(Request $request, CeilingProject $project): RedirectResponse
 {
@@ -1781,16 +1608,15 @@ return [
 
 private function buildRecognitionState(bool $success, string $message, array $extra = []): array
 {
-return array_merge([
-'success' => $success,
-'message' => trim($message) !== '' ? trim($message) : 'Не удалось распознать эскиз.',
-'warnings' => [],
-'shape' => ['type' => 'unknown'],
-'stage' => 'recognize',
-'candidates' => [],
-], $extra);
+    return array_merge([
+        'success' => $success,
+        'message' => trim($message) !== '' ? trim($message) : 'Не удалось распознать эскиз.',
+        'warnings' => [],
+        'shape' => ['type' => 'unknown'],
+        'stage' => 'recognize',
+        'candidates' => [],
+    ], $extra);
 }
-
 
 private function buildShowViewData(Request $request, CeilingProject $project, CeilingProjectCalculator $calculator, string $viewMode): array
 {
@@ -1832,6 +1658,91 @@ return [
 ? route('ceiling-projects.reference-image.show', $project)
 : null,
 ];
+}
+
+
+/**
+ * @return array{room: CeilingProjectRoom, metrics: array<string, mixed>, panels: array<int, array<string, mixed>>, layoutPlan: array<string, mixed>}
+ */
+private function buildRoomProductionContext(
+CeilingProjectRoom $room,
+CeilingProjectCalculator $calculator,
+CeilingProductionLayoutPlanner $layoutPlanner
+): array {
+$room->loadMissing('elements');
+
+$derivedPanels = $this->buildDerivedPanelsForRoom($room);
+if ($room->derived_panels !== $derivedPanels) {
+$room->forceFill(['derived_panels' => $derivedPanels])->save();
+}
+
+$layoutPlan = $layoutPlanner->plan($room, $derivedPanels);
+
+return [
+'room' => $room,
+'metrics' => $calculator->calculateRoom($room),
+'panels' => $derivedPanels,
+'layoutPlan' => $layoutPlan,
+];
+}
+
+
+/**
+ * @param  array<int, array{room: CeilingProjectRoom, metrics: array<string, mixed>, panels: array<int, array<string, mixed>>, layoutPlan: array<string, mixed>}>  $roomPackets
+ * @return array<string, mixed>
+ */
+private function buildProductionPacketSummary(array $roomPackets): array
+{
+$summary = [
+'rooms_count' => count($roomPackets),
+'panels_count' => 0,
+'roll_sequences_count' => 0,
+'strips_count' => 0,
+'seamed_panels_count' => 0,
+'finished_area_m2' => 0.0,
+'consumed_area_m2' => 0.0,
+'stretch_reserve_m2' => 0.0,
+'roll_length_total_m' => 0.0,
+'same_roll_rooms_count' => 0,
+'special_cutting_rooms_count' => 0,
+'seam_rooms_count' => 0,
+'warnings' => [],
+];
+
+foreach ($roomPackets as $packet) {
+$room = $packet['room'];
+$layoutSummary = $packet['layoutPlan']['summary'] ?? [];
+$layoutSettings = $packet['layoutPlan']['settings'] ?? [];
+
+$summary['panels_count'] += (int) ($layoutSummary['panels_count'] ?? 0);
+$summary['roll_sequences_count'] += (int) ($layoutSummary['roll_sequences_count'] ?? 0);
+$summary['strips_count'] += (int) ($layoutSummary['strips_count'] ?? 0);
+$summary['seamed_panels_count'] += (int) ($layoutSummary['seamed_panels_count'] ?? 0);
+$summary['finished_area_m2'] += (float) ($layoutSummary['finished_area_m2'] ?? 0.0);
+$summary['consumed_area_m2'] += (float) ($layoutSummary['consumed_area_m2'] ?? 0.0);
+$summary['stretch_reserve_m2'] += (float) ($layoutSummary['stretch_reserve_m2'] ?? 0.0);
+$summary['roll_length_total_m'] += (float) ($layoutSummary['roll_length_total_m'] ?? 0.0);
+$summary['same_roll_rooms_count'] += !empty($layoutSettings['same_roll_required']) ? 1 : 0;
+$summary['special_cutting_rooms_count'] += !empty($layoutSettings['special_cutting']) ? 1 : 0;
+$summary['seam_rooms_count'] += !empty($layoutSettings['seam_enabled']) ? 1 : 0;
+
+foreach ((array) ($layoutSummary['warnings'] ?? []) as $warning) {
+$warningText = trim((string) $warning);
+if ($warningText === '') {
+continue;
+}
+
+$summary['warnings'][] = sprintf('%s: %s', $room->name ?: ('Комната #'.$room->id), $warningText);
+}
+}
+
+$summary['finished_area_m2'] = round($summary['finished_area_m2'], 2);
+$summary['consumed_area_m2'] = round($summary['consumed_area_m2'], 2);
+$summary['stretch_reserve_m2'] = round($summary['stretch_reserve_m2'], 2);
+$summary['roll_length_total_m'] = round($summary['roll_length_total_m'], 2);
+$summary['warnings'] = array_values(array_unique($summary['warnings']));
+
+return $summary;
 }
 
 
@@ -2027,61 +1938,52 @@ return [
 
 private function upsertRecognitionRoom(Request $request, CeilingProject $project, array $recognition): ?CeilingProjectRoom
 {
-$draft = $recognition['room_draft'] ?? null;
+    $draft = $recognition['room_draft'] ?? null;
+    if (!is_array($draft) || !is_array($draft['shape_points'] ?? null) || count($draft['shape_points']) < 3) {
+        return null;
+    }
 
+    $room = $this->resolveRecognitionTargetRoom($request, $project);
 
-if (!is_array($draft) || !is_array($draft['shape_points'] ?? null) || count($draft['shape_points']) < 3) {
-return null;
+    $payload = [
+        'name' => trim((string) ($draft['name'] ?? $room?->name ?? 'Черновик по эскизу')),
+        'ceiling_project_id' => $project->id,
+        'sort_order' => $room?->sort_order ?? ((int) $project->rooms()->max('sort_order') + 1),
+        'shape_type' => CeilingProjectRoom::SHAPE_POLYGON,
+        'width_m' => $this->nullableFloat($draft['width_m'] ?? null),
+        'length_m' => $this->nullableFloat($draft['length_m'] ?? null),
+        'height_m' => $this->nullableFloat($draft['height_m'] ?? $room?->height_m),
+        'corners_count' => count($draft['shape_points']),
+        'manual_area_m2' => $this->nullableFloat($draft['manual_area_m2'] ?? null),
+        'manual_perimeter_m' => $this->nullableFloat($draft['manual_perimeter_m'] ?? null),
+        'shape_points' => collect($draft['shape_points'])
+            ->map(fn ($point) => [
+                'x' => round((float) ($point['x'] ?? 0), 2),
+                'y' => round((float) ($point['y'] ?? 0), 2),
+            ])
+            ->values()
+            ->all(),
+        'spotlights_count' => $room?->spotlights_count ?? 0,
+        'chandelier_points_count' => $room?->chandelier_points_count ?? 0,
+        'pipes_count' => $room?->pipes_count ?? 0,
+        'curtain_niches_count' => $room?->curtain_niches_count ?? 0,
+        'ventilation_holes_count' => $room?->ventilation_holes_count ?? 0,
+        'notes' => $this->mergeRecognitionNotes($room?->notes, $recognition),
+    ];
+
+    if ($room) {
+        $room->update($payload);
+    } else {
+        $room = $project->rooms()->create($payload);
+    }
+
+    $project->forceFill([
+        'updated_by_user_id' => $request->user()->id,
+        'last_calculated_at' => now(),
+    ])->save();
+
+    return $room->fresh();
 }
-
-
-$room = $this->resolveRecognitionTargetRoom($request, $project);
-
-
-$payload = [
-'account_id' => $request->user()->account_id,
-'ceiling_project_id' => $project->id,
-'sort_order' => $room?->sort_order ?? ((int) $project->rooms()->max('sort_order') + 1),
-'name' => trim((string) ($draft['name'] ?? $room?->name ?? 'Черновик по эскизу')),
-'shape_type' => CeilingProjectRoom::SHAPE_POLYGON,
-'width_m' => $this->nullableFloat($draft['width_m'] ?? null),
-'length_m' => $this->nullableFloat($draft['length_m'] ?? null),
-'height_m' => $this->nullableFloat($draft['height_m'] ?? $room?->height_m),
-'corners_count' => count($draft['shape_points']),
-'manual_area_m2' => $this->nullableFloat($draft['manual_area_m2'] ?? null),
-'manual_perimeter_m' => $this->nullableFloat($draft['manual_perimeter_m'] ?? null),
-'shape_points' => collect($draft['shape_points'])
-->map(fn ($point) => [
-'x' => round((float) ($point['x'] ?? 0), 2),
-'y' => round((float) ($point['y'] ?? 0), 2),
-])
-->values()
-->all(),
-'spotlights_count' => $room?->spotlights_count ?? 0,
-'chandelier_points_count' => $room?->chandelier_points_count ?? 0,
-'pipes_count' => $room?->pipes_count ?? 0,
-'curtain_niches_count' => $room?->curtain_niches_count ?? 0,
-'ventilation_holes_count' => $room?->ventilation_holes_count ?? 0,
-'notes' => $this->mergeRecognitionNotes($room?->notes, $recognition),
-];
-
-
-if ($room) {
-$room->update($payload);
-} else {
-$room = $project->rooms()->create($payload);
-}
-
-
-$project->forceFill([
-'updated_by_user_id' => $request->user()->id,
-'last_calculated_at' => now(),
-])->save();
-
-
-return $room->fresh();
-}
-
 
 private function resolveRecognitionTargetRoom(Request $request, CeilingProject $project): ?CeilingProjectRoom
 {
@@ -2136,74 +2038,66 @@ return trim($existingNotes)."\n\n".$recognitionNotes;
 
 private function buildRecognitionRoomNotes(array $recognition): string
 {
-$measurements = $recognition['measurements'] ?? [];
-$segments = collect($recognition['segments'] ?? [])
-->filter(fn ($segment) => is_array($segment))
-->map(function (array $segment) {
-$label = trim((string) ($segment['label'] ?? ''));
-$value = $segment['ocr_value_cm'] ?? $segment['resolved_value_cm'] ?? $segment['approx_value_cm'] ?? null;
-$suffix = isset($segment['ocr_value_cm'])
-? 'ocr'
-: (isset($segment['resolved_value_cm']) ? 'mix' : 'draft');
+    $measurements = $recognition['measurements'] ?? [];
+    $segments = collect($recognition['segments'] ?? [])
+        ->filter(fn ($segment) => is_array($segment))
+        ->map(function (array $segment) {
+            $label = trim((string) ($segment['label'] ?? ''));
+            $value = $segment['ocr_value_cm'] ?? $segment['resolved_value_cm'] ?? $segment['approx_value_cm'] ?? null;
+            $suffix = isset($segment['ocr_value_cm'])
+                ? 'ocr'
+                : (isset($segment['resolved_value_cm']) ? 'mix' : 'draft');
 
+            if ($label === '' || !is_numeric($value)) {
+                return null;
+            }
 
-if ($label === '' || !is_numeric($value)) {
-return null;
+            return sprintf('%s: %s см (%s)', $label, (string) (int) round((float) $value), $suffix);
+        })
+        ->filter()
+        ->values();
+    $rawText = trim((string) ($recognition['text'] ?? ''));
+    $warnings = collect($recognition['warnings'] ?? [])
+        ->filter(fn ($warning) => trim((string) $warning) !== '')
+        ->map(fn ($warning) => '- '.trim((string) $warning))
+        ->implode("
+");
+
+    $lines = [
+        '[sketch-recognition]',
+        'Уверенность OCR: '.($recognition['confidence'] ?? 'n/a'),
+    ];
+
+    if (!empty($measurements['width_cm']) || !empty($measurements['length_cm'])) {
+        $lines[] = 'Размеры: '
+            .trim((string) ($measurements['width_cm'] ?? '—')).' x '
+            .trim((string) ($measurements['length_cm'] ?? '—')).' см';
+    }
+
+    if (!empty($measurements['area_m2'])) {
+        $lines[] = 'Площадь OCR: '.$measurements['area_m2'].' м2';
+    }
+
+    if (!empty($measurements['perimeter_m'])) {
+        $lines[] = 'Периметр OCR: '.$measurements['perimeter_m'].' м';
+    }
+
+    if ($segments->isNotEmpty()) {
+        $lines[] = 'Стороны OCR: '.$segments->implode(', ');
+    }
+
+    if ($rawText !== '') {
+        $lines[] = 'OCR текст: '.$rawText;
+    }
+
+    if ($warnings !== '') {
+        $lines[] = 'Предупреждения:' . "
+" . $warnings;
+    }
+
+    return implode("
+", $lines);
 }
-
-
-return sprintf('%s: %s см (%s)', $label, (string) (int) round((float) $value), $suffix);
-})
-->filter()
-->values();
-$rawText = trim((string) ($recognition['text'] ?? ''));
-$warnings = collect($recognition['warnings'] ?? [])
-->filter(fn ($warning) => trim((string) $warning) !== '')
-->map(fn ($warning) => '- '.trim((string) $warning))
-->implode("\n");
-
-
-$lines = [
-'[sketch-recognition]',
-'OCR confidence: '.($recognition['confidence'] ?? 'n/a'),
-];
-
-
-if (!empty($measurements['width_cm']) || !empty($measurements['length_cm'])) {
-$lines[] = 'Р  азмеры: '
-.trim((string) ($measurements['width_cm'] ?? 'вЂ”')).' x '
-.trim((string) ($measurements['length_cm'] ?? '—')).' см';
-}
-
-
-if (!empty($measurements['area_m2'])) {
-$lines[] = 'Площадь OCR: '.$measurements['area_m2'].' м2';
-}
-
-
-if (!empty($measurements['perimeter_m'])) {
-$lines[] = 'Периметр OCR: '.$measurements['perimeter_m'].' м';
-}
-
-
-if ($segments->isNotEmpty()) {
-$lines[] = 'Стороны OCR: '.$segments->implode(', ');
-}
-
-
-if ($rawText !== '') {
-$lines[] = 'OCR текст: '.$rawText;
-}
-
-
-if ($warnings !== '') {
-$lines[] = 'Предупреждения:'."\n".$warnings;
-}
-
-
-return implode("\n", $lines);
-}
-
 
 private function nullableFloat(mixed $value): ?float
 {
