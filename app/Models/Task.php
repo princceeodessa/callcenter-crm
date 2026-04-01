@@ -69,4 +69,34 @@ class Task extends Model
             default => 'Bitrix',
         };
     }
+
+    public function getContextLabelAttribute(): ?string
+    {
+        $payload = is_array($this->external_payload ?? null) ? $this->external_payload : [];
+
+        $contextLabel = trim((string) ($payload['context_label'] ?? ''));
+        if ($contextLabel !== '') {
+            return $contextLabel;
+        }
+
+        $sheetName = trim((string) ($payload['sheet_name'] ?? ''));
+        $workbookTitle = trim((string) ($payload['workbook_title'] ?? ''));
+        $rowIndex = (int) ($payload['row_index'] ?? 0);
+
+        if ($sheetName === '' && $workbookTitle === '') {
+            return null;
+        }
+
+        $parts = array_filter([$workbookTitle, $sheetName, $rowIndex > 0 ? 'строка '.$rowIndex : null]);
+
+        return !empty($parts) ? implode(' -> ', $parts) : null;
+    }
+
+    public function getContextUrlAttribute(): ?string
+    {
+        $payload = is_array($this->external_payload ?? null) ? $this->external_payload : [];
+        $url = trim((string) ($payload['context_url'] ?? ''));
+
+        return $url !== '' ? $url : null;
+    }
 }

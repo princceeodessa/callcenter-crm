@@ -13,7 +13,7 @@ class NonClosureImportService
 {
     public function importFromXlsx(UploadedFile $file, int $accountId, int $userId): array
     {
-        return $this->importFromPath($file->getRealPath(), $accountId, $userId);
+        return $this->importFromPath((string) $file->getRealPath(), $accountId, $userId);
     }
 
     public function importFromPath(string $path, int $accountId, int $userId): array
@@ -24,12 +24,10 @@ class NonClosureImportService
             ->get(['id', 'name', 'role']);
 
         $parsed = $this->parseWorkbookDetailed($path);
-        $parsedRows = $parsed['rows'];
-
         $imported = 0;
         $updated = 0;
 
-        foreach ($parsedRows as $row) {
+        foreach ($parsed['rows'] as $row) {
             $hash = $this->makeHash($accountId, $row);
 
             $payload = [
@@ -56,7 +54,7 @@ class NonClosureImportService
                 ->first();
 
             if ($existing) {
-                $existing->fill(array_filter($payload, fn ($v) => $v !== null && $v !== ''));
+                $existing->fill(array_filter($payload, fn ($value) => $value !== null && $value !== ''));
                 $existing->updated_by_user_id = $userId;
                 $existing->save();
                 $updated++;
@@ -71,7 +69,7 @@ class NonClosureImportService
         return [
             'imported' => $imported,
             'updated' => $updated,
-            'total' => count($parsedRows),
+            'total' => count($parsed['rows']),
             'sheet_counts' => $parsed['sheet_counts'],
         ];
     }
@@ -105,25 +103,20 @@ class NonClosureImportService
         $sheetFiles = $this->sheetFiles($zip);
         $rows = [];
         $sheetCounts = [];
-        $sheetDiagnostics = [];
+        $diagnostics = [];
 
         foreach ($sheetFiles as $sheetName => $sheetPath) {
-            $plainSheetName = trim((string) $sheetName);
             $xmlString = $zip->getFromName($sheetPath);
             if ($xmlString === false) {
-                $sheetCounts[$plainSheetName] = 0;
-                $sheetDiagnostics[$plainSheetName] = [
-                    'header_found' => false,
-                    'header_row' => null,
-                    'reason' => 'sheet_xml_missing',
-                ];
+                $sheetCounts[$sheetName] = 0;
+                $diagnostics[$sheetName] = ['header_found' => false];
                 continue;
             }
 
             $sheetRows = $this->parseSheetRows($xmlString, $sharedStrings);
             $headerMap = null;
             $headerRowIndex = null;
-            $importableForSheet = 0;
+            $importable = 0;
 
             foreach ($sheetRows as $rowIndex => $cells) {
                 if ($headerMap === null) {
@@ -134,298 +127,124 @@ class NonClosureImportService
                     continue;
                 }
 
-                $record = $this->mapDataRow($cells, $headerMap, $plainSheetName);
+                $record = $this->mapDataRow($cells, $headerMap, $sheetName);
                 if (!$record) {
                     continue;
                 }
 
                 $rows[] = $record;
-                $importableForSheet++;
+                $importable++;
             }
 
-            $sheetCounts[$plainSheetName] = $importableForSheet;
-            $sheetDiagnostics[$plainSheetName] = [
+            $sheetCounts[$sheetName] = $importable;
+            $diagnostics[$sheetName] = [
                 'header_found' => $headerMap !== null,
                 'header_row' => $headerRowIndex,
                 'rows_in_sheet' => count($sheetRows),
-                'importable_rows' => $importableForSheet,
+                'importable_rows' => $importable,
             ];
         }
 
         $zip->close();
 
         if (count($rows) === 0) {
-            $failedSheets = [];
-            foreach ($sheetDiagnostics as $sheetName => $diagnostic) {
-                if (!($diagnostic['header_found'] ?? false)) {
-                    $failedSheets[] = $sheetName;
-                }
-            }
-
+            $failedSheets = array_keys(array_filter($diagnostics, fn ($item) => !($item['header_found'] ?? false)));
             $message = 'Не удалось распознать строки для импорта из Excel.';
-            if (!empty($failedSheets)) {
+            if ($failedSheets) {
                 $message .= ' Не найдены заголовки в листах: '.implode(', ', $failedSheets).'.';
             }
             $message .= ' Нужны колонки вроде «Адрес», «Причина незаключения», «Заключен/не заключен».';
+
             throw new \RuntimeException($message);
         }
 
         return [
             'rows' => $rows,
             'sheet_counts' => $sheetCounts,
-            'sheet_diagnostics' => $sheetDiagnostics,
+            'sheet_diagnostics' => $diagnostics,
         ];
-    }
-
-    private function loadSharedStrings(ZipArchive $zip): array
-    {
-        $xmlString = $zip->getFromName('xl/sharedStrings.xml');
-        if ($xmlString === false) {
-            return [];
-        }
-
-        $xml = simplexml_load_string($xmlString);
-        if (!$xml) {
-            return [];
-        }
-
-        $ns = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
-        $strings = [];
-
-        foreach ($xml->children($ns)->si as $si) {
-            $parts = [];
-
-            if (isset($si->t)) {
-                $parts[] = (string) $si->t;
-            }
-
-            foreach ($si->r as $run) {
-                if (isset($run->t)) {
-                    $parts[] = (string) $run->t;
-                }
-            }
-
-            $strings[] = trim(implode('', $parts));
-        }
-
-        return $strings;
-    }
-
-    private function sheetFiles(ZipArchive $zip): array
-    {
-        $workbookXml = $zip->getFromName('xl/workbook.xml');
-        $relsXml = $zip->getFromName('xl/_rels/workbook.xml.rels');
-
-        if ($workbookXml === false || $relsXml === false) {
-            return [];
-        }
-
-        $workbook = simplexml_load_string($workbookXml);
-        $rels = simplexml_load_string($relsXml);
-
-        if (!$workbook || !$rels) {
-            return [];
-        }
-
-        $rels->registerXPathNamespace('r', 'http://schemas.openxmlformats.org/package/2006/relationships');
-        $relMap = [];
-
-        foreach ($rels->xpath('//r:Relationship') ?: [] as $rel) {
-            $attrs = $rel->attributes();
-            $relMap[(string) $attrs['Id']] = 'xl/' . ltrim((string) $attrs['Target'], '/');
-        }
-
-        $workbook->registerXPathNamespace('a', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
-        $workbook->registerXPathNamespace('r', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships');
-
-        $result = [];
-        foreach ($workbook->xpath('//a:sheets/a:sheet') ?: [] as $sheet) {
-            $attrs = $sheet->attributes('http://schemas.openxmlformats.org/officeDocument/2006/relationships');
-            $rid = (string) $attrs['id'];
-            $name = (string) $sheet['name'];
-
-            if (isset($relMap[$rid])) {
-                $result[$name] = $relMap[$rid];
-            }
-        }
-
-        return $result;
-    }
-
-    private function parseSheetRows(string $xmlString, array $sharedStrings): array
-    {
-        $xml = simplexml_load_string($xmlString);
-        if (!$xml) {
-            return [];
-        }
-
-        return $this->parseWorksheetRows($xml, $sharedStrings);
-    }
-
-    private function parseWorksheetRows(\SimpleXMLElement $xml, array $sharedStrings): array
-    {
-        $ns = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
-        $rows = [];
-        $sheetData = $xml->children($ns)->sheetData;
-
-        if (!$sheetData) {
-            return $rows;
-        }
-
-        foreach ($sheetData->row as $row) {
-            $cells = [];
-
-            foreach ($row->children($ns)->c as $cell) {
-                $ref = (string) $cell['r'];
-                $col = preg_replace('/\d+/', '', $ref) ?: $ref;
-                $type = (string) $cell['t'];
-                $value = null;
-
-                $v = $cell->children($ns)->v;
-                $is = $cell->children($ns)->is;
-
-                if ($type === 's') {
-                    $idx = (int) ($v ?? 0);
-                    $value = $sharedStrings[$idx] ?? null;
-                } elseif ($type === 'inlineStr') {
-                    $parts = [];
-
-                    if ($is && isset($is->t)) {
-                        $parts[] = (string) $is->t;
-                    }
-
-                    if ($is) {
-                        foreach ($is->r as $run) {
-                            if (isset($run->t)) {
-                                $parts[] = (string) $run->t;
-                            }
-                        }
-                    }
-
-                    $value = trim(implode('', $parts));
-                } else {
-                    $value = isset($v) ? (string) $v : null;
-                }
-
-                $cells[$col] = $value;
-            }
-
-            if (!empty($cells)) {
-                $rows[] = $cells;
-            }
-        }
-
-        return $rows;
     }
 
     private function detectHeaderMap(array $cells): ?array
     {
         $normalized = [];
-        foreach ($cells as $col => $value) {
-            $normalized[$col] = $this->normalize((string) $value);
+        foreach ($cells as $column => $value) {
+            $normalized[$column] = $this->normalize((string) $value);
         }
 
-        $addressCol = null;
-        $reasonCol = null;
-        $statusCol = null;
-        $dateCol = null;
-        $followUpCol = null;
-        $responsibleCol = null;
-        $commentCol = null;
-        $specialCol = null;
+        $map = [
+            'date' => null,
+            'address' => null,
+            'reason' => null,
+            'responsible' => null,
+            'comment' => null,
+            'follow_up_date' => null,
+            'status' => null,
+            'special' => null,
+        ];
 
-        foreach ($normalized as $col => $header) {
-            if ($dateCol === null && ($header === 'дата' || $header == '' && $col === 'A')) {
-                $dateCol = $col;
+        foreach ($normalized as $column => $header) {
+            if ($map['date'] === null && ($header === 'дата' || ($column === 'A' && $header === ''))) {
+                $map['date'] = $column;
             }
-            if ($addressCol === null && str_starts_with($header, 'адрес')) {
-                $addressCol = $col;
+            if ($map['address'] === null && str_starts_with($header, 'адрес')) {
+                $map['address'] = $column;
             }
-            if ($reasonCol === null && (str_contains($header, 'причина незаключения') || str_contains($header, 'причина'))) {
-                $reasonCol = $col;
+            if ($map['reason'] === null && (str_contains($header, 'причина незаключения') || str_contains($header, 'причина'))) {
+                $map['reason'] = $column;
             }
-            if ($responsibleCol === null && str_contains($header, 'ответственный')) {
-                $responsibleCol = $col;
+            if ($map['responsible'] === null && str_contains($header, 'ответствен')) {
+                $map['responsible'] = $column;
             }
-            if ($commentCol === null && str_contains($header, 'комментар')) {
-                $commentCol = $col;
+            if ($map['comment'] === null && str_contains($header, 'комментар')) {
+                $map['comment'] = $column;
             }
-            if ($followUpCol === null && (str_contains($header, 'дата повторной встречи') || str_contains($header, 'повторной встречи'))) {
-                $followUpCol = $col;
+            if ($map['follow_up_date'] === null && (str_contains($header, 'повторной встречи') || str_contains($header, 'дата повтор'))) {
+                $map['follow_up_date'] = $column;
             }
-            if ($statusCol === null && (str_contains($header, 'заключен/не заключен') || str_contains($header, 'заключен') || str_contains($header, 'не заключен'))) {
-                $statusCol = $col;
+            if ($map['status'] === null && (str_contains($header, 'заключен/не заключен') || str_contains($header, 'заключен') || str_contains($header, 'не заключен'))) {
+                $map['status'] = $column;
             }
-            if ($specialCol === null && (str_contains($header, 'спец просчет') || str_contains($header, 'спецпросчет') || str_contains($header, 'доп инфа'))) {
-                $specialCol = $col;
+            if ($map['special'] === null && (str_contains($header, 'спец просчет') || str_contains($header, 'спецпросчет') || str_contains($header, 'доп инф'))) {
+                $map['special'] = $column;
             }
         }
 
-        if (!$addressCol || !$reasonCol || !$statusCol) {
+        if (!$map['address'] || !$map['reason'] || !$map['status']) {
             return null;
         }
-
-        $map = [];
-        foreach ($normalized as $col => $header) {
-            $map[$header] = $col;
-        }
-
-        $map['дата'] = $dateCol;
-        $map['адрес'] = $addressCol;
-        $map['причина незаключения'] = $reasonCol;
-        $map['ответственный (кто звонил из менеджеров)'] = $responsibleCol;
-        $map['комментарий'] = $commentCol;
-        $map['дата повторной встречи'] = $followUpCol;
-        $map['заключен/не заключен'] = $statusCol;
-        $map['спец просчет'] = $specialCol;
 
         return $map;
     }
 
     private function mapDataRow(array $cells, array $map, string $sheetName): ?array
     {
-        $address = trim((string) $this->cellValue($cells, $map['адрес'] ?? null));
-        $reason = trim((string) $this->cellValue($cells, $map['причина незаключения'] ?? null));
-        $responsible = trim((string) $this->cellValue($cells, $map['ответственный (кто звонил из менеджеров)'] ?? null));
-        $comment = trim((string) $this->cellValue($cells, $map['комментарий'] ?? null));
-
-        $specialCol = $map['спец просчет']
-            ?? $map['спецпросчет']
-            ?? $map['доп инфа']
-            ?? null;
-        $specialRaw = $this->cellValue($cells, $specialCol);
+        $address = trim((string) $this->cellValue($cells, $map['address']));
+        $reason = trim((string) $this->cellValue($cells, $map['reason']));
+        $responsible = trim((string) $this->cellValue($cells, $map['responsible']));
+        $comment = trim((string) $this->cellValue($cells, $map['comment']));
+        $specialRaw = $this->cellValue($cells, $map['special']);
         $special = trim((string) $specialRaw);
+
         if (is_numeric($specialRaw)) {
             $special = rtrim(rtrim(number_format((float) $specialRaw, 2, '.', ''), '0'), '.');
         }
-
-        $statusRaw = trim((string) $this->cellValue($cells, $map['заключен/не заключен'] ?? null));
-        $resultStatus = $this->mapResultStatus($statusRaw);
 
         if ($address === '' && $reason === '' && $responsible === '' && $comment === '' && $special === '') {
             return null;
         }
 
         return [
-            'entry_date' => $this->parseDateValue($this->cellValue($cells, $map['дата'] ?? null)),
+            'entry_date' => $this->parseDateValue($this->cellValue($cells, $map['date'])),
             'address' => $address,
             'reason' => $reason,
             'measurer_name' => trim($sheetName),
             'responsible_name' => $responsible,
             'comment' => $comment,
-            'follow_up_date' => $this->parseDateValue($this->cellValue($cells, $map['дата повторной встречи'] ?? null)),
-            'result_status' => $resultStatus,
+            'follow_up_date' => $this->parseDateValue($this->cellValue($cells, $map['follow_up_date'])),
+            'result_status' => $this->mapResultStatus((string) $this->cellValue($cells, $map['status'])),
             'special_calculation' => $special,
         ];
-    }
-
-    private function cellValue(array $cells, ?string $column): mixed
-    {
-        if (!$column) {
-            return null;
-        }
-
-        return $cells[$column] ?? null;
     }
 
     private function parseDateValue(mixed $value): ?Carbon
@@ -435,8 +254,7 @@ class NonClosureImportService
         }
 
         if (is_numeric($value) && (float) $value > 20000) {
-            $days = (float) $value;
-            $ts = (int) round(($days - 25569) * 86400);
+            $ts = (int) round((((float) $value) - 25569) * 86400);
             return Carbon::createFromTimestampUTC($ts)->startOfDay();
         }
 
@@ -446,20 +264,35 @@ class NonClosureImportService
         }
 
         try {
-            if (preg_match('/(\d{2}\.\d{2}(?:\.\d{2,4})?)/u', $string, $m)) {
-                $datePart = $m[1];
+            if (preg_match('/(\d{2}\.\d{2}(?:\.\d{2,4})?)/u', $string, $matches)) {
+                $datePart = $matches[1];
                 $format = Str::length($datePart) === 5 ? 'd.m' : (Str::length($datePart) === 8 ? 'd.m.y' : 'd.m.Y');
-                $dt = Carbon::createFromFormat($format, $datePart);
+                $date = Carbon::createFromFormat($format, $datePart);
                 if ($format === 'd.m') {
-                    $dt->year((int) now()->year);
+                    $date->year((int) now()->year);
                 }
-                return $dt->startOfDay();
+                return $date->startOfDay();
             }
 
             return Carbon::parse($string)->startOfDay();
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    private function mapResultStatus(?string $raw): ?string
+    {
+        $normalized = $this->normalize((string) $raw);
+        if ($normalized === '' || $normalized === '-' || $normalized === 'нет') {
+            return null;
+        }
+        if (str_contains($normalized, 'не заключ')) {
+            return 'not_concluded';
+        }
+        if (str_contains($normalized, 'заключ')) {
+            return 'concluded';
+        }
+        return null;
     }
 
     private function resolveUserId($users, ?string $rawName, array $roles): ?int
@@ -475,16 +308,11 @@ class NonClosureImportService
             }
 
             $name = $this->normalize((string) $user->name);
-            if ($name === '') {
-                continue;
-            }
-
-            if ($name === $needle || str_contains($name, $needle) || str_contains($needle, $name)) {
+            if ($name === '' || $name === $needle || str_contains($name, $needle) || str_contains($needle, $name)) {
                 return (int) $user->id;
             }
 
-            $parts = array_filter(explode(' ', $name));
-            foreach ($parts as $part) {
+            foreach (array_filter(explode(' ', $name)) as $part) {
                 if ($part === $needle || str_starts_with($part, $needle) || str_starts_with($needle, $part)) {
                     return (int) $user->id;
                 }
@@ -496,42 +324,145 @@ class NonClosureImportService
 
     private function makeHash(int $accountId, array $row): string
     {
-        $parts = [
+        return sha1(implode('|', [
             $accountId,
             $this->normalize((string) ($row['measurer_name'] ?? '')),
             optional($row['entry_date'])->format('Y-m-d'),
             $this->normalize((string) ($row['address'] ?? '')),
             $this->normalize((string) ($row['reason'] ?? '')),
             optional($row['follow_up_date'])->format('Y-m-d'),
-        ];
+        ]));
+    }
 
-        return sha1(implode('|', $parts));
+    private function cellValue(array $cells, ?string $column): mixed
+    {
+        return $column ? ($cells[$column] ?? null) : null;
     }
 
     private function normalize(string $value): string
     {
         $value = trim(mb_strtolower($value));
         $value = str_replace(['ё', "\n", "\r", "\t"], ['е', ' ', ' ', ' '], $value);
-        $value = preg_replace('/\s+/u', ' ', $value) ?: '';
-
-        return $value;
+        return preg_replace('/\s+/u', ' ', $value) ?: '';
     }
 
-    private function mapResultStatus(?string $raw): ?string
+    private function loadSharedStrings(ZipArchive $zip): array
     {
-        $normalized = $this->normalize((string) $raw);
-        if ($normalized === '' || $normalized === '-' || $normalized === 'нет') {
-            return null;
+        $xmlString = $zip->getFromName('xl/sharedStrings.xml');
+        if ($xmlString === false) {
+            return [];
         }
 
-        if (str_contains($normalized, 'не заключ')) {
-            return 'not_concluded';
+        $xml = simplexml_load_string($xmlString);
+        if (!$xml) {
+            return [];
         }
 
-        if (str_contains($normalized, 'заключ')) {
-            return 'concluded';
+        $namespace = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+        $strings = [];
+
+        foreach ($xml->children($namespace)->si as $si) {
+            $parts = [];
+            if (isset($si->t)) {
+                $parts[] = (string) $si->t;
+            }
+            foreach ($si->r as $run) {
+                if (isset($run->t)) {
+                    $parts[] = (string) $run->t;
+                }
+            }
+            $strings[] = trim(implode('', $parts));
         }
 
-        return null;
+        return $strings;
+    }
+
+    private function sheetFiles(ZipArchive $zip): array
+    {
+        $workbookXml = $zip->getFromName('xl/workbook.xml');
+        $relsXml = $zip->getFromName('xl/_rels/workbook.xml.rels');
+        if ($workbookXml === false || $relsXml === false) {
+            return [];
+        }
+
+        $workbook = simplexml_load_string($workbookXml);
+        $rels = simplexml_load_string($relsXml);
+        if (!$workbook || !$rels) {
+            return [];
+        }
+
+        $rels->registerXPathNamespace('r', 'http://schemas.openxmlformats.org/package/2006/relationships');
+        $relMap = [];
+        foreach ($rels->xpath('//r:Relationship') ?: [] as $rel) {
+            $attrs = $rel->attributes();
+            $relMap[(string) $attrs['Id']] = 'xl/'.ltrim((string) $attrs['Target'], '/');
+        }
+
+        $workbook->registerXPathNamespace('a', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
+        $workbook->registerXPathNamespace('r', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships');
+
+        $result = [];
+        foreach ($workbook->xpath('//a:sheets/a:sheet') ?: [] as $sheet) {
+            $attrs = $sheet->attributes('http://schemas.openxmlformats.org/officeDocument/2006/relationships');
+            $relationId = (string) $attrs['id'];
+            $name = (string) $sheet['name'];
+            if (isset($relMap[$relationId])) {
+                $result[$name] = $relMap[$relationId];
+            }
+        }
+
+        return $result;
+    }
+
+    private function parseSheetRows(string $xmlString, array $sharedStrings): array
+    {
+        $xml = simplexml_load_string($xmlString);
+        if (!$xml) {
+            return [];
+        }
+
+        $namespace = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+        $sheetData = $xml->children($namespace)->sheetData;
+        if (!$sheetData) {
+            return [];
+        }
+
+        $rows = [];
+        foreach ($sheetData->row as $row) {
+            $cells = [];
+            foreach ($row->children($namespace)->c as $cell) {
+                $reference = (string) $cell['r'];
+                $column = preg_replace('/\d+/', '', $reference) ?: $reference;
+                $type = (string) $cell['t'];
+                $valueNode = $cell->children($namespace)->v;
+                $inlineNode = $cell->children($namespace)->is;
+
+                if ($type === 's') {
+                    $index = (int) ($valueNode ?? 0);
+                    $cells[$column] = $sharedStrings[$index] ?? null;
+                } elseif ($type === 'inlineStr') {
+                    $parts = [];
+                    if ($inlineNode && isset($inlineNode->t)) {
+                        $parts[] = (string) $inlineNode->t;
+                    }
+                    if ($inlineNode) {
+                        foreach ($inlineNode->r as $run) {
+                            if (isset($run->t)) {
+                                $parts[] = (string) $run->t;
+                            }
+                        }
+                    }
+                    $cells[$column] = trim(implode('', $parts));
+                } else {
+                    $cells[$column] = isset($valueNode) ? (string) $valueNode : null;
+                }
+            }
+
+            if ($cells) {
+                $rows[] = $cells;
+            }
+        }
+
+        return $rows;
     }
 }

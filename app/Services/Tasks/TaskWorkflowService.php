@@ -4,6 +4,7 @@ namespace App\Services\Tasks;
 
 use App\Models\Deal;
 use App\Models\DealActivity;
+use App\Models\NonClosureWorkbookSheet;
 use App\Models\Task;
 use App\Models\User;
 use App\Models\UserNotification;
@@ -49,6 +50,34 @@ class TaskWorkflowService
         ]);
 
         $this->bitrixSync->syncCreatedTask($task, $deal, $user);
+
+        return $task;
+    }
+
+    public function createDocumentTask(NonClosureWorkbookSheet $sheet, array $data, User $user, array $context = []): Task
+    {
+        $assigneeId = $this->resolveAssigneeId($user->account_id, $data['assigned_user_id'] ?? null);
+        $payload = array_merge($context, [
+            'context_type' => 'document_sheet_row',
+            'sheet_id' => $sheet->id,
+            'sheet_name' => $sheet->name,
+            'workbook_id' => $sheet->workbook_id,
+            'workbook_title' => $sheet->workbook?->title,
+        ]);
+
+        $task = Task::create([
+            'account_id' => $user->account_id,
+            'deal_id' => null,
+            'assigned_user_id' => $assigneeId,
+            'title' => $data['title'],
+            'description' => $data['description'] ?? null,
+            'status' => 'open',
+            'due_at' => $data['due_at'],
+            'external_payload' => $payload,
+        ]);
+
+        $task->load('assignedTo');
+        $this->syncDueNotificationState($task);
 
         return $task;
     }
@@ -106,7 +135,9 @@ class TaskWorkflowService
                 ->where('user_id', '!=', $fresh->assigned_user_id)
                 ->delete();
 
-            $dealTitle = $fresh->deal?->title ?? ('Сделка #'.$fresh->deal_id);
+            $locationLabel = $fresh->deal
+                ? ($fresh->deal?->title ?? ('Сделка #'.$fresh->deal_id))
+                : ($fresh->context_label ?? 'задача без привязки');
 
             UserNotification::query()->updateOrCreate(
                 [
@@ -118,10 +149,12 @@ class TaskWorkflowService
                 [
                     'account_id' => $fresh->account_id,
                     'title' => 'Пора выполнить дело',
-                    'body' => "{$fresh->title} (сделка: {$dealTitle})",
+                    'body' => "{$fresh->title} ({$locationLabel})",
                     'payload' => [
                         'task_id' => $fresh->id,
                         'deal_id' => $fresh->deal_id,
+                        'context_label' => $fresh->context_label,
+                        'context_url' => $fresh->context_url,
                         'due_at' => optional($fresh->due_at)->toISOString(),
                     ],
                     'is_read' => 0,

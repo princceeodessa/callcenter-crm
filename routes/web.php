@@ -109,7 +109,11 @@ Route::middleware('auth')->group(function () {
         Route::post('/ceiling-projects', [CeilingProjectController::class, 'store'])->name('ceiling-projects.store');
         Route::get('/ceiling-projects/{project}', [CeilingProjectController::class, 'show'])->name('ceiling-projects.show');
         Route::get('/ceiling-projects/{project}/drafting', [CeilingProjectController::class, 'drafting'])->name('ceiling-projects.drafting');
+        Route::post('/ceiling-projects/{project}/duplicate', [CeilingProjectController::class, 'duplicate'])->name('ceiling-projects.duplicate');
+        Route::patch('/ceiling-projects/{project}/archive', [CeilingProjectController::class, 'archive'])->name('ceiling-projects.archive');
+        Route::patch('/ceiling-projects/{project}/restore', [CeilingProjectController::class, 'restore'])->name('ceiling-projects.restore');
         Route::patch('/ceiling-projects/{project}', [CeilingProjectController::class, 'update'])->name('ceiling-projects.update');
+        Route::delete('/ceiling-projects/{project}', [CeilingProjectController::class, 'destroy'])->name('ceiling-projects.destroy');
         Route::post('/ceiling-projects/{project}/apply-estimate', [CeilingProjectController::class, 'applyEstimate'])->name('ceiling-projects.apply-estimate');
         Route::post('/ceiling-projects/{project}/sketch-image', [CeilingProjectController::class, 'uploadSketchSheet'])->name('ceiling-projects.sketch-image.upload');
         Route::get('/ceiling-projects/{project}/sketch-image', [CeilingProjectController::class, 'sketchImage'])->name('ceiling-projects.sketch-image.show');
@@ -173,6 +177,18 @@ Route::middleware('auth')->group(function () {
     // Non-closures table (admin + call-center)
     Route::middleware('nonclosure')->group(function () {
         Route::get('/nonclosures', [NonClosureController::class, 'index'])->name('nonclosures.index');
+        Route::get('/nonclosures/sheets/{sheet}', [NonClosureController::class, 'showSheet'])->name('nonclosures.sheets.show');
+        Route::post('/nonclosures/sheets/{sheet}/rows', [NonClosureController::class, 'storeRow'])->name('nonclosures.sheets.rows.store');
+        Route::patch('/nonclosures/sheets/{sheet}/rows/{rowIndex}', [NonClosureController::class, 'updateRowState'])->name('nonclosures.sheets.rows.update');
+        Route::delete('/nonclosures/sheets/{sheet}/rows/{rowIndex}', [NonClosureController::class, 'destroyRow'])->name('nonclosures.sheets.rows.destroy');
+        Route::post('/nonclosures/sheets/{sheet}/columns', [NonClosureController::class, 'storeColumn'])->name('nonclosures.sheets.columns.store');
+        Route::patch('/nonclosures/sheets/{sheet}/columns/{columnIndex}', [NonClosureController::class, 'updateColumn'])->name('nonclosures.sheets.columns.update');
+        Route::delete('/nonclosures/sheets/{sheet}/columns/{columnIndex}', [NonClosureController::class, 'destroyColumn'])->name('nonclosures.sheets.columns.destroy');
+        Route::post('/nonclosures/sheets/{sheet}/tasks', [TaskController::class, 'storeDocumentTask'])->name('nonclosures.sheets.tasks.store');
+        Route::patch('/nonclosures/workspace', [NonClosureController::class, 'updateWorkspace'])->name('nonclosures.workspace.update');
+        Route::post('/nonclosures/workbooks/import', [NonClosureController::class, 'importWorkbook'])->name('nonclosures.workbooks.import');
+        Route::patch('/nonclosures/workbooks/{workbook}/access', [NonClosureController::class, 'updateWorkbookAccess'])->name('nonclosures.workbooks.access.update');
+        Route::patch('/nonclosures/sheets/{sheet}/access', [NonClosureController::class, 'updateSheetAccess'])->name('nonclosures.sheets.access.update');
         Route::post('/nonclosures', [NonClosureController::class, 'store'])->name('nonclosures.store');
         Route::patch('/nonclosures/{nonclosure}', [NonClosureController::class, 'update'])->name('nonclosures.update');
         Route::post('/nonclosures/import', [NonClosureController::class, 'import'])->name('nonclosures.import');

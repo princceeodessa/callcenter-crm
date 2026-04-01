@@ -331,6 +331,8 @@
   $sketchRecognizedAt = isset($sketchRecognition['recognized_at'])
       ? \Illuminate\Support\Carbon::parse($sketchRecognition['recognized_at'])->format('d.m.Y H:i')
       : null;
+  $isArchivedProject = $project->archived_at !== null;
+  $archivedAtLabel = $isArchivedProject ? optional($project->archived_at)->format('d.m.Y H:i') : null;
 @endphp
 
 @section('content')
@@ -350,6 +352,14 @@
             · Пока без сделки
           @endif
         </div>
+        @if($isArchivedProject)
+          <div class="small text-muted mt-2">
+            Архивирован {{ $archivedAtLabel }}
+            @if($project->archivedBy?->name)
+              · {{ $project->archivedBy->name }}
+            @endif
+          </div>
+        @endif
       </div>
       <div class="d-flex gap-2 flex-wrap">
         <a href="{{ route('ceiling-projects.index') }}" class="btn btn-outline-secondary">Все проекты</a>
@@ -364,8 +374,43 @@
         @if($project->deal && auth()->user()?->role !== 'constructor')
           <a href="{{ route('deals.show', $project->deal) }}" class="btn btn-outline-primary">Открыть сделку</a>
         @endif
+        <form method="POST" action="{{ route('ceiling-projects.duplicate', $project) }}">
+          @csrf
+          <button class="btn btn-outline-dark">Сделать копию</button>
+        </form>
+        @if($isArchivedProject)
+          <form method="POST" action="{{ route('ceiling-projects.restore', $project) }}">
+            @csrf
+            @method('PATCH')
+            <input type="hidden" name="view_mode" value="{{ $viewMode }}">
+            @if($selectedRoom)
+              <input type="hidden" name="room" value="{{ $selectedRoom->id }}">
+            @endif
+            <button class="btn btn-outline-success">Восстановить</button>
+          </form>
+          <form method="POST" action="{{ route('ceiling-projects.destroy', $project) }}" onsubmit="return confirm('Удалить архивный проект безвозвратно?');">
+            @csrf
+            @method('DELETE')
+            <button class="btn btn-outline-danger">Удалить</button>
+          </form>
+        @else
+          <form method="POST" action="{{ route('ceiling-projects.archive', $project) }}">
+            @csrf
+            @method('PATCH')
+            <input type="hidden" name="view_mode" value="{{ $viewMode }}">
+            @if($selectedRoom)
+              <input type="hidden" name="room" value="{{ $selectedRoom->id }}">
+            @endif
+            <button class="btn btn-outline-secondary">В архив</button>
+          </form>
+        @endif
       </div>
     </div>
+    @if($isArchivedProject)
+      <div class="alert alert-secondary mt-3 mb-0">
+        Этот проект находится в архиве. Его можно восстановить, открыть как историю или удалить безвозвратно.
+      </div>
+    @endif
     @if($project->rooms->count() > 0)
       <form method="GET" action="{{ $isDraftingMode ? route('ceiling-projects.drafting', $project) : route('ceiling-projects.show', $project) }}" class="mt-3 d-flex gap-2 flex-wrap align-items-center project-room-switch">
         <select name="room" class="form-select">

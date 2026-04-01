@@ -263,7 +263,7 @@
                 @endif
                 <a class="btn btn-sm btn-outline-light" href="{{ route('calendar.index') }}">Календарь</a>
                 @if($isNc)
-                    <a class="btn btn-sm btn-outline-light" href="{{ route('nonclosures.index') }}">Незаключёнки</a>
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('nonclosures.index') }}">Документы</a>
                 @endif
                 @if($canUseProjecting)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('ceiling-projects.index') }}">&#1055;&#1088;&#1086;&#1077;&#1082;&#1090;&#1080;&#1088;&#1086;&#1074;&#1082;&#1072;</a>
@@ -496,4 +496,3 @@
 @stack('scripts')
 </body>
 </html>
-

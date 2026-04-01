@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Deal;
 use App\Models\DealActivity;
+use App\Models\NonClosureSheetRowActivity;
+use App\Models\NonClosureWorkbookSheet;
 use App\Models\Task;
 use App\Models\User;
 use App\Services\Integrations\BitrixTaskSyncService;
@@ -12,6 +14,7 @@ use App\Support\Deals\InteractsWithDealBroadcasts;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 
 class TaskController extends Controller
 {
@@ -154,6 +157,175 @@ class TaskController extends Controller
         return redirect()->route('tasks.index')->with('status', 'Дело добавлено');
     }
 
+    public function storeDocumentTask(Request $request, NonClosureWorkbookSheet $sheet, TaskWorkflowService $taskWorkflow)
+    {
+        $user = Auth::user();
+        $sheet = $this->accessibleWorkbookSheet($sheet, $user);
+
+        $data = $request->validate([
+            'row_index' => ['required', 'integer', 'min:1'],
+            'title' => ['nullable', 'string', 'max:255'],
+            'description' => ['nullable', 'string'],
+            'due_at' => ['required', 'date'],
+            'assigned_user_id' => ['nullable', 'integer'],
+            'scope' => ['nullable', 'string'],
+            'owner_id' => ['nullable', 'integer'],
+            'workbook' => ['nullable', 'integer'],
+        ]);
+
+        $rows = collect($sheet->rows ?? [])->values();
+        $rowIndex = (int) $data['row_index'];
+        $row = $rows->get($rowIndex - 1);
+
+        abort_if(!is_array($row), 422, 'Строка таблицы не найдена.');
+
+        $rowPreview = collect($row)
+            ->map(fn ($value) => trim((string) $value))
+            ->filter()
+            ->take(5)
+            ->implode(' | ');
+
+        $subject = trim((string) ($row[1] ?? $row[0] ?? ''));
+        if ($subject === '') {
+            $subject = 'строка '.$rowIndex;
+        }
+
+        $title = trim((string) ($data['title'] ?? ''));
+        if ($title === '') {
+            $title = 'Связаться: '.Str::limit($subject, 120, '');
+        }
+
+        $description = trim((string) ($data['description'] ?? ''));
+        $contextLabel = implode(' -> ', array_filter([
+            $sheet->workbook?->title,
+            $sheet->name,
+            'строка '.$rowIndex,
+        ]));
+        $contextUrl = route('nonclosures.sheets.show', [
+            'sheet' => $sheet->id,
+            'workbook' => $sheet->workbook_id,
+        ]).'#row-'.$rowIndex;
+
+        if ($description === '') {
+            $description = implode("\n", array_filter([
+                $contextLabel,
+                $rowPreview !== '' ? 'Контекст: '.$rowPreview : null,
+            ]));
+        }
+
+        $task = $taskWorkflow->createDocumentTask($sheet, [
+            'title' => $title,
+            'description' => $description,
+            'due_at' => $data['due_at'],
+            'assigned_user_id' => $data['assigned_user_id'] ?? null,
+        ], $user, [
+            'context_label' => $contextLabel,
+            'context_url' => $contextUrl,
+            'row_index' => $rowIndex,
+            'row_preview' => $rowPreview,
+            'sheet_slug' => $sheet->slug,
+        ]);
+
+        NonClosureSheetRowActivity::create([
+            'account_id' => $user->account_id,
+            'workbook_sheet_id' => $sheet->id,
+            'row_index' => $rowIndex,
+            'actor_user_id' => $user->id,
+            'type' => NonClosureSheetRowActivity::TYPE_TASK_CREATED,
+            'body' => 'Создана задача: '.$task->title,
+            'payload' => [
+                'task_id' => $task->id,
+                'task_title' => $task->title,
+                'due_at' => optional($task->due_at)->toISOString(),
+                'assigned_user_id' => $task->assigned_user_id,
+            ],
+        ]);
+
+        return redirect()->to(route('nonclosures.sheets.show', array_filter([
+            'sheet' => $sheet->id,
+            'scope' => $data['scope'] ?? null,
+            'owner_id' => $data['owner_id'] ?? null,
+            'workbook' => $data['workbook'] ?? $sheet->workbook_id,
+        ])).'#row-'.$rowIndex)->with('status', 'Напоминание по строке создано.');
+    }
+
+    private function storeDocumentTaskLegacy(Request $request, NonClosureWorkbookSheet $sheet, TaskWorkflowService $taskWorkflow)
+    {
+        $user = Auth::user();
+        $sheet = $this->accessibleWorkbookSheet($sheet, $user);
+
+        $data = $request->validate([
+            'row_index' => ['required', 'integer', 'min:1'],
+            'title' => ['nullable', 'string', 'max:255'],
+            'description' => ['nullable', 'string'],
+            'due_at' => ['required', 'date'],
+            'assigned_user_id' => ['nullable', 'integer'],
+            'scope' => ['nullable', 'string'],
+            'owner_id' => ['nullable', 'integer'],
+            'workbook' => ['nullable', 'integer'],
+        ]);
+
+        $rows = collect($sheet->rows ?? [])->values();
+        $rowIndex = (int) $data['row_index'];
+        $row = $rows->get($rowIndex - 1);
+
+        abort_if(!is_array($row), 422, 'Строка таблицы не найдена.');
+
+        $rowPreview = collect($row)
+            ->map(fn ($value) => trim((string) $value))
+            ->filter()
+            ->take(5)
+            ->implode(' | ');
+
+        $subject = trim((string) ($row[1] ?? $row[0] ?? ''));
+        if ($subject === '') {
+            $subject = 'строка '.$rowIndex;
+        }
+
+        $title = trim((string) ($data['title'] ?? ''));
+        if ($title === '') {
+            $title = 'Связаться: '.Str::limit($subject, 120, '');
+        }
+
+        $description = trim((string) ($data['description'] ?? ''));
+        $contextLabel = implode(' -> ', array_filter([
+            $sheet->workbook?->title,
+            $sheet->name,
+            'строка '.$rowIndex,
+        ]));
+        $contextUrl = route('nonclosures.sheets.show', [
+            'sheet' => $sheet->id,
+            'workbook' => $sheet->workbook_id,
+        ]).'#row-'.$rowIndex;
+
+        if ($description === '') {
+            $description = implode("\n", array_filter([
+                $contextLabel,
+                $rowPreview !== '' ? 'Контекст: '.$rowPreview : null,
+            ]));
+        }
+
+        $taskWorkflow->createDocumentTask($sheet, [
+            'title' => $title,
+            'description' => $description,
+            'due_at' => $data['due_at'],
+            'assigned_user_id' => $data['assigned_user_id'] ?? null,
+        ], $user, [
+            'context_label' => $contextLabel,
+            'context_url' => $contextUrl,
+            'row_index' => $rowIndex,
+            'row_preview' => $rowPreview,
+            'sheet_slug' => $sheet->slug,
+        ]);
+
+        return redirect()->route('nonclosures.sheets.show', array_filter([
+            'sheet' => $sheet->id,
+            'scope' => $data['scope'] ?? null,
+            'owner_id' => $data['owner_id'] ?? null,
+            'workbook' => $data['workbook'] ?? $sheet->workbook_id,
+        ]))->with('status', 'Напоминание по строке создано.');
+    }
+
     public function update(Request $request, Task $task, BitrixTaskSyncService $bitrixSync, TaskWorkflowService $taskWorkflow)
     {
         $user = Auth::user();
@@ -174,21 +346,23 @@ class TaskController extends Controller
         $task->load(['deal', 'assignedTo']);
         $taskWorkflow->syncDueNotificationState($task);
 
-        DealActivity::create([
-            'account_id' => $user->account_id,
-            'deal_id' => $task->deal_id,
-            'author_user_id' => $user->id,
-            'type' => 'task_updated',
-            'body' => 'Дело обновлено: '.$task->title,
-            'payload' => [
-                'task_id' => $task->id,
-                'assigned_user_id' => $task->assigned_user_id,
-                'assigned_label' => $task->assignee_label,
-                'due_at' => optional($task->due_at)->toISOString(),
-            ],
-        ]);
+        if ($task->deal_id) {
+            DealActivity::create([
+                'account_id' => $user->account_id,
+                'deal_id' => $task->deal_id,
+                'author_user_id' => $user->id,
+                'type' => 'task_updated',
+                'body' => 'Дело обновлено: '.$task->title,
+                'payload' => [
+                    'task_id' => $task->id,
+                    'assigned_user_id' => $task->assigned_user_id,
+                    'assigned_label' => $task->assignee_label,
+                    'due_at' => optional($task->due_at)->toISOString(),
+                ],
+            ]);
 
-        $bitrixSync->syncUpdatedTask($task, $user);
+            $bitrixSync->syncUpdatedTask($task, $user);
+        }
 
         return back()->with('status', 'Дело обновлено');
     }
@@ -204,17 +378,19 @@ class TaskController extends Controller
 
         $taskWorkflow->syncDueNotificationState($task);
 
-        DealActivity::create([
-            'account_id' => $user->account_id,
-            'deal_id' => $task->deal_id,
-            'author_user_id' => $user->id,
-            'type' => 'task_done',
-            'body' => 'Дело выполнено: '.$task->title,
-            'payload' => ['task_id' => $task->id],
-        ]);
+        if ($task->deal_id) {
+            DealActivity::create([
+                'account_id' => $user->account_id,
+                'deal_id' => $task->deal_id,
+                'author_user_id' => $user->id,
+                'type' => 'task_done',
+                'body' => 'Дело выполнено: '.$task->title,
+                'payload' => ['task_id' => $task->id],
+            ]);
 
-        $task->loadMissing('deal');
-        $bitrixSync->syncCompletedTask($task, $user);
+            $task->loadMissing('deal');
+            $bitrixSync->syncCompletedTask($task, $user);
+        }
 
         return back();
     }
@@ -271,5 +447,19 @@ class TaskController extends Controller
         } catch (\Throwable) {
             return now()->startOfDay();
         }
+    }
+
+    private function accessibleWorkbookSheet(NonClosureWorkbookSheet $sheet, User $user): NonClosureWorkbookSheet
+    {
+        $query = NonClosureWorkbookSheet::query()
+            ->where('account_id', $user->account_id)
+            ->whereKey($sheet->id)
+            ->with('workbook:id,title');
+
+        if (!in_array($user->role, ['admin', 'main_operator'], true)) {
+            $query->accessibleFor($user);
+        }
+
+        return $query->firstOrFail();
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToAccount;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 class CeilingProject extends Model
@@ -19,6 +20,7 @@ class CeilingProject extends Model
         'measurement_id',
         'created_by_user_id',
         'updated_by_user_id',
+        'archived_by_user_id',
         'title',
         'status',
         'calculator_version',
@@ -47,6 +49,8 @@ class CeilingProject extends Model
         'sketch_recognized_at',
         'notes',
         'last_calculated_at',
+        'archived_at',
+        'archived_slot',
     ];
 
     protected $casts = [
@@ -68,6 +72,7 @@ class CeilingProject extends Model
         'sketch_recognition' => 'array',
         'sketch_recognized_at' => 'datetime',
         'last_calculated_at' => 'datetime',
+        'archived_at' => 'datetime',
     ];
 
     public static function statusOptions(): array
@@ -115,6 +120,39 @@ class CeilingProject extends Model
         ];
     }
 
+    public static function lifecycleOptions(): array
+    {
+        return [
+            'active' => 'Активные',
+            'archived' => 'Архив',
+            'all' => 'Все',
+        ];
+    }
+
+    public function scopeActive(Builder $query): Builder
+    {
+        return $query->whereNull('archived_at');
+    }
+
+    public function scopeArchived(Builder $query): Builder
+    {
+        return $query->whereNotNull('archived_at');
+    }
+
+    public function scopeLifecycle(Builder $query, string $lifecycle): Builder
+    {
+        return match ($lifecycle) {
+            'archived' => $query->archived(),
+            'all' => $query,
+            default => $query->active(),
+        };
+    }
+
+    public function isArchived(): bool
+    {
+        return $this->archived_at !== null;
+    }
+
     public function deal()
     {
         return $this->belongsTo(Deal::class);
@@ -138,5 +176,10 @@ class CeilingProject extends Model
     public function updatedBy()
     {
         return $this->belongsTo(User::class, 'updated_by_user_id');
+    }
+
+    public function archivedBy()
+    {
+        return $this->belongsTo(User::class, 'archived_by_user_id');
     }
 }

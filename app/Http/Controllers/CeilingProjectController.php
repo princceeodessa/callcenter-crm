@@ -16,6 +16,7 @@ use App\Services\Ceiling\CeilingProjectCalculator;
 use App\Services\Ceiling\CeilingSketchRecognitionService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -30,11 +31,16 @@ $this->authorizeAdmin($request);
 
 
 $q = trim((string) $request->query('q', ''));
+$lifecycle = trim((string) $request->query('lifecycle', 'active'));
+if (!in_array($lifecycle, array_keys(CeilingProject::lifecycleOptions()), true)) {
+$lifecycle = 'active';
+}
 
 
 $projects = CeilingProject::query()
-->with(['deal.contact', 'measurement'])
+->with(['deal.contact', 'measurement', 'archivedBy'])
 ->withCount('rooms')
+->lifecycle($lifecycle)
 ->when($q !== '', function ($query) use ($q) {
 $query->where(function ($inner) use ($q) {
 $inner
@@ -50,6 +56,7 @@ $contactQuery
 });
 });
 })
+->orderByRaw('case when archived_at is null then 0 else 1 end')
 ->orderByDesc('updated_at')
 ->paginate(20)
 ->withQueryString();
@@ -62,6 +69,8 @@ return view('ceiling-projects.index', [
 'projects' => $projects,
 'deals' => $deals,
 'q' => $q,
+'lifecycle' => $lifecycle,
+'lifecycleOptions' => CeilingProject::lifecycleOptions(),
 'statusOptions' => CeilingProject::statusOptions(),
 ]);
 }
@@ -116,7 +125,7 @@ $this->authorizeAdmin($request);
 abort_unless($deal->account_id === $request->user()->account_id, 403);
 
 
-$project = CeilingProject::query()->firstOrCreate(
+$project = CeilingProject::query()->active()->firstOrCreate(
 [
 'account_id' => $request->user()->account_id,
 'deal_id' => $deal->id,
@@ -137,6 +146,62 @@ $project = CeilingProject::query()->firstOrCreate(
 
 
 return redirect()->route('ceiling-projects.show', $project);
+}
+
+
+public function duplicate(Request $request, CeilingProject $project): RedirectResponse
+{
+$this->authorizeProject($request, $project);
+$project->loadMissing('rooms.elements');
+
+$duplicate = DB::transaction(function () use ($request, $project) {
+$copy = CeilingProject::create([
+'account_id' => $project->account_id,
+'deal_id' => null,
+'measurement_id' => $project->measurement_id,
+'created_by_user_id' => $request->user()->id,
+'updated_by_user_id' => $request->user()->id,
+'archived_by_user_id' => null,
+'title' => $this->duplicateProjectTitle($project),
+'status' => CeilingProject::STATUS_DRAFT,
+'calculator_version' => $project->calculator_version,
+'canvas_material' => $project->canvas_material,
+'canvas_texture' => $project->canvas_texture,
+'canvas_color' => $project->canvas_color,
+'mounting_system' => $project->mounting_system,
+'waste_percent' => $project->waste_percent,
+'extra_margin_m' => $project->extra_margin_m,
+'discount_percent' => $project->discount_percent,
+'canvas_price_per_m2' => $project->canvas_price_per_m2,
+'profile_price_per_m' => $project->profile_price_per_m,
+'insert_price_per_m' => $project->insert_price_per_m,
+'spotlight_price' => $project->spotlight_price,
+'chandelier_price' => $project->chandelier_price,
+'pipe_price' => $project->pipe_price,
+'curtain_niche_price' => $project->curtain_niche_price,
+'cornice_price_per_m' => $project->cornice_price_per_m,
+'ventilation_hole_price' => $project->ventilation_hole_price,
+'mounting_price_per_m2' => $project->mounting_price_per_m2,
+'additional_cost' => $project->additional_cost,
+'reference_image_path' => null,
+'sketch_image_path' => null,
+'sketch_crop' => null,
+'sketch_recognition' => null,
+'sketch_recognized_at' => null,
+'notes' => $project->notes,
+'last_calculated_at' => now(),
+'archived_at' => null,
+'archived_slot' => 0,
+]);
+
+$this->cloneProjectRooms($project, $copy);
+
+return $copy;
+});
+
+return redirect()
+->route('ceiling-projects.show', $duplicate)
+->with('status', 'Копия проекта создана. Сделка и изображения в новый проект не переносились.');
 }
 
 
@@ -202,6 +267,75 @@ return view('ceiling-projects.production-packet', [
 'roomPackets' => $roomPackets,
 'packetSummary' => $this->buildProductionPacketSummary($roomPackets),
 ]);
+}
+
+
+public function archive(Request $request, CeilingProject $project): RedirectResponse
+{
+$this->authorizeProject($request, $project);
+
+if ($project->isArchived()) {
+return $this->redirectAfterProjectLifecycle($request, $project)
+->with('status', 'Проект уже находится в архиве.');
+}
+
+$project->forceFill([
+'archived_at' => now(),
+'archived_by_user_id' => $request->user()->id,
+'archived_slot' => $project->id,
+'updated_by_user_id' => $request->user()->id,
+'last_calculated_at' => now(),
+])->save();
+
+return $this->redirectAfterProjectLifecycle($request, $project)
+->with('status', 'Проект отправлен в архив.');
+}
+
+
+public function restore(Request $request, CeilingProject $project): RedirectResponse
+{
+$this->authorizeProject($request, $project);
+
+if (!$project->isArchived()) {
+return $this->redirectAfterProjectLifecycle($request, $project)
+->with('status', 'Проект уже активен.');
+}
+
+$this->ensureDealLinkIsAvailable($request->user()->account_id, $project->deal_id, $project->id);
+
+$project->forceFill([
+'archived_at' => null,
+'archived_by_user_id' => null,
+'archived_slot' => 0,
+'updated_by_user_id' => $request->user()->id,
+'last_calculated_at' => now(),
+])->save();
+
+return $this->redirectAfterProjectLifecycle($request, $project)
+->with('status', 'Проект восстановлен из архива.');
+}
+
+
+public function destroy(Request $request, CeilingProject $project): RedirectResponse
+{
+$this->authorizeProject($request, $project);
+
+if (!$project->isArchived()) {
+return $this->redirectAfterProjectLifecycle($request, $project)
+->withErrors(['project' => 'Сначала отправьте проект в архив, затем удаляйте его безвозвратно.']);
+}
+
+$assetPaths = $this->projectAssetPaths($project);
+
+DB::transaction(function () use ($project) {
+$project->delete();
+});
+
+$this->deleteProjectAssets($assetPaths);
+
+return redirect()
+->route('ceiling-projects.index', $this->projectIndexFilters($request))
+->with('status', 'Архивный проект удалён безвозвратно.');
 }
 
 
@@ -619,7 +753,7 @@ $payload['shape_points'] = null;
 $payload['corners_count'] = 4;
 }
 $payload['derived_panels'] = $this->buildDerivedPanelsForRoom(array_merge(
-$room->only(['shape_points', 'light_line_shapes', 'production_settings']),
+$room->only(['shape_points', 'feature_shapes', 'light_line_shapes', 'production_settings']),
 $payload
 ));
 
@@ -691,6 +825,7 @@ json_decode((string) ($data['production_settings_json'] ?? '{}'), true)
 $derivedPanels = $this->buildDerivedPanelsForRoom([
 'shape_type' => CeilingProjectRoom::SHAPE_POLYGON,
 'shape_points' => $normalized,
+'feature_shapes' => $featureShapes,
 'light_line_shapes' => $lightLineShapes,
 'production_settings' => $productionSettings,
 ]);
@@ -1620,7 +1755,7 @@ private function buildRecognitionState(bool $success, string $message, array $ex
 
 private function buildShowViewData(Request $request, CeilingProject $project, CeilingProjectCalculator $calculator, string $viewMode): array
 {
-$project->load(['deal.contact', 'rooms', 'measurement']);
+$project->load(['deal.contact', 'rooms', 'measurement', 'archivedBy']);
 $project->load('rooms.elements');
 
 
@@ -1816,6 +1951,7 @@ return;
 $exists = CeilingProject::query()
 ->where('account_id', $accountId)
 ->where('deal_id', $dealId)
+->whereNull('archived_at')
 ->when($ignoreProjectId !== null, fn ($query) => $query->whereKeyNot($ignoreProjectId))
 ->exists();
 
@@ -1824,6 +1960,123 @@ if ($exists) {
 throw ValidationException::withMessages([
 'deal_id' => 'Эта сделка уже привязана к другой проектировке.',
 ]);
+}
+}
+
+
+private function redirectAfterProjectLifecycle(Request $request, ?CeilingProject $project = null): RedirectResponse
+{
+if ($request->input('redirect') === 'index' || $project === null) {
+return redirect()->route('ceiling-projects.index', $this->projectIndexFilters($request));
+}
+
+return $this->redirectToProject($request, $project);
+}
+
+
+private function projectIndexFilters(Request $request): array
+{
+$filters = [];
+$q = trim((string) $request->input('q', $request->query('q', '')));
+$lifecycle = trim((string) $request->input('lifecycle', $request->query('lifecycle', 'active')));
+
+if ($q !== '') {
+$filters['q'] = $q;
+}
+
+if (in_array($lifecycle, array_keys(CeilingProject::lifecycleOptions()), true) && $lifecycle !== 'active') {
+$filters['lifecycle'] = $lifecycle;
+}
+
+return $filters;
+}
+
+
+private function duplicateProjectTitle(CeilingProject $project): string
+{
+$title = trim((string) ($project->title ?? ''));
+
+if ($title === '') {
+$title = 'Проектировка #'.$project->id;
+}
+
+return $title.' (копия)';
+}
+
+
+private function cloneProjectRooms(CeilingProject $source, CeilingProject $target): void
+{
+foreach ($source->rooms as $room) {
+$roomPayload = [
+'account_id' => $target->account_id,
+'ceiling_project_id' => $target->id,
+'sort_order' => $room->sort_order,
+'name' => $room->name,
+'shape_type' => $room->shape_type,
+'width_m' => $room->width_m,
+'length_m' => $room->length_m,
+'height_m' => $room->height_m,
+'corners_count' => $room->corners_count,
+'manual_area_m2' => $room->manual_area_m2,
+'manual_perimeter_m' => $room->manual_perimeter_m,
+'shape_points' => $room->shape_points,
+'feature_shapes' => $room->feature_shapes,
+'light_line_shapes' => $room->light_line_shapes,
+'production_settings' => $room->production_settings,
+'spotlights_count' => $room->spotlights_count,
+'chandelier_points_count' => $room->chandelier_points_count,
+'pipes_count' => $room->pipes_count,
+'curtain_niches_count' => $room->curtain_niches_count,
+'ventilation_holes_count' => $room->ventilation_holes_count,
+'notes' => $room->notes,
+];
+$roomPayload['derived_panels'] = $this->buildDerivedPanelsForRoom($roomPayload);
+
+$copiedRoom = $target->rooms()->create($roomPayload);
+
+foreach ($room->elements as $element) {
+$copiedRoom->elements()->create([
+'account_id' => $target->account_id,
+'ceiling_project_room_id' => $copiedRoom->id,
+'sort_order' => $element->sort_order,
+'type' => $element->type,
+'label' => $element->label,
+'quantity' => $element->quantity,
+'placement_mode' => $element->placement_mode,
+'segment_index' => $element->segment_index,
+'offset_m' => $element->offset_m,
+'x_m' => $element->x_m,
+'y_m' => $element->y_m,
+'length_m' => $element->length_m,
+'notes' => $element->notes,
+]);
+}
+}
+}
+
+
+private function projectAssetPaths(CeilingProject $project): array
+{
+$publicPaths = array_values(array_unique(array_filter([
+$this->resolveSketchImagePath($project),
+is_string($project->reference_image_path) ? $project->reference_image_path : null,
+], static fn ($path) => is_string($path) && trim($path) !== '')));
+
+return [
+'public' => $publicPaths,
+'local' => [$this->recognitionStoragePath($project)],
+];
+}
+
+
+private function deleteProjectAssets(array $assetPaths): void
+{
+foreach ((array) ($assetPaths['public'] ?? []) as $path) {
+Storage::disk('public')->delete($path);
+}
+
+foreach ((array) ($assetPaths['local'] ?? []) as $path) {
+Storage::disk('local')->delete($path);
 }
 }
 

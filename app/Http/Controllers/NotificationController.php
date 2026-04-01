@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\UserNotification;
 use App\Models\Task;
+use App\Models\UserNotification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -26,29 +26,21 @@ class NotificationController extends Controller
             ->where('is_read', 0)
             ->count();
 
-        return view('notifications.index', compact('notifications','unreadCount'));
+        return view('notifications.index', compact('notifications', 'unreadCount'));
     }
 
-    /**
-     * Long-poll-ish endpoint: returns new notifications and unread count.
-     * Also triggers due-task scan so it works even without cron.
-     */
     public function poll(Request $request)
     {
         $user = Auth::user();
-
-        // Best-effort: create due notifications for THIS user now.
-        // (If cron is configured, this is redundant but harmless.)
         $this->ensureDueTasksNotifiedForUser($user->account_id, $user->id);
 
-        $afterId = (int)$request->query('after_id', 0);
+        $afterId = (int) $request->query('after_id', 0);
 
         $maxId = (int) UserNotification::query()
             ->where('account_id', $user->account_id)
             ->where('user_id', $user->id)
             ->max('id');
 
-        // If client sent a stale/high watermark (e.g. after DB reset), reset it.
         if ($afterId > $maxId) {
             $afterId = 0;
         }
@@ -68,17 +60,21 @@ class NotificationController extends Controller
             ->count();
 
         return response()->json([
-            'notifications' => $new->map(function (UserNotification $n) {
-                $payload = is_array($n->payload ?? null) ? $n->payload : [];
+            'notifications' => $new->map(function (UserNotification $notification) {
+                $payload = is_array($notification->payload ?? null) ? $notification->payload : [];
                 $dealId = $payload['deal_id'] ?? null;
-                $url = $dealId ? route('deals.show', ['deal' => $dealId]) : route('notifications.index');
+                $contextUrl = trim((string) ($payload['context_url'] ?? ''));
+                $url = $dealId
+                    ? route('deals.show', ['deal' => $dealId])
+                    : ($contextUrl !== '' ? $contextUrl : route('notifications.index'));
+
                 return [
-                    'id' => $n->id,
-                    'type' => $n->type,
-                    'title' => $n->title,
-                    'body' => $n->body,
+                    'id' => $notification->id,
+                    'type' => $notification->type,
+                    'title' => $notification->title,
+                    'body' => $notification->body,
                     'url' => $url,
-                    'created_at' => optional($n->created_at)->toISOString(),
+                    'created_at' => optional($notification->created_at)->toISOString(),
                 ];
             }),
             'unread_count' => $unreadCount,
@@ -119,7 +115,9 @@ class NotificationController extends Controller
                     return;
                 }
 
-                $dealTitle = $task->deal?->title ?? ('Сделка #'.$fresh->deal_id);
+                $locationLabel = $fresh->deal
+                    ? ($task->deal?->title ?? ('Сделка #'.$fresh->deal_id))
+                    : ($fresh->context_label ?? 'задача без привязки');
 
                 UserNotification::query()->firstOrCreate(
                     [
@@ -131,10 +129,12 @@ class NotificationController extends Controller
                     [
                         'account_id' => $accountId,
                         'title' => 'Пора выполнить дело',
-                        'body' => "{$fresh->title} (сделка: {$dealTitle})",
+                        'body' => "{$fresh->title} ({$locationLabel})",
                         'payload' => [
                             'task_id' => $fresh->id,
                             'deal_id' => $fresh->deal_id,
+                            'context_label' => $fresh->context_label,
+                            'context_url' => $fresh->context_url,
                             'due_at' => optional($fresh->due_at)->toISOString(),
                         ],
                         'is_read' => 0,
