@@ -237,6 +237,23 @@
         body[data-role="constructor"] .navbar #enableNotifBtn {
             display: none !important;
         }
+
+        body[data-role="documents_operator"] .navbar a[href$="/calendar"],
+        body[data-role="documents_operator"] .navbar a[href$="/reports/monthly"],
+        body[data-role="documents_operator"] .navbar a[href$="/settings/users"],
+        body[data-role="documents_operator"] .navbar a[href$="/settings/integrations"],
+        body[data-role="documents_operator"] .navbar a[href$="/settings/imports/bitrix"],
+        body[data-role="documents_operator"] .navbar a[href$="/notifications"],
+        body[data-role="documents_operator"] .navbar a[href$="/deals/create"],
+        body[data-role="documents_operator"] .navbar a[href$="/deals/kanban"],
+        body[data-role="documents_operator"] .navbar a[href$="/deals"],
+        body[data-role="documents_operator"] .navbar a[href$="/tasks"],
+        body[data-role="documents_operator"] .navbar a[href$="/deals/closed"],
+        body[data-role="documents_operator"] .navbar a[href$="/chats"],
+        body[data-role="documents_operator"] .navbar a[href$="/ceiling-projects"],
+        body[data-role="documents_operator"] .navbar #enableNotifBtn {
+            display: none !important;
+        }
     </style>
     @stack('styles')
 </head>
@@ -247,14 +264,15 @@
         @php($isPriv = in_array($navUser?->role, ['admin','main_operator'], true))
         @php($isAdmin = $navUser?->role === 'admin')
         @php($isConstructor = $navUser?->role === 'constructor')
-        @php($isNc = in_array($navUser?->role, ['admin','main_operator','operator'], true))
+        @php($isDocumentsOperator = $navUser?->role === 'documents_operator')
+        @php($isNc = in_array($navUser?->role, ['admin','main_operator','operator','documents_operator'], true))
         @php($isMeasurer = $navUser?->role === 'measurer')
         @php($canUseProjecting = $isConstructor)
-        @php($homeRoute = $isMeasurer ? 'calendar.index' : ($isConstructor ? 'ceiling-projects.index' : 'deals.kanban'))
+        @php($homeRoute = $isMeasurer ? 'calendar.index' : ($isConstructor ? 'ceiling-projects.index' : ($isDocumentsOperator ? 'nonclosures.index' : 'deals.kanban')))
         <a class="navbar-brand fw-semibold" href="{{ route($homeRoute) }}">{{ config('app.name') }}</a>
         <div class="d-flex gap-2 flex-wrap align-items-center">
             @auth
-                @if(!$isMeasurer && !$isConstructor)
+                @if(!$isMeasurer && !$isConstructor && !$isDocumentsOperator)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('deals.kanban') }}">Канбан</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('deals.index') }}">Список</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('tasks.index') }}">Дела</a>
@@ -290,7 +308,7 @@
                 </div>
 
                 <a class="btn btn-sm btn-outline-light" href="{{ route('reports.monthly') }}">Отчёты</a>
-                @if(!$isMeasurer && !$isConstructor)
+                @if(!$isMeasurer && !$isConstructor && !$isDocumentsOperator)
                     <a class="btn btn-sm btn-warning position-relative" href="{{ route('notifications.index') }}" title="Уведомления" aria-label="Уведомления">
                         <i class="bi bi-bell-fill"></i>
                         <span id="navNotifBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-danger d-none">0</span>
@@ -346,7 +364,7 @@
 </script>
 
 @auth
-@if(!in_array(auth()->user()?->role, ['measurer', 'constructor'], true))
+@if(!in_array(auth()->user()?->role, ['measurer', 'constructor', 'documents_operator'], true))
 <script>
 (() => {
     const badgeEl = document.getElementById('navNotifBadge');

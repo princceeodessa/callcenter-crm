@@ -58,6 +58,8 @@
   .sheet-row-action{padding:.12rem .45rem;border-radius:999px;font-size:.72rem;line-height:1.2}
   .sheet-row-task-counter{font-size:.7rem;padding:.16rem .4rem;border-radius:999px;background:rgba(15,23,42,.06)}
   .sheet-cell{padding:.82rem .88rem;vertical-align:top;border-color:var(--crm-border);white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;line-height:1.4}
+  .sheet-cell[data-row-cell]{cursor:pointer}
+  .sheet-cell[data-row-cell]:focus-visible{outline:2px solid color-mix(in srgb,var(--crm-accent) 70%, #fff);outline-offset:-2px}
   .sheet-nowrap .sheet-cell{white-space:nowrap}
   .sheet-compact .sheet-cell{padding:.48rem .62rem;font-size:.92rem}
   .sheet-cell-empty{color:var(--crm-muted)}
@@ -270,7 +272,7 @@
     <div class="sheet-toolbar mb-3">
       <div>
         <h4 class="mb-1">Полноформатная таблица</h4>
-        <div class="sheet-muted small">Можно редактировать строки, добавлять новые, управлять колонками и сразу ставить задачи по строкам. Закреплён только служебный столбец слева, чтобы текст больше не налезал.</div>
+        <div class="sheet-muted small">Двойной клик по ячейке открывает редактирование нужного поля. Можно редактировать строки, добавлять новые, управлять колонками и сразу ставить задачи по строкам. Закреплён только служебный столбец слева, чтобы текст больше не налезал.</div>
       </div>
       <div class="sheet-controls">
         <input id="sheetSearch" type="search" class="form-control sheet-search" placeholder="Поиск по таблице">
@@ -338,7 +340,14 @@
               </th>
               @foreach($columnMeta as $metaIndex => $meta)
                 @php $cellValue = trim((string) (((array) $row)[$metaIndex] ?? '')); @endphp
-                <td class="sheet-cell {{ $meta['class'] }} {{ $cellValue === '' ? 'sheet-cell-empty' : '' }}" title="{{ $cellValue !== '' ? $cellValue : 'Пусто' }}">{{ $cellValue !== '' ? $cellValue : '—' }}</td>
+                <td
+                  class="sheet-cell {{ $meta['class'] }} {{ $cellValue === '' ? 'sheet-cell-empty' : '' }}"
+                  title="{{ $cellValue !== '' ? $cellValue : 'Пусто' }}"
+                  data-row-cell
+                  data-row-index="{{ $rowNumber }}"
+                  data-col-index="{{ $metaIndex }}"
+                  tabindex="0"
+                >{{ $cellValue !== '' ? $cellValue : '—' }}</td>
               @endforeach
             </tr>
           @empty
@@ -592,10 +601,12 @@
   const rowButtons = Array.from(document.querySelectorAll('[data-row-work]'));
   const taskButtons = Array.from(document.querySelectorAll('[data-row-task]'));
   const insertButtons = Array.from(document.querySelectorAll('[data-row-insert]'));
+  const cellButtons = Array.from(document.querySelectorAll('[data-row-cell]'));
   if (!searchInput || !table || !visibleCounter) return;
 
   const rowModal = rowModalElement ? new bootstrap.Modal(rowModalElement) : null;
   const taskModal = taskModalElement ? new bootstrap.Modal(taskModalElement) : null;
+  let pendingFocusColumnIndex = null;
   const modeStorageKey = 'documents-sheet-view-modes';
   const restoreModes = () => {
     try {
@@ -667,12 +678,21 @@
       return `<label class="sheet-editor-field"><span class="form-label mb-0">${escapeHtml(label)}</span><textarea class="form-control form-control-sm" rows="2" name="row_values[${index}]">${escapeHtml(value)}</textarea></label>`;
     }).join('');
   };
+  const focusRowValueField = (columnIndex) => {
+    if (!rowValuesEditor || columnIndex === null || Number.isNaN(Number(columnIndex))) return;
+    const fields = Array.from(rowValuesEditor.querySelectorAll('textarea[name^="row_values["]'));
+    const target = fields[Number(columnIndex)] || null;
+    if (!target) return;
+    target.focus({ preventScroll: false });
+    target.select?.();
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  };
   const buildRowSummary = (values) => {
     const cells = Array.isArray(values) ? values : [];
     const summary = cells.map((value) => String(value || '').trim()).filter(Boolean).slice(0, 5).join(' | ');
     return summary !== '' ? summary : 'В строке пока нет значений.';
   };
-  const openRowEditor = (rowIndex) => {
+  const openRowEditor = (rowIndex, focusColumnIndex = null) => {
     if (!rowModal || !rowForm || !rowMethodInput || !rowPositionInput) return;
     const numericRowIndex = Number(rowIndex);
     const state = rowStates[String(numericRowIndex)] || rowStates[numericRowIndex] || null;
@@ -697,9 +717,10 @@
       deleteRowForm.submit();
     };
     syncQuickStatusButtons();
+    pendingFocusColumnIndex = focusColumnIndex;
     rowModal.show();
   };
-  const openNewRowEditor = (position) => {
+  const openNewRowEditor = (position, focusColumnIndex = 0) => {
     if (!rowModal || !rowForm || !rowMethodInput || !rowPositionInput) return;
     const numericPosition = Number(position || (rows.length + 1));
     const values = headers.map(() => '');
@@ -719,6 +740,7 @@
     deleteRowButton.classList.add('d-none');
     deleteRowButton.onclick = null;
     syncQuickStatusButtons();
+    pendingFocusColumnIndex = focusColumnIndex;
     rowModal.show();
   };
   const openTaskEditor = (rowIndex, summary, title) => {
@@ -739,10 +761,29 @@
   rowButtons.forEach((button) => button.addEventListener('click', () => openRowEditor(button.getAttribute('data-row-index') || '')));
   insertButtons.forEach((button) => button.addEventListener('click', () => openNewRowEditor(Number(button.getAttribute('data-row-index') || rows.length) + 1)));
   taskButtons.forEach((button) => button.addEventListener('click', () => openTaskEditor(button.getAttribute('data-row-index') || '', button.getAttribute('data-row-summary') || '', button.getAttribute('data-row-title') || '')));
+  cellButtons.forEach((cell) => {
+    const rowIndex = cell.getAttribute('data-row-index') || '';
+    const colIndex = Number(cell.getAttribute('data-col-index') || 0);
+    cell.addEventListener('dblclick', () => openRowEditor(rowIndex, colIndex));
+    cell.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      openRowEditor(rowIndex, colIndex);
+    });
+  });
   statusQuickButtons.forEach((button) => button.addEventListener('click', () => {
     rowStatusSelect.value = button.dataset.statusQuick || 'new';
     syncQuickStatusButtons();
   }));
+  rowModalElement?.addEventListener('shown.bs.modal', () => {
+    if (pendingFocusColumnIndex !== null) {
+      focusRowValueField(pendingFocusColumnIndex);
+      pendingFocusColumnIndex = null;
+      return;
+    }
+
+    rowComment?.focus();
+  });
   restoreModes();
   applyModes();
   applyFilter();

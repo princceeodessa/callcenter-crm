@@ -48,6 +48,7 @@ Route::get('/', function () {
     return redirect()->route(match ($user->role) {
         'measurer' => 'calendar.index',
         'constructor' => 'ceiling-projects.index',
+        'documents_operator' => 'nonclosures.index',
         default => 'deals.kanban',
     });
 })->middleware('auth');

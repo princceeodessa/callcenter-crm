@@ -30,6 +30,7 @@ class AuthController extends Controller
             $homeRoute = match ($request->user()?->role) {
                 'measurer' => 'calendar.index',
                 'constructor' => 'ceiling-projects.index',
+                'documents_operator' => 'nonclosures.index',
                 default => 'deals.kanban',
             };
 
