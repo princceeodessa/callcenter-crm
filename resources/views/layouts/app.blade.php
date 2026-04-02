@@ -273,48 +273,48 @@
         <div class="d-flex gap-2 flex-wrap align-items-center">
             @auth
                 @if(!$isMeasurer && !$isConstructor && !$isDocumentsOperator)
-                    <a class="btn btn-sm btn-outline-light" href="{{ route('deals.kanban') }}">РљР°РЅР±Р°РЅ</a>
-                    <a class="btn btn-sm btn-outline-light" href="{{ route('deals.index') }}">РЎРїРёСЃРѕРє</a>
-                    <a class="btn btn-sm btn-outline-light" href="{{ route('tasks.index') }}">Р”РµР»Р°</a>
-                    <a class="btn btn-sm btn-outline-light" href="{{ route('deals.closed') }}">Р—Р°РІРµСЂС€С‘РЅРЅС‹Рµ</a>
-                    <a class="btn btn-sm btn-outline-light" href="{{ route('chats.index') }}">Р§Р°С‚С‹</a>
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('deals.kanban') }}">Канбан</a>
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('deals.index') }}">Список</a>
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('tasks.index') }}">Дела</a>
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('deals.closed') }}">Завершённые</a>
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('chats.index') }}">Чаты</a>
                 @endif
-                <a class="btn btn-sm btn-outline-light" href="{{ route('calendar.index') }}">РљР°Р»РµРЅРґР°СЂСЊ</a>
+                <a class="btn btn-sm btn-outline-light" href="{{ route('calendar.index') }}">Календарь</a>
                 @if($isNc)
-                    <a class="btn btn-sm btn-outline-light" href="{{ route('nonclosures.index') }}">Р”РѕРєСѓРјРµРЅС‚С‹</a>
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('nonclosures.index') }}">Документы</a>
                 @endif
                 @if($canUseProjecting)
-                    <a class="btn btn-sm btn-outline-light" href="{{ route('ceiling-projects.index') }}">&#1055;&#1088;&#1086;&#1077;&#1082;&#1090;&#1080;&#1088;&#1086;&#1074;&#1082;&#1072;</a>
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('ceiling-projects.index') }}">Проектировка</a>
                 @endif
                 @if($isAdmin)
-                    <a class="btn btn-sm btn-outline-light" href="{{ route('ceiling-projects.index') }}">РџСЂРѕРµРєС‚РёСЂРѕРІРєР°</a>
-                    <a class="btn btn-sm btn-outline-light" href="{{ route('settings.integrations.index') }}">РРЅС‚РµРіСЂР°С†РёРё</a>
-                    <a class="btn btn-sm btn-outline-light" href="{{ route('settings.imports.bitrix.index') }}">РРјРїРѕСЂС‚ Bitrix</a>
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('ceiling-projects.index') }}">Проектировка</a>
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('settings.integrations.index') }}">Интеграции</a>
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('settings.imports.bitrix.index') }}">Импорт Bitrix</a>
                 @endif
                 @if($isPriv)
-                    <a class="btn btn-sm btn-outline-light" href="{{ route('settings.users.index') }}">РџРѕР»СЊР·РѕРІР°С‚РµР»Рё</a>
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('settings.users.index') }}">Пользователи</a>
                 @endif
 
                 <div class="dropdown">
                     <button class="btn btn-sm btn-outline-light dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        <i class="bi bi-palette me-1"></i>РўРµРјР°
+                        <i class="bi bi-palette me-1"></i>Тема
                     </button>
                     <div class="dropdown-menu dropdown-menu-end p-2" id="themeMenu">
-                        <button class="dropdown-item rounded d-flex align-items-center gap-2 theme-switch" type="button" data-theme="sky"><span class="theme-dot" style="background:#60a5fa"></span> РќРµР±Рѕ</button>
-                        <button class="dropdown-item rounded d-flex align-items-center gap-2 theme-switch" type="button" data-theme="sunset"><span class="theme-dot" style="background:#fb7185"></span> Р—Р°РєР°С‚</button>
-                        <button class="dropdown-item rounded d-flex align-items-center gap-2 theme-switch" type="button" data-theme="forest"><span class="theme-dot" style="background:#34d399"></span> Р›РµСЃ</button>
-                        <button class="dropdown-item rounded d-flex align-items-center gap-2 theme-switch" type="button" data-theme="night"><span class="theme-dot" style="background:#818cf8"></span> РќРѕС‡СЊ</button>
+                        <button class="dropdown-item rounded d-flex align-items-center gap-2 theme-switch" type="button" data-theme="sky"><span class="theme-dot" style="background:#60a5fa"></span> Небо</button>
+                        <button class="dropdown-item rounded d-flex align-items-center gap-2 theme-switch" type="button" data-theme="sunset"><span class="theme-dot" style="background:#fb7185"></span> Закат</button>
+                        <button class="dropdown-item rounded d-flex align-items-center gap-2 theme-switch" type="button" data-theme="forest"><span class="theme-dot" style="background:#34d399"></span> Лес</button>
+                        <button class="dropdown-item rounded d-flex align-items-center gap-2 theme-switch" type="button" data-theme="night"><span class="theme-dot" style="background:#818cf8"></span> Ночь</button>
                     </div>
                 </div>
 
-                <a class="btn btn-sm btn-outline-light" href="{{ route('reports.monthly') }}">РћС‚С‡С‘С‚С‹</a>
+                <a class="btn btn-sm btn-outline-light" href="{{ route('reports.monthly') }}">Отчёты</a>
                 @if(!$isMeasurer && !$isConstructor && !$isDocumentsOperator)
-                    <a class="btn btn-sm btn-warning position-relative" href="{{ route('notifications.index') }}" title="РЈРІРµРґРѕРјР»РµРЅРёСЏ" aria-label="РЈРІРµРґРѕРјР»РµРЅРёСЏ">
+                    <a class="btn btn-sm btn-warning position-relative" href="{{ route('notifications.index') }}" title="Уведомления" aria-label="Уведомления">
                         <i class="bi bi-bell-fill"></i>
                         <span id="navNotifBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-danger d-none">0</span>
                     </a>
-                    <button type="button" class="btn btn-sm btn-outline-info d-none" id="enableNotifBtn" title="РЎРёСЃС‚РµРјРЅС‹Рµ СѓРІРµРґРѕРјР»РµРЅРёСЏ">рџ”Љ</button>
-                    <a class="btn btn-sm btn-success" href="{{ route('deals.create') }}">+ РЎРґРµР»РєР°</a>
+                    <button type="button" class="btn btn-sm btn-outline-info d-none" id="enableNotifBtn" title="Системные уведомления">🔊</button>
+                    <a class="btn btn-sm btn-success" href="{{ route('deals.create') }}">+ Сделка</a>
                 @endif
                 <a class="btn btn-sm btn-outline-warning" href="{{ route('logout') }}">Выйти</a>
             @endauth
@@ -430,12 +430,12 @@
         el.innerHTML = `
           <div class="toast-header">
              <strong class="me-auto">${title}</strong>
-             <small class="text-muted">СЃРµР№С‡Р°СЃ</small>
+             <small class="text-muted">сейчас</small>
              <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
           </div>
           <div class="toast-body">
              <div>${(body || '').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
-             ${url ? `<div class="mt-2"><a class="btn btn-sm btn-primary" href="${url}">РћС‚РєСЂС‹С‚СЊ</a></div>` : ''}
+             ${url ? `<div class="mt-2"><a class="btn btn-sm btn-primary" href="${url}">Открыть</a></div>` : ''}
           </div>
         `;
         container.appendChild(el);
@@ -493,8 +493,8 @@
                 lastId = Math.max(lastId, Number(it.id));
                 localStorage.setItem(notifStorageKey, String(lastId));
 
-                try { showToast(it.title || 'РЈРІРµРґРѕРјР»РµРЅРёРµ', it.body || '', it.url || null); } catch (e) {}
-                try { showSystem(it.title || 'РЈРІРµРґРѕРјР»РµРЅРёРµ', it.body || '', it.url || null); } catch (e) {}
+                try { showToast(it.title || 'Уведомление', it.body || '', it.url || null); } catch (e) {}
+                try { showSystem(it.title || 'Уведомление', it.body || '', it.url || null); } catch (e) {}
                 try { playBeep(); } catch (e) {}
             }
         } catch (e) {
