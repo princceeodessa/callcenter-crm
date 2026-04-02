@@ -77,6 +77,7 @@ class NonClosureController extends Controller
         $siblingSheets = $this->resolveWorkbookSheets($workbook, $user, $canManage);
         $sheetRows = collect($sheet->rows ?? [])->values();
         $sheetHeader = collect($sheet->header ?? [])->values();
+        $columnMeta = $this->columnMetaForSheet($sheet);
         $sheetCategoryLabel = NonClosureWorkbookSheet::categoryOptions()[$sheet->category] ?? $sheet->category;
         $sheetSharedIds = $sheet->sharedUsers->pluck('id')->map(fn ($id) => (int) $id)->all();
         $backQuery = $this->catalogQueryParams($request, [
@@ -103,7 +104,11 @@ class NonClosureController extends Controller
             'sheet' => $sheet,
             'sheetRows' => $sheetRows,
             'sheetHeader' => $sheetHeader,
+            'sheetColumnMeta' => $columnMeta,
+            'sheetAdaptiveStats' => $this->buildAdaptiveSheetStats($sheetRows, $columnMeta),
             'sheetCategories' => NonClosureWorkbookSheet::categoryOptions(),
+            'sheetColumnTypeOptions' => NonClosureWorkbookSheet::columnTypeOptions(),
+            'sheetOptionToneOptions' => NonClosureWorkbookSheet::optionToneOptions(),
             'sheetCategoryLabel' => $sheetCategoryLabel,
             'siblingSheets' => $siblingSheets,
             'activeUsers' => $activeUsers,
@@ -418,6 +423,9 @@ class NonClosureController extends Controller
 
         $data = $request->validate([
             'label' => ['nullable', 'string', 'max:255'],
+            'type' => ['nullable', Rule::in(array_keys(NonClosureWorkbookSheet::columnTypeOptions()))],
+            'options_text' => ['nullable', 'string', 'max:5000'],
+            'summary_enabled' => ['nullable', 'boolean'],
             'scope' => ['nullable', 'string'],
             'owner_id' => ['nullable', 'integer'],
             'workbook' => ['nullable', 'integer'],
@@ -425,6 +433,8 @@ class NonClosureController extends Controller
 
         $header = array_values((array) ($sheet->header ?? []));
         $header[] = $this->normalizeColumnLabel($data['label'] ?? null, count($header));
+        $columnMeta = $this->columnMetaForSheet($sheet);
+        $columnMeta[] = $this->normalizeColumnDefinition($data, end($header) ?: null);
 
         $rows = collect($sheet->rows ?? [])
             ->map(function ($row) {
@@ -436,7 +446,7 @@ class NonClosureController extends Controller
             ->values()
             ->all();
 
-        $this->persistSheetMatrix($sheet, $header, $rows);
+        $this->persistSheetMatrix($sheet, $header, $rows, $this->sheetMetaWithColumns($sheet, $columnMeta));
 
         return redirect()
             ->route('nonclosures.sheets.show', array_merge(
@@ -453,6 +463,9 @@ class NonClosureController extends Controller
 
         $data = $request->validate([
             'label' => ['required', 'string', 'max:255'],
+            'type' => ['nullable', Rule::in(array_keys(NonClosureWorkbookSheet::columnTypeOptions()))],
+            'options_text' => ['nullable', 'string', 'max:5000'],
+            'summary_enabled' => ['nullable', 'boolean'],
             'scope' => ['nullable', 'string'],
             'owner_id' => ['nullable', 'integer'],
             'workbook' => ['nullable', 'integer'],
@@ -462,7 +475,9 @@ class NonClosureController extends Controller
         abort_if($columnIndex < 1 || $columnIndex > count($header), 422, 'Столбец таблицы не найден.');
 
         $header[$columnIndex - 1] = $this->normalizeColumnLabel($data['label'] ?? null, $columnIndex - 1);
-        $this->persistSheetMatrix($sheet, $header, (array) ($sheet->rows ?? []));
+        $columnMeta = $this->columnMetaForSheet($sheet);
+        $columnMeta[$columnIndex - 1] = $this->normalizeColumnDefinition($data, $header[$columnIndex - 1], $columnMeta[$columnIndex - 1] ?? null);
+        $this->persistSheetMatrix($sheet, $header, (array) ($sheet->rows ?? []), $this->sheetMetaWithColumns($sheet, $columnMeta));
 
         return redirect()
             ->route('nonclosures.sheets.show', array_merge(
@@ -492,7 +507,9 @@ class NonClosureController extends Controller
             ->values()
             ->all();
 
-        $this->persistSheetMatrix($sheet, $header, $rows);
+        $columnMeta = $this->columnMetaForSheet($sheet);
+        array_splice($columnMeta, $columnIndex - 1, 1);
+        $this->persistSheetMatrix($sheet, $header, $rows, $this->sheetMetaWithColumns($sheet, $columnMeta));
 
         return redirect()
             ->route('nonclosures.sheets.show', array_merge(
@@ -998,7 +1015,7 @@ class NonClosureController extends Controller
         return $normalized;
     }
 
-    private function persistSheetMatrix(NonClosureWorkbookSheet $sheet, array $header, array $rows): void
+    private function persistSheetMatrix(NonClosureWorkbookSheet $sheet, array $header, array $rows, ?array $meta = null): void
     {
         $header = array_values($header);
         if (empty($header)) {
@@ -1016,13 +1033,274 @@ class NonClosureController extends Controller
             ->map(fn ($row) => $this->normalizeRowValuesForColumnCount((array) $row, $columnCount))
             ->values()
             ->all();
+        $meta = is_array($meta) ? $meta : (is_array($sheet->meta) ? $sheet->meta : []);
 
         $sheet->header = $header;
         $sheet->rows = $rows;
         $sheet->column_count = $columnCount;
         $sheet->row_count = count($rows);
+        $sheet->meta = $this->sheetMetaWithColumns(
+            $sheet,
+            $this->columnMetaForHeader($header, (array) data_get($meta, 'columns', []))
+        );
         $sheet->preview_text = $this->buildSheetPreviewText($header, $rows);
         $sheet->save();
+    }
+
+    private function columnMetaForSheet(NonClosureWorkbookSheet $sheet): array
+    {
+        return $this->columnMetaForHeader(
+            array_values((array) ($sheet->header ?? [])),
+            (array) data_get($sheet->meta, 'columns', [])
+        );
+    }
+
+    private function columnMetaForHeader(array $header, array $columns = []): array
+    {
+        $columns = array_values($columns);
+
+        return collect($header)->values()->map(function ($label, $index) use ($columns) {
+            $normalizedLabel = $this->normalizeColumnLabel($label, $index);
+            $existing = is_array($columns[$index] ?? null) ? $columns[$index] : [];
+
+            return $this->normalizeColumnDefinition($existing, $normalizedLabel, $existing);
+        })->all();
+    }
+
+    private function normalizeColumnDefinition(array $payload, ?string $label = null, ?array $existing = null): array
+    {
+        $existing = is_array($existing) ? $existing : [];
+        $type = (string) ($payload['type'] ?? $existing['type'] ?? NonClosureWorkbookSheet::COLUMN_TYPE_TEXT);
+
+        if (!array_key_exists($type, NonClosureWorkbookSheet::columnTypeOptions())) {
+            $type = NonClosureWorkbookSheet::COLUMN_TYPE_TEXT;
+        }
+
+        $options = $type === NonClosureWorkbookSheet::COLUMN_TYPE_SELECT
+            ? $this->parseColumnOptions($payload['options_text'] ?? null, $existing['options'] ?? [])
+            : [];
+
+        $summaryEnabled = array_key_exists('summary_enabled', $payload)
+            ? filter_var($payload['summary_enabled'], FILTER_VALIDATE_BOOL)
+            : (bool) ($existing['summary_enabled'] ?? in_array($type, [
+                NonClosureWorkbookSheet::COLUMN_TYPE_SELECT,
+                NonClosureWorkbookSheet::COLUMN_TYPE_NUMBER,
+                NonClosureWorkbookSheet::COLUMN_TYPE_DATE,
+            ], true));
+
+        return [
+            'label' => $label ?? (string) ($existing['label'] ?? ''),
+            'type' => $type,
+            'options' => $options,
+            'options_text' => $this->serializeColumnOptionsText($options),
+            'summary_enabled' => (bool) $summaryEnabled,
+        ];
+    }
+
+    private function parseColumnOptions(?string $raw, array $fallbackOptions = []): array
+    {
+        $raw = trim((string) $raw);
+
+        if ($raw === '') {
+            return collect($fallbackOptions)
+                ->filter(fn ($option) => is_array($option) && trim((string) ($option['value'] ?? '')) !== '')
+                ->map(function ($option) {
+                    $value = trim((string) ($option['value'] ?? ''));
+                    $label = trim((string) ($option['label'] ?? $value));
+                    $tone = trim((string) ($option['tone'] ?? 'neutral'));
+
+                    return [
+                        'value' => $value,
+                        'label' => $label !== '' ? $label : $value,
+                        'tone' => array_key_exists($tone, NonClosureWorkbookSheet::optionToneOptions()) ? $tone : 'neutral',
+                    ];
+                })
+                ->values()
+                ->all();
+        }
+
+        return collect(preg_split('/\r\n|\r|\n/', $raw) ?: [])
+            ->map(function ($line) {
+                $line = trim((string) $line);
+                if ($line === '') {
+                    return null;
+                }
+
+                [$valuePart, $tonePart] = array_pad(explode('|', $line, 2), 2, null);
+                $value = trim((string) $valuePart);
+                $tone = trim((string) ($tonePart ?? 'neutral'));
+
+                if ($value === '') {
+                    return null;
+                }
+
+                return [
+                    'value' => $value,
+                    'label' => $value,
+                    'tone' => array_key_exists($tone, NonClosureWorkbookSheet::optionToneOptions()) ? $tone : 'neutral',
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    private function serializeColumnOptionsText(array $options): string
+    {
+        return collect($options)
+            ->filter(fn ($option) => is_array($option) && trim((string) ($option['value'] ?? '')) !== '')
+            ->map(function ($option) {
+                $value = trim((string) ($option['value'] ?? ''));
+                $tone = trim((string) ($option['tone'] ?? 'neutral'));
+
+                return $tone !== '' && $tone !== 'neutral'
+                    ? $value.'|'.$tone
+                    : $value;
+            })
+            ->implode("\n");
+    }
+
+    private function sheetMetaWithColumns(NonClosureWorkbookSheet $sheet, array $columnMeta): array
+    {
+        $meta = is_array($sheet->meta) ? $sheet->meta : [];
+        $meta['columns'] = collect($columnMeta)
+            ->values()
+            ->map(fn ($column) => [
+                'type' => $column['type'] ?? NonClosureWorkbookSheet::COLUMN_TYPE_TEXT,
+                'options' => array_values($column['options'] ?? []),
+                'summary_enabled' => (bool) ($column['summary_enabled'] ?? false),
+            ])
+            ->all();
+
+        return $meta;
+    }
+
+    private function buildAdaptiveSheetStats(Collection $rows, array $columnMeta): array
+    {
+        return collect($columnMeta)
+            ->values()
+            ->map(function ($column, $index) use ($rows) {
+                if (!($column['summary_enabled'] ?? false)) {
+                    return null;
+                }
+
+                $values = $rows
+                    ->map(fn ($row) => trim((string) (((array) $row)[$index] ?? '')))
+                    ->filter(fn ($value) => $value !== '')
+                    ->values();
+
+                if ($values->isEmpty()) {
+                    return null;
+                }
+
+                $type = (string) ($column['type'] ?? NonClosureWorkbookSheet::COLUMN_TYPE_TEXT);
+                $label = (string) ($column['label'] ?? ('Колонка '.($index + 1)));
+
+                if ($type === NonClosureWorkbookSheet::COLUMN_TYPE_SELECT) {
+                    $optionIndex = collect($column['options'] ?? [])
+                        ->mapWithKeys(fn ($option) => [mb_strtolower((string) ($option['value'] ?? '')) => $option])
+                        ->all();
+
+                    return [
+                        'label' => $label,
+                        'type' => $type,
+                        'description' => 'Распределение по вариантам выбора',
+                        'items' => $values
+                            ->groupBy(fn ($value) => mb_strtolower((string) $value))
+                            ->map(function (Collection $items, string $group) use ($optionIndex) {
+                                $option = $optionIndex[$group] ?? null;
+                                $sample = (string) $items->first();
+
+                                return [
+                                    'label' => (string) ($option['label'] ?? $sample),
+                                    'value' => $items->count(),
+                                    'tone' => (string) ($option['tone'] ?? 'neutral'),
+                                ];
+                            })
+                            ->sortByDesc('value')
+                            ->values()
+                            ->all(),
+                    ];
+                }
+
+                if ($type === NonClosureWorkbookSheet::COLUMN_TYPE_NUMBER) {
+                    $numbers = $values
+                        ->map(fn ($value) => str_replace(',', '.', preg_replace('/[^\d,\.\-]/u', '', (string) $value)))
+                        ->filter(fn ($value) => $value !== '' && is_numeric($value))
+                        ->map(fn ($value) => (float) $value)
+                        ->values();
+
+                    if ($numbers->isEmpty()) {
+                        return null;
+                    }
+
+                    return [
+                        'label' => $label,
+                        'type' => $type,
+                        'description' => 'Сумма и среднее по числовым значениям',
+                        'items' => [
+                            ['label' => 'Сумма', 'value' => number_format((float) $numbers->sum(), 2, ',', ' '), 'tone' => 'blue'],
+                            ['label' => 'Среднее', 'value' => number_format((float) $numbers->avg(), 2, ',', ' '), 'tone' => 'green'],
+                            ['label' => 'Заполнено', 'value' => $numbers->count(), 'tone' => 'slate'],
+                        ],
+                    ];
+                }
+
+                if ($type === NonClosureWorkbookSheet::COLUMN_TYPE_DATE) {
+                    $dates = $values
+                        ->map(fn ($value) => $this->parseAdaptiveDateValue((string) $value))
+                        ->filter()
+                        ->sort()
+                        ->values();
+
+                    if ($dates->isEmpty()) {
+                        return null;
+                    }
+
+                    $latest = $dates->last();
+                    $oldest = $dates->first();
+
+                    return [
+                        'label' => $label,
+                        'type' => $type,
+                        'description' => 'Динамика по датам в колонке',
+                        'items' => [
+                            ['label' => 'Последняя дата', 'value' => $latest->format('d.m.Y'), 'tone' => 'green'],
+                            ['label' => 'Дней назад', 'value' => $latest->diffInDays(now()), 'tone' => 'amber'],
+                            ['label' => 'Первая дата', 'value' => $oldest->format('d.m.Y'), 'tone' => 'blue'],
+                        ],
+                    ];
+                }
+
+                return null;
+            })
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    private function parseAdaptiveDateValue(string $value): ?Carbon
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+
+        foreach (['d.m.Y', 'd.m.y', 'Y-m-d'] as $format) {
+            try {
+                $date = Carbon::createFromFormat($format, $value);
+                if ($date !== false) {
+                    return $date->startOfDay();
+                }
+            } catch (\Throwable) {
+            }
+        }
+
+        try {
+            return Carbon::parse($value)->startOfDay();
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     private function resolveSheetRow(NonClosureWorkbookSheet $sheet, int $rowIndex): array

@@ -15,6 +15,10 @@ class NonClosureWorkbookSheet extends Model
     public const CATEGORY_PRODUCTS = 'products';
     public const CATEGORY_SALES = 'sales';
     public const CATEGORY_OTHER = 'other';
+    public const COLUMN_TYPE_TEXT = 'text';
+    public const COLUMN_TYPE_SELECT = 'select';
+    public const COLUMN_TYPE_NUMBER = 'number';
+    public const COLUMN_TYPE_DATE = 'date';
 
     protected $fillable = [
         'account_id',
@@ -49,6 +53,30 @@ class NonClosureWorkbookSheet extends Model
             self::CATEGORY_PRODUCTS => 'Товары',
             self::CATEGORY_SALES => 'Продажи',
             self::CATEGORY_OTHER => 'Другое',
+        ];
+    }
+
+    public static function columnTypeOptions(): array
+    {
+        return [
+            self::COLUMN_TYPE_TEXT => 'Текст',
+            self::COLUMN_TYPE_SELECT => 'Выбор',
+            self::COLUMN_TYPE_NUMBER => 'Число',
+            self::COLUMN_TYPE_DATE => 'Дата',
+        ];
+    }
+
+    public static function optionToneOptions(): array
+    {
+        return [
+            'neutral' => 'Нейтральный',
+            'blue' => 'Синий',
+            'green' => 'Зелёный',
+            'amber' => 'Янтарный',
+            'orange' => 'Оранжевый',
+            'red' => 'Красный',
+            'violet' => 'Фиолетовый',
+            'slate' => 'Серый',
         ];
     }
 

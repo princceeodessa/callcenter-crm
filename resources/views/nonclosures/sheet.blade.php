@@ -19,11 +19,23 @@
   .sheet-badge.status-amber{background:rgba(217,119,6,.14);color:#b45309}
   .sheet-badge.status-green{background:rgba(22,163,74,.12);color:#15803d}
   .sheet-badge.status-neutral{background:rgba(15,23,42,.08);color:#475569}
+  .sheet-select-pill{display:inline-flex;align-items:center;gap:.35rem;padding:.28rem .62rem;border-radius:999px;font-size:.76rem;font-weight:700;border:1px solid transparent}
+  .sheet-select-pill.tone-neutral{background:rgba(15,23,42,.08);color:#475569;border-color:rgba(148,163,184,.24)}
+  .sheet-select-pill.tone-blue{background:rgba(37,99,235,.12);color:#1d4ed8;border-color:rgba(37,99,235,.18)}
+  .sheet-select-pill.tone-green{background:rgba(22,163,74,.12);color:#15803d;border-color:rgba(22,163,74,.18)}
+  .sheet-select-pill.tone-amber{background:rgba(217,119,6,.14);color:#b45309;border-color:rgba(217,119,6,.18)}
+  .sheet-select-pill.tone-orange{background:rgba(234,88,12,.12);color:#c2410c;border-color:rgba(234,88,12,.18)}
+  .sheet-select-pill.tone-red{background:rgba(220,38,38,.12);color:#b91c1c;border-color:rgba(220,38,38,.18)}
+  .sheet-select-pill.tone-violet{background:rgba(124,58,237,.12);color:#7c3aed;border-color:rgba(124,58,237,.18)}
+  .sheet-select-pill.tone-slate{background:rgba(100,116,139,.12);color:#475569;border-color:rgba(100,116,139,.18)}
   .sheet-hero{display:flex;flex-direction:column;gap:1rem}
   .sheet-hero-top{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;flex-wrap:wrap}
   .sheet-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.8rem}
   .sheet-stat{padding:1rem;border:1px solid var(--crm-border);border-radius:1rem;background:linear-gradient(180deg,rgba(255,255,255,.75),rgba(255,255,255,.52))}
   .sheet-stat-value{font-size:1.15rem;font-weight:700;line-height:1.15}
+  .sheet-adaptive-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:.8rem}
+  .sheet-adaptive-card{padding:1rem;border:1px solid var(--crm-border);border-radius:1rem;background:rgba(255,255,255,.48)}
+  .sheet-adaptive-items{display:flex;flex-wrap:wrap;gap:.45rem}
   .sheet-strip{display:flex;gap:.8rem;overflow:auto;padding-bottom:.15rem}
   .sheet-mini-card{min-width:240px;display:flex;justify-content:space-between;gap:.75rem;align-items:flex-start;padding:.9rem 1rem;border:1px solid var(--crm-border);border-radius:1rem;background:rgba(255,255,255,.55);text-decoration:none;color:inherit;transition:.16s ease}
   .sheet-mini-card:hover{color:inherit;border-color:color-mix(in srgb,var(--crm-accent) 35%, var(--crm-border))}
@@ -83,7 +95,10 @@
   .sheet-editor-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.85rem}
   .sheet-editor-field{display:flex;flex-direction:column;gap:.35rem}
   .sheet-column-list{display:flex;flex-direction:column;gap:.75rem}
-  .sheet-column-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:.65rem;align-items:center;padding:.8rem .9rem;border:1px solid var(--crm-border);border-radius:.9rem;background:rgba(255,255,255,.45)}
+  .sheet-column-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.85rem;align-items:start;padding:1rem;border:1px solid var(--crm-border);border-radius:.9rem;background:rgba(255,255,255,.45)}
+  .sheet-column-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem;align-items:start}
+  .sheet-column-actions{display:flex;flex-direction:column;gap:.55rem}
+  .sheet-column-options{grid-column:1 / -1}
   @media (max-width:1199px){.sheet-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.sheet-access-grid{grid-template-columns:1fr}}
   @media (max-width:991px){.sheet-editor-grid{grid-template-columns:1fr}}
   @media (max-width:767px){.sheet-stats{grid-template-columns:1fr}.sheet-search{min-width:unset;width:100%}.sheet-row-number{min-width:136px;max-width:136px;width:136px}.sheet-column-row{grid-template-columns:1fr}}
@@ -94,10 +109,13 @@
 @php
     $visibleRows = $sheetRows->count();
     $defaultTaskDueAt = now()->addHour()->format('Y-m-d\TH:i');
-    $columnMeta = collect($sheetHeader)->map(function ($column, $index) {
-        $label = trim((string) $column);
+    $sheetColumnTypeOptions = $sheetColumnTypeOptions ?? \App\Models\NonClosureWorkbookSheet::columnTypeOptions();
+    $adaptiveStats = collect($sheetAdaptiveStats ?? [])->values();
+    $columnMeta = collect($sheetColumnMeta ?? [])->values()->map(function ($column, $index) {
+        $label = trim((string) ($column['label'] ?? ''));
         $normalized = mb_strtolower($label);
         $class = 'sheet-col-default';
+        $type = (string) ($column['type'] ?? 'text');
 
         if ($index === 0 || str_contains($normalized, 'id') || $normalized === 'aa') {
             $class = 'sheet-col-id';
@@ -119,7 +137,30 @@
             $class = 'sheet-col-boolean';
         }
 
-        return ['label' => $label !== '' ? $label : ('Колонка '.($index + 1)), 'class' => $class];
+        if ($type === \App\Models\NonClosureWorkbookSheet::COLUMN_TYPE_SELECT) {
+            $class = 'sheet-col-note';
+        } elseif ($type === \App\Models\NonClosureWorkbookSheet::COLUMN_TYPE_DATE) {
+            $class = 'sheet-col-city';
+        } elseif ($type === \App\Models\NonClosureWorkbookSheet::COLUMN_TYPE_NUMBER) {
+            $class = 'sheet-col-id';
+        }
+
+        $options = collect($column['options'] ?? [])
+            ->mapWithKeys(fn ($option) => [mb_strtolower((string) ($option['value'] ?? '')) => [
+                'label' => (string) ($option['label'] ?? $option['value'] ?? ''),
+                'tone' => (string) ($option['tone'] ?? 'neutral'),
+            ]])
+            ->all();
+
+        return [
+            'label' => $label !== '' ? $label : ('Колонка '.($index + 1)),
+            'class' => $class,
+            'type' => $type,
+            'options' => $column['options'] ?? [],
+            'options_index' => $options,
+            'options_text' => (string) ($column['options_text'] ?? ''),
+            'summary_enabled' => (bool) ($column['summary_enabled'] ?? false),
+        ];
     })->values();
 
     $rowStatePayload = collect($sheetRowStates)->mapWithKeys(function ($state, $rowIndex) {
@@ -149,6 +190,13 @@
     $rowValuePayload = collect($sheetRows)->values()->map(function ($row) {
         return collect((array) $row)->map(fn ($value) => (string) $value)->values()->all();
     })->all();
+    $columnDefinitionsPayload = $columnMeta->map(function ($column) {
+        return [
+            'label' => $column['label'],
+            'type' => $column['type'],
+            'options' => $column['options'],
+        ];
+    })->values()->all();
 @endphp
 
 <div class="sheet-page">
@@ -175,6 +223,24 @@
         <div class="sheet-stat"><div class="sheet-muted small mb-2">Строк со статусом</div><div class="sheet-stat-value">{{ collect($sheetRowStates)->count() }}</div></div>
         <div class="sheet-stat"><div class="sheet-muted small mb-2">Открытых задач</div><div class="sheet-stat-value">{{ collect($sheetRowTaskStats)->sum('open') }}</div></div>
       </div>
+      @if($adaptiveStats->isNotEmpty())
+        <div>
+          <div class="sheet-muted small mb-2">Адаптивные показатели по типизированным колонкам</div>
+          <div class="sheet-adaptive-grid">
+            @foreach($adaptiveStats as $stat)
+              <div class="sheet-adaptive-card">
+                <div class="fw-semibold mb-1">{{ $stat['label'] }}</div>
+                <div class="sheet-muted small mb-3">{{ $stat['description'] }}</div>
+                <div class="sheet-adaptive-items">
+                  @foreach($stat['items'] as $item)
+                    <span class="sheet-select-pill tone-{{ $item['tone'] ?? 'neutral' }}">{{ $item['label'] }}: {{ $item['value'] }}</span>
+                  @endforeach
+                </div>
+              </div>
+            @endforeach
+          </div>
+        </div>
+      @endif
     </div>
   </div>
 
@@ -339,7 +405,12 @@
                 </div>
               </th>
               @foreach($columnMeta as $metaIndex => $meta)
-                @php $cellValue = trim((string) (((array) $row)[$metaIndex] ?? '')); @endphp
+                @php
+                  $cellValue = trim((string) (((array) $row)[$metaIndex] ?? ''));
+                  $selectOption = $meta['type'] === \App\Models\NonClosureWorkbookSheet::COLUMN_TYPE_SELECT
+                    ? ($meta['options_index'][mb_strtolower($cellValue)] ?? null)
+                    : null;
+                @endphp
                 <td
                   class="sheet-cell {{ $meta['class'] }} {{ $cellValue === '' ? 'sheet-cell-empty' : '' }}"
                   title="{{ $cellValue !== '' ? $cellValue : 'Пусто' }}"
@@ -347,7 +418,15 @@
                   data-row-index="{{ $rowNumber }}"
                   data-col-index="{{ $metaIndex }}"
                   tabindex="0"
-                >{{ $cellValue !== '' ? $cellValue : '—' }}</td>
+                >
+                  @if($cellValue === '')
+                    —
+                  @elseif($selectOption)
+                    <span class="sheet-select-pill tone-{{ $selectOption['tone'] ?? 'neutral' }}">{{ $selectOption['label'] ?? $cellValue }}</span>
+                  @else
+                    {{ $cellValue }}
+                  @endif
+                </td>
               @endforeach
             </tr>
           @empty
@@ -510,9 +589,29 @@
             <input type="hidden" name="scope" value="{{ $backQuery['scope'] ?? '' }}">
             <input type="hidden" name="owner_id" value="{{ $backQuery['owner_id'] ?? '' }}">
             <input type="hidden" name="workbook" value="{{ $workbook->id }}">
-            <div>
-              <label class="form-label">Новая колонка</label>
-              <input type="text" class="form-control" name="label" placeholder="Например: Комментарий менеджера">
+            <div class="sheet-column-form">
+              <div>
+                <label class="form-label">Новая колонка</label>
+                <input type="text" class="form-control" name="label" placeholder="Например: Статус сотрудничества">
+              </div>
+              <div>
+                <label class="form-label">Тип поля</label>
+                <select class="form-select" name="type" data-column-type-select>
+                  @foreach($sheetColumnTypeOptions as $typeValue => $typeLabel)
+                    <option value="{{ $typeValue }}">{{ $typeLabel }}</option>
+                  @endforeach
+                </select>
+              </div>
+              <div class="sheet-column-options d-none" data-column-options-block>
+                <label class="form-label">Варианты выбора</label>
+                <textarea class="form-control" name="options_text" rows="4" placeholder="Работаем с нами|green&#10;Не работает с нами|red&#10;На паузе|amber"></textarea>
+                <div class="sheet-muted small mt-2">Каждый вариант с новой строки. Можно добавить цвет через `|green`, `|red`, `|amber`, `|blue`.</div>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <input type="hidden" name="summary_enabled" value="0">
+                <input type="checkbox" class="form-check-input mt-0" id="columnSummaryCreate" name="summary_enabled" value="1" checked>
+                <label class="form-check-label" for="columnSummaryCreate">Показывать в сводке сверху</label>
+              </div>
             </div>
             <button type="submit" class="btn btn-primary align-self-start">Добавить колонку</button>
           </form>
@@ -520,24 +619,46 @@
           <div class="sheet-column-list">
             @foreach($columnMeta as $index => $meta)
               <div class="sheet-column-row">
-                <form method="POST" action="{{ route('nonclosures.sheets.columns.update', ['sheet' => $sheet->id, 'columnIndex' => $index + 1]) }}" class="d-flex gap-2 align-items-center">
+                <form method="POST" action="{{ route('nonclosures.sheets.columns.update', ['sheet' => $sheet->id, 'columnIndex' => $index + 1]) }}" class="sheet-column-form" id="sheetColumnForm{{ $index }}">
                   @csrf
                   @method('PATCH')
                   <input type="hidden" name="scope" value="{{ $backQuery['scope'] ?? '' }}">
                   <input type="hidden" name="owner_id" value="{{ $backQuery['owner_id'] ?? '' }}">
                   <input type="hidden" name="workbook" value="{{ $workbook->id }}">
-                  <input type="text" class="form-control" name="label" value="{{ $meta['label'] }}">
-                  <button type="submit" class="btn btn-outline-primary btn-sm">Переименовать</button>
+                  <div>
+                    <label class="form-label">Название</label>
+                    <input type="text" class="form-control" name="label" value="{{ $meta['label'] }}">
+                  </div>
+                  <div>
+                    <label class="form-label">Тип</label>
+                    <select class="form-select" name="type" data-column-type-select>
+                      @foreach($sheetColumnTypeOptions as $typeValue => $typeLabel)
+                        <option value="{{ $typeValue }}" @selected($meta['type'] === $typeValue)>{{ $typeLabel }}</option>
+                      @endforeach
+                    </select>
+                  </div>
+                  <div class="sheet-column-options {{ $meta['type'] === \App\Models\NonClosureWorkbookSheet::COLUMN_TYPE_SELECT ? '' : 'd-none' }}" data-column-options-block>
+                    <label class="form-label">Варианты выбора</label>
+                    <textarea class="form-control" name="options_text" rows="4" placeholder="Работаем с нами|green&#10;Не работает с нами|red">{{ $meta['options_text'] }}</textarea>
+                  </div>
+                  <div class="d-flex align-items-center gap-2">
+                    <input type="hidden" name="summary_enabled" value="0">
+                    <input type="checkbox" class="form-check-input mt-0" id="columnSummary{{ $index }}" name="summary_enabled" value="1" @checked($meta['summary_enabled'])>
+                    <label class="form-check-label" for="columnSummary{{ $index }}">Показывать в сводке</label>
+                  </div>
                 </form>
-                <span class="sheet-badge">{{ $index + 1 }}</span>
-                <form method="POST" action="{{ route('nonclosures.sheets.columns.destroy', ['sheet' => $sheet->id, 'columnIndex' => $index + 1]) }}" onsubmit="return confirm('Удалить колонку «{{ addslashes($meta['label']) }}»?');">
-                  @csrf
-                  @method('DELETE')
-                  <input type="hidden" name="scope" value="{{ $backQuery['scope'] ?? '' }}">
-                  <input type="hidden" name="owner_id" value="{{ $backQuery['owner_id'] ?? '' }}">
-                  <input type="hidden" name="workbook" value="{{ $workbook->id }}">
-                  <button type="submit" class="btn btn-outline-danger btn-sm" @disabled($sheetHeader->count() <= 1)>Удалить</button>
-                </form>
+                <div class="sheet-column-actions">
+                  <span class="sheet-badge">{{ $index + 1 }}</span>
+                  <button type="submit" form="sheetColumnForm{{ $index }}" class="btn btn-outline-primary btn-sm">Сохранить</button>
+                  <form method="POST" action="{{ route('nonclosures.sheets.columns.destroy', ['sheet' => $sheet->id, 'columnIndex' => $index + 1]) }}" onsubmit="return confirm('Удалить колонку «{{ addslashes($meta['label']) }}»?');">
+                    @csrf
+                    @method('DELETE')
+                    <input type="hidden" name="scope" value="{{ $backQuery['scope'] ?? '' }}">
+                    <input type="hidden" name="owner_id" value="{{ $backQuery['owner_id'] ?? '' }}">
+                    <input type="hidden" name="workbook" value="{{ $workbook->id }}">
+                    <button type="submit" class="btn btn-outline-danger btn-sm" @disabled($sheetHeader->count() <= 1)>Удалить</button>
+                  </form>
+                </div>
               </div>
             @endforeach
           </div>
@@ -573,7 +694,8 @@
   const rowActivities = @json($rowActivityPayload);
   const rowTaskStats = @json($sheetRowTaskStats);
   const rowValues = @json($rowValuePayload);
-  const headers = @json($columnMeta->pluck('label')->values()->all());
+  const columnDefinitions = @json($columnDefinitionsPayload);
+  const headers = columnDefinitions.map((column) => column.label);
   const rowModalElement = document.getElementById('sheetRowModal');
   const rowForm = document.getElementById('sheetRowForm');
   const rowMethodInput = document.getElementById('sheetRowMethod');
@@ -602,6 +724,7 @@
   const taskButtons = Array.from(document.querySelectorAll('[data-row-task]'));
   const insertButtons = Array.from(document.querySelectorAll('[data-row-insert]'));
   const cellButtons = Array.from(document.querySelectorAll('[data-row-cell]'));
+  const columnTypeSelects = Array.from(document.querySelectorAll('[data-column-type-select]'));
   if (!searchInput || !table || !visibleCounter) return;
 
   const rowModal = rowModalElement ? new bootstrap.Modal(rowModalElement) : null;
@@ -671,11 +794,46 @@
     });
   };
   const escapeHtml = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+  const renderColumnEditorMode = (select) => {
+    const container = select?.closest('form, .sheet-column-form, .sheet-column-row') || select?.parentElement;
+    if (!container) return;
+    const optionsBlock = container.querySelector('[data-column-options-block]');
+    if (!optionsBlock) return;
+    optionsBlock.classList.toggle('d-none', select.value !== 'select');
+  };
+  const renderRowValueField = (column, value, index) => {
+    const safeLabel = escapeHtml(column?.label || `Колонка ${index + 1}`);
+    const safeValue = String(value ?? '');
+    const type = column?.type || 'text';
+
+    if (type === 'select') {
+      const options = Array.isArray(column?.options) ? column.options : [];
+      const optionMarkup = ['<option value=""></option>'].concat(options.map((option) => {
+        const optionValue = String(option?.value ?? '');
+        const optionLabel = String(option?.label ?? optionValue);
+        const selected = optionValue === safeValue ? ' selected' : '';
+
+        return `<option value="${escapeHtml(optionValue)}"${selected}>${escapeHtml(optionLabel)}</option>`;
+      })).join('');
+
+      return `<label class="sheet-editor-field"><span class="form-label mb-0">${safeLabel}</span><select class="form-select form-select-sm" name="row_values[${index}]">${optionMarkup}</select></label>`;
+    }
+
+    if (type === 'date') {
+      return `<label class="sheet-editor-field"><span class="form-label mb-0">${safeLabel}</span><input type="date" class="form-control form-control-sm" name="row_values[${index}]" value="${escapeHtml(safeValue)}"></label>`;
+    }
+
+    if (type === 'number') {
+      return `<label class="sheet-editor-field"><span class="form-label mb-0">${safeLabel}</span><input type="number" step="any" class="form-control form-control-sm" name="row_values[${index}]" value="${escapeHtml(safeValue)}"></label>`;
+    }
+
+    return `<label class="sheet-editor-field"><span class="form-label mb-0">${safeLabel}</span><textarea class="form-control form-control-sm" rows="2" name="row_values[${index}]">${escapeHtml(safeValue)}</textarea></label>`;
+  };
   const renderRowValueInputs = (values) => {
     if (!rowValuesEditor) return;
-    rowValuesEditor.innerHTML = headers.map((label, index) => {
+    rowValuesEditor.innerHTML = columnDefinitions.map((column, index) => {
       const value = Array.isArray(values) ? (values[index] ?? '') : '';
-      return `<label class="sheet-editor-field"><span class="form-label mb-0">${escapeHtml(label)}</span><textarea class="form-control form-control-sm" rows="2" name="row_values[${index}]">${escapeHtml(value)}</textarea></label>`;
+      return renderRowValueField(column, value, index);
     }).join('');
   };
   const focusRowValueField = (columnIndex) => {
@@ -783,6 +941,10 @@
     }
 
     rowComment?.focus();
+  });
+  columnTypeSelects.forEach((select) => {
+    renderColumnEditorMode(select);
+    select.addEventListener('change', () => renderColumnEditorMode(select));
   });
   restoreModes();
   applyModes();
