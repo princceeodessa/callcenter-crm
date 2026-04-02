@@ -185,6 +185,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/nonclosures/sheets/{sheet}/columns', [NonClosureController::class, 'storeColumn'])->name('nonclosures.sheets.columns.store');
         Route::patch('/nonclosures/sheets/{sheet}/columns/{columnIndex}', [NonClosureController::class, 'updateColumn'])->name('nonclosures.sheets.columns.update');
         Route::delete('/nonclosures/sheets/{sheet}/columns/{columnIndex}', [NonClosureController::class, 'destroyColumn'])->name('nonclosures.sheets.columns.destroy');
+        Route::patch('/nonclosures/sheets/{sheet}/metrics', [NonClosureController::class, 'updateMetrics'])->name('nonclosures.sheets.metrics.update');
         Route::post('/nonclosures/sheets/{sheet}/tasks', [TaskController::class, 'storeDocumentTask'])->name('nonclosures.sheets.tasks.store');
         Route::patch('/nonclosures/workspace', [NonClosureController::class, 'updateWorkspace'])->name('nonclosures.workspace.update');
         Route::post('/nonclosures/workbooks/import', [NonClosureController::class, 'importWorkbook'])->name('nonclosures.workbooks.import');

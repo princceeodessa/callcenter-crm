@@ -78,6 +78,7 @@ class NonClosureController extends Controller
         $sheetRows = collect($sheet->rows ?? [])->values();
         $sheetHeader = collect($sheet->header ?? [])->values();
         $columnMeta = $this->columnMetaForSheet($sheet);
+        $customMetrics = $this->customMetricsForSheet($sheet, $columnMeta);
         $sheetCategoryLabel = NonClosureWorkbookSheet::categoryOptions()[$sheet->category] ?? $sheet->category;
         $sheetSharedIds = $sheet->sharedUsers->pluck('id')->map(fn ($id) => (int) $id)->all();
         $backQuery = $this->catalogQueryParams($request, [
@@ -106,9 +107,12 @@ class NonClosureController extends Controller
             'sheetHeader' => $sheetHeader,
             'sheetColumnMeta' => $columnMeta,
             'sheetAdaptiveStats' => $this->buildAdaptiveSheetStats($sheetRows, $columnMeta),
+            'sheetCustomMetrics' => $customMetrics,
+            'sheetCustomMetricCards' => $this->buildCustomMetricCards($sheetRows, $columnMeta, $customMetrics),
             'sheetCategories' => NonClosureWorkbookSheet::categoryOptions(),
             'sheetColumnTypeOptions' => NonClosureWorkbookSheet::columnTypeOptions(),
             'sheetOptionToneOptions' => NonClosureWorkbookSheet::optionToneOptions(),
+            'sheetMetricOperatorOptions' => $this->metricOperatorOptions(),
             'sheetCategoryLabel' => $sheetCategoryLabel,
             'siblingSheets' => $siblingSheets,
             'activeUsers' => $activeUsers,
@@ -142,16 +146,6 @@ class NonClosureController extends Controller
             'workbook' => ['nullable', 'integer'],
         ]);
 
-        $status = (string) ($data['status'] ?? NonClosureSheetRowState::STATUS_NEW);
-        $comment = $this->nullIfBlank($data['comment'] ?? null);
-        $assignedUserId = (int) ($data['assigned_user_id'] ?? 0);
-        $assignedUserId = $assignedUserId > 0 ? $assignedUserId : null;
-        $updatedRow = $this->normalizeEditedRow(
-            $sheet,
-            is_array($data['row_values'] ?? null) ? $data['row_values'] : [],
-            $row
-        );
-
         $state = NonClosureSheetRowState::query()->firstOrNew([
             'account_id' => $user->account_id,
             'workbook_sheet_id' => $sheet->id,
@@ -161,6 +155,21 @@ class NonClosureController extends Controller
         $originalStatus = $state->exists ? (string) $state->status : NonClosureSheetRowState::STATUS_NEW;
         $originalComment = $state->exists ? $this->nullIfBlank($state->comment) : null;
         $originalAssignedUserId = $state->exists ? (int) ($state->assigned_user_id ?: 0) : 0;
+        $status = array_key_exists('status', $data)
+            ? (string) ($data['status'] ?? NonClosureSheetRowState::STATUS_NEW)
+            : $originalStatus;
+        $comment = array_key_exists('comment', $data)
+            ? $this->nullIfBlank($data['comment'] ?? null)
+            : $originalComment;
+        $assignedUserId = array_key_exists('assigned_user_id', $data)
+            ? (int) ($data['assigned_user_id'] ?? 0)
+            : $originalAssignedUserId;
+        $assignedUserId = $assignedUserId > 0 ? $assignedUserId : null;
+        $updatedRow = $this->normalizeEditedRow(
+            $sheet,
+            is_array($data['row_values'] ?? null) ? $data['row_values'] : [],
+            $row
+        );
         $rowChanged = $updatedRow !== $this->normalizeEditedRow($sheet, $row, $row);
 
         if (
@@ -517,6 +526,47 @@ class NonClosureController extends Controller
                 $this->catalogQueryParams($request, ['workbook' => $sheet->workbook_id])
             ))
             ->with('status', 'Столбец удалён.');
+    }
+
+    public function updateMetrics(Request $request, NonClosureWorkbookSheet $sheet)
+    {
+        $this->ensureDocumentContributionAccess($request);
+
+        $user = $request->user();
+        $sheet = $this->resolveSheetForView($sheet, $user, $this->canManageDocuments($user));
+        $columnMeta = $this->columnMetaForSheet($sheet);
+        $allowedOperators = array_keys($this->metricOperatorOptions());
+        $allowedTones = array_keys(NonClosureWorkbookSheet::optionToneOptions());
+
+        $data = $request->validate([
+            'metrics' => ['nullable', 'array', 'max:12'],
+            'metrics.*.label' => ['nullable', 'string', 'max:120'],
+            'metrics.*.column_index' => ['nullable', 'integer', 'min:0', 'max:'.max(0, count($columnMeta) - 1)],
+            'metrics.*.operator' => ['nullable', Rule::in($allowedOperators)],
+            'metrics.*.value' => ['nullable', 'string', 'max:255'],
+            'metrics.*.tone' => ['nullable', Rule::in($allowedTones)],
+            'scope' => ['nullable', 'string'],
+            'owner_id' => ['nullable', 'integer'],
+            'workbook' => ['nullable', 'integer'],
+        ]);
+
+        $metrics = collect($data['metrics'] ?? [])
+            ->map(fn ($metric, $index) => $this->normalizeCustomMetricDefinition((array) $metric, $columnMeta, (int) $index))
+            ->filter()
+            ->values()
+            ->all();
+
+        $meta = is_array($sheet->meta) ? $sheet->meta : [];
+        $meta['custom_metrics'] = $metrics;
+        $sheet->meta = $meta;
+        $sheet->save();
+
+        return redirect()
+            ->route('nonclosures.sheets.show', array_merge(
+                ['sheet' => $sheet->id],
+                $this->catalogQueryParams($request, ['workbook' => $sheet->workbook_id])
+            ))
+            ->with('status', 'Пользовательская аналитика обновлена.');
     }
 
     public function updateWorkspace(Request $request)
@@ -1277,6 +1327,154 @@ class NonClosureController extends Controller
             ->filter()
             ->values()
             ->all();
+    }
+
+    private function customMetricsForSheet(NonClosureWorkbookSheet $sheet, array $columnMeta): array
+    {
+        return collect((array) data_get($sheet->meta, 'custom_metrics', []))
+            ->map(fn ($metric, $index) => $this->normalizeCustomMetricDefinition((array) $metric, $columnMeta, (int) $index))
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    private function metricOperatorOptions(): array
+    {
+        return [
+            'equals' => 'Равно значению',
+            'not_equals' => 'Не равно',
+            'contains' => 'Содержит',
+            'filled' => 'Заполнено',
+            'empty' => 'Пусто',
+            'number_gte' => 'Число >=',
+            'number_lte' => 'Число <=',
+            'date_older_than_days' => 'Дата старше N дней',
+            'date_newer_than_days' => 'Дата за последние N дней',
+        ];
+    }
+
+    private function normalizeCustomMetricDefinition(array $payload, array $columnMeta, int $index): ?array
+    {
+        $columnIndex = (int) ($payload['column_index'] ?? -1);
+        if (!isset($columnMeta[$columnIndex])) {
+            return null;
+        }
+
+        $operator = (string) ($payload['operator'] ?? 'equals');
+        if (!array_key_exists($operator, $this->metricOperatorOptions())) {
+            $operator = 'equals';
+        }
+
+        $tone = (string) ($payload['tone'] ?? 'blue');
+        if (!array_key_exists($tone, NonClosureWorkbookSheet::optionToneOptions())) {
+            $tone = 'blue';
+        }
+
+        $value = trim((string) ($payload['value'] ?? ''));
+        $label = trim((string) ($payload['label'] ?? ''));
+        $columnLabel = (string) ($columnMeta[$columnIndex]['label'] ?? ('Колонка '.($columnIndex + 1)));
+
+        if ($label === '') {
+            $label = match ($operator) {
+                'filled' => $columnLabel.': заполнено',
+                'empty' => $columnLabel.': пусто',
+                'date_older_than_days' => $columnLabel.': старше '.$value.' дн.',
+                'date_newer_than_days' => $columnLabel.': за '.$value.' дн.',
+                default => $columnLabel.($value !== '' ? ' = '.$value : ''),
+            };
+        }
+
+        return [
+            'label' => $label,
+            'column_index' => $columnIndex,
+            'column_label' => $columnLabel,
+            'column_type' => (string) ($columnMeta[$columnIndex]['type'] ?? NonClosureWorkbookSheet::COLUMN_TYPE_TEXT),
+            'operator' => $operator,
+            'value' => $value,
+            'tone' => $tone,
+        ];
+    }
+
+    private function buildCustomMetricCards(Collection $rows, array $columnMeta, array $metrics): array
+    {
+        $totalRows = max(1, $rows->count());
+
+        return collect($metrics)
+            ->map(function ($metric) use ($rows, $columnMeta, $totalRows) {
+                $columnIndex = (int) ($metric['column_index'] ?? -1);
+                if (!isset($columnMeta[$columnIndex])) {
+                    return null;
+                }
+
+                $count = $rows->filter(function ($row) use ($metric, $columnIndex) {
+                    $value = trim((string) (((array) $row)[$columnIndex] ?? ''));
+
+                    return $this->rowMatchesCustomMetric($value, $metric);
+                })->count();
+
+                return [
+                    'label' => (string) ($metric['label'] ?? 'Показатель'),
+                    'column_label' => (string) ($metric['column_label'] ?? $columnMeta[$columnIndex]['label'] ?? ''),
+                    'description' => $this->describeCustomMetric($metric),
+                    'value' => $count,
+                    'total' => $rows->count(),
+                    'percent' => $rows->count() > 0 ? round(($count / $totalRows) * 100) : 0,
+                    'tone' => (string) ($metric['tone'] ?? 'blue'),
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    private function describeCustomMetric(array $metric): string
+    {
+        $column = (string) ($metric['column_label'] ?? 'колонка');
+        $value = trim((string) ($metric['value'] ?? ''));
+
+        return match ((string) ($metric['operator'] ?? 'equals')) {
+            'not_equals' => $column.' не равно "'.$value.'"',
+            'contains' => $column.' содержит "'.$value.'"',
+            'filled' => $column.' заполнено',
+            'empty' => $column.' пусто',
+            'number_gte' => $column.' >= '.$value,
+            'number_lte' => $column.' <= '.$value,
+            'date_older_than_days' => $column.' старше '.$value.' дней',
+            'date_newer_than_days' => $column.' за последние '.$value.' дней',
+            default => $column.' равно "'.$value.'"',
+        };
+    }
+
+    private function rowMatchesCustomMetric(string $value, array $metric): bool
+    {
+        $normalized = mb_strtolower(trim($value));
+        $needle = mb_strtolower(trim((string) ($metric['value'] ?? '')));
+        $operator = (string) ($metric['operator'] ?? 'equals');
+
+        return match ($operator) {
+            'not_equals' => $normalized !== $needle,
+            'contains' => $needle !== '' && str_contains($normalized, $needle),
+            'filled' => $normalized !== '',
+            'empty' => $normalized === '',
+            'number_gte' => ($this->parseNumericMetricValue($value) ?? INF) >= (float) ($metric['value'] ?? 0),
+            'number_lte' => ($this->parseNumericMetricValue($value) ?? -INF) <= (float) ($metric['value'] ?? 0),
+            'date_older_than_days' => ($date = $this->parseAdaptiveDateValue($value)) !== null
+                && $date->lte(now()->startOfDay())
+                && $date->diffInDays(now()->startOfDay()) >= max(0, (int) ($metric['value'] ?? 0)),
+            'date_newer_than_days' => ($date = $this->parseAdaptiveDateValue($value)) !== null
+                && $date->gte(now()->startOfDay()->subDays(max(0, (int) ($metric['value'] ?? 0)))),
+            default => $normalized === $needle,
+        };
+    }
+
+    private function parseNumericMetricValue(string $value): ?float
+    {
+        $normalized = str_replace(',', '.', preg_replace('/[^\d,\.\-]/u', '', trim($value)));
+        if ($normalized === '' || !is_numeric($normalized)) {
+            return null;
+        }
+
+        return (float) $normalized;
     }
 
     private function parseAdaptiveDateValue(string $value): ?Carbon

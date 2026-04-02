@@ -6,7 +6,7 @@
 
 @push('styles')
 <style>
-  .sheet-page{display:flex;flex-direction:column;gap:1rem}
+  .sheet-page{display:flex;flex-direction:column;gap:1rem;padding-bottom:2rem}
   .sheet-surface{border:1px solid var(--crm-border);border-radius:1.25rem;background:var(--crm-surface-strong);box-shadow:var(--crm-shadow)}
   .sheet-panel{padding:1.1rem 1.15rem}
   .sheet-muted{color:var(--crm-muted)}
@@ -33,9 +33,13 @@
   .sheet-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.8rem}
   .sheet-stat{padding:1rem;border:1px solid var(--crm-border);border-radius:1rem;background:linear-gradient(180deg,rgba(255,255,255,.75),rgba(255,255,255,.52))}
   .sheet-stat-value{font-size:1.15rem;font-weight:700;line-height:1.15}
+  .sheet-stat-actions{display:flex;justify-content:space-between;align-items:center;gap:.8rem;flex-wrap:wrap}
   .sheet-adaptive-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:.8rem}
   .sheet-adaptive-card{padding:1rem;border:1px solid var(--crm-border);border-radius:1rem;background:rgba(255,255,255,.48)}
   .sheet-adaptive-items{display:flex;flex-wrap:wrap;gap:.45rem}
+  .sheet-custom-card{display:flex;flex-direction:column;gap:.75rem}
+  .sheet-custom-value{font-size:2rem;font-weight:800;line-height:1;color:var(--crm-text)}
+  .sheet-custom-meta{display:flex;flex-wrap:wrap;gap:.45rem}
   .sheet-strip{display:flex;gap:.8rem;overflow:auto;padding-bottom:.15rem}
   .sheet-mini-card{min-width:240px;display:flex;justify-content:space-between;gap:.75rem;align-items:flex-start;padding:.9rem 1rem;border:1px solid var(--crm-border);border-radius:1rem;background:rgba(255,255,255,.55);text-decoration:none;color:inherit;transition:.16s ease}
   .sheet-mini-card:hover{color:inherit;border-color:color-mix(in srgb,var(--crm-accent) 35%, var(--crm-border))}
@@ -51,12 +55,12 @@
   .sheet-controls{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center}
   .sheet-search{min-width:280px}
   .sheet-toggle{display:inline-flex;align-items:center;gap:.45rem;padding:.4rem .75rem;border:1px solid var(--crm-border);border-radius:999px;background:rgba(255,255,255,.45);font-size:.86rem}
-  .sheet-table-wrap{max-height:76vh;overflow:auto;border:1px solid var(--crm-border);border-radius:1rem;background:var(--crm-surface-strong)}
+  .sheet-table-wrap{max-height:72vh;overflow:auto;border:1px solid var(--crm-border);border-radius:1rem;background:var(--crm-surface-strong)}
   .sheet-table{width:max-content;min-width:100%;margin:0;border-collapse:separate;border-spacing:0}
   .sheet-table thead th{position:sticky;top:0;background:var(--crm-surface-strong);z-index:4;box-shadow:inset 0 -1px 0 var(--crm-border)}
   .sheet-table tbody tr:nth-child(odd) td,.sheet-table tbody tr:nth-child(odd) th{background:rgba(148,163,184,.04)}
   .sheet-table tbody tr:hover td,.sheet-table tbody tr:hover th{background:rgba(79,70,229,.06)}
-  .sheet-row-number{position:sticky;left:0;z-index:3;min-width:172px;max-width:172px;width:172px;background:var(--crm-surface-strong);box-shadow:inset -1px 0 0 var(--crm-border)}
+  .sheet-row-number{position:sticky;left:0;z-index:3;min-width:154px;max-width:154px;width:154px;background:var(--crm-surface-strong);box-shadow:inset -1px 0 0 var(--crm-border)}
   .sheet-table thead .sheet-row-number{z-index:6}
   .sheet-row-tone-slate .sheet-row-number{box-shadow:inset 4px 0 0 #64748b,inset -1px 0 0 var(--crm-border)}
   .sheet-row-tone-blue .sheet-row-number{box-shadow:inset 4px 0 0 #2563eb,inset -1px 0 0 var(--crm-border)}
@@ -65,20 +69,25 @@
   .sheet-row-tone-amber .sheet-row-number{box-shadow:inset 4px 0 0 #d97706,inset -1px 0 0 var(--crm-border)}
   .sheet-row-tone-green .sheet-row-number{box-shadow:inset 4px 0 0 #16a34a,inset -1px 0 0 var(--crm-border)}
   .sheet-row-tone-neutral .sheet-row-number{box-shadow:inset 4px 0 0 #334155,inset -1px 0 0 var(--crm-border)}
-  .sheet-row-meta{display:flex;flex-direction:column;align-items:flex-start;gap:.42rem}
+  .sheet-row-meta{display:flex;flex-direction:column;align-items:flex-start;gap:.28rem}
   .sheet-row-actions{display:flex;flex-wrap:wrap;gap:.35rem}
-  .sheet-row-action{padding:.12rem .45rem;border-radius:999px;font-size:.72rem;line-height:1.2}
+  .sheet-row-action{padding:.08rem .38rem;border-radius:999px;font-size:.68rem;line-height:1.15}
   .sheet-row-task-counter{font-size:.7rem;padding:.16rem .4rem;border-radius:999px;background:rgba(15,23,42,.06)}
-  .sheet-cell{padding:.82rem .88rem;vertical-align:top;border-color:var(--crm-border);white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;line-height:1.4}
+  .sheet-cell{padding:.68rem .8rem;vertical-align:top;border-color:var(--crm-border);white-space:normal;overflow-wrap:anywhere;word-break:break-word;line-height:1.35}
   .sheet-cell[data-row-cell]{cursor:pointer}
   .sheet-cell[data-row-cell]:focus-visible{outline:2px solid color-mix(in srgb,var(--crm-accent) 70%, #fff);outline-offset:-2px}
   .sheet-nowrap .sheet-cell{white-space:nowrap}
   .sheet-compact .sheet-cell{padding:.48rem .62rem;font-size:.92rem}
   .sheet-cell-empty{color:var(--crm-muted)}
+  .sheet-cell-value{display:block;min-height:1.25rem;white-space:inherit}
+  .sheet-inline-select{min-width:160px;max-width:100%;border-radius:.75rem;border:1px solid var(--crm-border);background:rgba(255,255,255,.72);font-size:.82rem;padding:.32rem 2rem .32rem .72rem;line-height:1.25}
+  .sheet-inline-select:focus{border-color:color-mix(in srgb,var(--crm-accent) 40%, var(--crm-border));box-shadow:0 0 0 .18rem rgba(79,70,229,.12)}
+  .sheet-inline-select.is-saving{opacity:.7}
+  .sheet-inline-select.is-error{border-color:#dc2626;box-shadow:0 0 0 .18rem rgba(220,38,38,.12)}
   .sheet-col-id{min-width:90px;max-width:120px}
   .sheet-col-name{min-width:280px;max-width:420px}
-  .sheet-col-person{min-width:180px;max-width:240px}
-  .sheet-col-region{min-width:220px;max-width:280px}
+  .sheet-col-person{min-width:200px;max-width:260px}
+  .sheet-col-region{min-width:240px;max-width:360px}
   .sheet-col-city{min-width:150px;max-width:220px}
   .sheet-col-phone{min-width:190px;max-width:240px}
   .sheet-col-address{min-width:320px;max-width:520px}
@@ -99,9 +108,15 @@
   .sheet-column-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem;align-items:start}
   .sheet-column-actions{display:flex;flex-direction:column;gap:.55rem}
   .sheet-column-options{grid-column:1 / -1}
+  .sheet-metric-list{display:flex;flex-direction:column;gap:.75rem}
+  .sheet-metric-row{display:grid;grid-template-columns:1.15fr 1fr 1fr 1fr auto;gap:.75rem;align-items:end;padding:1rem;border:1px solid var(--crm-border);border-radius:1rem;background:rgba(255,255,255,.45)}
+  .sheet-metric-empty{padding:1rem;border:1px dashed var(--crm-border);border-radius:1rem;background:rgba(255,255,255,.3)}
+  #sheetRowModal .modal-dialog{margin:.75rem auto}
+  #sheetRowModal .modal-content{max-height:calc(100dvh - 1.5rem)}
+  #sheetRowModal .modal-body{overflow-y:auto;min-height:0;max-height:calc(100dvh - 210px)}
   @media (max-width:1199px){.sheet-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.sheet-access-grid{grid-template-columns:1fr}}
-  @media (max-width:991px){.sheet-editor-grid{grid-template-columns:1fr}}
-  @media (max-width:767px){.sheet-stats{grid-template-columns:1fr}.sheet-search{min-width:unset;width:100%}.sheet-row-number{min-width:136px;max-width:136px;width:136px}.sheet-column-row{grid-template-columns:1fr}}
+  @media (max-width:991px){.sheet-editor-grid{grid-template-columns:1fr}.sheet-metric-row{grid-template-columns:1fr 1fr}}
+  @media (max-width:767px){.sheet-stats{grid-template-columns:1fr}.sheet-search{min-width:unset;width:100%}.sheet-row-number{min-width:136px;max-width:136px;width:136px}.sheet-column-row{grid-template-columns:1fr}.sheet-metric-row{grid-template-columns:1fr}}
 </style>
 @endpush
 
@@ -110,7 +125,11 @@
     $visibleRows = $sheetRows->count();
     $defaultTaskDueAt = now()->addHour()->format('Y-m-d\TH:i');
     $sheetColumnTypeOptions = $sheetColumnTypeOptions ?? \App\Models\NonClosureWorkbookSheet::columnTypeOptions();
+    $sheetMetricOperatorOptions = $sheetMetricOperatorOptions ?? [];
+    $sheetOptionToneOptions = $sheetOptionToneOptions ?? \App\Models\NonClosureWorkbookSheet::optionToneOptions();
     $adaptiveStats = collect($sheetAdaptiveStats ?? [])->values();
+    $customMetricDefinitions = collect($sheetCustomMetrics ?? [])->values();
+    $customMetricCards = collect($sheetCustomMetricCards ?? [])->values();
     $columnMeta = collect($sheetColumnMeta ?? [])->values()->map(function ($column, $index) {
         $label = trim((string) ($column['label'] ?? ''));
         $normalized = mb_strtolower($label);
@@ -197,6 +216,7 @@
             'options' => $column['options'],
         ];
     })->values()->all();
+    $metricDefinitionsPayload = $customMetricDefinitions->values()->all();
 @endphp
 
 <div class="sheet-page">
@@ -223,9 +243,45 @@
         <div class="sheet-stat"><div class="sheet-muted small mb-2">Строк со статусом</div><div class="sheet-stat-value">{{ collect($sheetRowStates)->count() }}</div></div>
         <div class="sheet-stat"><div class="sheet-muted small mb-2">Открытых задач</div><div class="sheet-stat-value">{{ collect($sheetRowTaskStats)->sum('open') }}</div></div>
       </div>
+      <div>
+        <div class="sheet-stat-actions mb-2">
+          <div>
+            <div class="sheet-muted small">Пользовательская аналитика</div>
+            <div class="sheet-muted small">Собирайте свои показатели по колонкам и условиям: кто работает с вами, кто не закупался 14 дней и т.д.</div>
+          </div>
+          <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#sheetMetricsModal">
+            <i class="bi bi-sliders"></i> Настроить показатели
+          </button>
+        </div>
+        @if($customMetricCards->isNotEmpty())
+          <div class="sheet-adaptive-grid">
+            @foreach($customMetricCards as $metricCard)
+              <div class="sheet-adaptive-card sheet-custom-card">
+                <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+                  <div>
+                    <div class="fw-semibold">{{ $metricCard['label'] }}</div>
+                    <div class="sheet-muted small mt-1">{{ $metricCard['description'] }}</div>
+                  </div>
+                  <span class="sheet-select-pill tone-{{ $metricCard['tone'] ?? 'blue' }}">{{ $metricCard['column_label'] }}</span>
+                </div>
+                <div class="sheet-custom-value">{{ $metricCard['value'] }}</div>
+                <div class="sheet-custom-meta">
+                  <span class="sheet-pill">Доля: {{ $metricCard['percent'] }}%</span>
+                  <span class="sheet-pill">Из {{ $metricCard['total'] }}</span>
+                </div>
+              </div>
+            @endforeach
+          </div>
+        @else
+          <div class="sheet-metric-empty">
+            <div class="fw-semibold mb-1">Показатели ещё не настроены</div>
+            <div class="sheet-muted small">Добавьте свои правила, чтобы видеть наверху, сколько клиентов работает с вами, кто давно не закупался, сколько строк пустые и любые другие простые метрики.</div>
+          </div>
+        @endif
+      </div>
       @if($adaptiveStats->isNotEmpty())
         <div>
-          <div class="sheet-muted small mb-2">Адаптивные показатели по типизированным колонкам</div>
+          <div class="sheet-muted small mb-2">Автоматические показатели по типизированным колонкам</div>
           <div class="sheet-adaptive-grid">
             @foreach($adaptiveStats as $stat)
               <div class="sheet-adaptive-card">
@@ -419,12 +475,20 @@
                   data-col-index="{{ $metaIndex }}"
                   tabindex="0"
                 >
-                  @if($cellValue === '')
-                    —
-                  @elseif($selectOption)
-                    <span class="sheet-select-pill tone-{{ $selectOption['tone'] ?? 'neutral' }}">{{ $selectOption['label'] ?? $cellValue }}</span>
+                  @if($meta['type'] === \App\Models\NonClosureWorkbookSheet::COLUMN_TYPE_SELECT)
+                    <select class="sheet-inline-select" data-inline-select data-row-index="{{ $rowNumber }}" data-col-index="{{ $metaIndex }}" aria-label="{{ $meta['label'] }}">
+                      <option value="">Не выбрано</option>
+                      @foreach($meta['options'] as $option)
+                        <option value="{{ $option['value'] }}" @selected((string) $option['value'] === $cellValue)>{{ $option['label'] }}</option>
+                      @endforeach
+                      @if($cellValue !== '' && !$selectOption)
+                        <option value="{{ $cellValue }}" selected>{{ $cellValue }}</option>
+                      @endif
+                    </select>
+                  @elseif($cellValue === '')
+                    <div class="sheet-cell-value">—</div>
                   @else
-                    {{ $cellValue }}
+                    <div class="sheet-cell-value">{{ $cellValue }}</div>
                   @endif
                 </td>
               @endforeach
@@ -667,6 +731,44 @@
     </div>
   </div>
 
+  <div class="modal fade" id="sheetMetricsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div>
+            <h5 class="modal-title mb-1">Пользовательская аналитика</h5>
+            <div class="sheet-muted small">Добавляйте свои карточки по условиям: по выбору, дате, числу или заполненности поля.</div>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+        </div>
+        <form method="POST" action="{{ route('nonclosures.sheets.metrics.update', $sheet) }}">
+          @csrf
+          @method('PATCH')
+          <input type="hidden" name="scope" value="{{ $backQuery['scope'] ?? '' }}">
+          <input type="hidden" name="owner_id" value="{{ $backQuery['owner_id'] ?? '' }}">
+          <input type="hidden" name="workbook" value="{{ $workbook->id }}">
+          <div class="modal-body d-flex flex-column gap-3">
+            <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
+              <div class="sheet-muted small">Например: “Работаем с нами”, “Последняя закупка старше 14 дней”, “Пустой менеджер”.</div>
+              <button type="button" class="btn btn-outline-primary btn-sm" id="sheetMetricAddButton">
+                <i class="bi bi-plus-circle"></i> Добавить показатель
+              </button>
+            </div>
+            <div class="sheet-metric-list" id="sheetMetricsEditor"></div>
+            <div class="sheet-metric-empty d-none" id="sheetMetricsEmpty">
+              <div class="fw-semibold mb-1">Показателей пока нет</div>
+              <div class="sheet-muted small">Нажмите “Добавить показатель” и соберите свои карточки под этот лист.</div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+            <button type="submit" class="btn btn-primary">Сохранить показатели</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <form method="POST" id="sheetRowDeleteForm" class="d-none">
     @csrf
     @method('DELETE')
@@ -687,6 +789,10 @@
   const compactToggle = document.getElementById('sheetCompactToggle');
   const wrapToggle = document.getElementById('sheetWrapToggle');
   const rows = Array.from(document.querySelectorAll('#sheetTable tbody tr[data-row-text]'));
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || @json(csrf_token());
+  const scopeValue = @json($backQuery['scope'] ?? '');
+  const ownerIdValue = @json($backQuery['owner_id'] ?? '');
+  const workbookValue = @json($workbook->id);
   const rowStoreRoute = @json(route('nonclosures.sheets.rows.store', $sheet));
   const rowUpdateRouteTemplate = @json(route('nonclosures.sheets.rows.update', ['sheet' => $sheet->id, 'rowIndex' => '__ROW__']));
   const rowDestroyRouteTemplate = @json(route('nonclosures.sheets.rows.destroy', ['sheet' => $sheet->id, 'rowIndex' => '__ROW__']));
@@ -695,6 +801,9 @@
   const rowTaskStats = @json($sheetRowTaskStats);
   const rowValues = @json($rowValuePayload);
   const columnDefinitions = @json($columnDefinitionsPayload);
+  const metricDefinitions = @json($metricDefinitionsPayload);
+  const metricOperatorOptions = @json($sheetMetricOperatorOptions);
+  const metricToneOptions = @json($sheetOptionToneOptions);
   const headers = columnDefinitions.map((column) => column.label);
   const rowModalElement = document.getElementById('sheetRowModal');
   const rowForm = document.getElementById('sheetRowForm');
@@ -724,12 +833,17 @@
   const taskButtons = Array.from(document.querySelectorAll('[data-row-task]'));
   const insertButtons = Array.from(document.querySelectorAll('[data-row-insert]'));
   const cellButtons = Array.from(document.querySelectorAll('[data-row-cell]'));
+  const inlineSelects = Array.from(document.querySelectorAll('[data-inline-select]'));
   const columnTypeSelects = Array.from(document.querySelectorAll('[data-column-type-select]'));
+  const metricsEditor = document.getElementById('sheetMetricsEditor');
+  const metricsEmpty = document.getElementById('sheetMetricsEmpty');
+  const metricAddButton = document.getElementById('sheetMetricAddButton');
   if (!searchInput || !table || !visibleCounter) return;
 
   const rowModal = rowModalElement ? new bootstrap.Modal(rowModalElement) : null;
   const taskModal = taskModalElement ? new bootstrap.Modal(taskModalElement) : null;
   let pendingFocusColumnIndex = null;
+  const metricState = Array.isArray(metricDefinitions) ? metricDefinitions.map((metric) => ({ ...metric })) : [];
   const modeStorageKey = 'documents-sheet-view-modes';
   const restoreModes = () => {
     try {
@@ -794,6 +908,10 @@
     });
   };
   const escapeHtml = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+  const shouldUseTextareaField = (column) => {
+    const label = String(column?.label || '').toLowerCase();
+    return ['коммент', 'адрес', 'примеч', 'опис', 'услов', 'источник'].some((marker) => label.includes(marker));
+  };
   const renderColumnEditorMode = (select) => {
     const container = select?.closest('form, .sheet-column-form, .sheet-column-row') || select?.parentElement;
     if (!container) return;
@@ -827,7 +945,11 @@
       return `<label class="sheet-editor-field"><span class="form-label mb-0">${safeLabel}</span><input type="number" step="any" class="form-control form-control-sm" name="row_values[${index}]" value="${escapeHtml(safeValue)}"></label>`;
     }
 
-    return `<label class="sheet-editor-field"><span class="form-label mb-0">${safeLabel}</span><textarea class="form-control form-control-sm" rows="2" name="row_values[${index}]">${escapeHtml(safeValue)}</textarea></label>`;
+    if (shouldUseTextareaField(column)) {
+      return `<label class="sheet-editor-field"><span class="form-label mb-0">${safeLabel}</span><textarea class="form-control form-control-sm" rows="2" name="row_values[${index}]">${escapeHtml(safeValue)}</textarea></label>`;
+    }
+
+    return `<label class="sheet-editor-field"><span class="form-label mb-0">${safeLabel}</span><input type="text" class="form-control form-control-sm" name="row_values[${index}]" value="${escapeHtml(safeValue)}"></label>`;
   };
   const renderRowValueInputs = (values) => {
     if (!rowValuesEditor) return;
@@ -838,7 +960,7 @@
   };
   const focusRowValueField = (columnIndex) => {
     if (!rowValuesEditor || columnIndex === null || Number.isNaN(Number(columnIndex))) return;
-    const fields = Array.from(rowValuesEditor.querySelectorAll('textarea[name^="row_values["]'));
+    const fields = Array.from(rowValuesEditor.querySelectorAll('[name^="row_values["]'));
     const target = fields[Number(columnIndex)] || null;
     if (!target) return;
     target.focus({ preventScroll: false });
@@ -849,6 +971,184 @@
     const cells = Array.isArray(values) ? values : [];
     const summary = cells.map((value) => String(value || '').trim()).filter(Boolean).slice(0, 5).join(' | ');
     return summary !== '' ? summary : 'В строке пока нет значений.';
+  };
+  const buildRowTaskTitle = (values, rowIndex) => {
+    const subject = String(values?.[1] ?? values?.[0] ?? '').trim();
+    return `Связаться: ${subject !== '' ? subject : `строка ${rowIndex}`}`;
+  };
+  const refreshRowDatasets = (rowIndex) => {
+    const row = document.getElementById(`row-${rowIndex}`);
+    if (!row) return;
+
+    const values = rowValues[rowIndex - 1] || [];
+    const state = rowStates[String(rowIndex)] || rowStates[rowIndex] || null;
+    const summary = buildRowSummary(values);
+    const subject = String(values?.[1] ?? values?.[0] ?? '').trim();
+    row.dataset.rowText = [summary, state?.comment || '', state?.assigned_user_name || '', state?.status_label || '']
+      .join(' ')
+      .trim()
+      .toLowerCase();
+
+    const taskButton = row.querySelector('[data-row-task]');
+    if (taskButton) {
+      taskButton.setAttribute('data-row-summary', summary);
+      taskButton.setAttribute('data-row-title', buildRowTaskTitle(values, rowIndex));
+    }
+
+    const workButton = row.querySelector('[data-row-work]');
+    if (workButton) {
+      workButton.setAttribute('data-row-summary', summary);
+      workButton.setAttribute('data-row-title', subject);
+    }
+  };
+  const buildRowUpdatePayload = (rowIndex) => {
+    const params = new URLSearchParams();
+    params.set('_token', csrfToken);
+    params.set('_method', 'PATCH');
+    if (scopeValue !== '') params.set('scope', scopeValue);
+    if (String(ownerIdValue) !== '') params.set('owner_id', String(ownerIdValue));
+    params.set('workbook', String(workbookValue));
+    (rowValues[rowIndex - 1] || []).forEach((value, index) => {
+      params.append(`row_values[${index}]`, String(value ?? ''));
+    });
+
+    return params;
+  };
+  const persistInlineSelect = async (select) => {
+    const rowIndex = Number(select.getAttribute('data-row-index') || 0);
+    const columnIndex = Number(select.getAttribute('data-col-index') || 0);
+    const cell = select.closest('.sheet-cell');
+    if (!rowIndex || Number.isNaN(columnIndex)) return;
+
+    const previousValue = String(rowValues[rowIndex - 1]?.[columnIndex] ?? '');
+    const nextValue = String(select.value ?? '');
+    if (previousValue === nextValue) return;
+
+    rowValues[rowIndex - 1][columnIndex] = nextValue;
+    select.classList.remove('is-error');
+    select.classList.add('is-saving');
+
+    try {
+      const response = await fetch(rowUpdateRouteTemplate.replace('__ROW__', String(rowIndex)), {
+        method: 'POST',
+        headers: {
+          'X-CSRF-TOKEN': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest',
+          'Accept': 'text/html,application/json',
+        },
+        credentials: 'same-origin',
+        body: buildRowUpdatePayload(rowIndex),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      cell?.classList.toggle('sheet-cell-empty', nextValue === '');
+      refreshRowDatasets(rowIndex);
+      applyFilter();
+      select.classList.remove('is-saving');
+    } catch (error) {
+      rowValues[rowIndex - 1][columnIndex] = previousValue;
+      select.value = previousValue;
+      cell?.classList.toggle('sheet-cell-empty', previousValue === '');
+      select.classList.remove('is-saving');
+      select.classList.add('is-error');
+      window.setTimeout(() => select.classList.remove('is-error'), 1800);
+    }
+  };
+  const metricValueControl = (metric, index) => {
+    const columnIndex = Number(metric?.column_index ?? 0);
+    const column = columnDefinitions[columnIndex] || null;
+    const operator = String(metric?.operator || 'equals');
+    const currentValue = String(metric?.value ?? '');
+
+    if (operator === 'filled' || operator === 'empty') {
+      return `
+        <input type="hidden" name="metrics[${index}][value]" value="">
+        <input type="text" class="form-control form-control-sm" value="Значение не требуется" disabled>
+      `;
+    }
+
+    if (column?.type === 'select' && (operator === 'equals' || operator === 'not_equals')) {
+      const optionMarkup = ['<option value=""></option>']
+        .concat((column.options || []).map((option) => {
+          const optionValue = String(option?.value ?? '');
+          const optionLabel = String(option?.label ?? optionValue);
+          const selected = optionValue === currentValue ? ' selected' : '';
+          return `<option value="${escapeHtml(optionValue)}"${selected}>${escapeHtml(optionLabel)}</option>`;
+        }))
+        .join('');
+
+      return `<select class="form-select form-select-sm" name="metrics[${index}][value]" data-metric-value>${optionMarkup}</select>`;
+    }
+
+    if (column?.type === 'date' && (operator === 'date_older_than_days' || operator === 'date_newer_than_days')) {
+      return `<input type="number" min="0" step="1" class="form-control form-control-sm" name="metrics[${index}][value]" value="${escapeHtml(currentValue)}" placeholder="14" data-metric-value>`;
+    }
+
+    if (column?.type === 'number' && (operator === 'number_gte' || operator === 'number_lte')) {
+      return `<input type="number" step="any" class="form-control form-control-sm" name="metrics[${index}][value]" value="${escapeHtml(currentValue)}" data-metric-value>`;
+    }
+
+    return `<input type="text" class="form-control form-control-sm" name="metrics[${index}][value]" value="${escapeHtml(currentValue)}" data-metric-value placeholder="Значение">`;
+  };
+  const metricRowMarkup = (metric, index) => {
+    const operatorOptions = Object.entries(metricOperatorOptions)
+      .map(([value, label]) => `<option value="${escapeHtml(value)}"${String(metric?.operator || 'equals') === value ? ' selected' : ''}>${escapeHtml(label)}</option>`)
+      .join('');
+    const toneOptions = Object.entries(metricToneOptions)
+      .map(([value, label]) => `<option value="${escapeHtml(value)}"${String(metric?.tone || 'blue') === value ? ' selected' : ''}>${escapeHtml(label)}</option>`)
+      .join('');
+    const columnOptions = columnDefinitions
+      .map((column, columnIndex) => `<option value="${columnIndex}"${Number(metric?.column_index ?? 0) === columnIndex ? ' selected' : ''}>${escapeHtml(column.label)}</option>`)
+      .join('');
+
+    return `
+      <div class="sheet-metric-row" data-metric-row data-metric-index="${index}">
+        <div>
+          <label class="form-label">Название карточки</label>
+          <input type="text" class="form-control form-control-sm" name="metrics[${index}][label]" value="${escapeHtml(metric?.label || '')}" placeholder="Например: Работают с нами" data-metric-label>
+        </div>
+        <div>
+          <label class="form-label">Колонка</label>
+          <select class="form-select form-select-sm" name="metrics[${index}][column_index]" data-metric-column>${columnOptions}</select>
+        </div>
+        <div>
+          <label class="form-label">Условие</label>
+          <select class="form-select form-select-sm" name="metrics[${index}][operator]" data-metric-operator>${operatorOptions}</select>
+        </div>
+        <div>
+          <label class="form-label">Значение / порог</label>
+          ${metricValueControl(metric, index)}
+        </div>
+        <div class="d-flex gap-2 align-items-end">
+          <div class="flex-grow-1">
+            <label class="form-label">Цвет</label>
+            <select class="form-select form-select-sm" name="metrics[${index}][tone]" data-metric-tone>${toneOptions}</select>
+          </div>
+          <button type="button" class="btn btn-outline-danger btn-sm" data-metric-remove>&times;</button>
+        </div>
+      </div>
+    `;
+  };
+  const readMetricRowsFromDom = () => {
+    if (!metricsEditor) return [];
+    return Array.from(metricsEditor.querySelectorAll('[data-metric-row]')).map((row) => ({
+      label: row.querySelector('[data-metric-label]')?.value || '',
+      column_index: Number(row.querySelector('[data-metric-column]')?.value || 0),
+      operator: row.querySelector('[data-metric-operator]')?.value || 'equals',
+      value: row.querySelector('[data-metric-value]')?.value || '',
+      tone: row.querySelector('[data-metric-tone]')?.value || 'blue',
+    }));
+  };
+  const renderMetricsEditor = () => {
+    if (!metricsEditor || !metricsEmpty) return;
+    metricsEditor.innerHTML = metricState.map((metric, index) => metricRowMarkup(metric, index)).join('');
+    metricsEmpty.classList.toggle('d-none', metricState.length > 0);
+  };
+  const syncMetricStateFromDom = () => {
+    metricState.splice(0, metricState.length, ...readMetricRowsFromDom());
   };
   const openRowEditor = (rowIndex, focusColumnIndex = null) => {
     if (!rowModal || !rowForm || !rowMethodInput || !rowPositionInput) return;
@@ -922,12 +1222,19 @@
   cellButtons.forEach((cell) => {
     const rowIndex = cell.getAttribute('data-row-index') || '';
     const colIndex = Number(cell.getAttribute('data-col-index') || 0);
+    if (cell.querySelector('[data-inline-select]')) return;
     cell.addEventListener('dblclick', () => openRowEditor(rowIndex, colIndex));
     cell.addEventListener('keydown', (event) => {
+      if (event.target?.closest('[data-inline-select]')) return;
       if (event.key !== 'Enter' && event.key !== ' ') return;
       event.preventDefault();
       openRowEditor(rowIndex, colIndex);
     });
+  });
+  inlineSelects.forEach((select) => {
+    select.addEventListener('change', () => persistInlineSelect(select));
+    select.addEventListener('click', (event) => event.stopPropagation());
+    select.addEventListener('dblclick', (event) => event.stopPropagation());
   });
   statusQuickButtons.forEach((button) => button.addEventListener('click', () => {
     rowStatusSelect.value = button.dataset.statusQuick || 'new';
@@ -946,8 +1253,42 @@
     renderColumnEditorMode(select);
     select.addEventListener('change', () => renderColumnEditorMode(select));
   });
+  metricAddButton?.addEventListener('click', () => {
+    syncMetricStateFromDom();
+    metricState.push({
+      label: '',
+      column_index: 0,
+      operator: 'equals',
+      value: '',
+      tone: 'blue',
+    });
+    renderMetricsEditor();
+  });
+  metricsEditor?.addEventListener('click', (event) => {
+    const removeButton = event.target.closest('[data-metric-remove]');
+    if (!removeButton) return;
+    syncMetricStateFromDom();
+    const row = removeButton.closest('[data-metric-row]');
+    const index = Number(row?.getAttribute('data-metric-index') || -1);
+    if (index < 0) return;
+    metricState.splice(index, 1);
+    renderMetricsEditor();
+  });
+  metricsEditor?.addEventListener('change', (event) => {
+    const target = event.target;
+    if (!target.closest('[data-metric-row]')) return;
+    syncMetricStateFromDom();
+    renderMetricsEditor();
+  });
   restoreModes();
   applyModes();
+  renderMetricsEditor();
+  rows.forEach((row) => {
+    const rowIndex = Number((row.id || '').replace('row-', ''));
+    if (!Number.isNaN(rowIndex) && rowIndex > 0) {
+      refreshRowDatasets(rowIndex);
+    }
+  });
   applyFilter();
 })();
 </script>
