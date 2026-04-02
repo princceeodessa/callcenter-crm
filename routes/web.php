@@ -58,6 +58,11 @@ Route::post('/login', [AuthController::class, 'login'])->name('login.perform');
 Route::match(['GET', 'POST'], '/logout', [AuthController::class, 'logout'])->name('logout')->middleware('auth');
 
 Route::middleware('auth')->group(function () {
+    // Notifications
+    Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
+    Route::get('/notifications/poll', [NotificationController::class, 'poll'])->name('notifications.poll');
+    Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
+
     Route::middleware('desk')->group(function () {
         Route::get('/deals/kanban', [DealController::class, 'kanban'])->name('deals.kanban');
         Route::get('/deals', [DealController::class, 'index'])->name('deals.index');
@@ -82,11 +87,6 @@ Route::middleware('auth')->group(function () {
         Route::post('/deals/{deal}/tasks', [TaskController::class, 'store'])->name('tasks.store');
         Route::patch('/tasks/{task}', [TaskController::class, 'update'])->name('tasks.update');
         Route::post('/tasks/{task}/complete', [TaskController::class, 'complete'])->name('tasks.complete');
-
-        // Notifications
-        Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
-        Route::get('/notifications/poll', [NotificationController::class, 'poll'])->name('notifications.poll');
-        Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
 
         // Call recordings
         Route::post('/recordings/{recording}/transcribe', [CallRecordingController::class, 'transcribe'])->name('recordings.transcribe');

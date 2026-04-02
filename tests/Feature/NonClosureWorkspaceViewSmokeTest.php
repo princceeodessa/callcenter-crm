@@ -43,7 +43,7 @@ class NonClosureWorkspaceViewSmokeTest extends TestCase
                 'title' => 'Контрагенты Мажор',
                 'source_name' => 'Копия Контрагенты Мажор .xlsx',
                 'owner_user_id' => 2,
-                'summary' => ['category_counts' => ['directory' => 4, 'sales' => 8]],
+                'summary' => ['category_counts' => ['directory' => 4, 'sales' => 8], 'row_count' => 577],
                 'sheets_count' => 12,
                 'imported_at' => now(),
             ]);
@@ -73,10 +73,15 @@ class NonClosureWorkspaceViewSmokeTest extends TestCase
             'activeUsers' => new Collection([$owner]),
             'workbooks' => new Collection([$workbook]),
             'selectedWorkbook' => $workbook,
-            'selectedWorkbookSummary' => $workbook->summary,
+            'selectedWorkbookSummary' => [
+                'sheet_count' => 1,
+                'row_count' => 2,
+                'category_counts' => ['directory' => 1],
+            ],
             'sheets' => new Collection([$sheet]),
             'sheetCategories' => NonClosureWorkbookSheet::categoryOptions(),
             'canManageDocuments' => true,
+            'canContributeDocuments' => true,
             'viewScope' => 'all',
             'ownerFilterId' => 0,
             'ownerStats' => [2 => 1],
@@ -87,7 +92,7 @@ class NonClosureWorkspaceViewSmokeTest extends TestCase
         $this->assertStringContainsString('Таблицы книги', $html);
         $this->assertStringContainsString('Список ОПТ', $html);
         $this->assertStringContainsString('Открыть таблицу', $html);
-        $this->assertStringContainsString('Каталог таблиц', $html);
+        $this->assertStringContainsString('Каталог книг и таблиц', $html);
     }
 
     public function test_sheet_view_renders_full_table_with_row_workspace(): void
@@ -170,6 +175,7 @@ class NonClosureWorkspaceViewSmokeTest extends TestCase
             'activeUsers' => new Collection([$owner, $shared]),
             'selectedSheetSharedIds' => [3],
             'canManageDocuments' => true,
+            'canContributeDocuments' => true,
             'backQuery' => ['scope' => 'all', 'workbook' => 21],
             'rowStatusOptions' => NonClosureSheetRowState::statusOptions(),
             'rowStatusToneMap' => NonClosureSheetRowState::statusToneMap(),

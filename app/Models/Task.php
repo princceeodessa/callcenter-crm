@@ -9,7 +9,7 @@ class Task extends Model
 {
     use BelongsToAccount;
 
-    private const UNASSIGNED_LABEL = "\u{0412}\u{0441}\u{0435}\u{043C}";
+    private const UNASSIGNED_LABEL = 'Всем';
 
     protected $fillable = [
         'account_id',

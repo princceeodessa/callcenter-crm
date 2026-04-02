@@ -243,15 +243,13 @@
         body[data-role="documents_operator"] .navbar a[href$="/settings/users"],
         body[data-role="documents_operator"] .navbar a[href$="/settings/integrations"],
         body[data-role="documents_operator"] .navbar a[href$="/settings/imports/bitrix"],
-        body[data-role="documents_operator"] .navbar a[href$="/notifications"],
         body[data-role="documents_operator"] .navbar a[href$="/deals/create"],
         body[data-role="documents_operator"] .navbar a[href$="/deals/kanban"],
         body[data-role="documents_operator"] .navbar a[href$="/deals"],
         body[data-role="documents_operator"] .navbar a[href$="/tasks"],
         body[data-role="documents_operator"] .navbar a[href$="/deals/closed"],
         body[data-role="documents_operator"] .navbar a[href$="/chats"],
-        body[data-role="documents_operator"] .navbar a[href$="/ceiling-projects"],
-        body[data-role="documents_operator"] .navbar #enableNotifBtn {
+        body[data-role="documents_operator"] .navbar a[href$="/ceiling-projects"] {
             display: none !important;
         }
     </style>
@@ -279,7 +277,9 @@
                     <a class="btn btn-sm btn-outline-light" href="{{ route('deals.closed') }}">Завершённые</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('chats.index') }}">Чаты</a>
                 @endif
-                <a class="btn btn-sm btn-outline-light" href="{{ route('calendar.index') }}">Календарь</a>
+                @if(!$isDocumentsOperator)
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('calendar.index') }}">Календарь</a>
+                @endif
                 @if($isNc)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('nonclosures.index') }}">Документы</a>
                 @endif
@@ -291,7 +291,7 @@
                     <a class="btn btn-sm btn-outline-light" href="{{ route('settings.integrations.index') }}">Интеграции</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('settings.imports.bitrix.index') }}">Импорт Bitrix</a>
                 @endif
-                @if($isPriv)
+                @if($isPriv && !$isDocumentsOperator)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('settings.users.index') }}">Пользователи</a>
                 @endif
 
@@ -307,14 +307,18 @@
                     </div>
                 </div>
 
-                <a class="btn btn-sm btn-outline-light" href="{{ route('reports.monthly') }}">Отчёты</a>
-                @if(!$isMeasurer && !$isConstructor && !$isDocumentsOperator)
+                @if(!$isDocumentsOperator)
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('reports.monthly') }}">Отчёты</a>
+                @endif
+                @if(!$isMeasurer && !$isConstructor)
                     <a class="btn btn-sm btn-warning position-relative" href="{{ route('notifications.index') }}" title="Уведомления" aria-label="Уведомления">
                         <i class="bi bi-bell-fill"></i>
                         <span id="navNotifBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-danger d-none">0</span>
                     </a>
                     <button type="button" class="btn btn-sm btn-outline-info d-none" id="enableNotifBtn" title="Системные уведомления">🔊</button>
-                    <a class="btn btn-sm btn-success" href="{{ route('deals.create') }}">+ Сделка</a>
+                    @if(!$isDocumentsOperator)
+                        <a class="btn btn-sm btn-success" href="{{ route('deals.create') }}">+ Сделка</a>
+                    @endif
                 @endif
                 <a class="btn btn-sm btn-outline-warning" href="{{ route('logout') }}">Выйти</a>
             @endauth
@@ -361,7 +365,7 @@
 </script>
 
 @auth
-@if(!in_array(auth()->user()?->role, ['measurer', 'constructor', 'documents_operator'], true))
+@if(!in_array(auth()->user()?->role, ['measurer', 'constructor'], true))
 <script>
 (() => {
     const badgeEl = document.getElementById('navNotifBadge');

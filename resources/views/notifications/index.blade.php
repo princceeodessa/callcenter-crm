@@ -12,7 +12,8 @@
         @php
           $payload = is_array($n->payload ?? null) ? $n->payload : [];
           $dealId = $payload['deal_id'] ?? null;
-          $url = $dealId ? route('deals.show', ['deal' => $dealId]) : null;
+          $contextUrl = trim((string) ($payload['context_url'] ?? ''));
+          $url = $dealId ? route('deals.show', ['deal' => $dealId]) : ($contextUrl !== '' ? $contextUrl : null);
         @endphp
         <div class="border-bottom pb-2 mb-2">
           <div class="d-flex justify-content-between align-items-start">

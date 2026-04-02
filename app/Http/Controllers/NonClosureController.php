@@ -25,7 +25,8 @@ class NonClosureController extends Controller
         $user = $request->user();
         $workspace = $this->workspaceForUser($request);
         $canManage = $this->canManageDocuments($user);
-        $viewScope = $this->normalizeScope((string) $request->query('scope', $canManage ? 'all' : 'my'));
+        $canContribute = $this->canContributeDocuments($user);
+        $viewScope = $this->normalizeScope((string) $request->query('scope', $this->defaultScopeFor($user, $canManage)));
         $ownerFilterId = (int) ($request->query('owner_id') ?? 0);
 
         $activeUsers = $this->activeUsersForAccount($user);
@@ -48,10 +49,11 @@ class NonClosureController extends Controller
             'activeUsers' => $activeUsers,
             'workbooks' => $workbooks,
             'selectedWorkbook' => $selectedWorkbook,
-            'selectedWorkbookSummary' => (array) ($selectedWorkbook?->summary ?? []),
+            'selectedWorkbookSummary' => $this->workbookSummaryForVisibleSheets($selectedWorkbook, $sheets),
             'sheets' => $sheets,
             'sheetCategories' => NonClosureWorkbookSheet::categoryOptions(),
             'canManageDocuments' => $canManage,
+            'canContributeDocuments' => $canContribute,
             'viewScope' => $viewScope,
             'ownerFilterId' => $ownerFilterId,
             'ownerStats' => $ownerStats,
@@ -107,6 +109,7 @@ class NonClosureController extends Controller
             'activeUsers' => $activeUsers,
             'selectedSheetSharedIds' => $sheetSharedIds,
             'canManageDocuments' => $canManage,
+            'canContributeDocuments' => $this->canContributeDocuments($user),
             'backQuery' => $backQuery,
             'rowStatusOptions' => NonClosureSheetRowState::statusOptions(),
             'rowStatusToneMap' => NonClosureSheetRowState::statusToneMap(),
@@ -501,6 +504,8 @@ class NonClosureController extends Controller
 
     public function updateWorkspace(Request $request)
     {
+        $this->ensureDocumentContributionAccess($request);
+
         $workspace = $this->workspaceForUser($request);
         $data = $request->validate([
             'title' => ['required', 'string', 'max:255'],
@@ -524,7 +529,7 @@ class NonClosureController extends Controller
 
     public function importWorkbook(Request $request, NonClosureWorkbookImportService $service)
     {
-        $this->ensureDocumentManagementAccess($request);
+        $this->ensureDocumentContributionAccess($request);
 
         $data = $request->validate([
             'title' => ['nullable', 'string', 'max:255'],
@@ -710,8 +715,17 @@ class NonClosureController extends Controller
     ): Collection {
         $query = NonClosureWorkbook::query()
             ->where('workspace_id', $workspace->id)
-            ->with(['owner:id,name', 'uploadedBy:id,name'])
-            ->withCount('sheets');
+            ->with(['owner:id,name', 'uploadedBy:id,name']);
+
+        if ($canManage) {
+            $query->withCount('sheets');
+        } else {
+            $query->withCount([
+                'sheets' => function ($sheetQuery) use ($user) {
+                    $sheetQuery->accessibleFor($user);
+                },
+            ]);
+        }
 
         if (!$canManage) {
             $query->where(function ($inner) use ($user) {
@@ -754,6 +768,28 @@ class NonClosureController extends Controller
         }
 
         return $query->orderBy('position')->orderBy('id')->get();
+    }
+
+    private function workbookSummaryForVisibleSheets(?NonClosureWorkbook $workbook, Collection $sheets): array
+    {
+        if (!$workbook) {
+            return [
+                'sheet_count' => 0,
+                'row_count' => 0,
+                'category_counts' => [],
+                'source_name' => null,
+            ];
+        }
+
+        return [
+            'sheet_count' => $sheets->count(),
+            'row_count' => (int) $sheets->sum('row_count'),
+            'category_counts' => $sheets
+                ->groupBy(fn (NonClosureWorkbookSheet $sheet) => $sheet->category)
+                ->map(fn (Collection $items) => $items->count())
+                ->all(),
+            'source_name' => $workbook->source_name,
+        ];
     }
 
     private function resolveSheetForView(NonClosureWorkbookSheet $sheet, User $user, bool $canManage): NonClosureWorkbookSheet
@@ -816,14 +852,35 @@ class NonClosureController extends Controller
         return in_array($scope, ['my', 'shared', 'all'], true) ? $scope : 'all';
     }
 
+    private function defaultScopeFor(User $user, bool $canManage): string
+    {
+        if ($canManage || $user->role === 'documents_operator') {
+            return 'all';
+        }
+
+        return 'my';
+    }
+
     private function canManageDocuments(User $user): bool
     {
         return in_array($user->role, ['admin', 'main_operator'], true);
     }
 
+    private function canContributeDocuments(User $user): bool
+    {
+        return in_array($user->role, ['admin', 'main_operator', 'documents_operator'], true);
+    }
+
     private function ensureDocumentManagementAccess(Request $request): void
     {
         if (!$this->canManageDocuments($request->user())) {
+            abort(403);
+        }
+    }
+
+    private function ensureDocumentContributionAccess(Request $request): void
+    {
+        if (!$this->canContributeDocuments($request->user())) {
             abort(403);
         }
     }
