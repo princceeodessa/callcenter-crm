@@ -250,12 +250,15 @@
           'same_roll_required' => false,
           'special_cutting' => false,
           'seam_enabled' => false,
+          'max_roll_length_m' => 0,
+          'roll_reserve_percent' => 0,
           'shrink_x_percent' => 7,
           'shrink_y_percent' => 7,
           'orientation_mode' => 'parallel_segment',
           'orientation_segment_index' => 0,
           'orientation_offset_m' => 0,
           'seam_offset_m' => 0,
+          'batch_label' => null,
           'comment' => null,
       ], is_array($selectedRoom->production_settings) ? $selectedRoom->production_settings : []);
       $selectedRoomPoints = is_array($selectedRoom->shape_points) ? array_values($selectedRoom->shape_points) : [];
@@ -427,7 +430,7 @@
     <div class="col-xl col-md-4 col-sm-6"><div class="metric-card"><div class="metric-label">Полотно</div><div class="metric-value">{{ $formatDecimal($summary['totals']['recommended_canvas_area_m2'], 'м2') }}</div></div></div>
     <div class="col-xl col-md-4 col-sm-6"><div class="metric-card"><div class="metric-label">Профиль</div><div class="metric-value">{{ $formatDecimal($summary['totals']['recommended_profile_m'], 'м') }}</div></div></div>
     <div class="col-xl col-md-4 col-sm-6"><div class="metric-card"><div class="metric-label">Комнаты</div><div class="metric-value">{{ $summary['totals']['rooms_count'] }}</div></div></div>
-    <div class="col-xl col-md-4 col-sm-6"><div class="metric-card"><div class="metric-label">Полотна</div><div class="metric-value">{{ $summary['totals']['light_line_panels_count'] }}</div></div></div>
+    <div class="col-xl col-md-4 col-sm-6"><div class="metric-card"><div class="metric-label">Полотна</div><div class="metric-value">{{ $summary['totals']['panels_count'] }}</div></div></div>
     <div class="col-xl col-md-4 col-sm-6"><div class="metric-card"><div class="metric-label">Смета</div><div class="metric-value">{{ $formatMoney($summary['estimate']['grand_total']) }}</div></div></div>
   </div>
 
@@ -841,7 +844,7 @@
                     <div class="col-md-4"><b>Площадь:</b> {{ $formatDecimal($metrics['area_m2'], 'м2') }}</div>
                     <div class="col-md-4"><b>Периметр:</b> {{ $formatCentimeters($metrics['perimeter_m']) }}</div>
                     <div class="col-md-4"><b>Свет:</b> {{ $metrics['lighting_points_total'] }}</div>
-                    <div class="col-md-4"><b>Полотна:</b> {{ $metrics['light_line_panels_count'] }}</div>
+                          <div class="col-md-4"><b>Полотна:</b> {{ $metrics['panels_count'] }}</div>
                     <div class="col-md-4"><b>Ниши:</b> {{ $metrics['curtain_niches_count'] }}</div>
                     <div class="col-md-4"><b>Карнизы:</b> {{ $metrics['cornices_count'] }} / {{ $formatCentimeters($metrics['cornice_length_m']) }}</div>
                     <div class="col-md-4"><b>Трубы:</b> {{ $metrics['pipes_count'] }}</div>
@@ -1305,6 +1308,18 @@
                         <div class="col-6">
                           <label class="form-label small mb-1">Смещение шва, см</label>
                           <input type="number" step="1" class="form-control form-control-sm" id="productionSeamOffsetInput" value="0">
+                        </div>
+                        <div class="col-6">
+                          <label class="form-label small mb-1">Допустимая длина рулона, м</label>
+                          <input type="number" step="0.1" min="0" class="form-control form-control-sm" id="productionMaxRollLengthInput" value="0">
+                        </div>
+                        <div class="col-6">
+                          <label class="form-label small mb-1">Техзапас на раскрой, %</label>
+                          <input type="number" step="0.1" min="0" class="form-control form-control-sm" id="productionRollReserveInput" value="0">
+                        </div>
+                        <div class="col-6">
+                          <label class="form-label small mb-1">Партия / рулон</label>
+                          <input type="text" class="form-control form-control-sm" id="productionBatchLabelInput" placeholder="Напр.: Pongs 320 / рулон 14">
                         </div>
                         <div class="col-12">
                           <label class="form-label small mb-1">Комментарий для производства</label>
@@ -1895,6 +1910,9 @@
   const productionSpecialCuttingInput = document.getElementById('productionSpecialCuttingInput');
   const productionSeamEnabledInput = document.getElementById('productionSeamEnabledInput');
   const productionSeamOffsetInput = document.getElementById('productionSeamOffsetInput');
+  const productionMaxRollLengthInput = document.getElementById('productionMaxRollLengthInput');
+  const productionRollReserveInput = document.getElementById('productionRollReserveInput');
+  const productionBatchLabelInput = document.getElementById('productionBatchLabelInput');
   const productionCommentInput = document.getElementById('productionCommentInput');
   const productionSummaryText = document.getElementById('productionSummaryText');
   const prevSegmentBtn = document.getElementById('prevSegmentBtn');
@@ -2002,6 +2020,7 @@
       cut_segment_index: Number.isInteger(shape.cut_segment_index) ? shape.cut_segment_index : (Number.isFinite(Number(shape.cut_segment_index)) ? Number(shape.cut_segment_index) : null),
       offset_m: Number.isFinite(Number(shape.offset_m)) ? round(Number(shape.offset_m)) : null,
       cut_offset_m: Number.isFinite(Number(shape.cut_offset_m)) ? round(Number(shape.cut_offset_m)) : null,
+      span_m: Number.isFinite(Number(shape.span_m)) ? round(Number(shape.span_m)) : null,
       depth_m: Number.isFinite(Number(shape.depth_m)) ? round(Number(shape.depth_m)) : null,
       radius_m: Number.isFinite(Number(shape.radius_m)) ? round(Number(shape.radius_m)) : null,
       area_delta_m2: Number.isFinite(Number(shape.area_delta_m2)) ? round(Number(shape.area_delta_m2)) : null,
@@ -2107,12 +2126,15 @@
     same_roll_required: Boolean(initialProductionSettings?.same_roll_required),
     special_cutting: Boolean(initialProductionSettings?.special_cutting),
     seam_enabled: Boolean(initialProductionSettings?.seam_enabled),
+    max_roll_length_m: Number.isFinite(Number(initialProductionSettings?.max_roll_length_m)) ? Math.max(0, round(Number(initialProductionSettings?.max_roll_length_m))) : 0,
+    roll_reserve_percent: Number.isFinite(Number(initialProductionSettings?.roll_reserve_percent)) ? Math.max(0, round(Number(initialProductionSettings?.roll_reserve_percent))) : 0,
     shrink_x_percent: Number.isFinite(Number(initialProductionSettings?.shrink_x_percent)) ? round(Number(initialProductionSettings?.shrink_x_percent)) : 7,
     shrink_y_percent: Number.isFinite(Number(initialProductionSettings?.shrink_y_percent)) ? round(Number(initialProductionSettings?.shrink_y_percent)) : 7,
     orientation_mode: ['parallel_segment', 'perpendicular_segment', 'center_segment', 'center_room'].includes(String(initialProductionSettings?.orientation_mode ?? 'parallel_segment')) ? String(initialProductionSettings?.orientation_mode ?? 'parallel_segment') : 'parallel_segment',
     orientation_segment_index: Number.isFinite(Number(initialProductionSettings?.orientation_segment_index)) ? Math.max(0, Number(initialProductionSettings?.orientation_segment_index)) : 0,
     orientation_offset_m: Number.isFinite(Number(initialProductionSettings?.orientation_offset_m)) ? round(Number(initialProductionSettings?.orientation_offset_m)) : 0,
     seam_offset_m: Number.isFinite(Number(initialProductionSettings?.seam_offset_m)) ? round(Number(initialProductionSettings?.seam_offset_m)) : 0,
+    batch_label: typeof initialProductionSettings?.batch_label === 'string' ? initialProductionSettings.batch_label : '',
     comment: typeof initialProductionSettings?.comment === 'string' ? initialProductionSettings.comment : '',
   };
 
@@ -2725,8 +2747,8 @@
     });
   };
 
-  const buildFeatureFromSelectedSegment = () => {
-    const segment = getSegmentGeometry(selectedSegmentIndex);
+  const buildFeatureFromSelectedSegment = (segmentIndex = selectedSegmentIndex, base = null) => {
+    const segment = getSegmentGeometry(segmentIndex);
     if (!segment) return null;
 
     const offset = centimetersToMeters(featureWallOffsetInput?.value);
@@ -2734,12 +2756,12 @@
     const depth = centimetersToMeters(featureDepthInput?.value);
     const direction = featureDirectionInput?.value === 'outward' ? 'outward' : 'inward';
     const inward = direction === 'inward';
-    const normal = getSegmentNormal(selectedSegmentIndex, inward);
+    const normal = getSegmentNormal(segmentIndex, inward);
     const kind = featureKindInput?.value ?? 'cutout';
     const cutLine = Boolean(featureCutLineInput?.checked) && kind === 'cutout';
     const selectedCutSegment = Number.isFinite(Number(featureCutSegmentInput?.value))
       ? Number(featureCutSegmentInput.value)
-      : selectedSegmentIndex;
+      : segmentIndex;
     const cutSegment = getSegmentGeometry(selectedCutSegment);
     const requestedCutOffset = centimetersToMeters(featureCutOffsetInput?.value);
     if (!normal || offset === null || span === null || depth === null || span <= 0 || depth <= 0) {
@@ -2748,8 +2770,8 @@
 
     const clampedOffset = clamp(offset, 0, segment.length);
     const clampedSpan = clamp(span, 0.05, Math.max(segment.length - clampedOffset, 0.05));
-    const startAnchor = pointAlongSegment(selectedSegmentIndex, clampedOffset);
-    const endAnchor = pointAlongSegment(selectedSegmentIndex, clampedOffset + clampedSpan);
+    const startAnchor = pointAlongSegment(segmentIndex, clampedOffset);
+    const endAnchor = pointAlongSegment(segmentIndex, clampedOffset + clampedSpan);
     if (!startAnchor || !endAnchor) {
       return null;
     }
@@ -2795,7 +2817,7 @@
     }
 
     return normalizeFeatureShape({
-      id: `feature_${Date.now()}`,
+      id: base?.id ?? `feature_${Date.now()}`,
       kind,
       figure,
       ...payload,
@@ -2803,7 +2825,7 @@
       y_m: payload.y_m ?? Math.min(p1.y, p2.y, p3.y, p4.y),
       width_m: payload.width_m ?? (Math.max(p1.x, p2.x, p3.x, p4.x) - Math.min(p1.x, p2.x, p3.x, p4.x)),
       height_m: payload.height_m ?? (Math.max(p1.y, p2.y, p3.y, p4.y) - Math.min(p1.y, p2.y, p3.y, p4.y)),
-      source_segment_index: selectedSegmentIndex,
+      source_segment_index: segmentIndex,
       cut_segment_index: cutLine && cutSegment ? selectedCutSegment : null,
       offset_m: round(clampedOffset),
       cut_offset_m: cutLine
@@ -2813,20 +2835,21 @@
             cutSegment?.length ?? segment.length
           ))
         : null,
+      span_m: round(clampedSpan),
       depth_m: round(depth),
       area_delta_m2: areaDelta,
       perimeter_delta_m: perimeterDelta,
       direction,
       cut_line: cutLine,
       separate_panel: Boolean(featureSeparatePanelInput?.checked),
-      label: featureLabelInput?.value ?? '',
+      label: featureLabelInput?.value ?? base?.label ?? '',
     });
   };
 
-  const buildRoundedCornerFeature = () => {
+  const buildRoundedCornerFeature = (pointIndex = selectedPointIndex, base = null) => {
     if (!Array.isArray(points) || points.length < 3) return null;
 
-    const cornerIndex = ((selectedPointIndex % points.length) + points.length) % points.length;
+    const cornerIndex = ((pointIndex % points.length) + points.length) % points.length;
     const current = points[cornerIndex];
     const previous = points[(cornerIndex - 1 + points.length) % points.length];
     const next = points[(cornerIndex + 1) % points.length];
@@ -2910,7 +2933,7 @@
     const removedStraight = distanceBetweenPoints(current, tangentStart) + distanceBetweenPoints(current, tangentEnd);
 
     return normalizeFeatureShape({
-      id: `feature_${Date.now()}`,
+      id: base?.id ?? `feature_${Date.now()}`,
       kind,
       figure: 'rounded_corner',
       shape_points: arcPoints,
@@ -2925,7 +2948,7 @@
       direction: 'inward',
       cut_line: false,
       separate_panel: Boolean(featureSeparatePanelInput?.checked),
-      label: featureLabelInput?.value ?? `Скругление ${pointLabel(cornerIndex)}`,
+      label: featureLabelInput?.value ?? base?.label ?? `Скругление ${pointLabel(cornerIndex)}`,
     });
   };
 
@@ -3248,6 +3271,9 @@
     if (productionSpecialCuttingInput) productionSpecialCuttingInput.checked = Boolean(productionSettings.special_cutting);
     if (productionSeamEnabledInput) productionSeamEnabledInput.checked = Boolean(productionSettings.seam_enabled);
     if (productionSeamOffsetInput) productionSeamOffsetInput.value = String(metersToCentimeters(productionSettings.seam_offset_m));
+    if (productionMaxRollLengthInput) productionMaxRollLengthInput.value = String(Number(productionSettings.max_roll_length_m ?? 0));
+    if (productionRollReserveInput) productionRollReserveInput.value = String(Number(productionSettings.roll_reserve_percent ?? 0));
+    if (productionBatchLabelInput) productionBatchLabelInput.value = productionSettings.batch_label ?? '';
     if (productionCommentInput) productionCommentInput.value = productionSettings.comment ?? '';
   };
 
@@ -3264,6 +3290,9 @@
     productionSettings.special_cutting = Boolean(productionSpecialCuttingInput?.checked);
     productionSettings.seam_enabled = Boolean(productionSeamEnabledInput?.checked);
     productionSettings.seam_offset_m = centimetersToMeters(productionSeamOffsetInput?.value ?? productionSettings.seam_offset_m ?? 0) ?? 0;
+    productionSettings.max_roll_length_m = Math.max(0, round(Number(productionMaxRollLengthInput?.value ?? productionSettings.max_roll_length_m ?? 0) || 0));
+    productionSettings.roll_reserve_percent = Math.max(0, round(Number(productionRollReserveInput?.value ?? productionSettings.roll_reserve_percent ?? 0) || 0));
+    productionSettings.batch_label = productionBatchLabelInput?.value ?? '';
     productionSettings.comment = productionCommentInput?.value ?? '';
   };
 
@@ -3347,7 +3376,16 @@
     const seamText = productionSettings.seam_enabled
       ? `, шов ${metersToCentimeters(productionSettings.seam_offset_m)} см`
       : '';
-    productionSummaryText.textContent = `Полотно: ${textureLabelMap[productionSettings.texture] ?? productionSettings.texture}, рулон ${productionSettings.roll_width_cm} см, гарпун ${productionSettings.harpoon_type}, усадка ${productionSettings.shrink_x_percent}%/${productionSettings.shrink_y_percent}%, ${orientationLabelMap[productionSettings.orientation_mode] ?? productionSettings.orientation_mode}${productionSettings.orientation_mode === 'center_room' ? '' : ` ${segment}`}, смещение ${metersToCentimeters(productionSettings.orientation_offset_m)} см${seamText}.`;
+    const rollLimitText = Number(productionSettings.max_roll_length_m ?? 0) > 0
+      ? `, лимит ${productionSettings.max_roll_length_m} м`
+      : '';
+    const reserveText = Number(productionSettings.roll_reserve_percent ?? 0) > 0
+      ? `, техзапас ${productionSettings.roll_reserve_percent}%`
+      : '';
+    const batchText = String(productionSettings.batch_label ?? '').trim() !== ''
+      ? `, партия ${String(productionSettings.batch_label).trim()}`
+      : '';
+    productionSummaryText.textContent = `Полотно: ${textureLabelMap[productionSettings.texture] ?? productionSettings.texture}, рулон ${productionSettings.roll_width_cm} см, гарпун ${productionSettings.harpoon_type}, усадка ${productionSettings.shrink_x_percent}%/${productionSettings.shrink_y_percent}%, ${orientationLabelMap[productionSettings.orientation_mode] ?? productionSettings.orientation_mode}${productionSettings.orientation_mode === 'center_room' ? '' : ` ${segment}`}, смещение ${metersToCentimeters(productionSettings.orientation_offset_m)} см${seamText}${rollLimitText}${reserveText}${batchText}.`;
   };
 
   const panelBoundsFromPointSet = (pointSet) => {
@@ -3409,6 +3447,17 @@
       }, offset + index);
     })
     .filter(Boolean);
+
+  const featureBlocksMainPanel = (shape) => Boolean(shape && !shape.separate_panel && ['cutout', 'shift'].includes(shape.kind));
+  const featureCutConnectorWidthMeters = 0.02;
+  const buildBlockingFeatureGeometry = () => featureShapes
+    .filter((shape) => featureBlocksMainPanel(shape))
+    .map((shape) => ({
+      shape,
+      points: featureShapePoints(shape),
+      connector: featureCutConnector(shape),
+    }))
+    .filter((item) => Array.isArray(item.points) && item.points.length >= 3);
 
   const panelPointSet = (panel) => {
     if (Array.isArray(panel?.shape_points) && panel.shape_points.length >= 3) {
@@ -3550,8 +3599,12 @@
     }
 
     const featurePanels = buildSeparateFeaturePanelsPreview();
+    const blockingFeatures = buildBlockingFeatureGeometry();
     const hasBlockingLines = lightLineShapes.some((shape) => Array.isArray(shape.points) && shape.points.length >= 2 && Number(shape.width_m ?? 0) > 0);
-    if (!hasBlockingLines) {
+    const hasBlockingFeatures = blockingFeatures.length > 0;
+    const hasFeatureConnectors = blockingFeatures.some((item) => item.connector && Array.isArray(item.connector.points) && item.connector.points.length >= 2);
+
+    if (!hasBlockingLines && !hasBlockingFeatures) {
       const roomBounds = panelBoundsFromPointSet(points);
       const roomPanel = normalizeDerivedPanel({
         id: 'panel_1',
@@ -3561,6 +3614,26 @@
         centroid: polygonCentroid(),
         bounds: roomBounds,
         shape_points: clonePoints(points),
+        source: 'room',
+        production: { ...productionSettings },
+      });
+
+      return applyProductionSeamToPanels([roomPanel, ...buildSeparateFeaturePanelsPreview(roomPanel ? 1 : 0)].filter(Boolean));
+    }
+
+    if (!hasBlockingLines && hasBlockingFeatures && !hasFeatureConnectors) {
+      const holePolygons = blockingFeatures.map((item) => clonePoints(item.points)).filter((hole) => hole.length >= 3);
+      const holesArea = holePolygons.reduce((sum, hole) => sum + Math.abs(polygonArea(hole)), 0);
+      const roomBounds = panelBoundsFromPointSet(points);
+      const roomPanel = normalizeDerivedPanel({
+        id: 'panel_1',
+        label: 'Полотно 1',
+        area_m2: round(Math.max(0, polygonArea(points) - holesArea)),
+        cells_count: 0,
+        centroid: polygonCentroid(),
+        bounds: roomBounds,
+        shape_points: clonePoints(points),
+        holes: holePolygons,
         source: 'room',
         production: { ...productionSettings },
       });
@@ -3596,7 +3669,17 @@
           return distanceToPolyline(center, shape.points ?? [], Boolean(shape.closed)) <= halfWidth;
         });
 
-        if (blockedByLine) {
+        const blockedByFeature = blockingFeatures.some((item) => {
+          if (isPointInsidePolygon(center, item.points)) {
+            return true;
+          }
+
+          return item.connector
+            ? distanceToPolyline(center, item.connector.points, false) <= ((Number(item.connector.width_m ?? featureCutConnectorWidthMeters)) / 2)
+            : false;
+        });
+
+        if (blockedByLine || blockedByFeature) {
           grid[row][col] = -1;
         }
       }
@@ -4070,12 +4153,174 @@
     bottom: Number(shape.y_m ?? 0) + Number(shape.height_m ?? 0),
   });
 
-  const featureShapePoints = (shape) => {
-    if (Array.isArray(shape.shape_points) && shape.shape_points.length >= 3) {
+  const estimateArcSpanFromBounds = (shape, segmentIndex = shape?.source_segment_index) => {
+    if (Number.isFinite(Number(shape?.span_m)) && Number(shape.span_m) > 0) {
+      return Number(shape.span_m);
+    }
+
+    const segment = Number.isInteger(segmentIndex) ? getSegmentGeometry(segmentIndex) : null;
+    const depth = Number(shape?.depth_m ?? NaN);
+    const width = Number(shape?.width_m ?? NaN);
+    const height = Number(shape?.height_m ?? NaN);
+    if (!segment || !Number.isFinite(depth) || depth <= 0 || !Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
+      return null;
+    }
+
+    const unit = normalizeVector({ x: segment.dx, y: segment.dy });
+    if (!unit) {
+      return null;
+    }
+
+    const absX = Math.abs(unit.x);
+    const absY = Math.abs(unit.y);
+    const candidates = [];
+    if (absX > 0.0001) {
+      const candidate = (width - (absY * depth)) / absX;
+      if (Number.isFinite(candidate) && candidate > 0.02) {
+        candidates.push(candidate);
+      }
+    }
+    if (absY > 0.0001) {
+      const candidate = (height - (absX * depth)) / absY;
+      if (Number.isFinite(candidate) && candidate > 0.02) {
+        candidates.push(candidate);
+      }
+    }
+
+    if (candidates.length > 0) {
+      return candidates.reduce((sum, value) => sum + value, 0) / candidates.length;
+    }
+
+    return Math.max(width, height);
+  };
+
+  const featureArcPoints = (shape, segmentIndex = shape?.source_segment_index) => {
+    const segment = Number.isInteger(segmentIndex) ? getSegmentGeometry(segmentIndex) : null;
+    const depth = Number(shape?.depth_m ?? NaN);
+    const offset = Number(shape?.offset_m ?? NaN);
+    const span = estimateArcSpanFromBounds(shape, segmentIndex);
+    const inward = (shape?.direction ?? 'inward') !== 'outward';
+    const normal = Number.isInteger(segmentIndex) ? getSegmentNormal(segmentIndex, inward) : null;
+    if (!segment || !normal || !Number.isFinite(depth) || depth <= 0 || !Number.isFinite(offset) || !Number.isFinite(span) || span <= 0.02) {
+      return [];
+    }
+
+    const startAnchor = pointAlongSegment(segmentIndex, clamp(offset, 0, segment.length));
+    const endAnchor = pointAlongSegment(segmentIndex, clamp(offset + span, 0, segment.length));
+    if (!startAnchor || !endAnchor) {
+      return [];
+    }
+
+    return buildArcPolyline(
+      { x: startAnchor.x, y: startAnchor.y },
+      { x: endAnchor.x, y: endAnchor.y },
+      normal,
+      depth
+    );
+  };
+
+  const featureRoundedCornerPoints = (shape, pointIndex = shape?.source_point_index) => {
+    if (!Array.isArray(points) || points.length < 3 || !Number.isInteger(pointIndex)) {
+      return [];
+    }
+
+    const cornerIndex = ((pointIndex % points.length) + points.length) % points.length;
+    const current = points[cornerIndex];
+    const previous = points[(cornerIndex - 1 + points.length) % points.length];
+    const next = points[(cornerIndex + 1) % points.length];
+    const radius = Number(shape?.radius_m ?? NaN);
+    if (!current || !previous || !next || !Number.isFinite(radius) || radius <= 0) {
+      return [];
+    }
+
+    const vectorToPrevious = normalizeVector({
+      x: previous.x - current.x,
+      y: previous.y - current.y,
+    });
+    const vectorToNext = normalizeVector({
+      x: next.x - current.x,
+      y: next.y - current.y,
+    });
+    if (!vectorToPrevious || !vectorToNext) {
+      return [];
+    }
+
+    const rawDot = clamp((vectorToPrevious.x * vectorToNext.x) + (vectorToPrevious.y * vectorToNext.y), -1, 1);
+    const angle = Math.acos(rawDot);
+    if (!Number.isFinite(angle) || angle <= 0.2 || angle >= (Math.PI - 0.05)) {
+      return [];
+    }
+
+    const tangentDistance = radius / Math.tan(angle / 2);
+    const maxDistance = Math.min(distanceBetweenPoints(current, previous), distanceBetweenPoints(current, next)) - 0.02;
+    if (!Number.isFinite(maxDistance) || maxDistance <= 0.02) {
+      return [];
+    }
+
+    const safeDistance = clamp(tangentDistance, 0.03, maxDistance);
+    const safeRadius = round(safeDistance * Math.tan(angle / 2));
+    const bisector = normalizeVector({
+      x: vectorToPrevious.x + vectorToNext.x,
+      y: vectorToPrevious.y + vectorToNext.y,
+    });
+    if (!bisector) {
+      return [];
+    }
+
+    const centerDistance = safeRadius / Math.sin(angle / 2);
+    const tangentStart = {
+      x: round(current.x + (vectorToPrevious.x * safeDistance)),
+      y: round(current.y + (vectorToPrevious.y * safeDistance)),
+    };
+    const tangentEnd = {
+      x: round(current.x + (vectorToNext.x * safeDistance)),
+      y: round(current.y + (vectorToNext.y * safeDistance)),
+    };
+    const centerPoint = {
+      x: round(current.x + (bisector.x * centerDistance)),
+      y: round(current.y + (bisector.y * centerDistance)),
+    };
+
+    let startAngle = Math.atan2(tangentStart.y - centerPoint.y, tangentStart.x - centerPoint.x);
+    let endAngle = Math.atan2(tangentEnd.y - centerPoint.y, tangentEnd.x - centerPoint.x);
+    let delta = endAngle - startAngle;
+    while (delta <= -Math.PI) delta += Math.PI * 2;
+    while (delta > Math.PI) delta -= Math.PI * 2;
+
+    const roundedPoints = [current, tangentStart];
+    const steps = 12;
+    for (let step = 1; step < steps; step += 1) {
+      const nextAngle = startAngle + ((delta * step) / steps);
+      roundedPoints.push({
+        x: round(centerPoint.x + (Math.cos(nextAngle) * safeRadius)),
+        y: round(centerPoint.y + (Math.sin(nextAngle) * safeRadius)),
+      });
+    }
+    roundedPoints.push(tangentEnd);
+
+    return roundedPoints;
+  };
+
+  const featureShapePoints = (shape, options = {}) => {
+    if (!options.ignoreStoredPoints && Array.isArray(shape.shape_points) && shape.shape_points.length >= 3) {
       return shape.shape_points.map((point) => ({
         x: round(Number(point.x ?? 0)),
         y: round(Number(point.y ?? 0)),
       }));
+    }
+
+    if (shape.figure === 'arc') {
+      const arcPoints = featureArcPoints(shape);
+      if (arcPoints.length >= 3) {
+        return arcPoints;
+      }
+    }
+
+    if (shape.figure === 'rounded_corner') {
+      const roundedCornerPoints = featureRoundedCornerPoints(shape);
+      if (roundedCornerPoints.length >= 3) {
+        return roundedCornerPoints;
+      }
     }
 
     const bounds = featureShapeBounds(shape);
@@ -4133,10 +4378,13 @@
       return null;
     }
 
+    const shapeSpan = Number.isFinite(Number(shape.span_m))
+      ? Number(shape.span_m)
+      : Number(shape.width_m ?? 0);
     const baseOffset = Number.isFinite(Number(shape.cut_offset_m))
       ? Number(shape.cut_offset_m)
       : (Number.isFinite(Number(shape.offset_m))
-      ? Number(shape.offset_m) + (Number(shape.width_m ?? 0) / 2)
+      ? Number(shape.offset_m) + (shapeSpan / 2)
       : (segment.length / 2));
     const basePoint = pointAlongSegment(segmentIndex, clamp(baseOffset, 0, segment.length));
     if (!basePoint) {
@@ -4225,6 +4473,9 @@
   const syncSelectedFeatureInspector = () => {
     const currentShape = selectedFeatureIndex >= 0 ? featureShapes[selectedFeatureIndex] : null;
     const bounds = geometryBounds();
+    const currentArcSpan = currentShape?.figure === 'arc'
+      ? estimateArcSpanFromBounds(currentShape)
+      : null;
     const fallbackX = Number.isFinite(bounds.minX) && Number.isFinite(bounds.maxX)
       ? round((bounds.minX + bounds.maxX) / 2)
       : 1;
@@ -4236,7 +4487,9 @@
     if (featureFigureInput) featureFigureInput.value = currentShape?.figure ?? 'rectangle';
     if (featureXInput) featureXInput.value = currentShape ? metersToCentimeters(currentShape.x_m) : metersToCentimeters(fallbackX);
     if (featureYInput) featureYInput.value = currentShape ? metersToCentimeters(currentShape.y_m) : metersToCentimeters(fallbackY);
-    if (featureWidthInput) featureWidthInput.value = currentShape ? metersToCentimeters(currentShape.width_m) : 60;
+    if (featureWidthInput) featureWidthInput.value = currentShape
+      ? metersToCentimeters(currentShape.figure === 'arc' && Number.isFinite(currentArcSpan) ? currentArcSpan : currentShape.width_m)
+      : 60;
     if (featureHeightInput) featureHeightInput.value = currentShape ? metersToCentimeters(currentShape.height_m) : 60;
     if (featureRadiusInput) featureRadiusInput.value = currentShape?.radius_m ? metersToCentimeters(currentShape.radius_m) : 25;
     if (featureWallOffsetInput) featureWallOffsetInput.value = currentShape?.offset_m ? metersToCentimeters(currentShape.offset_m) : 30;
@@ -4291,6 +4544,7 @@
             cutSegment?.length ?? workspaceWidth
           ))
         : null,
+      span_m: base.span_m ?? null,
       depth_m: base.depth_m ?? null,
       radius_m: radius ?? base.radius_m ?? null,
       area_delta_m2: base.area_delta_m2 ?? null,
@@ -4323,7 +4577,9 @@
         : (Number.isInteger(shape.source_segment_index) ? `Сторона ${segmentLabel(shape.source_segment_index)}` : `X ${metersToCentimeters(shape.x_m)} / Y ${metersToCentimeters(shape.y_m)}`);
       const sizeLabel = shape.figure === 'rounded_corner'
         ? `R ${metersToCentimeters(shape.radius_m ?? 0)} см`
-        : `${metersToCentimeters(shape.width_m)}×${metersToCentimeters(shape.height_m)} см`;
+        : (shape.figure === 'arc'
+          ? `пролёт ${metersToCentimeters(estimateArcSpanFromBounds(shape) ?? shape.width_m)} см`
+          : `${metersToCentimeters(shape.width_m)}×${metersToCentimeters(shape.height_m)} см`);
       const offsetBits = [];
       if (Number.isFinite(Number(shape.offset_m))) {
         offsetBits.push(`отступ ${metersToCentimeters(shape.offset_m)} см`);
@@ -4683,6 +4939,7 @@
 
     if (Number.isFinite(Number(shape.offset_m))) nextShape.offset_m = round(Number(shape.offset_m) * normalizedScale);
     if (Number.isFinite(Number(shape.cut_offset_m))) nextShape.cut_offset_m = round(Number(shape.cut_offset_m) * normalizedScale);
+    if (Number.isFinite(Number(shape.span_m))) nextShape.span_m = round(Number(shape.span_m) * normalizedScale);
     if (Number.isFinite(Number(shape.depth_m))) nextShape.depth_m = round(Number(shape.depth_m) * normalizedScale);
     if (Number.isFinite(Number(shape.radius_m))) nextShape.radius_m = round(Number(shape.radius_m) * normalizedScale);
     if (Number.isFinite(Number(shape.area_delta_m2))) nextShape.area_delta_m2 = round(Number(shape.area_delta_m2) * normalizedScale * normalizedScale, 4);
@@ -5484,7 +5741,11 @@
       layer.appendChild(roomLabel);
     }
 
-    if (Array.isArray(lightLinePanelsPreview) && lightLinePanelsPreview.length > 1) {
+    const shouldRenderPanelOverlay = Array.isArray(lightLinePanelsPreview) && lightLinePanelsPreview.some((panel) => {
+      const hasHoles = Array.isArray(panel?.holes) && panel.holes.length > 0;
+      return hasHoles || ['feature', 'light_line_split', 'seam_split'].includes(panel?.source);
+    });
+    if (shouldRenderPanelOverlay) {
       lightLinePanelsPreview.forEach((panel, index) => {
         if (Array.isArray(panel.shape_points) && panel.shape_points.length >= 3) {
           const pathData = panelPathData(panel);
@@ -5910,7 +6171,8 @@
   cancelPolygonFeatureBtn?.addEventListener('click', cancelPolygonFeatureDraft);
   updateFeatureShapeBtn?.addEventListener('click', () => {
     if (selectedFeatureIndex < 0 || !featureShapes[selectedFeatureIndex]) return;
-    if (featureShapes[selectedFeatureIndex]?.figure === 'polygon') {
+    const currentShape = featureShapes[selectedFeatureIndex];
+    if (currentShape?.figure === 'polygon') {
       const polygonKind = featureKindInput?.value ?? featureShapes[selectedFeatureIndex].kind;
       const polygonCutLine = Boolean(featureCutLineInput?.checked) && polygonKind === 'cutout';
       const polygonCutSegmentIndex = Number.isFinite(Number(featureCutSegmentInput?.value))
@@ -5941,7 +6203,32 @@
       render();
       return;
     }
-    const shape = buildFeatureShapeFromInputs(featureShapes[selectedFeatureIndex]);
+
+    if (currentShape?.figure === 'arc') {
+      const segmentIndex = Number.isInteger(currentShape.source_segment_index)
+        ? currentShape.source_segment_index
+        : selectedSegmentIndex;
+      const nextArcShape = buildFeatureFromSelectedSegment(segmentIndex, currentShape);
+      if (!nextArcShape) return;
+      pushHistory();
+      featureShapes[selectedFeatureIndex] = nextArcShape;
+      render();
+      return;
+    }
+
+    if (currentShape?.figure === 'rounded_corner') {
+      const pointIndex = Number.isInteger(currentShape.source_point_index)
+        ? currentShape.source_point_index
+        : selectedPointIndex;
+      const nextRoundedShape = buildRoundedCornerFeature(pointIndex, currentShape);
+      if (!nextRoundedShape) return;
+      pushHistory();
+      featureShapes[selectedFeatureIndex] = nextRoundedShape;
+      render();
+      return;
+    }
+
+    const shape = buildFeatureShapeFromInputs(currentShape);
     if (!shape) return;
     pushHistory();
     featureShapes[selectedFeatureIndex] = shape;
@@ -6003,6 +6290,9 @@
     productionSpecialCuttingInput,
     productionSeamEnabledInput,
     productionSeamOffsetInput,
+    productionMaxRollLengthInput,
+    productionRollReserveInput,
+    productionBatchLabelInput,
     productionCommentInput,
   ].filter(Boolean).forEach((inputElement) => {
     const eventName = inputElement instanceof HTMLSelectElement || (inputElement instanceof HTMLInputElement && inputElement.type === 'checkbox')
@@ -6240,6 +6530,9 @@
       productionShrinkXInput,
       productionShrinkYInput,
       productionSeamOffsetInput,
+      productionMaxRollLengthInput,
+      productionRollReserveInput,
+      productionBatchLabelInput,
       productionCommentInput,
     ].includes(event.target)) {
       updateProductionSettingsFromInputs();

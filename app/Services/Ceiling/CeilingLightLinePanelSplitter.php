@@ -2,15 +2,19 @@
 
 namespace App\Services\Ceiling;
 
+use App\Models\CeilingProjectRoom;
+use App\Support\Ceiling\FeatureShapeGeometry;
+
 class CeilingLightLinePanelSplitter
 {
     /**
      * @param  array<int, array{x: float|int, y: float|int}>  $polygon
      * @param  array<int, mixed>  $shapes
      * @param  array<string, mixed>  $productionSettings
+     * @param  array<int, mixed>  $featureShapes
      * @return array<int, array<string, mixed>>
      */
-    public function split(array $polygon, array $shapes = [], array $productionSettings = []): array
+    public function split(array $polygon, array $shapes = [], array $productionSettings = [], array $featureShapes = []): array
     {
         $polygon = $this->normalizePoints($polygon, 3);
         if ($polygon === []) {
@@ -18,7 +22,8 @@ class CeilingLightLinePanelSplitter
         }
 
         $shapes = $this->normalizeShapes($shapes);
-        if ($shapes === []) {
+        $featureBlockers = $this->normalizeFeatureBlockers($featureShapes, $polygon);
+        if ($shapes === [] && $featureBlockers === []) {
             return [$this->buildSinglePanel($polygon, $productionSettings)];
         }
 
@@ -51,6 +56,24 @@ class CeilingLightLinePanelSplitter
                     if ($this->distanceToPolyline($center, $shape['points'], (bool) ($shape['closed'] ?? false)) <= $halfWidth) {
                         $blocked = true;
                         break;
+                    }
+                }
+
+                if (!$blocked) {
+                    foreach ($featureBlockers as $blocker) {
+                        if ($this->pointInsidePolygon($center, $blocker['polygon'])) {
+                            $blocked = true;
+                            break;
+                        }
+
+                        if (
+                            !$blocked
+                            && is_array($blocker['connector'] ?? null)
+                            && $this->distanceToPolyline($center, $blocker['connector']['points'], false) <= ((float) ($blocker['connector']['width_m'] ?? 0.02) / 2)
+                        ) {
+                            $blocked = true;
+                            break;
+                        }
                     }
                 }
 
@@ -491,6 +514,115 @@ class CeilingLightLinePanelSplitter
 
     /**
      * @param  array<int, mixed>  $shapes
+     * @param  array<int, array{x: float, y: float}>  $roomPolygon
+     * @return array<int, array{polygon: array<int, array{x: float, y: float}>, connector: array{points: array<int, array{x: float, y: float}>, width_m: float}|null}>
+     */
+    private function normalizeFeatureBlockers(array $shapes, array $roomPolygon): array
+    {
+        $normalized = [];
+
+        foreach ($shapes as $shape) {
+            if (!$this->featureBlocksPanels($shape)) {
+                continue;
+            }
+
+            $shapePoints = $this->featureShapePoints(is_array($shape) ? $shape : [], $roomPolygon);
+            if (count($shapePoints) < 3) {
+                continue;
+            }
+
+            $normalized[] = [
+                'polygon' => $shapePoints,
+                'connector' => $this->featureCutConnector(is_array($shape) ? $shape : [], $roomPolygon, $shapePoints),
+            ];
+        }
+
+        return $normalized;
+    }
+
+    private function featureBlocksPanels(mixed $shape): bool
+    {
+        if (!is_array($shape)) {
+            return false;
+        }
+
+        return !((bool) ($shape['separate_panel'] ?? false))
+            && in_array((string) ($shape['kind'] ?? ''), [
+                CeilingProjectRoom::FEATURE_CUTOUT,
+                CeilingProjectRoom::FEATURE_SHIFT,
+            ], true);
+    }
+
+    /**
+     * @param  array<string, mixed>  $shape
+     * @return array<int, array{x: float, y: float}>
+     */
+    private function featureShapePoints(array $shape, array $roomPolygon = []): array
+    {
+        return app(FeatureShapeGeometry::class)->points($shape, $roomPolygon);
+    }
+
+    /**
+     * @param  array<string, mixed>  $shape
+     * @param  array<int, array{x: float, y: float}>  $roomPolygon
+     * @param  array<int, array{x: float, y: float}>  $shapePoints
+     * @return array{points: array<int, array{x: float, y: float}>, width_m: float}|null
+     */
+    private function featureCutConnector(array $shape, array $roomPolygon, array $shapePoints): ?array
+    {
+        if (!($shape['cut_line'] ?? false) || count($roomPolygon) < 2 || count($shapePoints) < 2) {
+            return null;
+        }
+
+        $segmentIndex = is_numeric($shape['cut_segment_index'] ?? null)
+            ? (int) $shape['cut_segment_index']
+            : (is_numeric($shape['source_segment_index'] ?? null) ? (int) $shape['source_segment_index'] : null);
+        if ($segmentIndex === null || $segmentIndex < 0 || $segmentIndex >= count($roomPolygon)) {
+            return null;
+        }
+
+        $segmentStart = $roomPolygon[$segmentIndex];
+        $segmentEnd = $roomPolygon[($segmentIndex + 1) % count($roomPolygon)];
+        $segmentLength = $this->distanceBetweenPoints($segmentStart, $segmentEnd);
+        if ($segmentLength <= 0.0001) {
+            return null;
+        }
+
+        $shapeSpan = is_numeric($shape['span_m'] ?? null)
+            ? (float) $shape['span_m']
+            : (float) ($shape['width_m'] ?? 0);
+        $baseOffset = is_numeric($shape['cut_offset_m'] ?? null)
+            ? (float) $shape['cut_offset_m']
+            : (is_numeric($shape['offset_m'] ?? null)
+                ? (float) $shape['offset_m'] + ($shapeSpan / 2)
+                : ($segmentLength / 2));
+
+        $basePoint = $this->pointAlongSegment($segmentStart, $segmentEnd, max(0.0, min($segmentLength, $baseOffset)));
+
+        $bestPoint = null;
+        $bestDistance = INF;
+        $count = count($shapePoints);
+        for ($index = 0; $index < $count; $index++) {
+            $candidate = $this->closestPointOnSegment($basePoint, $shapePoints[$index], $shapePoints[($index + 1) % $count]);
+            $distance = $this->distanceBetweenPoints($basePoint, $candidate);
+            if ($distance < $bestDistance) {
+                $bestDistance = $distance;
+                $bestPoint = $candidate;
+            }
+        }
+
+        if ($bestPoint === null) {
+            return null;
+        }
+
+        return [
+            'points' => [$basePoint, $bestPoint],
+            'width_m' => 0.02,
+        ];
+    }
+
+    /**
+     * @param  array<int, mixed>  $shapes
      * @return array<int, array{points: array<int, array{x: float, y: float}>, width_m: float, closed: bool}>
      */
     private function normalizeShapes(array $shapes): array
@@ -671,6 +803,65 @@ class CeilingLightLinePanelSplitter
         $projectionY = $start['y'] + ($t * $dy);
 
         return sqrt((($point['x'] - $projectionX) ** 2) + (($point['y'] - $projectionY) ** 2));
+    }
+
+    /**
+     * @param  array{x: float, y: float}  $start
+     * @param  array{x: float, y: float}  $end
+     * @return array{x: float, y: float}
+     */
+    private function pointAlongSegment(array $start, array $end, float $distance): array
+    {
+        $segmentLength = $this->distanceBetweenPoints($start, $end);
+        if ($segmentLength <= 0.0001) {
+            return [
+                'x' => $this->round($start['x']),
+                'y' => $this->round($start['y']),
+            ];
+        }
+
+        $ratio = max(0.0, min(1.0, $distance / $segmentLength));
+
+        return [
+            'x' => $this->round($start['x'] + (($end['x'] - $start['x']) * $ratio)),
+            'y' => $this->round($start['y'] + (($end['y'] - $start['y']) * $ratio)),
+        ];
+    }
+
+    /**
+     * @param  array{x: float, y: float}  $point
+     * @param  array{x: float, y: float}  $start
+     * @param  array{x: float, y: float}  $end
+     * @return array{x: float, y: float}
+     */
+    private function closestPointOnSegment(array $point, array $start, array $end): array
+    {
+        $dx = $end['x'] - $start['x'];
+        $dy = $end['y'] - $start['y'];
+        $denominator = ($dx ** 2) + ($dy ** 2);
+
+        if ($denominator <= 0.000001) {
+            return [
+                'x' => $this->round($start['x']),
+                'y' => $this->round($start['y']),
+            ];
+        }
+
+        $t = max(0.0, min(1.0, ((($point['x'] - $start['x']) * $dx) + (($point['y'] - $start['y']) * $dy)) / $denominator));
+
+        return [
+            'x' => $this->round($start['x'] + ($dx * $t)),
+            'y' => $this->round($start['y'] + ($dy * $t)),
+        ];
+    }
+
+    /**
+     * @param  array{x: float, y: float}  $start
+     * @param  array{x: float, y: float}  $end
+     */
+    private function distanceBetweenPoints(array $start, array $end): float
+    {
+        return sqrt((($end['x'] - $start['x']) ** 2) + (($end['y'] - $start['y']) ** 2));
     }
 
     private function round(float $value): float

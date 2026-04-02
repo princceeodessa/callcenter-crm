@@ -151,4 +151,137 @@ class CeilingProductionLayoutPlannerTest extends TestCase
         $this->assertSame('Общий рулон', $plan['panels'][0]['roll_sequence']['label']);
         $this->assertSame('Общий рулон', $plan['panels'][1]['roll_sequence']['label']);
     }
+
+    public function test_it_blocks_multi_strip_layout_without_seam_or_special_cutting(): void
+    {
+        $planner = new CeilingProductionLayoutPlanner();
+
+        $plan = $planner->plan([
+            'shape_type' => CeilingProjectRoom::SHAPE_RECTANGLE,
+            'width_m' => 4.0,
+            'length_m' => 3.0,
+            'production_settings' => [
+                'roll_width_cm' => 120,
+                'shrink_x_percent' => 0,
+                'shrink_y_percent' => 0,
+                'orientation_mode' => 'parallel_segment',
+                'orientation_segment_index' => 0,
+                'same_roll_required' => false,
+                'special_cutting' => false,
+                'seam_enabled' => false,
+            ],
+        ], [[
+            'id' => 'panel_1',
+            'label' => 'Полотно 1',
+            'area_m2' => 12.0,
+            'bounds' => [
+                'min_x' => 0.0,
+                'min_y' => 0.0,
+                'max_x' => 4.0,
+                'max_y' => 3.0,
+            ],
+        ]]);
+
+        $this->assertSame('blocked', $plan['summary']['status']);
+        $this->assertSame(1, $plan['summary']['errors_count']);
+        $this->assertSame('blocked', $plan['panels'][0]['status']);
+        $this->assertStringContainsString('невыполнима', implode(' ', array_map(
+            static fn (array $issue) => (string) ($issue['message'] ?? ''),
+            $plan['summary']['issues']
+        )));
+    }
+
+    public function test_it_blocks_same_roll_sequence_when_material_settings_differ(): void
+    {
+        $planner = new CeilingProductionLayoutPlanner();
+
+        $plan = $planner->plan([
+            'shape_type' => CeilingProjectRoom::SHAPE_RECTANGLE,
+            'width_m' => 5.2,
+            'length_m' => 3.4,
+            'production_settings' => [
+                'roll_width_cm' => 400,
+                'texture' => 'matte',
+                'shrink_x_percent' => 7,
+                'shrink_y_percent' => 7,
+                'orientation_mode' => 'parallel_segment',
+                'orientation_segment_index' => 0,
+                'same_roll_required' => true,
+            ],
+        ], [
+            [
+                'id' => 'panel_1',
+                'label' => 'Полотно 1',
+                'area_m2' => 8.84,
+                'bounds' => [
+                    'min_x' => 0.0,
+                    'min_y' => 0.0,
+                    'max_x' => 2.6,
+                    'max_y' => 3.4,
+                ],
+            ],
+            [
+                'id' => 'panel_2',
+                'label' => 'Полотно 2',
+                'area_m2' => 8.84,
+                'bounds' => [
+                    'min_x' => 2.6,
+                    'min_y' => 0.0,
+                    'max_x' => 5.2,
+                    'max_y' => 3.4,
+                ],
+                'production' => [
+                    'texture' => 'glossy',
+                ],
+            ],
+        ]);
+
+        $this->assertSame('blocked', $plan['summary']['status']);
+        $this->assertSame(1, $plan['summary']['errors_count']);
+        $this->assertSame('blocked', $plan['summary']['roll_sequences'][0]['status']);
+        $this->assertStringContainsString('один рулон', implode(' ', array_map(
+            static fn (array $issue) => (string) ($issue['message'] ?? ''),
+            $plan['summary']['issues']
+        )));
+    }
+
+    public function test_it_blocks_sequence_when_roll_length_limit_is_exceeded_with_reserve(): void
+    {
+        $planner = new CeilingProductionLayoutPlanner();
+
+        $plan = $planner->plan([
+            'shape_type' => CeilingProjectRoom::SHAPE_RECTANGLE,
+            'width_m' => 5.0,
+            'length_m' => 3.0,
+            'production_settings' => [
+                'roll_width_cm' => 320,
+                'shrink_x_percent' => 0,
+                'shrink_y_percent' => 0,
+                'orientation_mode' => 'parallel_segment',
+                'orientation_segment_index' => 0,
+                'same_roll_required' => true,
+                'max_roll_length_m' => 3.1,
+                'roll_reserve_percent' => 10,
+            ],
+        ], [[
+            'id' => 'panel_1',
+            'label' => 'Полотно 1',
+            'area_m2' => 15.0,
+            'bounds' => [
+                'min_x' => 0.0,
+                'min_y' => 0.0,
+                'max_x' => 5.0,
+                'max_y' => 3.0,
+            ],
+        ]]);
+
+        $this->assertSame('blocked', $plan['summary']['status']);
+        $this->assertSame(1, $plan['summary']['errors_count']);
+        $this->assertEqualsWithDelta(5.5, $plan['summary']['required_roll_length_total_m'], 0.02);
+        $this->assertSame('blocked', $plan['summary']['roll_sequences'][0]['status']);
+        $this->assertStringContainsString('длина рулона', implode(' ', array_map(
+            static fn (array $issue) => (string) ($issue['message'] ?? ''),
+            $plan['summary']['issues']
+        )));
+    }
 }

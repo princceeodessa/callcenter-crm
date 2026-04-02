@@ -14,6 +14,15 @@
   .packet-chip { display: inline-flex; align-items: center; gap: .4rem; border: 1px solid rgba(15,23,42,.08); border-radius: 999px; padding: .28rem .65rem; background: rgba(248,250,252,.96); font-size: .84rem; }
   .packet-chip-dot { width: .65rem; height: .65rem; border-radius: 999px; background: #2563eb; display: inline-block; }
   .packet-panel { border: 1px solid rgba(15,23,42,.08); border-radius: 1rem; background: linear-gradient(180deg, rgba(255,255,255,.99), rgba(248,250,252,.94)); padding: .9rem; }
+  .packet-panel.is-review, .packet-room.is-review, .packet-metric.is-review { border-color: rgba(245,158,11,.45); background: linear-gradient(180deg, rgba(255,251,235,.96), rgba(255,255,255,.98)); }
+  .packet-panel.is-blocked, .packet-room.is-blocked, .packet-metric.is-blocked { border-color: rgba(220,38,38,.35); background: linear-gradient(180deg, rgba(254,242,242,.96), rgba(255,255,255,.98)); }
+  .packet-status { display: inline-flex; align-items: center; gap: .45rem; border-radius: 999px; padding: .3rem .75rem; font-size: .82rem; font-weight: 600; }
+  .packet-status.ready { background: rgba(22,163,74,.12); color: #166534; }
+  .packet-status.review { background: rgba(245,158,11,.14); color: #92400e; }
+  .packet-status.blocked { background: rgba(220,38,38,.14); color: #991b1b; }
+  .packet-status-dot { width: .6rem; height: .6rem; border-radius: 999px; background: currentColor; display: inline-block; }
+  .packet-issues { margin: 0; padding-left: 1rem; }
+  .packet-issues li + li { margin-top: .3rem; }
   .packet-layout-roll { position: relative; height: 68px; border-radius: .85rem; background: rgba(15,23,42,.08); overflow: hidden; border: 1px solid rgba(15,23,42,.08); }
   .packet-layout-strip { position: absolute; top: 0; bottom: 0; background: linear-gradient(180deg, rgba(37,99,235,.18), rgba(37,99,235,.34)); border-right: 1px dashed rgba(15,23,42,.18); display: flex; align-items: center; justify-content: center; font-size: .72rem; color: #0f172a; font-weight: 700; }
   .packet-layout-strip.is-last { border-right: none; }
@@ -67,6 +76,17 @@
   ];
   $featureKindLabelMap = \App\Models\CeilingProjectRoom::featureKindOptions();
   $projectTitle = trim((string) ($project->title ?? '')) !== '' ? $clean($project->title) : ('Проект #'.$project->id);
+  $statusLabelMap = [
+      'ready' => 'Готово в производство',
+      'review' => 'Нужна проверка',
+      'blocked' => 'Есть блокеры',
+  ];
+  $issuesBySeverity = function (array $issues, string $severity) {
+      return array_values(array_filter($issues, static fn ($issue) => is_array($issue) && ($issue['severity'] ?? 'warning') === $severity));
+  };
+  $packetIssues = is_array($packetSummary['issues'] ?? null) ? $packetSummary['issues'] : [];
+  $packetErrors = $issuesBySeverity($packetIssues, 'error');
+  $packetWarnings = $issuesBySeverity($packetIssues, 'warning');
 @endphp
 
 @section('content')
@@ -127,6 +147,10 @@
       <div class="packet-metric-value">{{ $formatDecimal($packetSummary['roll_length_total_m'], 'м') }}</div>
     </div>
     <div class="packet-metric">
+      <div class="packet-metric-label">Требуемая длина</div>
+      <div class="packet-metric-value">{{ $formatDecimal($packetSummary['required_roll_length_total_m'] ?? $packetSummary['roll_length_total_m'], 'м') }}</div>
+    </div>
+    <div class="packet-metric">
       <div class="packet-metric-label">Комнаты с общим рулоном</div>
       <div class="packet-metric-value">{{ $packetSummary['same_roll_rooms_count'] }}</div>
     </div>
@@ -134,12 +158,35 @@
       <div class="packet-metric-label">Комнаты со спецраскроем</div>
       <div class="packet-metric-value">{{ $packetSummary['special_cutting_rooms_count'] }}</div>
     </div>
+    <div class="packet-metric @if(($packetSummary['status'] ?? 'ready') !== 'ready') is-{{ $packetSummary['status'] ?? 'ready' }} @endif">
+      <div class="packet-metric-label">Статус пакета</div>
+      <div class="packet-metric-value">{{ $statusLabelMap[$packetSummary['status'] ?? 'ready'] ?? 'Готово в производство' }}</div>
+    </div>
+    <div class="packet-metric @if(($packetSummary['errors_count'] ?? 0) > 0) is-blocked @endif">
+      <div class="packet-metric-label">Блокеры</div>
+      <div class="packet-metric-value">{{ (int) ($packetSummary['errors_count'] ?? 0) }}</div>
+    </div>
+    <div class="packet-metric @if(($packetSummary['warnings_count'] ?? 0) > 0) is-review @endif">
+      <div class="packet-metric-label">Проверить</div>
+      <div class="packet-metric-value">{{ (int) ($packetSummary['warnings_count'] ?? 0) }}</div>
+    </div>
   </div>
+
+  @if(!empty($packetErrors))
+    <div class="alert alert-danger mb-0">
+      <div class="fw-semibold mb-2">Что блокирует отправку в производство</div>
+      <ul class="packet-issues mb-0">
+        @foreach($packetErrors as $issue)
+          <li>{{ $clean($issue['message'] ?? '') }}</li>
+        @endforeach
+      </ul>
+    </div>
+  @endif
 
   @if(!empty($packetSummary['warnings']))
     <div class="alert alert-warning mb-0">
       <div class="fw-semibold mb-2">Что проверить по проекту перед отправкой в производство</div>
-      <ul class="mb-0 ps-3">
+      <ul class="packet-issues mb-0">
         @foreach($packetSummary['warnings'] as $warning)
           <li>{{ $clean($warning) }}</li>
         @endforeach
@@ -158,8 +205,11 @@
       $orientation = is_array($layoutPlan['orientation'] ?? null) ? $layoutPlan['orientation'] : [];
       $rollSequences = $layoutSummary['roll_sequences'] ?? [];
       $lightLineShapes = is_array($room->light_line_shapes) ? $room->light_line_shapes : [];
+      $roomIssues = is_array($layoutSummary['issues'] ?? null) ? $layoutSummary['issues'] : [];
+      $roomErrors = $issuesBySeverity($roomIssues, 'error');
+      $roomWarnings = $issuesBySeverity($roomIssues, 'warning');
     @endphp
-    <div class="packet-room {{ !$loop->first ? 'packet-page-break' : '' }}" id="room-{{ $room->id }}">
+    <div class="packet-room {{ !$loop->first ? 'packet-page-break' : '' }} @if(($layoutSummary['status'] ?? 'ready') !== 'ready') is-{{ $layoutSummary['status'] ?? 'ready' }} @endif" id="room-{{ $room->id }}">
       <div class="packet-room-header mb-3">
         <div>
           <div class="text-uppercase text-muted small fw-semibold">Комната</div>
@@ -171,6 +221,10 @@
           </div>
         </div>
         <div class="d-flex gap-2 flex-wrap">
+          <span class="packet-status {{ $layoutSummary['status'] ?? 'ready' }}">
+            <span class="packet-status-dot"></span>
+            {{ $statusLabelMap[$layoutSummary['status'] ?? 'ready'] ?? 'Готово в производство' }}
+          </span>
           <a href="{{ route('ceiling-projects.show', ['project' => $project, 'room' => $room->id]) }}#geometry-editor" class="btn btn-outline-secondary btn-sm">Чертёж комнаты</a>
           <a href="{{ route('ceiling-projects.rooms.panels.show', [$project, $room]) }}" class="btn btn-outline-dark btn-sm">Экран полотен</a>
         </div>
@@ -193,12 +247,39 @@
           <div class="packet-metric-label">Расход рулона</div>
           <div class="packet-metric-value">{{ $formatDecimal($layoutSummary['roll_length_total_m'] ?? 0, 'м') }}</div>
         </div>
+        <div class="packet-metric">
+          <div class="packet-metric-label">Требуемая длина</div>
+          <div class="packet-metric-value">{{ $formatDecimal($layoutSummary['required_roll_length_total_m'] ?? ($layoutSummary['roll_length_total_m'] ?? 0), 'м') }}</div>
+        </div>
+        <div class="packet-metric @if(($layoutSummary['status'] ?? 'ready') !== 'ready') is-{{ $layoutSummary['status'] ?? 'ready' }} @endif">
+          <div class="packet-metric-label">Статус комнаты</div>
+          <div class="packet-metric-value">{{ $statusLabelMap[$layoutSummary['status'] ?? 'ready'] ?? 'Готово в производство' }}</div>
+        </div>
+        <div class="packet-metric @if(($layoutSummary['errors_count'] ?? 0) > 0) is-blocked @endif">
+          <div class="packet-metric-label">Блокеры</div>
+          <div class="packet-metric-value">{{ (int) ($layoutSummary['errors_count'] ?? 0) }}</div>
+        </div>
+        <div class="packet-metric @if(($layoutSummary['warnings_count'] ?? 0) > 0) is-review @endif">
+          <div class="packet-metric-label">Проверить</div>
+          <div class="packet-metric-value">{{ (int) ($layoutSummary['warnings_count'] ?? 0) }}</div>
+        </div>
       </div>
+
+      @if(!empty($roomErrors))
+        <div class="alert alert-danger mb-3">
+          <div class="fw-semibold mb-2">Что блокирует комнату</div>
+          <ul class="packet-issues mb-0">
+            @foreach($roomErrors as $issue)
+              <li>{{ $clean($issue['message'] ?? '') }}</li>
+            @endforeach
+          </ul>
+        </div>
+      @endif
 
       @if(!empty($layoutSummary['warnings']))
         <div class="alert alert-warning mb-3">
           <div class="fw-semibold mb-2">Проверить по комнате</div>
-          <ul class="mb-0 ps-3">
+          <ul class="packet-issues mb-0">
             @foreach($layoutSummary['warnings'] as $warning)
               <li>{{ $clean($warning) }}</li>
             @endforeach
@@ -228,6 +309,15 @@
           @if(!empty($production['seam_enabled']))
             <span class="packet-chip">Шов {{ $formatCentimeters((float) ($production['seam_offset_m'] ?? 0)) }}</span>
           @endif
+          @if((float) ($production['max_roll_length_m'] ?? 0) > 0)
+            <span class="packet-chip">Лимит рулона {{ $formatDecimal((float) ($production['max_roll_length_m'] ?? 0), 'м') }}</span>
+          @endif
+          @if((float) ($production['roll_reserve_percent'] ?? 0) > 0)
+            <span class="packet-chip">Техзапас {{ $formatDecimal((float) ($production['roll_reserve_percent'] ?? 0), '%') }}</span>
+          @endif
+          @if(trim((string) ($production['batch_label'] ?? '')) !== '')
+            <span class="packet-chip">Партия {{ $clean($production['batch_label']) }}</span>
+          @endif
           @if(trim((string) ($production['comment'] ?? '')) !== '')
             <span class="packet-chip">{{ $clean($production['comment']) }}</span>
           @endif
@@ -237,6 +327,10 @@
           <div class="col-md-3"><b>Смещение ориентации:</b> {{ $formatCentimeters((float) ($production['orientation_offset_m'] ?? 0)) }}</div>
           <div class="col-md-3"><b>Световых линий:</b> {{ count($lightLineShapes) }}</div>
           <div class="col-md-3"><b>Рулонных комплектов:</b> {{ count($rollSequences) }}</div>
+          <div class="col-md-3"><b>Лимит рулона:</b> {{ (float) ($production['max_roll_length_m'] ?? 0) > 0 ? $formatDecimal((float) ($production['max_roll_length_m'] ?? 0), 'м') : 'Не задан' }}</div>
+          <div class="col-md-3"><b>Техзапас:</b> {{ $formatDecimal((float) ($production['roll_reserve_percent'] ?? 0), '%') }}</div>
+          <div class="col-md-3"><b>Требуется с запасом:</b> {{ $formatDecimal((float) ($layoutSummary['required_roll_length_total_m'] ?? ($layoutSummary['roll_length_total_m'] ?? 0)), 'м') }}</div>
+          <div class="col-md-3"><b>Партия:</b> {{ trim((string) ($production['batch_label'] ?? '')) !== '' ? $clean($production['batch_label']) : 'Не указана' }}</div>
         </div>
       </div>
 
@@ -245,14 +339,51 @@
           <div class="fw-semibold mb-3">Сценарии рулона</div>
           <div class="packet-grid">
             @foreach($rollSequences as $sequence)
-              <div class="packet-metric">
+              @php
+                $sequenceStatus = $sequence['status'] ?? 'ready';
+                $sequenceWarnings = is_array($sequence['warnings'] ?? null) ? $sequence['warnings'] : [];
+              @endphp
+              <div class="packet-metric @if($sequenceStatus !== 'ready') is-{{ $sequenceStatus }} @endif">
                 <div class="packet-metric-label">{{ $clean($sequence['label'] ?? ('Рулон '.($loop->iteration))) }}</div>
-                <div class="packet-metric-value">{{ (int) ($sequence['panels_count'] ?? 0) }}</div>
+                <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+                  <div class="packet-metric-value">{{ (int) ($sequence['panels_count'] ?? 0) }}</div>
+                  <span class="packet-status {{ $sequenceStatus }}">
+                    <span class="packet-status-dot"></span>
+                    {{ $statusLabelMap[$sequenceStatus] ?? 'Готово в производство' }}
+                  </span>
+                </div>
                 <div class="small text-muted mt-2">
                   Полотен: {{ (int) ($sequence['panels_count'] ?? 0) }}
                   · Полос: {{ (int) ($sequence['strips_count'] ?? 0) }}
                   · Длина: {{ $formatDecimal((float) ($sequence['roll_length_total_m'] ?? 0), 'м') }}
                 </div>
+                <div class="small text-muted mt-2">
+                  Требуется: {{ $formatDecimal((float) ($sequence['required_roll_length_m'] ?? ($sequence['roll_length_total_m'] ?? 0)), 'м') }}
+                  @if((float) ($sequence['available_roll_length_m'] ?? 0) > 0)
+                    В· Лимит: {{ $formatDecimal((float) ($sequence['available_roll_length_m'] ?? 0), 'м') }}
+                    В· Остаток: {{ $formatDecimal((float) ($sequence['remaining_roll_length_m'] ?? 0), 'м') }}
+                  @endif
+                </div>
+                @if((float) ($sequence['reserve_percent'] ?? 0) > 0 || trim((string) ($sequence['batch_label'] ?? '')) !== '')
+                  <div class="small text-muted mt-2">
+                    @if((float) ($sequence['reserve_percent'] ?? 0) > 0)
+                      Техзапас {{ $formatDecimal((float) ($sequence['reserve_percent'] ?? 0), '%') }}
+                    @endif
+                    @if(trim((string) ($sequence['batch_label'] ?? '')) !== '')
+                      @if((float) ($sequence['reserve_percent'] ?? 0) > 0)
+                        В·
+                      @endif
+                      Партия {{ $clean($sequence['batch_label']) }}
+                    @endif
+                  </div>
+                @endif
+                @if(!empty($sequenceWarnings))
+                  <ul class="packet-issues small mt-2 mb-0">
+                    @foreach($sequenceWarnings as $warning)
+                      <li>{{ $clean($warning) }}</li>
+                    @endforeach
+                  </ul>
+                @endif
                 <div class="small text-muted mt-2">{{ $clean(implode(', ', $sequence['panel_labels'] ?? [])) }}</div>
               </div>
             @endforeach
@@ -273,7 +404,7 @@
                 $panelFeatureKind = isset($panel['feature_kind']) ? ($featureKindLabelMap[$panel['feature_kind']] ?? $clean($panel['feature_kind'])) : null;
                 $rollSequence = is_array($panel['roll_sequence'] ?? null) ? $panel['roll_sequence'] : null;
               @endphp
-              <div class="packet-panel">
+              <div class="packet-panel @if(($panel['status'] ?? 'ready') !== 'ready') is-{{ $panel['status'] ?? 'ready' }} @endif">
                 <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-2">
                   <div>
                     <div class="fw-semibold">{{ $clean($panel['label']) }}</div>
@@ -283,6 +414,10 @@
                     </div>
                   </div>
                   <div class="d-flex gap-2 flex-wrap">
+                    <span class="packet-status {{ $panel['status'] ?? 'ready' }}">
+                      <span class="packet-status-dot"></span>
+                      {{ $statusLabelMap[$panel['status'] ?? 'ready'] ?? 'Готово в производство' }}
+                    </span>
                     <span class="packet-chip">
                       <span class="packet-chip-dot"></span>
                       {{ match($panel['layout_type'] ?? 'single') {
@@ -302,8 +437,19 @@
                     @if($panelFeatureKind)
                       <span class="packet-chip">{{ $clean($panelFeatureKind) }}</span>
                     @endif
+                    @if(!empty($panel['has_complex_geometry']))
+                      <span class="packet-chip">Сложный контур</span>
+                    @endif
                   </div>
                 </div>
+
+                @if(!empty($panel['warnings']))
+                  <ul class="packet-issues small mb-3">
+                    @foreach($panel['warnings'] as $warning)
+                      <li>{{ $clean($warning) }}</li>
+                    @endforeach
+                  </ul>
+                @endif
 
                 <div class="row g-2 small mb-3">
                   <div class="col-md-3"><b>Готовый размер:</b> {{ $formatCentimeters((float) ($panel['finished_span_m']['length'] ?? 0)) }} × {{ $formatCentimeters((float) ($panel['finished_span_m']['width'] ?? 0)) }}</div>

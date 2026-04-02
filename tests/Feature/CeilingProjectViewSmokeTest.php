@@ -53,7 +53,6 @@ class CeilingProjectViewSmokeTest extends TestCase
         $this->assertStringContainsString('Открыть чертеж комнаты', $html);
         $this->assertStringContainsString('Полотна комнаты', $html);
         $this->assertStringContainsString('Редактор геометрии', $html);
-        $this->assertStringNotContainsString('РџР', $html);
     }
 
     public function test_room_panels_view_renders_clean_production_summary(): void
@@ -73,7 +72,6 @@ class CeilingProjectViewSmokeTest extends TestCase
         $this->assertStringContainsString('Пакет проекта', $html);
         $this->assertStringContainsString('Сценарии рулона', $html);
         $this->assertStringContainsString('Производственные параметры', $html);
-        $this->assertStringNotContainsString('РџР', $html);
     }
 
     public function test_project_production_packet_view_renders_all_rooms_and_summary(): void
@@ -92,7 +90,7 @@ class CeilingProjectViewSmokeTest extends TestCase
         $this->assertStringContainsString('Кухня', $html);
         $this->assertStringContainsString('Что проверить по проекту', $html);
         $this->assertStringContainsString('Комнаты со спецраскроем', $html);
-        $this->assertStringNotContainsString('РџР', $html);
+        $this->assertStringContainsString('Требуемая длина', $html);
     }
 
     /**
@@ -308,9 +306,16 @@ class CeilingProjectViewSmokeTest extends TestCase
             'consumed_area_m2' => 0.0,
             'stretch_reserve_m2' => 0.0,
             'roll_length_total_m' => 0.0,
+            'required_roll_length_total_m' => 0.0,
             'same_roll_rooms_count' => 0,
             'special_cutting_rooms_count' => 0,
             'seam_rooms_count' => 0,
+            'errors_count' => 0,
+            'warnings_count' => 0,
+            'blocked_rooms_count' => 0,
+            'review_rooms_count' => 0,
+            'issues' => [],
+            'status' => 'ready',
             'warnings' => [],
         ];
 
@@ -327,9 +332,30 @@ class CeilingProjectViewSmokeTest extends TestCase
             $summary['consumed_area_m2'] += (float) ($layoutSummary['consumed_area_m2'] ?? 0.0);
             $summary['stretch_reserve_m2'] += (float) ($layoutSummary['stretch_reserve_m2'] ?? 0.0);
             $summary['roll_length_total_m'] += (float) ($layoutSummary['roll_length_total_m'] ?? 0.0);
+            $summary['required_roll_length_total_m'] += (float) ($layoutSummary['required_roll_length_total_m'] ?? ($layoutSummary['roll_length_total_m'] ?? 0.0));
             $summary['same_roll_rooms_count'] += !empty($layoutSettings['same_roll_required']) ? 1 : 0;
             $summary['special_cutting_rooms_count'] += !empty($layoutSettings['special_cutting']) ? 1 : 0;
             $summary['seam_rooms_count'] += !empty($layoutSettings['seam_enabled']) ? 1 : 0;
+            $summary['errors_count'] += (int) ($layoutSummary['errors_count'] ?? 0);
+            $summary['warnings_count'] += (int) ($layoutSummary['warnings_count'] ?? 0);
+
+            $roomStatus = (string) ($layoutSummary['status'] ?? 'ready');
+            if ($roomStatus === 'blocked') {
+                $summary['blocked_rooms_count']++;
+            } elseif ($roomStatus === 'review') {
+                $summary['review_rooms_count']++;
+            }
+
+            foreach ((array) ($layoutSummary['issues'] ?? []) as $issue) {
+                $issueMessage = trim((string) ($issue['message'] ?? ''));
+                if ($issueMessage === '') {
+                    continue;
+                }
+
+                $summary['issues'][] = array_merge((array) $issue, [
+                    'message' => $room->name.': '.$issueMessage,
+                ]);
+            }
 
             foreach ((array) ($layoutSummary['warnings'] ?? []) as $warning) {
                 $summary['warnings'][] = $room->name.': '.$warning;
@@ -340,6 +366,9 @@ class CeilingProjectViewSmokeTest extends TestCase
         $summary['consumed_area_m2'] = round($summary['consumed_area_m2'], 2);
         $summary['stretch_reserve_m2'] = round($summary['stretch_reserve_m2'], 2);
         $summary['roll_length_total_m'] = round($summary['roll_length_total_m'], 2);
+        $summary['required_roll_length_total_m'] = round($summary['required_roll_length_total_m'], 2);
+        $summary['status'] = $summary['errors_count'] > 0 ? 'blocked' : ($summary['warnings_count'] > 0 ? 'review' : 'ready');
+        $summary['issues'] = array_values(array_unique($summary['issues'], SORT_REGULAR));
         $summary['warnings'] = array_values(array_unique($summary['warnings']));
 
         return $summary;

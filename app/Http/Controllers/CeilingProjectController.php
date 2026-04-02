@@ -14,6 +14,7 @@ use App\Services\Ceiling\CeilingLightLinePanelSplitter;
 use App\Services\Ceiling\CeilingProductionLayoutPlanner;
 use App\Services\Ceiling\CeilingProjectCalculator;
 use App\Services\Ceiling\CeilingSketchRecognitionService;
+use App\Support\Ceiling\FeatureShapeGeometry;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -1077,7 +1078,8 @@ $productionSettings = $this->normalizeProductionSettings($payload['production_se
 $panels = app(CeilingLightLinePanelSplitter::class)->split(
 $points,
 $lightLineShapes,
-$productionSettings
+$productionSettings,
+$this->normalizeFeatureShapes($payload['feature_shapes'] ?? [])
 );
 
 
@@ -1086,7 +1088,8 @@ $panels,
 $this->buildPanelsFromFeatureShapes(
 $this->normalizeFeatureShapes($payload['feature_shapes'] ?? []),
 $productionSettings,
-count($panels)
+count($panels),
+$points
 )
 ));
 }
@@ -1244,6 +1247,7 @@ return [
 'cut_segment_index' => isset($shape['cut_segment_index']) && is_numeric($shape['cut_segment_index']) ? (int) $shape['cut_segment_index'] : null,
 'offset_m' => isset($shape['offset_m']) && is_numeric($shape['offset_m']) ? round((float) $shape['offset_m'], 2) : null,
 'cut_offset_m' => isset($shape['cut_offset_m']) && is_numeric($shape['cut_offset_m']) ? round((float) $shape['cut_offset_m'], 2) : null,
+'span_m' => isset($shape['span_m']) && is_numeric($shape['span_m']) ? round((float) $shape['span_m'], 2) : null,
 'depth_m' => isset($shape['depth_m']) && is_numeric($shape['depth_m']) ? round((float) $shape['depth_m'], 2) : null,
 'radius_m' => isset($shape['radius_m']) && is_numeric($shape['radius_m']) ? round((float) $shape['radius_m'], 2) : null,
 'area_delta_m2' => isset($shape['area_delta_m2']) && is_numeric($shape['area_delta_m2']) ? round((float) $shape['area_delta_m2'], 4) : null,
@@ -1258,12 +1262,14 @@ return [
 
 /**
 * @param  array<int, array<string, mixed>>  $shapes
-* @param  array<string, mixed>  $productionSettings
-* @return array<int, array<string, mixed>>
+ * @param  array<string, mixed>  $productionSettings
+ * @param  array<int, array{x: float, y: float}>  $roomPolygon
+ * @return array<int, array<string, mixed>>
 */
-private function buildPanelsFromFeatureShapes(array $shapes, array $productionSettings, int $offset = 0): array
+private function buildPanelsFromFeatureShapes(array $shapes, array $productionSettings, int $offset = 0, array $roomPolygon = []): array
 {
 $panels = [];
+$featureGeometry = app(FeatureShapeGeometry::class);
 
 
 foreach ($shapes as $index => $shape) {
@@ -1272,16 +1278,14 @@ continue;
 }
 
 
-$shapePoints = $this->featureShapePanelPoints($shape);
-$bounds = $this->pointsBounds($shapePoints) ?? $this->featureShapeBounds($shape);
+$shapePoints = $this->featureShapePanelPoints($shape, $roomPolygon);
+$bounds = $this->pointsBounds($shapePoints) ?? $this->featureShapeBounds($shape, $roomPolygon);
 if ($bounds === null) {
 continue;
 }
 
 
-$area = count($shapePoints) >= 3
-? round($this->polygonArea($shapePoints), 4)
-: $this->featureShapeArea($shape);
+$area = round($featureGeometry->metrics($shape, $roomPolygon)['area_m2'], 4);
 if ($area <= 0) {
 continue;
 }
@@ -1329,66 +1333,13 @@ return $panels;
 
 
 /**
-* @param  array<string, mixed>  $shape
-* @return array<int, array{x: float, y: float}>
+ * @param  array<string, mixed>  $shape
+ * @param  array<int, array{x: float, y: float}>  $roomPolygon
+ * @return array<int, array{x: float, y: float}>
 */
-private function featureShapePanelPoints(array $shape): array
+private function featureShapePanelPoints(array $shape, array $roomPolygon = []): array
 {
-if (is_array($shape['shape_points'] ?? null) && count($shape['shape_points']) >= 3) {
-return array_values(array_map(fn (array $point) => [
-'x' => round((float) ($point['x'] ?? 0), 2),
-'y' => round((float) ($point['y'] ?? 0), 2),
-], $shape['shape_points']));
-}
-
-
-$x = isset($shape['x_m']) && is_numeric($shape['x_m']) ? (float) $shape['x_m'] : null;
-$y = isset($shape['y_m']) && is_numeric($shape['y_m']) ? (float) $shape['y_m'] : null;
-$width = isset($shape['width_m']) && is_numeric($shape['width_m']) ? (float) $shape['width_m'] : null;
-$height = isset($shape['height_m']) && is_numeric($shape['height_m']) ? (float) $shape['height_m'] : null;
-
-
-if ($x === null || $y === null || $width === null || $height === null || $width <= 0 || $height <= 0) {
-return [];
-}
-
-
-if (($shape['figure'] ?? CeilingProjectRoom::FEATURE_RECTANGLE) === CeilingProjectRoom::FEATURE_TRIANGLE) {
-return [
-['x' => round($x, 2), 'y' => round($y + $height, 2)],
-['x' => round($x, 2), 'y' => round($y, 2)],
-['x' => round($x + $width, 2), 'y' => round($y + $height, 2)],
-];
-}
-
-
-if (($shape['figure'] ?? CeilingProjectRoom::FEATURE_RECTANGLE) === CeilingProjectRoom::FEATURE_CIRCLE) {
-$centerX = $x + ($width / 2);
-$centerY = $y + ($height / 2);
-$radiusX = $width / 2;
-$radiusY = $height / 2;
-$points = [];
-
-
-for ($index = 0; $index < 20; $index++) {
-$angle = (2 * pi() * $index) / 20;
-$points[] = [
-'x' => round($centerX + (cos($angle) * $radiusX), 2),
-'y' => round($centerY + (sin($angle) * $radiusY), 2),
-];
-}
-
-
-return $points;
-}
-
-
-return [
-['x' => round($x, 2), 'y' => round($y, 2)],
-['x' => round($x + $width, 2), 'y' => round($y, 2)],
-['x' => round($x + $width, 2), 'y' => round($y + $height, 2)],
-['x' => round($x, 2), 'y' => round($y + $height, 2)],
-];
+return app(FeatureShapeGeometry::class)->points($shape, $roomPolygon);
 }
 
 
@@ -1445,64 +1396,23 @@ return [
 
 
 /**
-* @param  array<string, mixed>  $shape
-* @return array{min_x: float, min_y: float, max_x: float, max_y: float}|null
+ * @param  array<string, mixed>  $shape
+ * @param  array<int, array{x: float, y: float}>  $roomPolygon
+ * @return array{min_x: float, min_y: float, max_x: float, max_y: float}|null
 */
-private function featureShapeBounds(array $shape): ?array
+private function featureShapeBounds(array $shape, array $roomPolygon = []): ?array
 {
-if (is_array($shape['shape_points'] ?? null) && count($shape['shape_points']) >= 3) {
-$xs = array_column($shape['shape_points'], 'x');
-$ys = array_column($shape['shape_points'], 'y');
-
-
-return [
-'min_x' => round((float) min($xs), 2),
-'min_y' => round((float) min($ys), 2),
-'max_x' => round((float) max($xs), 2),
-'max_y' => round((float) max($ys), 2),
-];
-}
-
-
-$x = isset($shape['x_m']) && is_numeric($shape['x_m']) ? (float) $shape['x_m'] : null;
-$y = isset($shape['y_m']) && is_numeric($shape['y_m']) ? (float) $shape['y_m'] : null;
-$width = isset($shape['width_m']) && is_numeric($shape['width_m']) ? (float) $shape['width_m'] : null;
-$height = isset($shape['height_m']) && is_numeric($shape['height_m']) ? (float) $shape['height_m'] : null;
-
-
-if ($x === null || $y === null || $width === null || $height === null || $width <= 0 || $height <= 0) {
-return null;
-}
-
-
-return [
-'min_x' => round($x, 2),
-'min_y' => round($y, 2),
-'max_x' => round($x + $width, 2),
-'max_y' => round($y + $height, 2),
-];
+return app(FeatureShapeGeometry::class)->bounds($shape, $roomPolygon);
 }
 
 
 /**
-* @param  array<string, mixed>  $shape
-*/
-private function featureShapeArea(array $shape): float
+ * @param  array<string, mixed>  $shape
+ * @param  array<int, array{x: float, y: float}>  $roomPolygon
+ */
+private function featureShapeArea(array $shape, array $roomPolygon = []): float
 {
-if (is_array($shape['shape_points'] ?? null) && count($shape['shape_points']) >= 3) {
-return round($this->polygonArea($shape['shape_points']), 4);
-}
-
-
-$width = isset($shape['width_m']) && is_numeric($shape['width_m']) ? (float) $shape['width_m'] : 0.0;
-$height = isset($shape['height_m']) && is_numeric($shape['height_m']) ? (float) $shape['height_m'] : 0.0;
-
-
-return match ((string) ($shape['figure'] ?? CeilingProjectRoom::FEATURE_RECTANGLE)) {
-CeilingProjectRoom::FEATURE_CIRCLE => round(pi() * ((min($width, $height) / 2) ** 2), 4),
-CeilingProjectRoom::FEATURE_TRIANGLE => round(($width * $height) / 2, 4),
-default => round($width * $height, 4),
-};
+return round(app(FeatureShapeGeometry::class)->metrics($shape, $roomPolygon)['area_m2'], 4);
 }
 
 
@@ -1640,12 +1550,15 @@ return [
 'same_roll_required' => (bool) ($settings['same_roll_required'] ?? false),
 'special_cutting' => (bool) ($settings['special_cutting'] ?? false),
 'seam_enabled' => (bool) ($settings['seam_enabled'] ?? false),
+'max_roll_length_m' => isset($settings['max_roll_length_m']) && is_numeric($settings['max_roll_length_m']) ? round(max(0.0, (float) $settings['max_roll_length_m']), 2) : 0.0,
+'roll_reserve_percent' => isset($settings['roll_reserve_percent']) && is_numeric($settings['roll_reserve_percent']) ? round(max(0.0, (float) $settings['roll_reserve_percent']), 2) : 0.0,
 'shrink_x_percent' => isset($settings['shrink_x_percent']) && is_numeric($settings['shrink_x_percent']) ? round((float) $settings['shrink_x_percent'], 2) : 7.0,
 'shrink_y_percent' => isset($settings['shrink_y_percent']) && is_numeric($settings['shrink_y_percent']) ? round((float) $settings['shrink_y_percent'], 2) : 7.0,
 'orientation_mode' => $orientationMode,
 'orientation_segment_index' => isset($settings['orientation_segment_index']) && is_numeric($settings['orientation_segment_index']) ? max(0, (int) $settings['orientation_segment_index']) : 0,
 'orientation_offset_m' => isset($settings['orientation_offset_m']) && is_numeric($settings['orientation_offset_m']) ? round((float) $settings['orientation_offset_m'], 2) : 0.0,
 'seam_offset_m' => isset($settings['seam_offset_m']) && is_numeric($settings['seam_offset_m']) ? round((float) $settings['seam_offset_m'], 2) : 0.0,
+'batch_label' => $this->trimNullable($settings['batch_label'] ?? null),
 'comment' => $this->trimNullable($settings['comment'] ?? null),
 ];
 }
@@ -1758,6 +1671,13 @@ private function buildShowViewData(Request $request, CeilingProject $project, Ce
 $project->load(['deal.contact', 'rooms', 'measurement', 'archivedBy']);
 $project->load('rooms.elements');
 
+$project->rooms->each(function (CeilingProjectRoom $room): void {
+$derivedPanels = $this->buildDerivedPanelsForRoom($room);
+if ($room->derived_panels !== $derivedPanels) {
+$room->forceFill(['derived_panels' => $derivedPanels])->save();
+}
+});
+
 
 $summary = $calculator->calculateProject($project);
 $recognition = $this->loadRecognitionResult($project);
@@ -1838,9 +1758,16 @@ $summary = [
 'consumed_area_m2' => 0.0,
 'stretch_reserve_m2' => 0.0,
 'roll_length_total_m' => 0.0,
+'required_roll_length_total_m' => 0.0,
 'same_roll_rooms_count' => 0,
 'special_cutting_rooms_count' => 0,
 'seam_rooms_count' => 0,
+'errors_count' => 0,
+'warnings_count' => 0,
+'blocked_rooms_count' => 0,
+'review_rooms_count' => 0,
+'issues' => [],
+'status' => 'ready',
 'warnings' => [],
 ];
 
@@ -1857,9 +1784,30 @@ $summary['finished_area_m2'] += (float) ($layoutSummary['finished_area_m2'] ?? 0
 $summary['consumed_area_m2'] += (float) ($layoutSummary['consumed_area_m2'] ?? 0.0);
 $summary['stretch_reserve_m2'] += (float) ($layoutSummary['stretch_reserve_m2'] ?? 0.0);
 $summary['roll_length_total_m'] += (float) ($layoutSummary['roll_length_total_m'] ?? 0.0);
+$summary['required_roll_length_total_m'] += (float) ($layoutSummary['required_roll_length_total_m'] ?? ($layoutSummary['roll_length_total_m'] ?? 0.0));
 $summary['same_roll_rooms_count'] += !empty($layoutSettings['same_roll_required']) ? 1 : 0;
 $summary['special_cutting_rooms_count'] += !empty($layoutSettings['special_cutting']) ? 1 : 0;
 $summary['seam_rooms_count'] += !empty($layoutSettings['seam_enabled']) ? 1 : 0;
+$summary['errors_count'] += (int) ($layoutSummary['errors_count'] ?? 0);
+$summary['warnings_count'] += (int) ($layoutSummary['warnings_count'] ?? 0);
+
+$roomStatus = (string) ($layoutSummary['status'] ?? 'ready');
+if ($roomStatus === 'blocked') {
+$summary['blocked_rooms_count']++;
+} elseif ($roomStatus === 'review') {
+$summary['review_rooms_count']++;
+}
+
+foreach ((array) ($layoutSummary['issues'] ?? []) as $issue) {
+$issueMessage = trim((string) ($issue['message'] ?? ''));
+if ($issueMessage === '') {
+continue;
+}
+
+$summary['issues'][] = array_merge((array) $issue, [
+'message' => sprintf('%s: %s', $room->name ?: ('Комната #'.$room->id), $issueMessage),
+]);
+}
 
 foreach ((array) ($layoutSummary['warnings'] ?? []) as $warning) {
 $warningText = trim((string) $warning);
@@ -1875,6 +1823,9 @@ $summary['finished_area_m2'] = round($summary['finished_area_m2'], 2);
 $summary['consumed_area_m2'] = round($summary['consumed_area_m2'], 2);
 $summary['stretch_reserve_m2'] = round($summary['stretch_reserve_m2'], 2);
 $summary['roll_length_total_m'] = round($summary['roll_length_total_m'], 2);
+$summary['required_roll_length_total_m'] = round($summary['required_roll_length_total_m'], 2);
+$summary['status'] = $summary['errors_count'] > 0 ? 'blocked' : ($summary['warnings_count'] > 0 ? 'review' : 'ready');
+$summary['issues'] = array_values(array_unique($summary['issues'], SORT_REGULAR));
 $summary['warnings'] = array_values(array_unique($summary['warnings']));
 
 return $summary;

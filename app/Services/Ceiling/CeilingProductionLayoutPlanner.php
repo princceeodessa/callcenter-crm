@@ -53,6 +53,9 @@ $plannedPanels[] = $this->planPanel($panel, $panelSettings, $orientation, count(
 
 $rollSequences = $this->buildRollSequences($plannedPanels, $settings);
 $plannedPanels = $this->attachRollSequences($plannedPanels, $rollSequences);
+$diagnostics = $this->buildDiagnostics($settings, $plannedPanels, $rollSequences);
+$plannedPanels = $this->attachPanelDiagnostics($plannedPanels, $diagnostics['panel_issues'] ?? []);
+$rollSequences = $this->attachSequenceDiagnostics($rollSequences, $diagnostics['sequence_issues'] ?? []);
 
 
 $seamedParents = [];
@@ -84,7 +87,13 @@ return [
 'consumed_area_m2' => $this->round(array_sum(array_map(fn (array $panel) => (float) ($panel['consumed_area_m2'] ?? 0), $plannedPanels))),
 'stretch_reserve_m2' => $this->round(array_sum(array_map(fn (array $panel) => (float) ($panel['stretch_reserve_m2'] ?? 0), $plannedPanels))),
 'roll_length_total_m' => $this->round(array_sum(array_map(fn (array $panel) => (float) ($panel['roll_length_total_m'] ?? 0), $plannedPanels))),
-'warnings' => $this->buildWarnings($settings, $plannedPanels),
+'required_roll_length_total_m' => $this->round(array_sum(array_map(fn (array $sequence) => (float) ($sequence['required_roll_length_m'] ?? ($sequence['roll_length_total_m'] ?? 0.0)), $rollSequences))),
+'issues' => $diagnostics['issues'] ?? [],
+'warnings' => $diagnostics['warning_messages'] ?? [],
+'errors_count' => (int) ($diagnostics['errors_count'] ?? 0),
+'warnings_count' => (int) ($diagnostics['warnings_count'] ?? 0),
+'status' => $diagnostics['status'] ?? 'ready',
+'is_feasible' => (bool) ($diagnostics['is_feasible'] ?? true),
 ],
 ];
 }
@@ -169,7 +178,7 @@ return [
 'seam_parent_id' => $panel['seam_parent_id'] ?? null,
 'seam_part_index' => $panel['seam_part_index'] ?? null,
 'roll_sequence' => $panel['roll_sequence'] ?? null,
-'production' => $panel['production'] ?? [],
+'production' => $settings,
 ];
 }
 
@@ -307,12 +316,19 @@ return [
 'same_roll_required' => (bool) ($settings['same_roll_required'] ?? false),
 'special_cutting' => (bool) ($settings['special_cutting'] ?? false),
 'seam_enabled' => (bool) ($settings['seam_enabled'] ?? false),
+'max_roll_length_m' => isset($settings['max_roll_length_m']) && is_numeric($settings['max_roll_length_m'])
+? $this->round(max(0.0, (float) $settings['max_roll_length_m']))
+: 0.0,
+'roll_reserve_percent' => isset($settings['roll_reserve_percent']) && is_numeric($settings['roll_reserve_percent'])
+? $this->round(max(0.0, (float) $settings['roll_reserve_percent']))
+: 0.0,
 'shrink_x_percent' => $this->round((float) ($settings['shrink_x_percent'] ?? 7.0)),
 'shrink_y_percent' => $this->round((float) ($settings['shrink_y_percent'] ?? 7.0)),
 'orientation_mode' => $orientationMode,
 'orientation_segment_index' => max(0, (int) ($settings['orientation_segment_index'] ?? 0)),
 'orientation_offset_m' => $this->round((float) ($settings['orientation_offset_m'] ?? 0.0)),
 'seam_offset_m' => $this->round((float) ($settings['seam_offset_m'] ?? 0.0)),
+'batch_label' => $this->trimNullable($settings['batch_label'] ?? null),
 'comment' => $this->trimNullable($settings['comment'] ?? null),
 ];
 }
@@ -695,6 +711,428 @@ private function buildWarnings(array $settings, array $panels): array
 }
 
 /**
+ * @param  array<string, mixed>  $settings
+ * @param  array<int, array<string, mixed>>  $panels
+ * @param  array<int, array<string, mixed>>  $rollSequences
+ * @return array{
+ *   issues: array<int, array<string, mixed>>,
+ *   panel_issues: array<string, array<int, array<string, mixed>>>,
+ *   sequence_issues: array<string, array<int, array<string, mixed>>>,
+ *   messages: array<int, string>,
+ *   warning_messages: array<int, string>,
+ *   errors_count: int,
+ *   warnings_count: int,
+ *   status: string,
+ *   is_feasible: bool
+ * }
+ */
+private function buildDiagnostics(array $settings, array $panels, array $rollSequences): array
+{
+    $panelIssues = [];
+    $sequenceIssues = [];
+    $issues = [];
+
+    foreach ($panels as $panel) {
+        $panelId = (string) ($panel['id'] ?? '');
+        if ($panelId === '') {
+            continue;
+        }
+
+        $panelIssues[$panelId] = $this->buildPanelIssues($panel, $settings);
+        $issues = array_merge($issues, $panelIssues[$panelId]);
+    }
+
+    foreach ($rollSequences as $sequence) {
+        $sequenceKey = (string) ($sequence['key'] ?? '');
+        if ($sequenceKey === '') {
+            continue;
+        }
+
+        $sequencePanels = array_values(array_filter(
+            $panels,
+            static fn (array $panel) => (string) (($panel['roll_sequence']['key'] ?? null) ?? '') === $sequenceKey
+        ));
+        $sequenceIssues[$sequenceKey] = $this->buildSequenceIssues($sequence, $sequencePanels, $settings);
+        $issues = array_merge($issues, $sequenceIssues[$sequenceKey]);
+    }
+
+    $issues = array_merge($issues, $this->buildRoomIssues($settings, $panels));
+    $decorated = $this->decorateIssues($issues);
+
+    return [
+        'issues' => $decorated['issues'],
+        'panel_issues' => $panelIssues,
+        'sequence_issues' => $sequenceIssues,
+        'messages' => $decorated['messages'],
+        'warning_messages' => $decorated['warning_messages'],
+        'errors_count' => $decorated['errors_count'],
+        'warnings_count' => $decorated['warnings_count'],
+        'status' => $decorated['status'],
+        'is_feasible' => $decorated['status'] !== 'blocked',
+    ];
+}
+
+/**
+ * @param  array<string, mixed>  $panel
+ * @param  array<string, mixed>  $settings
+ * @return array<int, array<string, mixed>>
+ */
+private function buildPanelIssues(array $panel, array $settings): array
+{
+    $issues = [];
+    $panelLabel = \App\Support\TextNormalizer::normalizeMojibake((string) ($panel['label'] ?? 'Полотно'));
+    $stripsCount = max(0, (int) ($panel['strips_count'] ?? 0));
+    $cutWidth = (float) ($panel['cut_span_m']['width'] ?? 0.0);
+    $rollWidth = (float) ($panel['roll_width_m'] ?? 0.0);
+    $effectiveSettings = is_array($panel['production'] ?? null) ? $panel['production'] : $settings;
+    $specialCutting = (bool) ($effectiveSettings['special_cutting'] ?? false);
+    $seamEnabled = (bool) ($effectiveSettings['seam_enabled'] ?? false);
+    $hasComplexGeometry = $this->panelHasComplexGeometry($panel);
+
+    if ($stripsCount > 1 && !$seamEnabled && !$specialCutting) {
+        $issues[] = $this->makeIssue(
+            'error',
+            sprintf(
+                'Полотно "%s" требует %d полосы при ширине заготовки %s м и рулоне %s м. Без шва или спецраскроя раскладка невыполнима.',
+                $panelLabel,
+                $stripsCount,
+                $this->round($cutWidth),
+                $this->round($rollWidth)
+            ),
+            [
+                'scope' => 'panel',
+                'panel_id' => (string) ($panel['id'] ?? ''),
+            ]
+        );
+    } elseif ($stripsCount > 1 && !$seamEnabled && $specialCutting) {
+        $issues[] = $this->makeIssue(
+            'warning',
+            sprintf(
+                'Полотно "%s" идёт в %d полосы без шва и требует несколько полос рулона. Подтвердите спецраскрой и порядок сборки в производстве.',
+                $panelLabel,
+                $stripsCount
+            ),
+            [
+                'scope' => 'panel',
+                'panel_id' => (string) ($panel['id'] ?? ''),
+            ]
+        );
+    }
+
+    if ($hasComplexGeometry && !$specialCutting) {
+        $issues[] = $this->makeIssue(
+            'warning',
+            sprintf(
+                'Полотно "%s" имеет сложный контур или отверстия. Лучше включить спецраскрой и оставить комментарий для производства.',
+                $panelLabel
+            ),
+            [
+                'scope' => 'panel',
+                'panel_id' => (string) ($panel['id'] ?? ''),
+            ]
+        );
+    }
+
+    if (($panel['layout_type'] ?? 'single') === 'seamed' && empty($panel['seam_parent_id'])) {
+        $issues[] = $this->makeIssue(
+            'warning',
+            sprintf(
+                'Для полотна "%s" включён шов, но контур не разделился автоматически на отдельные части. Проверьте положение шва вручную.',
+                $panelLabel
+            ),
+            [
+                'scope' => 'panel',
+                'panel_id' => (string) ($panel['id'] ?? ''),
+            ]
+        );
+    }
+
+    return $issues;
+}
+
+/**
+ * @param  array<string, mixed>  $sequence
+ * @param  array<int, array<string, mixed>>  $panels
+ * @param  array<string, mixed>  $settings
+ * @return array<int, array<string, mixed>>
+ */
+private function buildSequenceIssues(array $sequence, array $panels, array $settings): array
+{
+    $issues = [];
+    $sequenceLabel = \App\Support\TextNormalizer::normalizeMojibake((string) ($sequence['label'] ?? 'Рулон'));
+    $availableRollLength = (float) ($sequence['available_roll_length_m'] ?? 0.0);
+    $requiredRollLength = (float) ($sequence['required_roll_length_m'] ?? ($sequence['roll_length_total_m'] ?? 0.0));
+    $remainingRollLength = (float) ($sequence['remaining_roll_length_m'] ?? 0.0);
+    $reserveLength = (float) ($sequence['reserve_length_m'] ?? 0.0);
+
+    if ($availableRollLength > 0.0 && $requiredRollLength > ($availableRollLength + 0.0001)) {
+        $issues[] = $this->makeIssue(
+            'error',
+            sprintf(
+                'Комплект "%s" требует %s м рулона с техзапасом %s м, а допустимая длина рулона только %s м.',
+                $sequenceLabel,
+                $this->round($requiredRollLength),
+                $this->round($reserveLength),
+                $this->round($availableRollLength)
+            ),
+            [
+                'scope' => 'sequence',
+                'sequence_key' => (string) ($sequence['key'] ?? ''),
+            ]
+        );
+    } elseif ($availableRollLength > 0.0) {
+        $warningThreshold = max(0.3, $availableRollLength * 0.05);
+        if ($remainingRollLength <= $warningThreshold) {
+            $issues[] = $this->makeIssue(
+                'warning',
+                sprintf(
+                    'Комплект "%s" почти упирается в длину рулона: требуется %s м, остаток после раскроя %s м.',
+                    $sequenceLabel,
+                    $this->round($requiredRollLength),
+                    $this->round(max(0.0, $remainingRollLength))
+                ),
+                [
+                    'scope' => 'sequence',
+                    'sequence_key' => (string) ($sequence['key'] ?? ''),
+                ]
+            );
+        }
+    }
+
+    if (!(bool) ($settings['same_roll_required'] ?? false) || count($panels) < 2) {
+        return $issues;
+    }
+
+    $differentFields = $this->sameRollDifferentFields($panels);
+    if ($differentFields === []) {
+        return $issues;
+    }
+
+    $fieldLabels = array_map(
+        fn (string $field) => $this->sameRollFieldLabels()[$field] ?? $field,
+        $differentFields
+    );
+
+    $issues[] = $this->makeIssue(
+            'error',
+            sprintf(
+                'Комплект "%s" нельзя подтвердить как один рулон: отличаются параметры материала (%s).',
+                $sequenceLabel,
+                implode(', ', $fieldLabels)
+            ),
+            [
+                'scope' => 'sequence',
+                'sequence_key' => (string) ($sequence['key'] ?? ''),
+            ]
+    );
+
+    return $issues;
+}
+
+/**
+ * @param  array<string, mixed>  $settings
+ * @param  array<int, array<string, mixed>>  $panels
+ * @return array<int, array<string, mixed>>
+ */
+private function buildRoomIssues(array $settings, array $panels): array
+{
+    $issues = [];
+
+    if ((bool) ($settings['same_roll_required'] ?? false) && count($panels) > 1 && (float) ($settings['max_roll_length_m'] ?? 0.0) <= 0.0) {
+        $issues[] = $this->makeIssue(
+            'warning',
+            'Для комнаты включена настройка "Кроить из одного рулона", но не задана допустимая длина рулона.',
+            ['scope' => 'room']
+        );
+    }
+
+    if ((bool) ($settings['special_cutting'] ?? false) && trim((string) ($settings['comment'] ?? '')) === '') {
+        $issues[] = $this->makeIssue(
+            'warning',
+            'В комнате включён спецраскрой, но не заполнен комментарий для производства.',
+            ['scope' => 'room']
+        );
+    }
+
+    if ((bool) ($settings['same_roll_required'] ?? false) && count($panels) > 1 && (float) ($settings['max_roll_length_m'] ?? 0.0) > 0.0) {
+        $issues[] = $this->makeIssue(
+            'warning',
+            'Для комнаты включена настройка "Кроить из одного рулона". Проверьте длину общего рулона и последовательность раскроя.',
+            ['scope' => 'room']
+        );
+    }
+
+    return $issues;
+}
+
+/**
+ * @param  array<int, array<string, mixed>>  $panels
+ * @param  array<string, array<int, array<string, mixed>>>  $panelIssues
+ * @return array<int, array<string, mixed>>
+ */
+private function attachPanelDiagnostics(array $panels, array $panelIssues): array
+{
+    return array_map(function (array $panel) use ($panelIssues) {
+        $issues = $panelIssues[(string) ($panel['id'] ?? '')] ?? [];
+        $decorated = $this->decorateIssues($issues);
+        $panel['issues'] = $decorated['issues'];
+        $panel['warnings'] = $decorated['messages'];
+        $panel['status'] = $decorated['status'];
+        $panel['errors_count'] = $decorated['errors_count'];
+        $panel['warnings_count'] = $decorated['warnings_count'];
+        $panel['has_complex_geometry'] = $this->panelHasComplexGeometry($panel);
+        $panel['requires_joining'] = ((int) ($panel['strips_count'] ?? 0)) > 1;
+
+        return $panel;
+    }, $panels);
+}
+
+/**
+ * @param  array<int, array<string, mixed>>  $sequences
+ * @param  array<string, array<int, array<string, mixed>>>  $sequenceIssues
+ * @return array<int, array<string, mixed>>
+ */
+private function attachSequenceDiagnostics(array $sequences, array $sequenceIssues): array
+{
+    return array_map(function (array $sequence) use ($sequenceIssues) {
+        $issues = $sequenceIssues[(string) ($sequence['key'] ?? '')] ?? [];
+        $decorated = $this->decorateIssues($issues);
+        $sequence['issues'] = $decorated['issues'];
+        $sequence['warnings'] = $decorated['messages'];
+        $sequence['status'] = $decorated['status'];
+        $sequence['errors_count'] = $decorated['errors_count'];
+        $sequence['warnings_count'] = $decorated['warnings_count'];
+
+        return $sequence;
+    }, $sequences);
+}
+
+/**
+ * @param  array<int, array<string, mixed>>  $issues
+ * @return array{issues: array<int, array<string, mixed>>, messages: array<int, string>, warning_messages: array<int, string>, errors_count: int, warnings_count: int, status: string}
+ */
+private function decorateIssues(array $issues): array
+{
+    $normalized = [];
+    $seen = [];
+    foreach ($issues as $issue) {
+        if (!is_array($issue)) {
+            continue;
+        }
+
+        $message = trim((string) ($issue['message'] ?? ''));
+        if ($message === '') {
+            continue;
+        }
+
+        $severity = ($issue['severity'] ?? 'warning') === 'error' ? 'error' : 'warning';
+        $key = implode('|', [
+            $severity,
+            (string) ($issue['scope'] ?? 'room'),
+            (string) ($issue['panel_id'] ?? ''),
+            (string) ($issue['sequence_key'] ?? ''),
+            $message,
+        ]);
+        if (isset($seen[$key])) {
+            continue;
+        }
+
+        $seen[$key] = true;
+        $normalized[] = array_merge($issue, [
+            'severity' => $severity,
+            'message' => $message,
+        ]);
+    }
+
+    $errorsCount = count(array_filter($normalized, static fn (array $issue) => ($issue['severity'] ?? 'warning') === 'error'));
+    $warningsCount = count($normalized) - $errorsCount;
+
+    return [
+        'issues' => array_values($normalized),
+        'messages' => array_values(array_map(static fn (array $issue) => (string) $issue['message'], $normalized)),
+        'warning_messages' => array_values(array_map(
+            static fn (array $issue) => (string) $issue['message'],
+            array_values(array_filter($normalized, static fn (array $issue) => ($issue['severity'] ?? 'warning') === 'warning'))
+        )),
+        'errors_count' => $errorsCount,
+        'warnings_count' => $warningsCount,
+        'status' => $errorsCount > 0 ? 'blocked' : ($warningsCount > 0 ? 'review' : 'ready'),
+    ];
+}
+
+/**
+ * @param  array<string, mixed>  $extra
+ * @return array<string, mixed>
+ */
+private function makeIssue(string $severity, string $message, array $extra = []): array
+{
+    return array_merge($extra, [
+        'severity' => $severity === 'error' ? 'error' : 'warning',
+        'message' => \App\Support\TextNormalizer::normalizeMojibake($message),
+    ]);
+}
+
+private function panelHasComplexGeometry(array $panel): bool
+{
+    if (count($panel['holes'] ?? []) > 0) {
+        return true;
+    }
+
+    return count($panel['shape_points'] ?? []) > 4;
+}
+
+/**
+ * @param  array<int, array<string, mixed>>  $panels
+ * @return array<int, string>
+ */
+private function sameRollDifferentFields(array $panels): array
+{
+    $different = [];
+    foreach (array_keys($this->sameRollFieldLabels()) as $field) {
+        $values = [];
+        foreach ($panels as $panel) {
+            $values[] = $this->sameRollComparableValue($panel['production'] ?? [], $field);
+        }
+
+        if (count(array_unique($values, SORT_REGULAR)) > 1) {
+            $different[] = $field;
+        }
+    }
+
+    return $different;
+}
+
+/**
+ * @return array<string, string>
+ */
+private function sameRollFieldLabels(): array
+{
+    return [
+        'texture' => 'фактура',
+        'roll_width_cm' => 'ширина рулона',
+        'harpoon_type' => 'тип гарпуна',
+        'max_roll_length_m' => 'длина рулона',
+        'roll_reserve_percent' => 'техзапас',
+        'shrink_x_percent' => 'усадка X',
+        'shrink_y_percent' => 'усадка Y',
+        'batch_label' => 'партия',
+    ];
+}
+
+private function sameRollComparableValue(array $production, string $field): string|int|float|bool|null
+{
+    return match ($field) {
+        'roll_width_cm' => max(50, (int) ($production['roll_width_cm'] ?? 320)),
+        'max_roll_length_m' => $this->round(max(0.0, (float) ($production['max_roll_length_m'] ?? 0.0))),
+        'roll_reserve_percent' => $this->round(max(0.0, (float) ($production['roll_reserve_percent'] ?? 0.0))),
+        'shrink_x_percent' => $this->round((float) ($production['shrink_x_percent'] ?? 7.0)),
+        'shrink_y_percent' => $this->round((float) ($production['shrink_y_percent'] ?? 7.0)),
+        'batch_label' => $this->trimNullable($production['batch_label'] ?? null),
+        default => $production[$field] ?? null,
+    };
+}
+
+/**
  * @param  array<int, array<string, mixed>>  $panels
  * @return array<int, array<string, mixed>>
  */
@@ -725,6 +1163,10 @@ private function buildRollSequences(array $panels, array $settings): array
         $rollLength = 0.0;
         $consumedArea = 0.0;
         $containsSeam = false;
+        $maxCutWidth = 0.0;
+        $maxCutLength = 0.0;
+        $reservePercent = max(0.0, (float) ($settings['roll_reserve_percent'] ?? 0.0));
+        $availableRollLength = max(0.0, (float) ($settings['max_roll_length_m'] ?? 0.0));
 
         foreach ($groupPanels as $panel) {
             $panelIds[] = (string) ($panel['id'] ?? uniqid('panel_', true));
@@ -733,7 +1175,13 @@ private function buildRollSequences(array $panels, array $settings): array
             $rollLength += (float) ($panel['roll_length_total_m'] ?? 0.0);
             $consumedArea += (float) ($panel['consumed_area_m2'] ?? 0.0);
             $containsSeam = $containsSeam || (($panel['seam_parent_id'] ?? null) !== null);
+            $maxCutWidth = max($maxCutWidth, (float) ($panel['cut_span_m']['width'] ?? 0.0));
+            $maxCutLength = max($maxCutLength, (float) ($panel['cut_span_m']['length'] ?? 0.0));
         }
+
+        $reserveLength = $rollLength * ($reservePercent / 100);
+        $requiredRollLength = $rollLength + $reserveLength;
+        $remainingRollLength = $availableRollLength > 0.0 ? ($availableRollLength - $requiredRollLength) : null;
 
         $sequences[] = [
             'key' => $groupKey,
@@ -747,6 +1195,14 @@ private function buildRollSequences(array $panels, array $settings): array
             'consumed_area_m2' => $this->round($consumedArea),
             'contains_seam' => $containsSeam,
             'same_roll_required' => (bool) ($settings['same_roll_required'] ?? false),
+            'max_cut_width_m' => $this->round($maxCutWidth),
+            'max_cut_length_m' => $this->round($maxCutLength),
+            'available_roll_length_m' => $this->round($availableRollLength),
+            'reserve_percent' => $this->round($reservePercent),
+            'reserve_length_m' => $this->round($reserveLength),
+            'required_roll_length_m' => $this->round($requiredRollLength),
+            'remaining_roll_length_m' => $remainingRollLength === null ? null : $this->round($remainingRollLength),
+            'batch_label' => $this->trimNullable($settings['batch_label'] ?? null),
         ];
 
         $sequenceIndex++;

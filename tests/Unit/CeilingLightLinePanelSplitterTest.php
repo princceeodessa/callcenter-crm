@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Models\CeilingProjectRoom;
 use App\Services\Ceiling\CeilingLightLinePanelSplitter;
 use PHPUnit\Framework\TestCase;
 
@@ -92,5 +93,37 @@ class CeilingLightLinePanelSplitterTest extends TestCase
         $this->assertNotEmpty($complexPanels);
         $this->assertGreaterThanOrEqual(6, count($complexPanels[0]['shape_points']));
         $this->assertEqualsWithDelta(15.6, $panels[0]['area_m2'] + $panels[1]['area_m2'], 0.2);
+    }
+
+    public function test_it_reconstructs_arc_feature_blocker_without_saved_points(): void
+    {
+        $splitter = new CeilingLightLinePanelSplitter();
+
+        $panels = $splitter->split(
+            [
+                ['x' => 0.0, 'y' => 0.0],
+                ['x' => 4.0, 'y' => 0.0],
+                ['x' => 4.0, 'y' => 4.0],
+                ['x' => 0.0, 'y' => 4.0],
+            ],
+            [],
+            [],
+            [[
+                'kind' => CeilingProjectRoom::FEATURE_CUTOUT,
+                'figure' => CeilingProjectRoom::FEATURE_ARC,
+                'x_m' => 1,
+                'y_m' => 0,
+                'width_m' => 2,
+                'height_m' => 0.5,
+                'source_segment_index' => 0,
+                'offset_m' => 1,
+                'depth_m' => 0.5,
+                'direction' => 'inward',
+            ]],
+        );
+
+        $this->assertCount(1, $panels);
+        $this->assertEqualsWithDelta(15.37, $panels[0]['area_m2'], 0.08);
+        $this->assertGreaterThanOrEqual(12, count($panels[0]['shape_points'] ?? []));
     }
 }

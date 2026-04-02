@@ -280,6 +280,48 @@ class CeilingProjectCalculatorTest extends TestCase
         $this->assertSame(1, $metrics['feature_levels_count']);
     }
 
+    public function test_it_reconstructs_curved_feature_metrics_from_attachment_data(): void
+    {
+        $calculator = new CeilingProjectCalculator();
+
+        $metrics = $calculator->calculateRoom([
+            'shape_type' => CeilingProjectRoom::SHAPE_RECTANGLE,
+            'width_m' => 4,
+            'length_m' => 4,
+            'feature_shapes' => [
+                [
+                    'kind' => CeilingProjectRoom::FEATURE_LEVEL,
+                    'figure' => CeilingProjectRoom::FEATURE_ARC,
+                    'x_m' => 1,
+                    'y_m' => 0,
+                    'width_m' => 2,
+                    'height_m' => 0.5,
+                    'source_segment_index' => 0,
+                    'offset_m' => 1,
+                    'depth_m' => 0.5,
+                    'direction' => 'inward',
+                ],
+                [
+                    'kind' => CeilingProjectRoom::FEATURE_CUTOUT,
+                    'figure' => CeilingProjectRoom::FEATURE_ROUNDED_CORNER,
+                    'x_m' => 0,
+                    'y_m' => 0,
+                    'width_m' => 0.4,
+                    'height_m' => 0.4,
+                    'source_point_index' => 0,
+                    'radius_m' => 0.4,
+                    'direction' => 'inward',
+                ],
+            ],
+        ]);
+
+        $this->assertSame(16.6, $metrics['area_m2']);
+        $this->assertSame(16.11, $metrics['perimeter_m']);
+        $this->assertSame(2, $metrics['feature_shapes_count']);
+        $this->assertSame(1, $metrics['feature_cutouts_count']);
+        $this->assertSame(1, $metrics['feature_levels_count']);
+    }
+
     public function test_it_counts_light_line_groups_segments_and_length(): void
     {
         $calculator = new CeilingProjectCalculator();
