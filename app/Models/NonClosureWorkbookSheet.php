@@ -91,6 +91,9 @@ class NonClosureWorkbookSheet extends Model
 
         return $query->where(function ($inner) use ($user) {
             $inner->where('owner_user_id', $user->id)
+                ->orWhereHas('workbook', function ($workbook) use ($user) {
+                    $workbook->where('owner_user_id', $user->id);
+                })
                 ->orWhereHas('sharedUsers', function ($shared) use ($user) {
                     $shared->where('users.id', $user->id);
                 });
