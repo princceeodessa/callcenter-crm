@@ -55,7 +55,13 @@
   .sheet-controls{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center}
   .sheet-search{min-width:280px}
   .sheet-toggle{display:inline-flex;align-items:center;gap:.45rem;padding:.4rem .75rem;border:1px solid var(--crm-border);border-radius:999px;background:rgba(255,255,255,.45);font-size:.86rem}
+  .sheet-horizontal-nav{display:flex;align-items:center;gap:.75rem;padding:.6rem .8rem;border:1px solid var(--crm-border);border-radius:1rem;background:rgba(255,255,255,.42)}
+  .sheet-horizontal-track{flex:1;overflow-x:auto;overflow-y:hidden;scrollbar-gutter:stable;border-radius:999px;background:rgba(148,163,184,.14)}
+  .sheet-horizontal-track-inner{height:14px}
+  .sheet-horizontal-hint{font-size:.8rem;color:var(--crm-muted);white-space:nowrap}
   .sheet-table-wrap{max-height:72vh;overflow:auto;border:1px solid var(--crm-border);border-radius:1rem;background:var(--crm-surface-strong)}
+  .sheet-table-wrap.is-panning{cursor:grabbing;user-select:none}
+  .sheet-table-wrap.is-panning *{cursor:grabbing!important;user-select:none}
   .sheet-table{width:max-content;min-width:100%;margin:0;border-collapse:separate;border-spacing:0}
   .sheet-table thead th{position:sticky;top:0;background:var(--crm-surface-strong);z-index:4;box-shadow:inset 0 -1px 0 var(--crm-border)}
   .sheet-table tbody tr:nth-child(odd) td,.sheet-table tbody tr:nth-child(odd) th{background:rgba(148,163,184,.04)}
@@ -108,6 +114,8 @@
   .sheet-column-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem;align-items:start}
   .sheet-column-actions{display:flex;flex-direction:column;gap:.55rem}
   .sheet-column-options{grid-column:1 / -1}
+  .sheet-column-visibility-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.75rem}
+  .sheet-column-visibility-item{display:flex;align-items:center;gap:.55rem;padding:.7rem .8rem;border:1px solid var(--crm-border);border-radius:.9rem;background:rgba(255,255,255,.4)}
   .sheet-metric-list{display:flex;flex-direction:column;gap:.75rem}
   .sheet-metric-row{display:grid;grid-template-columns:1.15fr 1fr 1fr 1fr auto;gap:.75rem;align-items:end;padding:1rem;border:1px solid var(--crm-border);border-radius:1rem;background:rgba(255,255,255,.45)}
   .sheet-metric-empty{padding:1rem;border:1px dashed var(--crm-border);border-radius:1rem;background:rgba(255,255,255,.3)}
@@ -115,8 +123,8 @@
   #sheetRowModal .modal-content{max-height:calc(100dvh - 1.5rem)}
   #sheetRowModal .modal-body{overflow-y:auto;min-height:0;max-height:calc(100dvh - 210px)}
   @media (max-width:1199px){.sheet-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.sheet-access-grid{grid-template-columns:1fr}}
-  @media (max-width:991px){.sheet-editor-grid{grid-template-columns:1fr}.sheet-metric-row{grid-template-columns:1fr 1fr}}
-  @media (max-width:767px){.sheet-stats{grid-template-columns:1fr}.sheet-search{min-width:unset;width:100%}.sheet-row-number{min-width:136px;max-width:136px;width:136px}.sheet-column-row{grid-template-columns:1fr}.sheet-metric-row{grid-template-columns:1fr}}
+  @media (max-width:991px){.sheet-editor-grid{grid-template-columns:1fr}.sheet-metric-row{grid-template-columns:1fr 1fr}.sheet-column-visibility-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media (max-width:767px){.sheet-stats{grid-template-columns:1fr}.sheet-search{min-width:unset;width:100%}.sheet-row-number{min-width:136px;max-width:136px;width:136px}.sheet-column-row{grid-template-columns:1fr}.sheet-metric-row{grid-template-columns:1fr}.sheet-column-visibility-grid{grid-template-columns:1fr}.sheet-horizontal-nav{flex-direction:column;align-items:stretch}.sheet-horizontal-hint{white-space:normal}}
 </style>
 @endpush
 
@@ -409,8 +417,18 @@
         <label class="sheet-toggle"><input type="checkbox" class="form-check-input mt-0" id="sheetCompactToggle"> Компактный режим</label>
         <button type="button" class="btn btn-primary btn-sm" id="sheetAddRowButton"><i class="bi bi-plus-circle"></i> Добавить строку</button>
         <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#sheetColumnsModal"><i class="bi bi-layout-three-columns"></i> Столбцы</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#sheetColumnsVisibilityModal"><i class="bi bi-eye"></i> Видимые колонки</button>
         <span class="sheet-badge">Видно строк: <span id="sheetVisibleRows">{{ $visibleRows }}</span></span>
       </div>
+    </div>
+
+    <div class="sheet-horizontal-nav mb-3">
+      <div class="sheet-horizontal-hint">Горизонтальная навигация. Можно листать сверху, не спускаясь к нижнему скроллу.</div>
+      <button type="button" class="btn btn-outline-secondary btn-sm" id="sheetScrollLeftButton" aria-label="Прокрутить таблицу влево"><i class="bi bi-arrow-left"></i></button>
+      <div class="sheet-horizontal-track" id="sheetHorizontalTrack">
+        <div class="sheet-horizontal-track-inner" id="sheetHorizontalTrackInner"></div>
+      </div>
+      <button type="button" class="btn btn-outline-secondary btn-sm" id="sheetScrollRightButton" aria-label="Прокрутить таблицу вправо"><i class="bi bi-arrow-right"></i></button>
     </div>
 
     <div class="sheet-table-wrap">
@@ -731,6 +749,40 @@
     </div>
   </div>
 
+  <div class="modal fade" id="sheetColumnsVisibilityModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div>
+            <h5 class="modal-title mb-1">Видимые колонки</h5>
+            <div class="sheet-muted small">Скрывайте редкие поля и оставляйте на экране только нужные колонки под конкретную задачу.</div>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+        </div>
+        <div class="modal-body d-flex flex-column gap-3">
+          <div class="d-flex gap-2 flex-wrap">
+            <button type="button" class="btn btn-outline-primary btn-sm" id="sheetShowAllColumnsButton">Показать все</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="sheetShowCoreColumnsButton">Только основные</button>
+          </div>
+          <div class="sheet-column-visibility-grid" id="sheetColumnVisibilityGrid">
+            @foreach($columnMeta as $index => $meta)
+              <label class="sheet-column-visibility-item">
+                <input
+                  type="checkbox"
+                  class="form-check-input mt-0"
+                  data-column-visibility
+                  data-col-index="{{ $index }}"
+                  checked
+                >
+                <span>{{ $meta['label'] }}</span>
+              </label>
+            @endforeach
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="modal fade" id="sheetMetricsModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
       <div class="modal-content">
@@ -785,6 +837,11 @@
   const searchInput = document.getElementById('sheetSearch');
   const statusFilter = document.getElementById('sheetStatusFilter');
   const table = document.getElementById('sheetTable');
+  const tableWrap = document.querySelector('.sheet-table-wrap');
+  const horizontalTrack = document.getElementById('sheetHorizontalTrack');
+  const horizontalTrackInner = document.getElementById('sheetHorizontalTrackInner');
+  const scrollLeftButton = document.getElementById('sheetScrollLeftButton');
+  const scrollRightButton = document.getElementById('sheetScrollRightButton');
   const visibleCounter = document.getElementById('sheetVisibleRows');
   const compactToggle = document.getElementById('sheetCompactToggle');
   const wrapToggle = document.getElementById('sheetWrapToggle');
@@ -835,6 +892,9 @@
   const cellButtons = Array.from(document.querySelectorAll('[data-row-cell]'));
   const inlineSelects = Array.from(document.querySelectorAll('[data-inline-select]'));
   const columnTypeSelects = Array.from(document.querySelectorAll('[data-column-type-select]'));
+  const columnVisibilityCheckboxes = Array.from(document.querySelectorAll('[data-column-visibility]'));
+  const showAllColumnsButton = document.getElementById('sheetShowAllColumnsButton');
+  const showCoreColumnsButton = document.getElementById('sheetShowCoreColumnsButton');
   const metricsEditor = document.getElementById('sheetMetricsEditor');
   const metricsEmpty = document.getElementById('sheetMetricsEmpty');
   const metricAddButton = document.getElementById('sheetMetricAddButton');
@@ -843,23 +903,67 @@
   const rowModal = rowModalElement ? new bootstrap.Modal(rowModalElement) : null;
   const taskModal = taskModalElement ? new bootstrap.Modal(taskModalElement) : null;
   let pendingFocusColumnIndex = null;
+  let hiddenColumns = [];
+  let syncScrollLock = false;
+  let tablePanState = null;
   const metricState = Array.isArray(metricDefinitions) ? metricDefinitions.map((metric) => ({ ...metric })) : [];
-  const modeStorageKey = 'documents-sheet-view-modes';
+  const modeStorageKey = `documents-sheet-view-modes-{{ $sheet->id }}`;
   const restoreModes = () => {
     try {
       const payload = JSON.parse(window.localStorage.getItem(modeStorageKey) || '{}');
       compactToggle.checked = Boolean(payload.compact);
       wrapToggle.checked = payload.wrap !== false;
+      hiddenColumns = Array.isArray(payload.hiddenColumns) ? payload.hiddenColumns.map((value) => Number(value)).filter((value) => !Number.isNaN(value)) : [];
     } catch (error) {
       compactToggle.checked = false;
       wrapToggle.checked = true;
+      hiddenColumns = [];
     }
   };
-  const persistModes = () => window.localStorage.setItem(modeStorageKey, JSON.stringify({ compact: Boolean(compactToggle.checked), wrap: Boolean(wrapToggle.checked) }));
+  const persistModes = () => window.localStorage.setItem(modeStorageKey, JSON.stringify({
+    compact: Boolean(compactToggle.checked),
+    wrap: Boolean(wrapToggle.checked),
+    hiddenColumns,
+  }));
   const applyModes = () => {
     table.classList.toggle('sheet-compact', Boolean(compactToggle.checked));
     table.classList.toggle('sheet-nowrap', !Boolean(wrapToggle.checked));
     persistModes();
+  };
+  const coreColumnIndexes = columnDefinitions
+    .map((column, index) => ({ column, index }))
+    .filter(({ column, index }) => {
+      const label = String(column?.label || '').toLowerCase();
+      return index <= 4
+        || label.includes('наименование')
+        || label.includes('менедж')
+        || label.includes('город')
+        || label.includes('статус')
+        || label.includes('тел')
+        || label.includes('адрес');
+    })
+    .map(({ index }) => index);
+  const setColumnVisibility = (columnIndex, visible) => {
+    const displayValue = visible ? '' : 'none';
+    table.querySelectorAll(`thead tr > *:nth-child(${columnIndex + 2}), tbody tr > *:nth-child(${columnIndex + 2})`).forEach((cell) => {
+      cell.style.display = displayValue;
+    });
+    const checkbox = columnVisibilityCheckboxes.find((item) => Number(item.dataset.colIndex || -1) === columnIndex);
+    if (checkbox) checkbox.checked = visible;
+  };
+  const updateHorizontalTrackSize = () => {
+    if (!tableWrap || !horizontalTrack || !horizontalTrackInner || !table) return;
+    horizontalTrackInner.style.width = `${table.scrollWidth}px`;
+    const needsHorizontal = table.scrollWidth > tableWrap.clientWidth + 8;
+    horizontalTrack.closest('.sheet-horizontal-nav')?.classList.toggle('d-none', !needsHorizontal);
+  };
+  const applyColumnVisibility = () => {
+    const hiddenSet = new Set(hiddenColumns);
+    columnDefinitions.forEach((_, columnIndex) => {
+      setColumnVisibility(columnIndex, !hiddenSet.has(columnIndex));
+    });
+    persistModes();
+    updateHorizontalTrackSize();
   };
   const applyFilter = () => {
     const needle = searchInput.value.trim().toLowerCase();
@@ -1150,6 +1254,52 @@
   const syncMetricStateFromDom = () => {
     metricState.splice(0, metricState.length, ...readMetricRowsFromDom());
   };
+  const syncHorizontalScrollFromTable = () => {
+    if (!horizontalTrack || !tableWrap || syncScrollLock) return;
+    syncScrollLock = true;
+    horizontalTrack.scrollLeft = tableWrap.scrollLeft;
+    window.requestAnimationFrame(() => {
+      syncScrollLock = false;
+    });
+  };
+  const syncHorizontalScrollToTable = () => {
+    if (!horizontalTrack || !tableWrap || syncScrollLock) return;
+    syncScrollLock = true;
+    tableWrap.scrollLeft = horizontalTrack.scrollLeft;
+    window.requestAnimationFrame(() => {
+      syncScrollLock = false;
+    });
+  };
+  const scrollTableBy = (distance) => {
+    if (!tableWrap) return;
+    tableWrap.scrollBy({ left: distance, behavior: 'smooth' });
+  };
+  const beginTablePan = (event) => {
+    if (!tableWrap || event.button !== 0) return;
+    if (event.target.closest('button, a, input, select, textarea, label')) return;
+    tablePanState = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      scrollLeft: tableWrap.scrollLeft,
+      scrollTop: tableWrap.scrollTop,
+    };
+    tableWrap.classList.add('is-panning');
+    tableWrap.setPointerCapture?.(event.pointerId);
+  };
+  const moveTablePan = (event) => {
+    if (!tableWrap || !tablePanState || tablePanState.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - tablePanState.startX;
+    const deltaY = event.clientY - tablePanState.startY;
+    tableWrap.scrollLeft = tablePanState.scrollLeft - deltaX;
+    tableWrap.scrollTop = tablePanState.scrollTop - deltaY;
+  };
+  const endTablePan = (event) => {
+    if (!tableWrap || !tablePanState || tablePanState.pointerId !== event.pointerId) return;
+    tablePanState = null;
+    tableWrap.classList.remove('is-panning');
+    tableWrap.releasePointerCapture?.(event.pointerId);
+  };
   const openRowEditor = (rowIndex, focusColumnIndex = null) => {
     if (!rowModal || !rowForm || !rowMethodInput || !rowPositionInput) return;
     const numericRowIndex = Number(rowIndex);
@@ -1280,15 +1430,46 @@
     syncMetricStateFromDom();
     renderMetricsEditor();
   });
+  columnVisibilityCheckboxes.forEach((checkbox) => {
+    checkbox.addEventListener('change', () => {
+      const columnIndex = Number(checkbox.dataset.colIndex || -1);
+      if (columnIndex < 0) return;
+      hiddenColumns = columnVisibilityCheckboxes
+        .filter((item) => !item.checked)
+        .map((item) => Number(item.dataset.colIndex || -1))
+        .filter((value) => value >= 0);
+      applyColumnVisibility();
+    });
+  });
+  showAllColumnsButton?.addEventListener('click', () => {
+    hiddenColumns = [];
+    applyColumnVisibility();
+  });
+  showCoreColumnsButton?.addEventListener('click', () => {
+    hiddenColumns = columnDefinitions.map((_, index) => index).filter((index) => !coreColumnIndexes.includes(index));
+    applyColumnVisibility();
+  });
+  tableWrap?.addEventListener('scroll', syncHorizontalScrollFromTable, { passive: true });
+  horizontalTrack?.addEventListener('scroll', syncHorizontalScrollToTable, { passive: true });
+  scrollLeftButton?.addEventListener('click', () => scrollTableBy(-Math.max(360, Math.floor((tableWrap?.clientWidth || 720) * 0.7))));
+  scrollRightButton?.addEventListener('click', () => scrollTableBy(Math.max(360, Math.floor((tableWrap?.clientWidth || 720) * 0.7))));
+  tableWrap?.addEventListener('pointerdown', beginTablePan);
+  tableWrap?.addEventListener('pointermove', moveTablePan);
+  tableWrap?.addEventListener('pointerup', endTablePan);
+  tableWrap?.addEventListener('pointercancel', endTablePan);
+  window.addEventListener('resize', updateHorizontalTrackSize);
   restoreModes();
   applyModes();
   renderMetricsEditor();
+  applyColumnVisibility();
   rows.forEach((row) => {
     const rowIndex = Number((row.id || '').replace('row-', ''));
     if (!Number.isNaN(rowIndex) && rowIndex > 0) {
       refreshRowDatasets(rowIndex);
     }
   });
+  updateHorizontalTrackSize();
+  syncHorizontalScrollFromTable();
   applyFilter();
 })();
 </script>

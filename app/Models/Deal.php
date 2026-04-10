@@ -36,6 +36,7 @@ class Deal extends Model
     private const PHONE_SOURCE_SURFACE_CLASS = 'source-surface source-surface-megafon_vats';
     private const PHONE_SOURCE_ICON_HTML = '<span class="source-icon source-icon-megafon_vats"><i class="bi bi-telephone-fill"></i></span>';
     private const INCOMING_PHONE_SOURCE_LABELS = [
+        '79225090014' => "\u{0422}\u{0412}",
         '79225150259' => 'авито частник',
         '79225070404' => 'радио',
         '79225085574' => 'вк',

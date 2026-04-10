@@ -52,4 +52,20 @@ class DealCallEmployeeTest extends TestCase
 
         $this->assertSame('Иван Петров', $deal->latest_call_answered_by_label);
     }
+
+    public function test_it_resolves_tv_call_source_by_tracked_number(): void
+    {
+        $payload = [
+            'type' => 'in',
+            'diversion' => '8-922-509-00-14',
+        ];
+
+        $this->assertSame([
+            'number' => '79225090014',
+            'label' => 'ТВ',
+        ], Deal::resolveIncomingPhoneSourceFromPayload($payload));
+
+        $this->assertSame('phone:79225090014', Deal::resolveIncomingPhoneSourceFilterKeyFromPayload($payload));
+        $this->assertSame('ТВ', Deal::incomingPhoneSourceOptions()['phone:79225090014']);
+    }
 }
