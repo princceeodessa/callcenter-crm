@@ -527,7 +527,9 @@
           <div class="mb-2">
             <label class="form-label small mb-1">Кому назначить</label>
             <select name="assigned_user_id" class="form-select form-select-sm">
+              @if($canAssignToAll ?? false)
               <option value="0">Всем</option>
+              @endif
               @foreach($users as $u)
                 <option value="{{ $u->id }}" @selected(($deal->responsible_user_id ?? auth()->id()) === $u->id)>{{ $u->name }}</option>
               @endforeach
@@ -572,6 +574,7 @@
               @include('tasks._edit_form', [
                 'task' => $task,
                 'users' => $users,
+                'canAssignToAll' => $canAssignToAll ?? false,
                 'cancelUrl' => $buildDealUrl(['edit_task' => null]).'#task-'.$task->id,
               ])
             @endif
@@ -584,6 +587,26 @@
   </div>
 
   <div class="col-lg-8">
+    <div class="card shadow-sm mb-3">
+      <div class="card-header fw-semibold">Голосовое сообщение</div>
+      <div class="card-body">
+        <form method="POST" action="{{ route('deals.voice-note.store', $deal) }}" enctype="multipart/form-data" class="d-flex flex-column gap-2">
+          @csrf
+          <div>
+            <label class="form-label mb-1">Файл</label>
+            <input type="file" name="voice_note" class="form-control form-control-sm" accept="audio/*,.mp3,.wav,.ogg,.oga,.webm,.m4a,.aac,.amr,.3gp,.mp4" required>
+          </div>
+          <div>
+            <label class="form-label mb-1">Комментарий (необязательно)</label>
+            <textarea name="voice_note_comment" class="form-control form-control-sm" rows="2" placeholder="Например: комментарий к голосовому"></textarea>
+          </div>
+          <div>
+            <button class="btn btn-sm btn-primary">Добавить в ленту</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <div class="card shadow-sm">
       <div class="card-header fw-semibold">Лента (история)</div>
       <div class="card-body">
@@ -755,6 +778,22 @@
                   </div>
                 @endif
               </div>
+            @elseif($a->type === 'voice_note')
+              @php
+                $voiceUrl = '';
+                if (is_string($payload['voice_url'] ?? null) && trim((string) $payload['voice_url']) !== '') {
+                  $voiceUrl = (string) $payload['voice_url'];
+                } elseif (is_string($payload['public_url'] ?? null) && trim((string) $payload['public_url']) !== '') {
+                  $voiceUrl = (string) $payload['public_url'];
+                }
+              @endphp
+              <div class="small mt-2">{!! nl2br(e($activityBody)) !!}</div>
+              @if($voiceUrl !== '')
+                <div class="activity-call-audio mt-2">
+                  <audio controls preload="none" src="{{ $voiceUrl }}"></audio>
+                  <div class="small mt-1"><a href="{{ $voiceUrl }}" target="_blank" rel="noopener">Открыть файл</a></div>
+                </div>
+              @endif
             @else
               <div class="small mt-2">{!! nl2br(e($activityBody)) !!}</div>
             @endif

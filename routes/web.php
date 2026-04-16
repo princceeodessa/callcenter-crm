@@ -73,6 +73,7 @@ Route::middleware('auth')->group(function () {
         Route::patch('/deals/{deal}', [DealController::class, 'update'])->name('deals.update');
         Route::post('/deals/{deal}/stage', [DealController::class, 'changeStage'])->name('deals.stage');
         Route::post('/deals/{deal}/close', [DealController::class, 'close'])->name('deals.close');
+        Route::post('/deals/{deal}/voice-note', [DealController::class, 'storeVoiceNote'])->name('deals.voice-note.store');
         Route::post('/deals/broadcast-today', [DealController::class, 'broadcastToday'])->name('deals.broadcast-today');
         Route::middleware('admin.only')->group(function () {
             Route::get('/deals/{deal}/ceiling-project', [CeilingProjectController::class, 'showForDeal'])->name('deals.ceiling-project.show');

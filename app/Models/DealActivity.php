@@ -52,7 +52,7 @@ class DealActivity extends Model
         } : null;
 
         if ($type === 'comment') {
-            return "\u{041A}\u{043E}\u{043C}\u{043C}\u{0435}\u{043D}\u{0442}\u{0430}\u{0440}\u{0438}\u{0439}";
+            return 'Комментарий';
         }
 
         return match ($type) {
@@ -67,6 +67,7 @@ class DealActivity extends Model
             'task_created' => 'Создано дело',
             'task_updated' => 'Дело обновлено',
             'task_done' => 'Дело выполнено',
+            'voice_note' => 'Голосовое сообщение',
             'stage_changed' => 'Смена стадии',
             'deal_closed' => 'Закрытие сделки',
             'deal_updated' => 'Изменение сделки',

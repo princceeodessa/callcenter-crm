@@ -12,6 +12,7 @@ use App\Models\Task;
 use App\Models\User;
 use App\Services\NonClosureImportService;
 use App\Services\NonClosureWorkbookImportService;
+use App\Support\Users\AssignmentScope;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -66,6 +67,7 @@ class NonClosureController extends Controller
         $workspace = $this->workspaceForUser($request);
         $canManage = $this->canManageDocuments($user);
         $activeUsers = $this->activeUsersForAccount($user);
+        $canAssignToAll = AssignmentScope::canAssignToAll($user);
 
         $sheet = $this->resolveSheetForView($sheet, $user, $canManage);
         $workbook = $sheet->workbook;
@@ -116,6 +118,7 @@ class NonClosureController extends Controller
             'sheetCategoryLabel' => $sheetCategoryLabel,
             'siblingSheets' => $siblingSheets,
             'activeUsers' => $activeUsers,
+            'canAssignToAll' => $canAssignToAll,
             'selectedSheetSharedIds' => $sheetSharedIds,
             'canManageDocuments' => $canManage,
             'canContributeDocuments' => $this->canContributeDocuments($user),
@@ -756,18 +759,14 @@ class NonClosureController extends Controller
 
     private function activeUsersForAccount(User $user): Collection
     {
-        return User::query()
-            ->where('account_id', $user->account_id)
-            ->where('is_active', true)
+        return AssignmentScope::query($user)
             ->orderBy('name')
             ->get(['id', 'name', 'role']);
     }
 
     private function allowedUserIdsForAccount(User $user): array
     {
-        return User::query()
-            ->where('account_id', $user->account_id)
-            ->where('is_active', true)
+        return AssignmentScope::query($user)
             ->pluck('id')
             ->map(fn ($id) => (int) $id)
             ->all();

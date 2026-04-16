@@ -8,14 +8,15 @@ use App\Models\PipelineStage;
 use App\Models\DealActivity;
 use App\Models\DealStageHistory;
 use App\Models\CallRecording;
-use App\Models\User;
 use App\Services\Chat\ChatSendService;
 use App\Services\Tasks\TaskWorkflowService;
+use App\Support\Users\AssignmentScope;
 use App\Support\Deals\InteractsWithDealBroadcasts;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class DealController extends Controller
@@ -221,15 +222,15 @@ class DealController extends Controller
             ->orderBy('sort')
             ->get();
 
-        $users = User::query()
-            ->where('account_id', $user->account_id)
-            ->where('is_active', 1)
+        $users = AssignmentScope::query($user)
             ->orderBy('name')
             ->get();
 
         $productCategoryOptions = Deal::productCategoryOptions();
 
-        return view('deals.create', compact('stages','users', 'productCategoryOptions'));
+        $canAssignToAll = AssignmentScope::canAssignToAll($user);
+
+        return view('deals.create', compact('stages', 'users', 'productCategoryOptions', 'canAssignToAll'));
     }
 
     public function store(Request $request, TaskWorkflowService $taskWorkflow)
@@ -265,15 +266,13 @@ class DealController extends Controller
             ->where('account_id', $user->account_id)
             ->findOrFail($data['stage_id']);
 
-        $responsible = User::query()
-            ->where('account_id', $user->account_id)
-            ->where('is_active', 1)
+        $responsible = AssignmentScope::query($user)
             ->findOrFail((int)$data['responsible_user_id']);
 
         $createTask = $request->boolean('create_task');
         $taskAssigneeId = $data['task_assigned_user_id'] ?? $responsible->id;
         if ($createTask) {
-            $taskWorkflow->resolveAssigneeId($user->account_id, $taskAssigneeId, 'task_assigned_user_id');
+            $taskWorkflow->resolveAssigneeId($user, $taskAssigneeId, 'task_assigned_user_id');
         }
 
         $dealCreatedAt = Carbon::createFromFormat('Y-m-d', $data['deal_date'], config('app.timezone'))
@@ -368,9 +367,7 @@ class DealController extends Controller
             'product_category' => ['required', Rule::in(array_keys(Deal::productCategoryOptions()))],
         ]);
 
-        $responsible = User::query()
-            ->where('account_id', $user->account_id)
-            ->where('is_active', 1)
+        $responsible = AssignmentScope::query($user)
             ->findOrFail((int)$data['responsible_user_id']);
 
         $old = [
@@ -434,11 +431,10 @@ class DealController extends Controller
             ->orderBy('sort')
             ->get();
 
-        $users = User::query()
-            ->where('account_id', $user->account_id)
-            ->where('is_active', 1)
+        $users = AssignmentScope::query($user)
             ->orderBy('name')
             ->get();
+        $canAssignToAll = AssignmentScope::canAssignToAll($user);
         $productCategoryOptions = Deal::productCategoryOptions();
 
         // If we have call activities with recording_url but no call_recordings row yet, create it.
@@ -527,7 +523,45 @@ class DealController extends Controller
             'dealConversations',
             'ceilingProjectSummary',
             'productCategoryOptions',
+            'canAssignToAll',
         ));
+    }
+
+    public function storeVoiceNote(Request $request, Deal $deal)
+    {
+        $user = Auth::user();
+        abort_unless($deal->account_id === $user->account_id, 403);
+
+        $data = $request->validate([
+            'voice_note' => ['required', 'file', 'max:51200', 'mimes:mp3,wav,ogg,oga,webm,m4a,aac,amr,3gp,mp4'],
+            'voice_note_comment' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $file = $data['voice_note'];
+        $path = $file->store('deal-voice-notes/'.$deal->account_id, 'public');
+        $voiceUrl = Storage::disk('public')->url($path);
+
+        $comment = trim((string) ($data['voice_note_comment'] ?? ''));
+        if ($comment === '') {
+            $comment = 'Голосовое сообщение';
+        }
+
+        DealActivity::create([
+            'account_id' => $deal->account_id,
+            'deal_id' => $deal->id,
+            'author_user_id' => $user->id,
+            'type' => 'voice_note',
+            'body' => $comment,
+            'payload' => [
+                'voice_url' => $voiceUrl,
+                'voice_path' => $path,
+                'mime' => (string) ($file->getClientMimeType() ?? ''),
+                'size' => (int) ($file->getSize() ?? 0),
+                'name' => (string) ($file->getClientOriginalName() ?? ''),
+            ],
+        ]);
+
+        return back()->with('status', 'Голосовое сообщение добавлено.');
     }
 
     public function broadcastToday(Request $request, ChatSendService $chatSendService)

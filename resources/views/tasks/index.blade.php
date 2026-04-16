@@ -72,6 +72,7 @@
     $selectedBroadcastDealIdsJson = $selectedBroadcastDealIds;
     $broadcastReport = session('broadcast_report');
     $broadcastPreviewError = $broadcastPreviewError ?? null;
+    $defaultPageAssignedUserId = (int) old('assigned_user_id', ($canAssignToAll ?? false) ? 0 : auth()->id());
 
     $dealLabel = function ($deal) {
         $contact = trim((string) ($deal->contact?->name ?? ''));
@@ -163,9 +164,11 @@
                 <div class="col-12 col-lg-3">
                     <label class="form-label">Кому назначить</label>
                     <select name="assigned_user_id" class="form-select">
+                        @if($canAssignToAll ?? false)
                         <option value="0" @selected((string) old('assigned_user_id', '0') === '0')>Всем</option>
+                        @endif
                         @foreach($users as $worker)
-                            <option value="{{ $worker->id }}" @selected((int) old('assigned_user_id') === (int) $worker->id)>{{ $worker->name }}</option>
+                            <option value="{{ $worker->id }}" @selected($defaultPageAssignedUserId === (int) $worker->id)>{{ $worker->name }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -233,6 +236,7 @@
                         @include('tasks._edit_form', [
                             'task' => $task,
                             'users' => $users,
+                            'canAssignToAll' => $canAssignToAll ?? false,
                             'cancelUrl' => $buildTasksUrl(['edit_task' => null]),
                         ])
                     @endif
@@ -287,6 +291,7 @@
                                 @include('tasks._edit_form', [
                                     'task' => $task,
                                     'users' => $users,
+                                    'canAssignToAll' => $canAssignToAll ?? false,
                                     'cancelUrl' => $buildTasksUrl(['edit_task' => null]),
                                 ])
                             @endif
@@ -341,6 +346,7 @@
                                 @include('tasks._edit_form', [
                                     'task' => $task,
                                     'users' => $users,
+                                    'canAssignToAll' => $canAssignToAll ?? false,
                                     'cancelUrl' => $buildTasksUrl(['edit_task' => null]),
                                 ])
                             @endif

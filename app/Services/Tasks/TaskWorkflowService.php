@@ -9,6 +9,7 @@ use App\Models\Task;
 use App\Models\User;
 use App\Models\UserNotification;
 use App\Services\Integrations\BitrixTaskSyncService;
+use App\Support\Users\AssignmentScope;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -21,7 +22,7 @@ class TaskWorkflowService
 
     public function createTask(Deal $deal, array $data, User $user): Task
     {
-        $assigneeId = $this->resolveAssigneeId($user->account_id, $data['assigned_user_id'] ?? null);
+        $assigneeId = $this->resolveAssigneeId($user, $data['assigned_user_id'] ?? null);
 
         $task = Task::create([
             'account_id' => $user->account_id,
@@ -56,7 +57,7 @@ class TaskWorkflowService
 
     public function createDocumentTask(NonClosureWorkbookSheet $sheet, array $data, User $user, array $context = []): Task
     {
-        $assigneeId = $this->resolveAssigneeId($user->account_id, $data['assigned_user_id'] ?? null);
+        $assigneeId = $this->resolveAssigneeId($user, $data['assigned_user_id'] ?? null);
         $payload = array_merge($context, [
             'context_type' => 'document_sheet_row',
             'sheet_id' => $sheet->id,
@@ -166,22 +167,26 @@ class TaskWorkflowService
         });
     }
 
-    public function resolveAssigneeId(int $accountId, mixed $value, string $errorField = 'assigned_user_id'): ?int
+    public function resolveAssigneeId(User $actor, mixed $value, string $errorField = 'assigned_user_id'): ?int
     {
         if ($value === null || $value === '' || (string) $value === '0') {
+            if (! AssignmentScope::canAssignToAll($actor)) {
+                throw ValidationException::withMessages([
+                    $errorField => 'Назначение "Всем" доступно только администратору и руководителю колл-центра.',
+                ]);
+            }
+
             return null;
         }
 
         $assigneeId = (int) $value;
-        $assigneeOk = User::query()
-            ->where('account_id', $accountId)
-            ->where('is_active', 1)
+        $assigneeOk = AssignmentScope::query($actor)
             ->where('id', $assigneeId)
             ->exists();
 
         if (! $assigneeOk) {
             throw ValidationException::withMessages([
-                $errorField => 'Нельзя назначить дело этому пользователю',
+                $errorField => 'Нельзя назначить дело этому пользователю.',
             ]);
         }
 

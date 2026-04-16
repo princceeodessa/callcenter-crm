@@ -630,9 +630,11 @@
               <div>
                 <label class="form-label">Кому назначить</label>
                 <select class="form-select" name="assigned_user_id">
+                  @if($canAssignToAll ?? false)
                   <option value="0">Всем</option>
+                  @endif
                   @foreach($activeUsers as $activeUser)
-                    <option value="{{ $activeUser->id }}">{{ $activeUser->name }}</option>
+                    <option value="{{ $activeUser->id }}" @selected((int) $activeUser->id === (int) auth()->id())>{{ $activeUser->name }}</option>
                   @endforeach
                 </select>
               </div>

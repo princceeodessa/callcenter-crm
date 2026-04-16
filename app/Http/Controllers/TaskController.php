@@ -10,6 +10,7 @@ use App\Models\Task;
 use App\Models\User;
 use App\Services\Integrations\BitrixTaskSyncService;
 use App\Services\Tasks\TaskWorkflowService;
+use App\Support\Users\AssignmentScope;
 use App\Support\Deals\InteractsWithDealBroadcasts;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -74,9 +75,7 @@ class TaskController extends Controller
             ->limit(100)
             ->get();
 
-        $users = User::query()
-            ->where('account_id', $user->account_id)
-            ->where('is_active', 1)
+        $users = AssignmentScope::query($user)
             ->orderBy('name')
             ->get(['id', 'name']);
 
@@ -128,6 +127,7 @@ class TaskController extends Controller
             'todayBroadcastCounts' => $todayBroadcastCounts,
             'broadcastTargetModeOptions' => $broadcastTargetModeOptions,
             'broadcastPreviewError' => $broadcastPreviewError,
+            'canAssignToAll' => AssignmentScope::canAssignToAll($user),
         ]);
     }
 
@@ -334,7 +334,7 @@ class TaskController extends Controller
         $data = $this->validateTaskUpdateData($request);
 
         $task->assigned_user_id = $taskWorkflow->resolveAssigneeId(
-            $user->account_id,
+            $user,
             $data['assigned_user_id'] ?? null,
             'edit_assigned_user_id'
         );

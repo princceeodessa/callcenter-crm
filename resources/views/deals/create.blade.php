@@ -107,7 +107,9 @@
               <label class="form-label">Кому назначить</label>
               <select name="task_assigned_user_id" class="form-select">
                 <option value="" @selected(old('task_assigned_user_id', '') === '')>Ответственному по сделке</option>
-                <option value="0" @selected((string) old('task_assigned_user_id') === '0')>Всем</option>
+                @if($canAssignToAll ?? false)
+                  <option value="0" @selected((string) old('task_assigned_user_id') === '0')>Всем</option>
+                @endif
                 @foreach($users as $u)
                   <option value="{{ $u->id }}" @selected((int) old('task_assigned_user_id') === $u->id)>{{ $u->name }}</option>
                 @endforeach
