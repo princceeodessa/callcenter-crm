@@ -229,8 +229,11 @@ class DealController extends Controller
         $productCategoryOptions = Deal::productCategoryOptions();
 
         $canAssignToAll = AssignmentScope::canAssignToAll($user);
+        $assignAllLabel = AssignmentScope::groupForAll($user) === AssignmentScope::GROUP_CALL_CENTER
+            ? 'Всем (колл-центр)'
+            : 'Всем';
 
-        return view('deals.create', compact('stages', 'users', 'productCategoryOptions', 'canAssignToAll'));
+        return view('deals.create', compact('stages', 'users', 'productCategoryOptions', 'canAssignToAll', 'assignAllLabel'));
     }
 
     public function store(Request $request, TaskWorkflowService $taskWorkflow)
@@ -435,6 +438,9 @@ class DealController extends Controller
             ->orderBy('name')
             ->get();
         $canAssignToAll = AssignmentScope::canAssignToAll($user);
+        $assignAllLabel = AssignmentScope::groupForAll($user) === AssignmentScope::GROUP_CALL_CENTER
+            ? 'Всем (колл-центр)'
+            : 'Всем';
         $productCategoryOptions = Deal::productCategoryOptions();
 
         // If we have call activities with recording_url but no call_recordings row yet, create it.
@@ -524,6 +530,7 @@ class DealController extends Controller
             'ceilingProjectSummary',
             'productCategoryOptions',
             'canAssignToAll',
+            'assignAllLabel',
         ));
     }
 

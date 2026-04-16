@@ -128,6 +128,9 @@ class TaskController extends Controller
             'broadcastTargetModeOptions' => $broadcastTargetModeOptions,
             'broadcastPreviewError' => $broadcastPreviewError,
             'canAssignToAll' => AssignmentScope::canAssignToAll($user),
+            'assignAllLabel' => AssignmentScope::groupForAll($user) === AssignmentScope::GROUP_CALL_CENTER
+                ? 'Всем (колл-центр)'
+                : 'Всем',
         ]);
     }
 
@@ -333,10 +336,15 @@ class TaskController extends Controller
 
         $data = $this->validateTaskUpdateData($request);
 
-        $task->assigned_user_id = $taskWorkflow->resolveAssigneeId(
+        $assignment = $taskWorkflow->resolveAssignment(
             $user,
             $data['assigned_user_id'] ?? null,
             'edit_assigned_user_id'
+        );
+        $task->assigned_user_id = $assignment['assignee_id'];
+        $task->external_payload = $taskWorkflow->applyAssignmentScopeToPayload(
+            is_array($task->external_payload ?? null) ? $task->external_payload : null,
+            $assignment['scope']
         );
         $task->title = $data['title'];
         $task->description = $data['description'] ?? null;

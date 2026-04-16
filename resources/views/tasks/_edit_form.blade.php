@@ -38,7 +38,7 @@
         @php($defaultAssignedId = (int) old('edit_assigned_user_id', (int) ($task->assigned_user_id ?? auth()->id())))
         <select name="edit_assigned_user_id" class="form-select form-select-sm">
             @if($canAssignToAll ?? false)
-                <option value="0" @selected((string) old('edit_assigned_user_id', (string) ($task->assigned_user_id ?? 0)) === '0')>Всем</option>
+                <option value="0" @selected((string) old('edit_assigned_user_id', (string) ($task->assigned_user_id ?? 0)) === '0')>{{ $assignAllLabel ?? 'Всем' }}</option>
             @endif
             @foreach($users as $worker)
                 <option value="{{ $worker->id }}" @selected($defaultAssignedId === (int) $worker->id)>{{ $worker->name }}</option>

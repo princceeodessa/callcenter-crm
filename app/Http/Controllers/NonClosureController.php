@@ -68,6 +68,9 @@ class NonClosureController extends Controller
         $canManage = $this->canManageDocuments($user);
         $activeUsers = $this->activeUsersForAccount($user);
         $canAssignToAll = AssignmentScope::canAssignToAll($user);
+        $assignAllLabel = AssignmentScope::groupForAll($user) === AssignmentScope::GROUP_CALL_CENTER
+            ? 'Всем (колл-центр)'
+            : 'Всем';
 
         $sheet = $this->resolveSheetForView($sheet, $user, $canManage);
         $workbook = $sheet->workbook;
@@ -119,6 +122,7 @@ class NonClosureController extends Controller
             'siblingSheets' => $siblingSheets,
             'activeUsers' => $activeUsers,
             'canAssignToAll' => $canAssignToAll,
+            'assignAllLabel' => $assignAllLabel,
             'selectedSheetSharedIds' => $sheetSharedIds,
             'canManageDocuments' => $canManage,
             'canContributeDocuments' => $this->canContributeDocuments($user),

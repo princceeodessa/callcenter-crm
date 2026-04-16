@@ -4,9 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Task;
 use App\Models\UserNotification;
+use App\Services\Tasks\TaskWorkflowService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 
 class NotificationController extends Controller
 {
@@ -29,10 +29,10 @@ class NotificationController extends Controller
         return view('notifications.index', compact('notifications', 'unreadCount'));
     }
 
-    public function poll(Request $request)
+    public function poll(Request $request, TaskWorkflowService $taskWorkflow)
     {
         $user = Auth::user();
-        $this->ensureDueTasksNotifiedForUser($user->account_id, $user->id);
+        $this->ensureDueTasksNotifiedForUser($user->account_id, $user->id, $taskWorkflow);
 
         $afterId = (int) $request->query('after_id', 0);
 
@@ -93,57 +93,26 @@ class NotificationController extends Controller
         return back();
     }
 
-    private function ensureDueTasksNotifiedForUser(int $accountId, int $userId): void
+    private function ensureDueTasksNotifiedForUser(int $accountId, int $userId, TaskWorkflowService $taskWorkflow): void
     {
         $now = now();
 
         $tasks = Task::query()
             ->where('account_id', $accountId)
-            ->where('assigned_user_id', $userId)
             ->where('status', 'open')
             ->whereNotNull('due_at')
             ->where('due_at', '<=', $now)
             ->whereNull('notified_at')
-            ->with(['deal'])
-            ->limit(50)
+            ->limit(100)
             ->get();
 
         foreach ($tasks as $task) {
-            DB::transaction(function () use ($task, $now, $accountId, $userId) {
-                $fresh = Task::query()->where('account_id', $accountId)->lockForUpdate()->find($task->id);
-                if (!$fresh || $fresh->notified_at || $fresh->status !== 'open' || !$fresh->due_at || $fresh->due_at->gt($now)) {
-                    return;
-                }
+            $recipientIds = $taskWorkflow->resolveNotificationRecipientIds($task);
+            if (! in_array($userId, $recipientIds, true)) {
+                continue;
+            }
 
-                $locationLabel = $fresh->deal
-                    ? ($task->deal?->title ?? ('Сделка #'.$fresh->deal_id))
-                    : ($fresh->context_label ?? 'задача без привязки');
-
-                UserNotification::query()->firstOrCreate(
-                    [
-                        'user_id' => $userId,
-                        'type' => 'task_due',
-                        'source_type' => 'task',
-                        'source_id' => $fresh->id,
-                    ],
-                    [
-                        'account_id' => $accountId,
-                        'title' => 'Пора выполнить дело',
-                        'body' => "{$fresh->title} ({$locationLabel})",
-                        'payload' => [
-                            'task_id' => $fresh->id,
-                            'deal_id' => $fresh->deal_id,
-                            'context_label' => $fresh->context_label,
-                            'context_url' => $fresh->context_url,
-                            'due_at' => optional($fresh->due_at)->toISOString(),
-                        ],
-                        'is_read' => 0,
-                    ]
-                );
-
-                $fresh->notified_at = $now;
-                $fresh->save();
-            });
+            $taskWorkflow->syncDueNotificationState($task);
         }
     }
 }

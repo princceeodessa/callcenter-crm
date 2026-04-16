@@ -73,6 +73,7 @@
     $broadcastReport = session('broadcast_report');
     $broadcastPreviewError = $broadcastPreviewError ?? null;
     $defaultPageAssignedUserId = (int) old('assigned_user_id', ($canAssignToAll ?? false) ? 0 : auth()->id());
+    $assignAllLabel = (string) ($assignAllLabel ?? 'Всем');
 
     $dealLabel = function ($deal) {
         $contact = trim((string) ($deal->contact?->name ?? ''));
@@ -131,7 +132,7 @@
         <form class="d-flex gap-2 flex-wrap" method="GET" action="{{ route('tasks.index') }}">
             <select class="form-select form-select-sm" name="assigned_user_id" style="min-width: 220px;">
                 <option value="0">Все сотрудники</option>
-                <option value="-1" @selected($assignedUserId === -1)>Только "Всем"</option>
+                <option value="-1" @selected($assignedUserId === -1)>Только "{{ $assignAllLabel }}"</option>
                 @foreach($users as $worker)
                     <option value="{{ $worker->id }}" @selected($assignedUserId === (int) $worker->id)>{{ $worker->name }}</option>
                 @endforeach
@@ -165,7 +166,7 @@
                     <label class="form-label">Кому назначить</label>
                     <select name="assigned_user_id" class="form-select">
                         @if($canAssignToAll ?? false)
-                        <option value="0" @selected((string) old('assigned_user_id', '0') === '0')>Всем</option>
+                        <option value="0" @selected((string) old('assigned_user_id', '0') === '0')>{{ $assignAllLabel }}</option>
                         @endif
                         @foreach($users as $worker)
                             <option value="{{ $worker->id }}" @selected($defaultPageAssignedUserId === (int) $worker->id)>{{ $worker->name }}</option>
@@ -237,6 +238,7 @@
                             'task' => $task,
                             'users' => $users,
                             'canAssignToAll' => $canAssignToAll ?? false,
+                            'assignAllLabel' => $assignAllLabel,
                             'cancelUrl' => $buildTasksUrl(['edit_task' => null]),
                         ])
                     @endif
@@ -292,6 +294,7 @@
                                     'task' => $task,
                                     'users' => $users,
                                     'canAssignToAll' => $canAssignToAll ?? false,
+                                    'assignAllLabel' => $assignAllLabel,
                                     'cancelUrl' => $buildTasksUrl(['edit_task' => null]),
                                 ])
                             @endif
@@ -347,6 +350,7 @@
                                     'task' => $task,
                                     'users' => $users,
                                     'canAssignToAll' => $canAssignToAll ?? false,
+                                    'assignAllLabel' => $assignAllLabel,
                                     'cancelUrl' => $buildTasksUrl(['edit_task' => null]),
                                 ])
                             @endif

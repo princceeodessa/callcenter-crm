@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToAccount;
+use App\Support\Users\AssignmentScope;
 use Illuminate\Database\Eloquent\Model;
 
 class Task extends Model
@@ -10,6 +11,7 @@ class Task extends Model
     use BelongsToAccount;
 
     private const UNASSIGNED_LABEL = 'Всем';
+    private const UNASSIGNED_CALL_CENTER_LABEL = 'Всем (колл-центр)';
 
     protected $fillable = [
         'account_id',
@@ -52,7 +54,17 @@ class Task extends Model
             $name = trim((string) ($this->assignedTo()->value('name') ?? ''));
         }
 
-        return $name !== '' ? $name : self::UNASSIGNED_LABEL;
+        if ($name !== '') {
+            return $name;
+        }
+
+        $payload = is_array($this->external_payload ?? null) ? $this->external_payload : [];
+        $scope = trim((string) ($payload['assignment_scope'] ?? ''));
+        if ($scope === AssignmentScope::GROUP_CALL_CENTER) {
+            return self::UNASSIGNED_CALL_CENTER_LABEL;
+        }
+
+        return self::UNASSIGNED_LABEL;
     }
 
     public function getExternalSyncLabelAttribute(): ?string
@@ -89,7 +101,7 @@ class Task extends Model
 
         $parts = array_filter([$workbookTitle, $sheetName, $rowIndex > 0 ? 'строка '.$rowIndex : null]);
 
-        return !empty($parts) ? implode(' -> ', $parts) : null;
+        return ! empty($parts) ? implode(' -> ', $parts) : null;
     }
 
     public function getContextUrlAttribute(): ?string

@@ -528,7 +528,7 @@
             <label class="form-label small mb-1">Кому назначить</label>
             <select name="assigned_user_id" class="form-select form-select-sm">
               @if($canAssignToAll ?? false)
-              <option value="0">Всем</option>
+              <option value="0">{{ $assignAllLabel ?? 'Всем' }}</option>
               @endif
               @foreach($users as $u)
                 <option value="{{ $u->id }}" @selected(($deal->responsible_user_id ?? auth()->id()) === $u->id)>{{ $u->name }}</option>
@@ -575,6 +575,7 @@
                 'task' => $task,
                 'users' => $users,
                 'canAssignToAll' => $canAssignToAll ?? false,
+                'assignAllLabel' => $assignAllLabel ?? 'Всем',
                 'cancelUrl' => $buildDealUrl(['edit_task' => null]).'#task-'.$task->id,
               ])
             @endif
