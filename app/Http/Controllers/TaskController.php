@@ -24,8 +24,12 @@ class TaskController extends Controller
     public function index(Request $request)
     {
         $user = Auth::user();
+        $isDocumentsTaskView = (string) $user->role === 'documents_operator';
         $search = trim((string) $request->query('q', ''));
         $assignedUserId = (int) ($request->query('assigned_user_id') ?? 0);
+        if ($isDocumentsTaskView) {
+            $assignedUserId = (int) $user->id;
+        }
         $focusDate = $this->resolveFocusDate((string) $request->query('focus_date', ''));
         $dayStart = $focusDate->copy()->startOfDay();
         $dayEnd = $focusDate->copy()->addDay()->startOfDay();
@@ -39,8 +43,9 @@ class TaskController extends Controller
             ])
             ->where('account_id', $user->account_id)
             ->where('status', 'open')
-            ->when($assignedUserId > 0, fn ($query) => $query->where('assigned_user_id', $assignedUserId))
-            ->when($assignedUserId === -1, fn ($query) => $query->whereNull('assigned_user_id'))
+            ->when($isDocumentsTaskView, fn ($query) => $query->where('assigned_user_id', $user->id))
+            ->when(! $isDocumentsTaskView && $assignedUserId > 0, fn ($query) => $query->where('assigned_user_id', $assignedUserId))
+            ->when(! $isDocumentsTaskView && $assignedUserId === -1, fn ($query) => $query->whereNull('assigned_user_id'))
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($inner) use ($search) {
                     $inner->where('title', 'like', "%{$search}%")
@@ -75,17 +80,25 @@ class TaskController extends Controller
             ->limit(100)
             ->get();
 
-        $users = AssignmentScope::query($user)
-            ->orderBy('name')
-            ->get(['id', 'name']);
+        $users = $isDocumentsTaskView
+            ? User::query()
+                ->where('account_id', $user->account_id)
+                ->whereKey($user->id)
+                ->get(['id', 'name'])
+            : AssignmentScope::query($user)
+                ->orderBy('name')
+                ->get(['id', 'name']);
 
-        $deals = Deal::query()
-            ->with(['contact:id,name,phone'])
-            ->where('account_id', $user->account_id)
-            ->whereNull('closed_at')
-            ->orderByDesc('updated_at')
-            ->limit(300)
-            ->get(['id', 'title', 'title_is_custom', 'contact_id', 'updated_at']);
+        $deals = collect();
+        if (! $isDocumentsTaskView) {
+            $deals = Deal::query()
+                ->with(['contact:id,name,phone'])
+                ->where('account_id', $user->account_id)
+                ->whereNull('closed_at')
+                ->orderByDesc('updated_at')
+                ->limit(300)
+                ->get(['id', 'title', 'title_is_custom', 'contact_id', 'updated_at']);
+        }
 
         $productCategoryOptions = Deal::productCategoryOptions();
         $broadcastTemplates = [];
@@ -97,6 +110,7 @@ class TaskController extends Controller
         ];
         $broadcastPreviewError = null;
 
+        if (! $isDocumentsTaskView) {
         try {
             $broadcastTemplates = $this->broadcastTemplates();
             $broadcastRecipients = $this->broadcastRecipientsByCategory($user->account_id);
@@ -107,6 +121,7 @@ class TaskController extends Controller
         } catch (\Throwable $e) {
             report($e);
             $broadcastPreviewError = 'Не удалось построить список адресатов для рассылки. Проверьте лог Laravel.';
+        }
         }
 
         return view('tasks.index', [
@@ -128,6 +143,9 @@ class TaskController extends Controller
             'broadcastTargetModeOptions' => $broadcastTargetModeOptions,
             'broadcastPreviewError' => $broadcastPreviewError,
             'canAssignToAll' => AssignmentScope::canAssignToAll($user),
+            'isDocumentsTaskView' => $isDocumentsTaskView,
+            'canUseBroadcastPanel' => ! $isDocumentsTaskView,
+            'canCreatePageTask' => ! $isDocumentsTaskView,
             'assignAllLabel' => AssignmentScope::groupForAll($user) === AssignmentScope::GROUP_CALL_CENTER
                 ? 'Всем (колл-центр)'
                 : 'Всем',
@@ -139,6 +157,7 @@ class TaskController extends Controller
         $data = $this->validateTaskData($request);
 
         $user = Auth::user();
+        abort_if((string) $user->role === 'documents_operator', 403);
         abort_unless($deal->account_id === $user->account_id, 403);
 
         $taskWorkflow->createTask($deal, $data, $user);
@@ -151,6 +170,7 @@ class TaskController extends Controller
         $data = $this->validateTaskData($request, true);
 
         $user = Auth::user();
+        abort_if((string) $user->role === 'documents_operator', 403);
         $deal = Deal::query()
             ->where('account_id', $user->account_id)
             ->findOrFail((int) $data['deal_id']);
@@ -333,14 +353,17 @@ class TaskController extends Controller
     {
         $user = Auth::user();
         abort_unless($task->account_id === $user->account_id, 403);
+        $this->ensureTaskActionAllowed($task, $user);
 
         $data = $this->validateTaskUpdateData($request);
 
-        $assignment = $taskWorkflow->resolveAssignment(
-            $user,
-            $data['assigned_user_id'] ?? null,
-            'edit_assigned_user_id'
-        );
+        $assignment = (string) $user->role === 'documents_operator'
+            ? ['assignee_id' => (int) $user->id, 'scope' => null]
+            : $taskWorkflow->resolveAssignment(
+                $user,
+                $data['assigned_user_id'] ?? null,
+                'edit_assigned_user_id'
+            );
         $task->assigned_user_id = $assignment['assignee_id'];
         $task->external_payload = $taskWorkflow->applyAssignmentScopeToPayload(
             is_array($task->external_payload ?? null) ? $task->external_payload : null,
@@ -379,6 +402,7 @@ class TaskController extends Controller
     {
         $user = Auth::user();
         abort_unless($task->account_id === $user->account_id, 403);
+        $this->ensureTaskActionAllowed($task, $user);
 
         $task->status = 'done';
         $task->completed_at = now();
@@ -437,6 +461,15 @@ class TaskController extends Controller
             'due_at' => $data['edit_due_at'],
             'assigned_user_id' => $data['edit_assigned_user_id'] ?? null,
         ];
+    }
+
+    private function ensureTaskActionAllowed(Task $task, User $user): void
+    {
+        if ((string) $user->role !== 'documents_operator') {
+            return;
+        }
+
+        abort_unless((int) $task->assigned_user_id === (int) $user->id, 403);
     }
 
     private function resolveFocusDate(string $value): Carbon

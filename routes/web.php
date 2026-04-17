@@ -83,11 +83,8 @@ Route::middleware('auth')->group(function () {
         Route::post('/deals/{deal}/move', [DealController::class, 'move'])->name('deals.move');
         Route::post('/deals/bulk-move', [DealController::class, 'bulkMove'])->name('deals.bulk-move');
 
-        Route::get('/tasks', [TaskController::class, 'index'])->name('tasks.index');
         Route::post('/tasks', [TaskController::class, 'storeFromPage'])->name('tasks.page.store');
         Route::post('/deals/{deal}/tasks', [TaskController::class, 'store'])->name('tasks.store');
-        Route::patch('/tasks/{task}', [TaskController::class, 'update'])->name('tasks.update');
-        Route::post('/tasks/{task}/complete', [TaskController::class, 'complete'])->name('tasks.complete');
 
         // Call recordings
         Route::post('/recordings/{recording}/transcribe', [CallRecordingController::class, 'transcribe'])->name('recordings.transcribe');
@@ -103,6 +100,12 @@ Route::middleware('auth')->group(function () {
         Route::get('/chats/{conversation}/poll', [ChatController::class, 'poll'])->name('chats.poll');
         Route::post('/chats/{conversation}/messages', [ChatController::class, 'send'])->name('chats.send');
         Route::post('/chats/{conversation}/read', [ChatController::class, 'markRead'])->name('chats.read');
+    });
+
+    Route::middleware('tasks')->group(function () {
+        Route::get('/tasks', [TaskController::class, 'index'])->name('tasks.index');
+        Route::patch('/tasks/{task}', [TaskController::class, 'update'])->name('tasks.update');
+        Route::post('/tasks/{task}/complete', [TaskController::class, 'complete'])->name('tasks.complete');
     });
 
     // Projecting (admin + constructor)

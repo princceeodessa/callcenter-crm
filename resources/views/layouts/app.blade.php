@@ -246,7 +246,6 @@
         body[data-role="documents_operator"] .navbar a[href$="/deals/create"],
         body[data-role="documents_operator"] .navbar a[href$="/deals/kanban"],
         body[data-role="documents_operator"] .navbar a[href$="/deals"],
-        body[data-role="documents_operator"] .navbar a[href$="/tasks"],
         body[data-role="documents_operator"] .navbar a[href$="/deals/closed"],
         body[data-role="documents_operator"] .navbar a[href$="/chats"],
         body[data-role="documents_operator"] .navbar a[href$="/ceiling-projects"] {
@@ -276,6 +275,9 @@
                     <a class="btn btn-sm btn-outline-light" href="{{ route('tasks.index') }}">Дела</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('deals.closed') }}">Завершённые</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('chats.index') }}">Чаты</a>
+                @endif
+                @if($isDocumentsOperator)
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('tasks.index') }}">Дела</a>
                 @endif
                 @if(!$isDocumentsOperator)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('calendar.index') }}">Календарь</a>

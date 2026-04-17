@@ -73,6 +73,10 @@
     $broadcastReport = session('broadcast_report');
     $broadcastPreviewError = $broadcastPreviewError ?? null;
     $defaultPageAssignedUserId = (int) old('assigned_user_id', ($canAssignToAll ?? false) ? 0 : auth()->id());
+    $isDocumentsTaskView = (bool) ($isDocumentsTaskView ?? false);
+    $canUseBroadcastPanel = (bool) ($canUseBroadcastPanel ?? true);
+    $canCreatePageTask = (bool) ($canCreatePageTask ?? true);
+    $showResetFilters = $search !== '' || ! $isTodayFocusDate || (! $isDocumentsTaskView && $assignedUserId !== 0);
     $assignAllLabel = (string) ($assignAllLabel ?? 'Всем');
 
     $dealLabel = function ($deal) {
@@ -129,7 +133,11 @@
             <h4 class="mb-1">Дела</h4>
             <div class="text-muted">{{ $isTodayFocusDate ? 'Сегодня' : 'Выбрана дата' }}: {{ $focusDateLabel }}</div>
         </div>
+        @if($isDocumentsTaskView)
+            <div class="text-muted small">Показаны только ваши дела.</div>
+        @endif
         <form class="d-flex gap-2 flex-wrap" method="GET" action="{{ route('tasks.index') }}">
+            @if(!$isDocumentsTaskView)
             <select class="form-select form-select-sm" name="assigned_user_id" style="min-width: 220px;">
                 <option value="0">Все сотрудники</option>
                 <option value="-1" @selected($assignedUserId === -1)>Только "{{ $assignAllLabel }}"</option>
@@ -137,17 +145,23 @@
                     <option value="{{ $worker->id }}" @selected($assignedUserId === (int) $worker->id)>{{ $worker->name }}</option>
                 @endforeach
             </select>
+            @else
+            <div class="form-control form-control-sm bg-body-secondary" style="min-width: 220px;" aria-readonly="true">Только мои дела</div>
+            @endif
             <input type="date" class="form-control form-control-sm" name="focus_date" value="{{ $focusDate }}">
             <input class="form-control form-control-sm" name="q" value="{{ $search }}" placeholder="Поиск по делу, клиенту, телефону, названию">
             <button class="btn btn-sm btn-primary">Найти</button>
-            @if($search !== '' || $assignedUserId !== 0 || ! $isTodayFocusDate)
+            @if($showResetFilters)
                 <a class="btn btn-sm btn-outline-secondary" href="{{ route('tasks.index') }}">Сбросить</a>
             @endif
         </form>
     </div>
 
-    @include('tasks._broadcast_panel')
+    @if($canUseBroadcastPanel)
+        @include('tasks._broadcast_panel')
+    @endif
 
+    @if($canCreatePageTask)
     <div class="card shadow-sm">
         <div class="card-header fw-semibold">Новое дело</div>
         <div class="card-body">
@@ -192,6 +206,7 @@
         </div>
     </div>
 
+    @endif
     <div class="card shadow-sm">
         <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
             <div class="d-flex flex-column">

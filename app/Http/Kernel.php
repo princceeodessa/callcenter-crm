@@ -35,6 +35,7 @@ class Kernel extends HttpKernel
         'admin' => \App\Http\Middleware\RequireAdmin::class,
         'admin.only' => \App\Http\Middleware\RequireOnlyAdmin::class,
         'desk' => \App\Http\Middleware\RequireDeskAccess::class,
+        'tasks' => \App\Http\Middleware\RequireTaskAccess::class,
         'calendar' => \App\Http\Middleware\RequireCalendarAccess::class,
         'nonclosure' => \App\Http\Middleware\RequireNonClosureAccess::class,
         'projecting' => \App\Http\Middleware\RequireProjectingAccess::class,
