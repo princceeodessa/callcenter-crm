@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Deal;
 use App\Models\DealActivity;
 use App\Models\DealStageHistory;
+use App\Models\CallRecording;
 use App\Models\Measurement;
 use App\Models\User;
 use Carbon\Carbon;
@@ -204,6 +205,41 @@ class ReportController extends Controller
             ->whereBetween('created_at', [$from, $to])
             ->get(['deal_id', 'payload']);
 
+        $sourceDealIds = $createdDeals
+            ->pluck('id')
+            ->merge($closedDeals->pluck('id'))
+            ->merge($stageHistoryRows->pluck('deal_id'))
+            ->merge($callActivities->pluck('deal_id'))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $sourceCallActivitiesByDealId = $sourceDealIds->isEmpty()
+            ? collect()
+            : DealActivity::query()
+                ->where('account_id', $accountId)
+                ->where('type', 'call')
+                ->whereIn('deal_id', $sourceDealIds->all())
+                ->orderBy('created_at')
+                ->orderBy('id')
+                ->get(['deal_id', 'payload'])
+                ->groupBy('deal_id');
+
+        $callRecordingDealIdSet = $sourceDealIds->isEmpty()
+            ? []
+            : array_fill_keys(
+                CallRecording::query()
+                    ->where('account_id', $accountId)
+                    ->whereIn('deal_id', $sourceDealIds->all())
+                    ->pluck('deal_id')
+                    ->map(static fn ($dealId) => (int) $dealId)
+                    ->filter(static fn ($dealId) => $dealId > 0)
+                    ->unique()
+                    ->values()
+                    ->all(),
+                true
+            );
+
         $closedActivityUserByDealId = DealActivity::query()
             ->where('account_id', $accountId)
             ->where('type', 'deal_closed')
@@ -235,7 +271,7 @@ class ReportController extends Controller
             ->map(fn ($value) => $value !== null ? (int) $value : null)
             ->all();
 
-        $rows = $users->values()->map(function (User $u) use ($createdDeals, $closedDealsByUser, $stageHistoryRows, $callActivities, $dealResponsibleMap) {
+        $rows = $users->values()->map(function (User $u) use ($createdDeals, $closedDealsByUser, $stageHistoryRows, $callActivities, $dealResponsibleMap, $sourceCallActivitiesByDealId, $callRecordingDealIdSet) {
             $createdDealIds = $createdDeals
                 ->filter(fn (Deal $deal) => (int) $deal->responsible_user_id === (int) $u->id)
                 ->pluck('id');
@@ -260,9 +296,14 @@ class ReportController extends Controller
 
             $closedWon = $closedByUser->where('closed_result', 'won')->count();
             $closedLost = $closedByUser->where('closed_result', 'lost')->count();
-            $callSourceStats = $this->callSourceStats($userCallActivities);
+            $callSourceStats = $this->dealSourceStats(
+                $processedDealIds,
+                $sourceCallActivitiesByDealId,
+                $callRecordingDealIdSet
+            );
 
             $winBase = $closedWon + $closedLost;
+            $sourceTotal = $this->callSourceStatsTotal($callSourceStats);
 
             return [
                 'id' => $u->id,
@@ -271,7 +312,7 @@ class ReportController extends Controller
                 'created' => $processedDealIds->count(),
                 'closedWon' => $closedWon,
                 'closedLost' => $closedLost,
-                'callActivities' => $userCallActivities->count(),
+                'callActivities' => $sourceTotal,
                 'callSourceCounts' => $callSourceStats['counts'],
                 'uncategorizedCallActivities' => $callSourceStats['uncategorized'],
                 'winRate' => $winBase > 0 ? round(($closedWon / $winBase) * 100, 1) : null,
@@ -283,6 +324,12 @@ class ReportController extends Controller
             $closedWon = $unassignedClosedDeals->where('closed_result', 'won')->count();
             $closedLost = $unassignedClosedDeals->where('closed_result', 'lost')->count();
             $winBase = $closedWon + $closedLost;
+            $callSourceStats = $this->dealSourceStats(
+                $unassignedClosedDeals->pluck('id'),
+                $sourceCallActivitiesByDealId,
+                $callRecordingDealIdSet
+            );
+            $sourceTotal = $this->callSourceStatsTotal($callSourceStats);
 
             $rows->push([
                 'id' => 0,
@@ -291,9 +338,9 @@ class ReportController extends Controller
                 'created' => $unassignedClosedDeals->count(),
                 'closedWon' => $closedWon,
                 'closedLost' => $closedLost,
-                'callActivities' => 0,
-                'callSourceCounts' => Deal::emptyIncomingPhoneSourceCounts(),
-                'uncategorizedCallActivities' => 0,
+                'callActivities' => $sourceTotal,
+                'callSourceCounts' => $callSourceStats['counts'],
+                'uncategorizedCallActivities' => $callSourceStats['uncategorized'],
                 'winRate' => $winBase > 0 ? round(($closedWon / $winBase) * 100, 1) : null,
             ]);
         }
@@ -366,6 +413,43 @@ class ReportController extends Controller
             'uncategorizedCallActivities' => $uncategorizedCallActivities,
             'winRate' => $winBase > 0 ? round(($closedWon / $winBase) * 100, 1) : null,
         ];
+    }
+
+    private function dealSourceStats(Collection $dealIds, Collection $sourceCallActivitiesByDealId, array $callRecordingDealIdSet): array
+    {
+        $counts = Deal::emptyIncomingPhoneSourceCounts();
+        $uncategorized = 0;
+
+        foreach ($dealIds->map(static fn ($dealId) => (int) $dealId)->filter()->unique() as $dealId) {
+            $activities = $sourceCallActivitiesByDealId->get($dealId, collect());
+            $matched = false;
+
+            foreach ($activities as $activity) {
+                $key = Deal::resolveIncomingPhoneSourceFilterKeyFromPayload(
+                    is_array($activity->payload ?? null) ? $activity->payload : []
+                );
+
+                if ($key !== null && array_key_exists($key, $counts)) {
+                    $counts[$key]++;
+                    $matched = true;
+                    break;
+                }
+            }
+
+            if (! $matched && ($activities->isNotEmpty() || isset($callRecordingDealIdSet[$dealId]))) {
+                $uncategorized++;
+            }
+        }
+
+        return [
+            'counts' => $counts,
+            'uncategorized' => $uncategorized,
+        ];
+    }
+
+    private function callSourceStatsTotal(array $stats): int
+    {
+        return (int) collect($stats['counts'] ?? [])->sum() + (int) ($stats['uncategorized'] ?? 0);
     }
 
     private function callSourceStats(Collection $activities): array
