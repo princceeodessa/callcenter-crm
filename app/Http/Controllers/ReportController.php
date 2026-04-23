@@ -208,12 +208,12 @@ class ReportController extends Controller
                 ->pluck('deal_id');
 
             $closedByUser = $closedDeals->filter(function (Deal $deal) use ($u) {
-                if ((int) ($deal->closed_by_user_id ?? 0) === (int) $u->id) {
-                    return true;
+                $responsibleUserId = (int) ($deal->responsible_user_id ?? 0);
+                if ($responsibleUserId > 0) {
+                    return $responsibleUserId === (int) $u->id;
                 }
 
-                return $deal->closed_by_user_id === null
-                    && (int) ($deal->responsible_user_id ?? 0) === (int) $u->id;
+                return (int) ($deal->closed_by_user_id ?? 0) === (int) $u->id;
             });
 
             $userCallActivities = $callActivities->filter(function (DealActivity $activity) use ($u, $dealResponsibleMap) {
