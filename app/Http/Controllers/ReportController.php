@@ -170,6 +170,16 @@ class ReportController extends Controller
             return collect();
         }
 
+        $reportUserIdSet = array_fill_keys(
+            $users
+                ->pluck('id')
+                ->map(static fn ($id) => (int) $id)
+                ->filter(static fn ($id) => $id > 0)
+                ->values()
+                ->all(),
+            true
+        );
+
         $createdDeals = Deal::query()
             ->where('account_id', $accountId)
             ->whereBetween('created_at', [$from, $to])
@@ -184,7 +194,9 @@ class ReportController extends Controller
         $stageHistoryRows = DealStageHistory::query()
             ->where('account_id', $accountId)
             ->whereBetween('changed_at', [$from, $to])
-            ->get(['deal_id', 'changed_by_user_id']);
+            ->orderBy('changed_at')
+            ->orderBy('id')
+            ->get(['id', 'deal_id', 'changed_by_user_id', 'changed_at']);
 
         $callActivities = DealActivity::query()
             ->where('account_id', $accountId)
@@ -192,13 +204,38 @@ class ReportController extends Controller
             ->whereBetween('created_at', [$from, $to])
             ->get(['deal_id', 'payload']);
 
+        $closedActivityUserByDealId = DealActivity::query()
+            ->where('account_id', $accountId)
+            ->where('type', 'deal_closed')
+            ->whereBetween('created_at', [$from, $to])
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get(['deal_id', 'author_user_id', 'created_at'])
+            ->groupBy('deal_id')
+            ->map(static fn (Collection $rows) => (int) ($rows->last()?->author_user_id ?? 0))
+            ->filter(static fn ($userId) => $userId > 0)
+            ->all();
+
+        $stageChangedUserByDealId = $stageHistoryRows
+            ->groupBy('deal_id')
+            ->map(static fn (Collection $rows) => (int) ($rows->last()?->changed_by_user_id ?? 0))
+            ->filter(static fn ($userId) => $userId > 0)
+            ->all();
+
+        $closedDealsByUser = $this->closedDealsByReportUser(
+            $closedDeals,
+            $reportUserIdSet,
+            $closedActivityUserByDealId,
+            $stageChangedUserByDealId
+        );
+
         $dealResponsibleMap = Deal::query()
             ->where('account_id', $accountId)
             ->pluck('responsible_user_id', 'id')
             ->map(fn ($value) => $value !== null ? (int) $value : null)
             ->all();
 
-        return $users->values()->map(function (User $u) use ($createdDeals, $closedDeals, $stageHistoryRows, $callActivities, $dealResponsibleMap) {
+        $rows = $users->values()->map(function (User $u) use ($createdDeals, $closedDealsByUser, $stageHistoryRows, $callActivities, $dealResponsibleMap) {
             $createdDealIds = $createdDeals
                 ->filter(fn (Deal $deal) => (int) $deal->responsible_user_id === (int) $u->id)
                 ->pluck('id');
@@ -207,14 +244,7 @@ class ReportController extends Controller
                 ->filter(fn (DealStageHistory $row) => (int) $row->changed_by_user_id === (int) $u->id)
                 ->pluck('deal_id');
 
-            $closedByUser = $closedDeals->filter(function (Deal $deal) use ($u) {
-                $responsibleUserId = (int) ($deal->responsible_user_id ?? 0);
-                if ($responsibleUserId > 0) {
-                    return $responsibleUserId === (int) $u->id;
-                }
-
-                return (int) ($deal->closed_by_user_id ?? 0) === (int) $u->id;
-            });
+            $closedByUser = $closedDealsByUser[(int) $u->id] ?? collect();
 
             $userCallActivities = $callActivities->filter(function (DealActivity $activity) use ($u, $dealResponsibleMap) {
                 return $this->callActivityBelongsToUser($activity, $u, $dealResponsibleMap);
@@ -247,6 +277,68 @@ class ReportController extends Controller
                 'winRate' => $winBase > 0 ? round(($closedWon / $winBase) * 100, 1) : null,
             ];
         });
+
+        $unassignedClosedDeals = $closedDealsByUser[0] ?? collect();
+        if ($users->count() > 1 && $unassignedClosedDeals->isNotEmpty()) {
+            $closedWon = $unassignedClosedDeals->where('closed_result', 'won')->count();
+            $closedLost = $unassignedClosedDeals->where('closed_result', 'lost')->count();
+            $winBase = $closedWon + $closedLost;
+
+            $rows->push([
+                'id' => 0,
+                'name' => "\u{041D}\u{0435} \u{0440}\u{0430}\u{0441}\u{043F}\u{0440}\u{0435}\u{0434}\u{0435}\u{043B}\u{0435}\u{043D}\u{043E}",
+                'role' => 'unassigned',
+                'created' => $unassignedClosedDeals->count(),
+                'closedWon' => $closedWon,
+                'closedLost' => $closedLost,
+                'callActivities' => 0,
+                'callSourceCounts' => Deal::emptyIncomingPhoneSourceCounts(),
+                'uncategorizedCallActivities' => 0,
+                'winRate' => $winBase > 0 ? round(($closedWon / $winBase) * 100, 1) : null,
+            ]);
+        }
+
+        return $rows;
+    }
+
+    private function closedDealsByReportUser(Collection $closedDeals, array $reportUserIdSet, array $closedActivityUserByDealId, array $stageChangedUserByDealId): array
+    {
+        $byUser = [];
+
+        foreach ($closedDeals as $deal) {
+            $userId = $this->resolveClosedDealReportUserId(
+                $deal,
+                $reportUserIdSet,
+                $closedActivityUserByDealId,
+                $stageChangedUserByDealId
+            );
+
+            $userId ??= 0;
+
+            $byUser[$userId] ??= collect();
+            $byUser[$userId]->push($deal);
+        }
+
+        return $byUser;
+    }
+
+    private function resolveClosedDealReportUserId(Deal $deal, array $reportUserIdSet, array $closedActivityUserByDealId, array $stageChangedUserByDealId): ?int
+    {
+        $dealId = (int) $deal->id;
+
+        foreach ([
+            $deal->responsible_user_id ?? null,
+            $deal->closed_by_user_id ?? null,
+            $closedActivityUserByDealId[$dealId] ?? null,
+            $stageChangedUserByDealId[$dealId] ?? null,
+        ] as $candidateId) {
+            $candidateId = (int) $candidateId;
+            if ($candidateId > 0 && isset($reportUserIdSet[$candidateId])) {
+                return $candidateId;
+            }
+        }
+
+        return null;
     }
 
     private function summarizeOperatorRows(Collection $rows): array
