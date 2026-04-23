@@ -60,6 +60,7 @@
             'stage_search_placeholder' => "\u{041F}\u{043E}\u{0438}\u{0441}\u{043A} \u{043F}\u{043E} \u{0441}\u{0434}\u{0435}\u{043B}\u{043A}\u{0430}\u{043C} \u{0432} \u{044D}\u{0442}\u{043E}\u{0439} \u{0441}\u{0442}\u{0430}\u{0434}\u{0438}\u{0438}",
             'no_name' => "\u{0411}\u{0435}\u{0437} \u{0438}\u{043C}\u{0435}\u{043D}\u{0438}",
             'no_phone' => "\u{0411}\u{0435}\u{0437} \u{0442}\u{0435}\u{043B}\u{0435}\u{0444}\u{043E}\u{043D}\u{0430}",
+            'created_at' => "\u{0421}\u{043E}\u{0437}\u{0434}\u{0430}\u{043D}\u{043E}",
             'empty' => "\u{041F}\u{0443}\u{0441}\u{0442}\u{043E}",
             'move_error' => "\u{041D}\u{0435} \u{0443}\u{0434}\u{0430}\u{043B}\u{043E}\u{0441}\u{044C} \u{043F}\u{0435}\u{0440}\u{0435}\u{043C}\u{0435}\u{0441}\u{0442}\u{0438}\u{0442}\u{044C} \u{0441}\u{0434}\u{0435}\u{043B}\u{043A}\u{0443}. \u{041E}\u{0431}\u{043D}\u{043E}\u{0432}\u{0438} \u{0441}\u{0442}\u{0440}\u{0430}\u{043D}\u{0438}\u{0446}\u{0443} \u{0438} \u{043F}\u{043E}\u{043F}\u{0440}\u{043E}\u{0431}\u{0443}\u{0439} \u{0441}\u{043D}\u{043E}\u{0432}\u{0430}.",
         ];
@@ -190,6 +191,11 @@
                             <div class="text-muted small mt-1">
                                 @if($deal->contact?->phone){{ $deal->contact->phone }}@else {{ $ui['no_phone'] }} @endif
                             </div>
+                            @if(!empty($canSeeKanbanCreatedAt))
+                                <div class="text-muted small mt-1">
+                                    <span class="fw-semibold">{{ $ui['created_at'] }}:</span> {{ optional($deal->created_at)->format('d.m.Y H:i') }}
+                                </div>
+                            @endif
                             @if($answeredBy)
                                 <div class="text-muted small mt-1">Ответил: {{ $answeredBy }}</div>
                             @endif

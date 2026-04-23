@@ -111,6 +111,7 @@ class DealController extends Controller
     {
         $user = Auth::user();
         $canSeeKanbanIds = $user->role === 'admin';
+        $canSeeKanbanCreatedAt = $user->role === 'main_operator';
         $showSpam = $request->boolean('show_spam');
         $q = trim($request->string('q')->toString());
         $focusDate = $this->resolveKanbanFocusDate($request->string('focus_date')->toString());
@@ -211,7 +212,7 @@ class DealController extends Controller
             }
         }
 
-        return view('deals.kanban', compact('stages','dealsByStage','showSpam','q', 'dateFilteredStageIds', 'focusDate', 'canSeeKanbanIds'));
+        return view('deals.kanban', compact('stages','dealsByStage','showSpam','q', 'dateFilteredStageIds', 'focusDate', 'canSeeKanbanIds', 'canSeeKanbanCreatedAt'));
     }
 
     public function create()
