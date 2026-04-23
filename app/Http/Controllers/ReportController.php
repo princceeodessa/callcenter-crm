@@ -110,9 +110,7 @@ class ReportController extends Controller
 
     private function resolveDefaultMonth(User $user): string
     {
-        $latest = $this->latestRelevantMomentForUser($user);
-
-        return ($latest ?? now())->format('Y-m');
+        return now()->format('Y-m');
     }
 
     private function measurementCompletionRows(Collection $users, $from, $to): Collection

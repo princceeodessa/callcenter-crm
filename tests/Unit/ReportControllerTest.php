@@ -5,12 +5,33 @@ namespace Tests\Unit;
 use App\Http\Controllers\ReportController;
 use App\Models\CallRecording;
 use App\Models\Deal;
+use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
 
 class ReportControllerTest extends TestCase
 {
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
+    }
+
+    public function test_default_month_is_current_calendar_month(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-04-23 09:00:00'));
+
+        $user = new User([
+            'account_id' => 1,
+            'role' => 'main_operator',
+        ]);
+
+        $this->assertSame('2026-04', $this->invokeReportMethod('resolveDefaultMonth', [$user]));
+    }
+
     public function test_closed_deal_attribution_prefers_closer_over_responsible(): void
     {
         $deal = new Deal();
