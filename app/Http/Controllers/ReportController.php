@@ -6,6 +6,7 @@ use App\Models\Deal;
 use App\Models\DealActivity;
 use App\Models\DealStageHistory;
 use App\Models\CallRecording;
+use App\Models\IntegrationEvent;
 use App\Models\Measurement;
 use App\Models\User;
 use Carbon\Carbon;
@@ -225,20 +226,35 @@ class ReportController extends Controller
                 ->get(['deal_id', 'payload'])
                 ->groupBy('deal_id');
 
-        $callRecordingDealIdSet = $sourceDealIds->isEmpty()
-            ? []
-            : array_fill_keys(
-                CallRecording::query()
-                    ->where('account_id', $accountId)
-                    ->whereIn('deal_id', $sourceDealIds->all())
-                    ->pluck('deal_id')
-                    ->map(static fn ($dealId) => (int) $dealId)
-                    ->filter(static fn ($dealId) => $dealId > 0)
-                    ->unique()
-                    ->values()
-                    ->all(),
-                true
-            );
+        $callRecordingRowsByDealId = $sourceDealIds->isEmpty()
+            ? collect()
+            : CallRecording::query()
+                ->where('account_id', $accountId)
+                ->whereIn('deal_id', $sourceDealIds->all())
+                ->get(['deal_id', 'callid'])
+                ->groupBy('deal_id');
+
+        $recordingCallIds = $callRecordingRowsByDealId
+            ->flatten(1)
+            ->pluck('callid')
+            ->filter()
+            ->map(static fn ($callId) => (string) $callId)
+            ->unique()
+            ->values();
+
+        $integrationEventPayloadsByCallId = $recordingCallIds->isEmpty()
+            ? collect()
+            : IntegrationEvent::query()
+                ->where('account_id', $accountId)
+                ->where('provider', 'megafon_vats')
+                ->whereIn('external_id', $recordingCallIds->all())
+                ->orderBy('received_at')
+                ->get(['external_id', 'payload'])
+                ->groupBy('external_id')
+                ->map(static fn (Collection $events) => $events
+                    ->map(static fn (IntegrationEvent $event) => is_array($event->payload ?? null) ? $event->payload : [])
+                    ->filter(static fn (array $payload) => $payload !== [])
+                    ->values());
 
         $closedActivityUserByDealId = DealActivity::query()
             ->where('account_id', $accountId)
@@ -271,7 +287,7 @@ class ReportController extends Controller
             ->map(fn ($value) => $value !== null ? (int) $value : null)
             ->all();
 
-        $rows = $users->values()->map(function (User $u) use ($createdDeals, $closedDealsByUser, $stageHistoryRows, $callActivities, $dealResponsibleMap, $sourceCallActivitiesByDealId, $callRecordingDealIdSet) {
+        $rows = $users->values()->map(function (User $u) use ($createdDeals, $closedDealsByUser, $stageHistoryRows, $callActivities, $dealResponsibleMap, $sourceCallActivitiesByDealId, $callRecordingRowsByDealId, $integrationEventPayloadsByCallId) {
             $createdDealIds = $createdDeals
                 ->filter(fn (Deal $deal) => (int) $deal->responsible_user_id === (int) $u->id)
                 ->pluck('id');
@@ -294,12 +310,13 @@ class ReportController extends Controller
                 ->unique()
                 ->values();
 
-            $closedWon = $closedByUser->where('closed_result', 'won')->count();
-            $closedLost = $closedByUser->where('closed_result', 'lost')->count();
+            $closedWon = $closedByUser->filter(fn (Deal $deal) => $this->normalizeClosedResult($deal->closed_result) === 'won')->count();
+            $closedLost = $closedByUser->filter(fn (Deal $deal) => $this->normalizeClosedResult($deal->closed_result) === 'lost')->count();
             $callSourceStats = $this->dealSourceStats(
                 $processedDealIds,
                 $sourceCallActivitiesByDealId,
-                $callRecordingDealIdSet
+                $callRecordingRowsByDealId,
+                $integrationEventPayloadsByCallId
             );
 
             $winBase = $closedWon + $closedLost;
@@ -321,13 +338,14 @@ class ReportController extends Controller
 
         $unassignedClosedDeals = $closedDealsByUser[0] ?? collect();
         if ($users->count() > 1 && $unassignedClosedDeals->isNotEmpty()) {
-            $closedWon = $unassignedClosedDeals->where('closed_result', 'won')->count();
-            $closedLost = $unassignedClosedDeals->where('closed_result', 'lost')->count();
+            $closedWon = $unassignedClosedDeals->filter(fn (Deal $deal) => $this->normalizeClosedResult($deal->closed_result) === 'won')->count();
+            $closedLost = $unassignedClosedDeals->filter(fn (Deal $deal) => $this->normalizeClosedResult($deal->closed_result) === 'lost')->count();
             $winBase = $closedWon + $closedLost;
             $callSourceStats = $this->dealSourceStats(
                 $unassignedClosedDeals->pluck('id'),
                 $sourceCallActivitiesByDealId,
-                $callRecordingDealIdSet
+                $callRecordingRowsByDealId,
+                $integrationEventPayloadsByCallId
             );
             $sourceTotal = $this->callSourceStatsTotal($callSourceStats);
 
@@ -374,10 +392,10 @@ class ReportController extends Controller
         $dealId = (int) $deal->id;
 
         foreach ([
-            $deal->responsible_user_id ?? null,
             $deal->closed_by_user_id ?? null,
             $closedActivityUserByDealId[$dealId] ?? null,
             $stageChangedUserByDealId[$dealId] ?? null,
+            $deal->responsible_user_id ?? null,
         ] as $candidateId) {
             $candidateId = (int) $candidateId;
             if ($candidateId > 0 && isset($reportUserIdSet[$candidateId])) {
@@ -386,6 +404,17 @@ class ReportController extends Controller
         }
 
         return null;
+    }
+
+    private function normalizeClosedResult(?string $result): ?string
+    {
+        $value = Str::lower(trim((string) $result));
+
+        return match ($value) {
+            'won', 'win', 'success', 'successful', 'ok', 'done', "\u{0443}\u{0441}\u{043F}\u{0435}\u{0448}\u{043D}\u{043E}", "\u{0437}\u{0430}\u{043A}\u{043B}\u{044E}\u{0447}\u{0435}\u{043D}\u{043E}" => 'won',
+            'lost', 'loss', 'fail', 'failed', 'refused', 'reject', 'rejected', 'cancelled', 'canceled', "\u{043E}\u{0442}\u{043A}\u{0430}\u{0437}", "\u{043D}\u{0435} \u{0437}\u{0430}\u{043A}\u{043B}\u{044E}\u{0447}\u{0435}\u{043D}\u{043E}" => 'lost',
+            default => null,
+        };
     }
 
     private function summarizeOperatorRows(Collection $rows): array
@@ -415,7 +444,7 @@ class ReportController extends Controller
         ];
     }
 
-    private function dealSourceStats(Collection $dealIds, Collection $sourceCallActivitiesByDealId, array $callRecordingDealIdSet): array
+    private function dealSourceStats(Collection $dealIds, Collection $sourceCallActivitiesByDealId, Collection $callRecordingRowsByDealId, Collection $integrationEventPayloadsByCallId): array
     {
         $counts = Deal::emptyIncomingPhoneSourceCounts();
         $uncategorized = 0;
@@ -436,7 +465,30 @@ class ReportController extends Controller
                 }
             }
 
-            if (! $matched && ($activities->isNotEmpty() || isset($callRecordingDealIdSet[$dealId]))) {
+            $recordings = $callRecordingRowsByDealId->get($dealId, collect());
+
+            if (! $matched) {
+                foreach ($recordings as $recording) {
+                    $callId = (string) ($recording->callid ?? '');
+                    if ($callId === '') {
+                        continue;
+                    }
+
+                    foreach ($integrationEventPayloadsByCallId->get($callId, collect()) as $payload) {
+                        $key = Deal::resolveIncomingPhoneSourceFilterKeyFromPayload(
+                            is_array($payload) ? $payload : []
+                        );
+
+                        if ($key !== null && array_key_exists($key, $counts)) {
+                            $counts[$key]++;
+                            $matched = true;
+                            break 2;
+                        }
+                    }
+                }
+            }
+
+            if (! $matched && ($activities->isNotEmpty() || $recordings->isNotEmpty())) {
                 $uncategorized++;
             }
         }
