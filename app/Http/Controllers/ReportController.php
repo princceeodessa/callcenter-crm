@@ -310,6 +310,7 @@ class ReportController extends Controller
 
             $closedWon = $closedByUser->filter(fn (Deal $deal) => $this->normalizeClosedResult($deal->closed_result) === 'won')->count();
             $closedLost = $closedByUser->filter(fn (Deal $deal) => $this->normalizeClosedResult($deal->closed_result) === 'lost')->count();
+            $closedExtraNonTarget = $closedByUser->filter(fn (Deal $deal) => $this->normalizeClosedResult($deal->closed_result) === 'extra_non_target')->count();
             $callSourceStats = $this->dealSourceStats(
                 $processedDealIds,
                 $sourceCallActivitiesByDealId,
@@ -327,6 +328,7 @@ class ReportController extends Controller
                 'created' => $processedDealIds->count(),
                 'closedWon' => $closedWon,
                 'closedLost' => $closedLost,
+                'closedExtraNonTarget' => $closedExtraNonTarget,
                 'callActivities' => $sourceTotal,
                 'callSourceCounts' => $callSourceStats['counts'],
                 'uncategorizedCallActivities' => $callSourceStats['uncategorized'],
@@ -338,6 +340,7 @@ class ReportController extends Controller
         if ($users->count() > 1 && $unassignedClosedDeals->isNotEmpty()) {
             $closedWon = $unassignedClosedDeals->filter(fn (Deal $deal) => $this->normalizeClosedResult($deal->closed_result) === 'won')->count();
             $closedLost = $unassignedClosedDeals->filter(fn (Deal $deal) => $this->normalizeClosedResult($deal->closed_result) === 'lost')->count();
+            $closedExtraNonTarget = $unassignedClosedDeals->filter(fn (Deal $deal) => $this->normalizeClosedResult($deal->closed_result) === 'extra_non_target')->count();
             $winBase = $closedWon + $closedLost;
             $callSourceStats = $this->dealSourceStats(
                 $unassignedClosedDeals->pluck('id'),
@@ -354,6 +357,7 @@ class ReportController extends Controller
                 'created' => $unassignedClosedDeals->count(),
                 'closedWon' => $closedWon,
                 'closedLost' => $closedLost,
+                'closedExtraNonTarget' => $closedExtraNonTarget,
                 'callActivities' => $sourceTotal,
                 'callSourceCounts' => $callSourceStats['counts'],
                 'uncategorizedCallActivities' => $callSourceStats['uncategorized'],
@@ -411,6 +415,7 @@ class ReportController extends Controller
         return match ($value) {
             'won', 'win', 'success', 'successful', 'ok', 'done', "\u{0443}\u{0441}\u{043F}\u{0435}\u{0448}\u{043D}\u{043E}", "\u{0437}\u{0430}\u{043A}\u{043B}\u{044E}\u{0447}\u{0435}\u{043D}\u{043E}" => 'won',
             'lost', 'loss', 'fail', 'failed', 'refused', 'reject', 'rejected', 'cancelled', 'canceled', "\u{043E}\u{0442}\u{043A}\u{0430}\u{0437}", "\u{043D}\u{0435} \u{0437}\u{0430}\u{043A}\u{043B}\u{044E}\u{0447}\u{0435}\u{043D}\u{043E}" => 'lost',
+            'extra_non_target', 'extra', 'additional_work', 'additional_works', 'non_target', 'non-target', "\u{0434}\u{043E}\u{043F}.\u{0440}\u{0430}\u{0431}\u{043E}\u{0442}\u{044B}", "\u{0434}\u{043E}\u{043F} \u{0440}\u{0430}\u{0431}\u{043E}\u{0442}\u{044B}", "\u{0434}\u{043E}\u{043F}\u{0440}\u{0430}\u{0431}\u{043E}\u{0442}\u{044B}", "\u{043D}\u{0435} \u{0446}\u{0435}\u{043B}\u{0435}\u{0432}\u{043E}\u{0439}", "\u{043D}\u{0435}\u{0446}\u{0435}\u{043B}\u{0435}\u{0432}\u{043E}\u{0439}", "\u{0434}\u{043E}\u{043F}.\u{0440}\u{0430}\u{0431}\u{043E}\u{0442}\u{044B} / \u{043D}\u{0435} \u{0446}\u{0435}\u{043B}\u{0435}\u{0432}\u{043E}\u{0439}" => 'extra_non_target',
             default => null,
         };
     }
@@ -420,6 +425,7 @@ class ReportController extends Controller
         $created = (int)$rows->sum('created');
         $closedWon = (int)$rows->sum('closedWon');
         $closedLost = (int)$rows->sum('closedLost');
+        $closedExtraNonTarget = (int)$rows->sum('closedExtraNonTarget');
         $callActivities = (int)$rows->sum('callActivities');
         $callSourceCounts = Deal::emptyIncomingPhoneSourceCounts();
         foreach ($rows as $row) {
@@ -435,6 +441,7 @@ class ReportController extends Controller
             'created' => $created,
             'closedWon' => $closedWon,
             'closedLost' => $closedLost,
+            'closedExtraNonTarget' => $closedExtraNonTarget,
             'callActivities' => $callActivities,
             'callSourceCounts' => $callSourceCounts,
             'uncategorizedCallActivities' => $uncategorizedCallActivities,
@@ -576,6 +583,7 @@ class ReportController extends Controller
         $hasData = ((int) ($summary['created'] ?? 0))
             + ((int) ($summary['closedWon'] ?? 0))
             + ((int) ($summary['closedLost'] ?? 0))
+            + ((int) ($summary['closedExtraNonTarget'] ?? 0))
             + ((int) ($summary['callActivities'] ?? 0)) > 0;
 
         if ($hasData) {

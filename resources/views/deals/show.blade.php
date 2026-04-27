@@ -54,6 +54,15 @@
       return route('deals.show', $deal).($queryString !== '' ? '?'.$queryString : '');
   };
 
+  $closedResultMeta = function ($value) {
+      return match ((string) $value) {
+          'won' => ['label' => 'Успешно закрыта', 'short_label' => 'Успешно', 'badge' => 'success'],
+          'lost' => ['label' => 'Отказ', 'short_label' => 'Отказ', 'badge' => 'danger'],
+          'extra_non_target' => ['label' => 'Доп.Работы / Не целевой', 'short_label' => 'Доп.Работы / Не целевой', 'badge' => 'warning'],
+          default => ['label' => 'Закрыта', 'short_label' => 'Закрыта', 'badge' => 'secondary'],
+      };
+  };
+
   $formatPhone = function ($value) {
       $digits = preg_replace('/\D+/', '', (string) $value);
       if (!$digits) {
@@ -190,6 +199,7 @@
       ->groupBy($callGroupKey);
 
   $renderedCallKeys = [];
+  $dealClosedResult = $closedResultMeta($deal->closed_result);
 
   $hasDisplayValue = function ($value) {
       if ($value === null) {
@@ -324,8 +334,8 @@
       @if($deal->contact?->phone) • {{ $deal->contact->phone }} @endif
       • Ответственный: {{ $deal->responsible?->name ?? '—' }}
       @if($deal->closed_at)
-        <span class="badge text-bg-{{ $deal->closed_result === 'won' ? 'success' : ($deal->closed_result === 'lost' ? 'danger' : 'secondary') }}">
-            {{ $deal->closed_result === 'won' ? 'Успешно закрыта' : ($deal->closed_result === 'lost' ? 'Отказ' : 'Закрыта') }}
+        <span class="badge text-bg-{{ $dealClosedResult['badge'] }}">
+            {{ $dealClosedResult['label'] }}
           </span>
       @endif
     </div>
@@ -427,7 +437,7 @@
         @if($deal->closed_at)
           <div class="mt-2">
             <div class="mb-1"><b>Закрыта:</b> {{ $deal->closed_at->format('d.m.Y H:i') }}</div>
-            <div class="mb-1"><b>Результат:</b> {{ $deal->closed_result }}</div>
+            <div class="mb-1"><b>Результат:</b> {{ $dealClosedResult['short_label'] }}</div>
             @if($deal->closed_reason)
               <div class="mb-1"><b>Причина:</b> {{ $deal->closed_reason }}</div>
             @endif
@@ -446,6 +456,12 @@
             <input type="hidden" name="result" value="lost">
             <input class="form-control form-control-sm" name="reason" placeholder="Причина отказа (необязательно)">
             <button class="btn btn-sm btn-danger">Отказ</button>
+          </form>
+          <form method="POST" action="{{ route('deals.close', $deal) }}" class="d-flex gap-2 mt-2">
+            @csrf
+            <input type="hidden" name="result" value="extra_non_target">
+            <input class="form-control form-control-sm" name="reason" placeholder="Комментарий по доп.работам / нецелевой сделке (необязательно)">
+            <button class="btn btn-sm btn-warning">Доп.Работы / Не целевой</button>
           </form>
         @endif
       </div>

@@ -9,6 +9,7 @@
       <option value="all" @selected($result === 'all')>Все</option>
       <option value="won" @selected($result === 'won')>Успешно</option>
       <option value="lost" @selected($result === 'lost')>Отказ</option>
+      <option value="extra_non_target" @selected($result === 'extra_non_target')>Доп.Работы / Не целевой</option>
     </select>
     <input class="form-control form-control-sm" name="q" value="{{ $q }}" placeholder="поиск: имя, телефон, заголовок">
     <button class="btn btn-sm btn-outline-primary">Показать</button>
@@ -40,9 +41,9 @@
               @endif
             </td>
             <td>
-              @php($badge = $deal->closed_result === 'won' ? 'success' : ($deal->closed_result === 'lost' ? 'danger' : 'secondary'))
+              @php($badge = $deal->closed_result === 'won' ? 'success' : ($deal->closed_result === 'lost' ? 'danger' : ($deal->closed_result === 'extra_non_target' ? 'warning' : 'secondary')))
               <span class="badge text-bg-{{ $badge }}">
-                {{ $deal->closed_result === 'won' ? 'Успешно' : ($deal->closed_result === 'lost' ? 'Отказ' : 'Закрыта') }}
+                {{ $deal->closed_result === 'won' ? 'Успешно' : ($deal->closed_result === 'lost' ? 'Отказ' : ($deal->closed_result === 'extra_non_target' ? 'Доп.Работы / Не целевой' : 'Закрыта')) }}
               </span>
             </td>
             <td>

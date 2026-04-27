@@ -9,8 +9,8 @@
       @if($deal->contact?->phone) • {{ $deal->contact->phone }} @endif
       • Ответственный: {{ $deal->responsible?->name ?? '—' }}
       @if($deal->closed_at)
-        • <span class="badge text-bg-{{ $deal->closed_result === 'won' ? 'success' : ($deal->closed_result === 'lost' ? 'danger' : 'secondary') }}">
-            {{ $deal->closed_result === 'won' ? 'Успешно закрыта' : ($deal->closed_result === 'lost' ? 'Отказ' : 'Закрыта') }}
+        • <span class="badge text-bg-{{ $deal->closed_result === 'won' ? 'success' : ($deal->closed_result === 'lost' ? 'danger' : ($deal->closed_result === 'extra_non_target' ? 'warning' : 'secondary')) }}">
+            {{ $deal->closed_result === 'won' ? 'Успешно закрыта' : ($deal->closed_result === 'lost' ? 'Отказ' : ($deal->closed_result === 'extra_non_target' ? 'Доп.Работы / Не целевой' : 'Закрыта')) }}
           </span>
       @endif
     </div>

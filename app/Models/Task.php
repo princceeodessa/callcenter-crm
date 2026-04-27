@@ -46,6 +46,13 @@ class Task extends Model
         return $this->belongsTo(User::class, 'assigned_user_id');
     }
 
+    public function dueNotifications()
+    {
+        return $this->hasMany(UserNotification::class, 'source_id')
+            ->where('source_type', 'task')
+            ->where('type', 'task_due');
+    }
+
     public function getAssigneeLabelAttribute(): string
     {
         $name = trim((string) ($this->assignedTo?->name ?? ''));

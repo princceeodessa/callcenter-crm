@@ -93,7 +93,7 @@
   </div>
 @else
   <div class="row g-3 mb-4">
-    <div class="col-md-3">
+    <div class="col-lg col-md-6">
       <div class="card shadow-sm h-100">
         <div class="card-body">
           <div class="text-muted small">Обработано сделок</div>
@@ -101,7 +101,7 @@
         </div>
       </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-lg col-md-6">
       <div class="card shadow-sm h-100">
         <div class="card-body">
           <div class="text-muted small">Закрыто успешно</div>
@@ -109,7 +109,7 @@
         </div>
       </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-lg col-md-6">
       <div class="card shadow-sm h-100">
         <div class="card-body">
           <div class="text-muted small">Закрыто с отказом</div>
@@ -117,7 +117,15 @@
         </div>
       </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-lg col-md-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <div class="text-muted small">Доп.Работы / Не целевой</div>
+          <div class="fs-3 fw-semibold text-warning">{{ $operatorSummary['closedExtraNonTarget'] }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg col-md-6">
       <div class="card shadow-sm h-100">
         <div class="card-body">
           <div class="text-muted small">Событий звонков</div>
@@ -140,6 +148,7 @@
             <th>Обработано сделок</th>
             <th>Успешно</th>
             <th>Отказ</th>
+            <th>Доп.Работы / Не целевой</th>
             <th>Звонки</th>
             <th>Конверсия</th>
           </tr>
@@ -154,11 +163,12 @@
               <td>{{ $row['created'] }}</td>
               <td class="text-success fw-semibold">{{ $row['closedWon'] }}</td>
               <td class="text-danger fw-semibold">{{ $row['closedLost'] }}</td>
+              <td class="text-warning fw-semibold">{{ $row['closedExtraNonTarget'] }}</td>
               <td>{{ $row['callActivities'] }}</td>
               <td>{{ $row['winRate'] !== null ? $row['winRate'].'%' : '—' }}</td>
             </tr>
           @empty
-            <tr><td colspan="{{ $mode === 'manager' ? 7 : 6 }}" class="text-muted">Данных за месяц нет.</td></tr>
+            <tr><td colspan="{{ $mode === 'manager' ? 8 : 7 }}" class="text-muted">Данных за месяц нет.</td></tr>
           @endforelse
         </tbody>
       </table>

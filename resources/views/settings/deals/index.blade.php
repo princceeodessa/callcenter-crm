@@ -34,8 +34,10 @@
               @if($deal->is_unread) <span class="badge text-bg-warning ms-1">не прочитан</span> @endif
               @if($deal->has_script_deviation) <span class="badge text-bg-danger ms-1">отклонения</span> @endif
               @if($deal->closed_at)
-                @php($badge = $deal->closed_result === 'won' ? 'success' : ($deal->closed_result === 'lost' ? 'danger' : 'secondary'))
-                <span class="badge text-bg-{{ $badge }} ms-1">{{ $deal->closed_result ?? 'closed' }}</span>
+                @php($badge = $deal->closed_result === 'won' ? 'success' : ($deal->closed_result === 'lost' ? 'danger' : ($deal->closed_result === 'extra_non_target' ? 'warning' : 'secondary')))
+                <span class="badge text-bg-{{ $badge }} ms-1">
+                  {{ $deal->closed_result === 'won' ? 'Успешно' : ($deal->closed_result === 'lost' ? 'Отказ' : ($deal->closed_result === 'extra_non_target' ? 'Доп.Работы / Не целевой' : 'Закрыта')) }}
+                </span>
               @endif
             </td>
             <td>{{ $deal->stage?->name }}</td>

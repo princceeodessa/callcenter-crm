@@ -10,9 +10,10 @@ use Illuminate\Support\Facades\Auth;
 
 class NotificationController extends Controller
 {
-    public function index()
+    public function index(TaskWorkflowService $taskWorkflow)
     {
         $user = Auth::user();
+        $this->ensureDueTasksNotifiedForUser($user->account_id, $user->id, $taskWorkflow);
 
         $notifications = UserNotification::query()
             ->where('account_id', $user->account_id)
@@ -102,7 +103,18 @@ class NotificationController extends Controller
             ->where('status', 'open')
             ->whereNotNull('due_at')
             ->where('due_at', '<=', $now)
-            ->whereNull('notified_at')
+            ->where(function ($query) use ($userId) {
+                $query
+                    ->where('assigned_user_id', $userId)
+                    ->orWhereNull('assigned_user_id');
+            })
+            ->where(function ($query) use ($userId) {
+                $query
+                    ->whereNull('notified_at')
+                    ->orWhereDoesntHave('dueNotifications', function ($notificationQuery) use ($userId) {
+                        $notificationQuery->where('user_id', $userId);
+                    });
+            })
             ->limit(100)
             ->get();
 

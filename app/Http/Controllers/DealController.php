@@ -700,10 +700,10 @@ class DealController extends Controller
     {
         $user = Auth::user();
         $q = $request->string('q')->toString();
-        $result = $request->string('result')->toString(); // won|lost|all
+        $result = $request->string('result')->toString(); // won|lost|extra_non_target|all
         $month = $request->string('month')->toString(); // YYYY-MM
 
-        if (!in_array($result, ['won','lost','all'], true)) {
+        if (!in_array($result, ['won', 'lost', 'extra_non_target', 'all'], true)) {
             $result = 'all';
         }
         if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
@@ -747,7 +747,7 @@ class DealController extends Controller
         abort_unless($deal->account_id === $user->account_id, 403);
 
         $data = $request->validate([
-            'result' => ['required','in:won,lost'],
+            'result' => ['required', 'in:won,lost,extra_non_target'],
             'reason' => ['nullable','string','max:255'],
         ]);
 
@@ -900,9 +900,11 @@ class DealController extends Controller
 
     private function dealClosedActivityBody(string $result, ?string $reason): string
     {
-        $base = $result === 'won'
-            ? "\u{0421}\u{0434}\u{0435}\u{043B}\u{043A}\u{0430} \u{0437}\u{0430}\u{043A}\u{0440}\u{044B}\u{0442}\u{0430} \u{0443}\u{0441}\u{043F}\u{0435}\u{0448}\u{043D}\u{043E}."
-            : "\u{0421}\u{0434}\u{0435}\u{043B}\u{043A}\u{0430} \u{0437}\u{0430}\u{043A}\u{0440}\u{044B}\u{0442}\u{0430} \u{043A}\u{0430}\u{043A} \u{043D}\u{0435}\u{0443}\u{0441}\u{043F}\u{0435}\u{0448}\u{043D}\u{0430}\u{044F}.";
+        $base = match ($result) {
+            'won' => "\u{0421}\u{0434}\u{0435}\u{043B}\u{043A}\u{0430} \u{0437}\u{0430}\u{043A}\u{0440}\u{044B}\u{0442}\u{0430} \u{0443}\u{0441}\u{043F}\u{0435}\u{0448}\u{043D}\u{043E}.",
+            'extra_non_target' => "\u{0421}\u{0434}\u{0435}\u{043B}\u{043A}\u{0430} \u{0437}\u{0430}\u{043A}\u{0440}\u{044B}\u{0442}\u{0430} \u{043A}\u{0430}\u{043A} \u{00AB}\u{0414}\u{043E}\u{043F}.\u{0420}\u{0430}\u{0431}\u{043E}\u{0442}\u{044B} / \u{041D}\u{0435} \u{0446}\u{0435}\u{043B}\u{0435}\u{0432}\u{043E}\u{0439}\u{00BB}.",
+            default => "\u{0421}\u{0434}\u{0435}\u{043B}\u{043A}\u{0430} \u{0437}\u{0430}\u{043A}\u{0440}\u{044B}\u{0442}\u{0430} \u{043A}\u{0430}\u{043A} \u{043D}\u{0435}\u{0443}\u{0441}\u{043F}\u{0435}\u{0448}\u{043D}\u{0430}\u{044F}.",
+        };
 
         $reason = trim((string) $reason);
         if ($reason === '') {
