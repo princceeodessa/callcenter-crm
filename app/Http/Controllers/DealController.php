@@ -791,19 +791,29 @@ class DealController extends Controller
 
         $user = Auth::user();
         abort_unless($deal->account_id === $user->account_id, 403);
-
-        if ($deal->closed_at) {
-            return back()->withErrors(['stage_id' => $this->closedDealStageChangeError()]);
-        }
         $to = PipelineStage::findOrFail($data['stage_id']);
         abort_unless($to->account_id === $user->account_id, 403);
         $fromId = $deal->stage_id;
+        $reopened = $this->shouldReopenDealOnStageChange($deal->closed_at !== null, (int) $fromId, $to);
 
         if ($to->pipeline_id !== $deal->pipeline_id) {
             abort(422, "\u{042D}\u{0442}\u{0430}\u{043F} \u{043E}\u{0442}\u{043D}\u{043E}\u{0441}\u{0438}\u{0442}\u{0441}\u{044F} \u{043A} \u{0434}\u{0440}\u{0443}\u{0433}\u{043E}\u{0439} \u{0432}\u{043E}\u{0440}\u{043E}\u{043D}\u{043A}\u{0435}");
         }
 
+        if ((int) $fromId === (int) $to->id && ! $reopened) {
+            return back();
+        }
+
+        $previousClosedResult = $deal->closed_result;
+        $previousClosedReason = $deal->closed_reason;
+
         $deal->stage_id = $to->id;
+        if ($reopened) {
+            $deal->closed_at = null;
+            $deal->closed_result = null;
+            $deal->closed_reason = null;
+            $deal->closed_by_user_id = null;
+        }
         $deal->save();
 
         DealActivity::create([
@@ -824,7 +834,25 @@ class DealController extends Controller
             'changed_at' => now(),
         ]);
 
-        return back();
+        if ($reopened) {
+            DealActivity::create([
+                'account_id' => $user->account_id,
+                'deal_id' => $deal->id,
+                'author_user_id' => $user->id,
+                'type' => 'deal_reopened',
+                'body' => $this->dealReopenedActivityBody($previousClosedResult, $previousClosedReason),
+                'payload' => [
+                    'previous_closed_result' => $previousClosedResult,
+                    'previous_closed_reason' => $previousClosedReason,
+                    'reopened_from_stage_id' => $fromId,
+                    'reopened_to_stage_id' => $to->id,
+                ],
+            ]);
+        }
+
+        return back()->with('status', $reopened
+            ? $this->dealReopenedStatusMessage()
+            : null);
     }
 
     /** Kanban drag&drop move. */
@@ -919,9 +947,50 @@ class DealController extends Controller
         return "\u{0421}\u{0434}\u{0435}\u{043B}\u{043A}\u{0430} \u{0437}\u{0430}\u{043A}\u{0440}\u{044B}\u{0442}\u{0430}.";
     }
 
+    private function dealReopenedActivityBody(?string $previousResult, ?string $previousReason): string
+    {
+        $base = "\u{0421}\u{0434}\u{0435}\u{043B}\u{043A}\u{0430} \u{043F}\u{0435}\u{0440}\u{0435}\u{043E}\u{0442}\u{043A}\u{0440}\u{044B}\u{0442}\u{0430}.";
+        $previousLabel = $this->closedResultLabel($previousResult);
+        $previousReason = trim((string) $previousReason);
+
+        if ($previousLabel === null && $previousReason === '') {
+            return $base;
+        }
+
+        $details = [];
+        if ($previousLabel !== null) {
+            $details[] = "\u{0431}\u{044B}\u{043B} \u{0441}\u{043D}\u{044F}\u{0442} \u{0440}\u{0435}\u{0437}\u{0443}\u{043B}\u{044C}\u{0442}\u{0430}\u{0442} \u{00AB}{$previousLabel}\u{00BB}";
+        }
+        if ($previousReason !== '') {
+            $details[] = "\u{043F}\u{0440}\u{0438}\u{0447}\u{0438}\u{043D}\u{0430}: {$previousReason}";
+        }
+
+        return $base.' '.implode(', ', $details).'.';
+    }
+
+    private function dealReopenedStatusMessage(): string
+    {
+        return "\u{0421}\u{0434}\u{0435}\u{043B}\u{043A}\u{0430} \u{043F}\u{0435}\u{0440}\u{0435}\u{043E}\u{0442}\u{043A}\u{0440}\u{044B}\u{0442}\u{0430} \u{0438} \u{043F}\u{0435}\u{0440}\u{0435}\u{0432}\u{0435}\u{0434}\u{0435}\u{043D}\u{0430} \u{0432} \u{0432}\u{044B}\u{0431}\u{0440}\u{0430}\u{043D}\u{043D}\u{0443}\u{044E} \u{0441}\u{0442}\u{0430}\u{0434}\u{0438}\u{044E}.";
+    }
+
     private function closedDealStageChangeError(): string
     {
         return "\u{0417}\u{0430}\u{043A}\u{0440}\u{044B}\u{0442}\u{0443}\u{044E} \u{0441}\u{0434}\u{0435}\u{043B}\u{043A}\u{0443} \u{043D}\u{0435}\u{043B}\u{044C}\u{0437}\u{044F} \u{043F}\u{0435}\u{0440}\u{0435}\u{043C}\u{0435}\u{0449}\u{0430}\u{0442}\u{044C}.";
+    }
+
+    private function closedResultLabel(?string $result): ?string
+    {
+        return match ((string) $result) {
+            'won' => "\u{0423}\u{0441}\u{043F}\u{0435}\u{0448}\u{043D}\u{043E}",
+            'lost' => "\u{041E}\u{0442}\u{043A}\u{0430}\u{0437}",
+            'extra_non_target' => "\u{0414}\u{043E}\u{043F}.\u{0420}\u{0430}\u{0431}\u{043E}\u{0442}\u{044B} / \u{041D}\u{0435} \u{0446}\u{0435}\u{043B}\u{0435}\u{0432}\u{043E}\u{0439}",
+            default => null,
+        };
+    }
+
+    private function shouldReopenDealOnStageChange(bool $wasClosed, int $fromStageId, PipelineStage $to): bool
+    {
+        return $wasClosed && ! $to->is_final && $fromStageId !== (int) $to->id;
     }
 
     private function stageChangedActivityBody(): string

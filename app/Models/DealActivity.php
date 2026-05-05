@@ -70,6 +70,7 @@ class DealActivity extends Model
             'voice_note' => 'Голосовое сообщение',
             'stage_changed' => 'Смена стадии',
             'deal_closed' => 'Закрытие сделки',
+            'deal_reopened' => 'Переоткрытие сделки',
             'deal_updated' => 'Изменение сделки',
             'system' => 'Система',
             default => $type !== '' ? $type : 'Событие',

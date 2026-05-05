@@ -354,13 +354,17 @@
         class="form-select form-select-sm"
         style="min-width: 280px;"
         onchange="this.form.submit()"
-        @disabled($deal->closed_at)
       >
         @foreach($stages as $s)
           <option value="{{ $s->id }}" @selected($deal->stage_id === $s->id)>{{ $s->name }}</option>
         @endforeach
       </select>
     </form>
+    @if($deal->closed_at)
+      <div class="text-muted small">
+        Перевод в рабочую стадию переоткроет сделку.
+      </div>
+    @endif
   </div>
 </div>
 
