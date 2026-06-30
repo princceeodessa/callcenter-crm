@@ -477,7 +477,7 @@
       <div class="card-body">
         <form method="POST" action="{{ route('deals.sale-item', $deal) }}" class="row g-2 align-items-end">
           @csrf
-          <div class="col-md-7">
+          <div class="col-md-5">
             <label class="form-label small mb-1">Товар со склада</label>
             <select name="warehouse_item_id" class="form-select form-select-sm">
               <option value="">— не выбрано —</option>
@@ -486,14 +486,24 @@
               @endforeach
             </select>
           </div>
-          <div class="col-md-3">
+          <div class="col-md-2">
             <label class="form-label small mb-1">Кол-во пар</label>
             <input type="number" name="sold_quantity" min="1" value="{{ $deal->sold_quantity ?? 1 }}" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small mb-1">Источник</label>
+            @php($srcOpts = ['Avito','Instagram','Telegram','Сайт','Сарафан','Другое'])
+            <select name="manual_source" class="form-select form-select-sm">
+              <option value="">— не указан —</option>
+              @foreach($srcOpts as $so)<option value="{{ $so }}" @selected($deal->manual_source === $so)>{{ $so }}</option>@endforeach
+            </select>
           </div>
           <div class="col-md-2"><button class="btn btn-sm btn-primary w-100">Сохранить</button></div>
         </form>
         <div class="form-text mt-1">
-          @if($deal->stock_deducted_at)
+          @if($deal->returned_at)
+            <span class="text-info-emphasis">Возврат оформлен {{ $deal->returned_at->format('d.m.Y H:i') }} — пары на складе.</span>
+          @elseif($deal->stock_deducted_at)
             <span class="text-success">Списано со склада {{ $deal->stock_deducted_at->format('d.m.Y H:i') }}.</span>
           @elseif($deal->stock_reserved_at)
             <span class="text-warning-emphasis">Зарезервировано {{ $deal->stock_reserved_at->format('d.m.Y H:i') }}. Списание — при «Продано».</span>
@@ -501,6 +511,12 @@
             Резерв — на стадии «Бронь/Счёт», списание — на «Продано».
           @endif
         </div>
+        @if($deal->stock_deducted_at && ! $deal->returned_at)
+          <form method="POST" action="{{ route('deals.return', $deal) }}" class="mt-2" onsubmit="return confirm('Оформить возврат? Пары вернутся на склад, продажа отменится.')">
+            @csrf
+            <button class="btn btn-sm btn-outline-info">Оформить возврат</button>
+          </form>
+        @endif
       </div>
     </div>
     @endif

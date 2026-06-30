@@ -936,6 +936,7 @@ class DealController extends Controller
         $data = $request->validate([
             'warehouse_item_id' => ['nullable', 'integer'],
             'sold_quantity' => ['nullable', 'integer', 'min:1', 'max:1000000'],
+            'manual_source' => ['nullable', 'string', 'max:50'],
         ]);
 
         $item = null;
@@ -953,6 +954,7 @@ class DealController extends Controller
         $qty = $item ? (int) ($data['sold_quantity'] ?? 1) : null;
         $deal->warehouse_item_id = $item?->id;
         $deal->sold_quantity = $qty;
+        $deal->manual_source = $data['manual_source'] ?? null;
         // Авто-подстановка суммы сделки из цены продажи (если сумма ещё не задана).
         if ($item && $qty && ($deal->amount === null || (float) $deal->amount == 0.0) && $item->sale_price !== null) {
             $deal->amount = round((float) $item->sale_price * $qty, 2);
@@ -967,6 +969,17 @@ class DealController extends Controller
         }
 
         return back()->with('status', $msg);
+    }
+
+    /** Оформить возврат проданного товара на склад (кроссовки). */
+    public function returnSale(Deal $deal, WarehouseService $warehouse)
+    {
+        $user = Auth::user();
+        abort_unless($deal->account_id === $user->account_id, 403);
+
+        $warehouse->returnDealStock($deal);
+
+        return back()->with('status', 'Оформлен возврат: пары возвращены на склад.');
     }
 
     private function dealCreatedActivityBody(): string

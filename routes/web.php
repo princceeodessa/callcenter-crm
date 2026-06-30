@@ -78,6 +78,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/deals/{deal}/stage', [DealController::class, 'changeStage'])->name('deals.stage');
         Route::post('/deals/{deal}/close', [DealController::class, 'close'])->name('deals.close');
         Route::post('/deals/{deal}/sale-item', [DealController::class, 'setSaleItem'])->name('deals.sale-item');
+        Route::post('/deals/{deal}/return', [DealController::class, 'returnSale'])->name('deals.return');
         Route::post('/deals/{deal}/voice-note', [DealController::class, 'storeVoiceNote'])->name('deals.voice-note.store');
         Route::post('/deals/broadcast-today', [DealController::class, 'broadcastToday'])->name('deals.broadcast-today');
         Route::middleware('admin.only')->group(function () {
@@ -125,6 +126,7 @@ Route::middleware('auth')->group(function () {
 
         // Склад кроссовок (остатки по позициям)
         Route::get('/warehouse', [WarehouseController::class, 'index'])->name('warehouse.index');
+        Route::get('/warehouse/export', [WarehouseController::class, 'export'])->name('warehouse.export');
         Route::post('/warehouse', [WarehouseController::class, 'store'])->name('warehouse.store');
         Route::patch('/warehouse/{item}', [WarehouseController::class, 'update'])->name('warehouse.update');
         Route::post('/warehouse/{item}/replenish', [WarehouseController::class, 'replenish'])->name('warehouse.replenish');
@@ -132,6 +134,7 @@ Route::middleware('auth')->group(function () {
 
         // Отчёт по кроссовкам (продажи/прибыль/склад)
         Route::get('/sneaker/report', [SneakerReportController::class, 'index'])->name('sneaker.report');
+        Route::get('/sneaker/report/export', [SneakerReportController::class, 'export'])->name('sneaker.report.export');
     });
 
     // Projecting (admin + constructor)
@@ -189,6 +192,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/settings/users/{user}/toggle', [SettingsUserController::class, 'toggleActive'])
         ->middleware('admin')
         ->name('settings.users.toggle');
+    Route::post('/settings/users/{user}/password', [SettingsUserController::class, 'updatePassword'])
+        ->middleware('admin')
+        ->name('settings.users.password');
 
     // Reports (personal for users, aggregated for main_operator/admin)
     Route::get('/reports/monthly', [ReportController::class, 'monthly'])

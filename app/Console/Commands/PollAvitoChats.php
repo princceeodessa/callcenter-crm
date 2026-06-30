@@ -43,7 +43,7 @@ class PollAvitoChats extends Command
                 continue;
             }
 
-            $client = new AvitoApiClient($token);
+            $client = new AvitoApiClient($token, timeoutSeconds: 8.0);
             $seen = $settings['last_seen_message_id_by_chat'] ?? [];
             if (!is_array($seen)) {
                 $seen = [];
@@ -55,7 +55,14 @@ class PollAvitoChats extends Command
             $offset = 0;
 
             while (true) {
-                $chats = $client->listChats($userId, $limit, $offset);
+                try {
+                    $chats = $client->listChats($userId, $limit, $offset);
+                } catch (\Throwable $e) {
+                    // Сеть/таймаут Avito не должны валить крон и засорять лог фаталами.
+                    $conn->update(['last_error' => 'Avito poll error: '.$e->getMessage()]);
+                    $this->warn("[account {$conn->account_id}] avito poll skipped: ".$e->getMessage());
+                    break;
+                }
                 if (empty($chats)) {
                     break;
                 }

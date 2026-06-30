@@ -145,6 +145,27 @@ class WarehouseController extends Controller
         return redirect()->route('warehouse.index')->with('status', 'Позиция удалена.');
     }
 
+    public function export(Request $request)
+    {
+        $user = Auth::user();
+        $items = WarehouseItem::where('account_id', $user->account_id)
+            ->orderBy('brand')->orderBy('model')->orderBy('size')->get();
+
+        $rows = [['Бренд', 'Модель', 'Размер', 'Остаток', 'Резерв', 'Доступно', 'Себестоимость', 'Цена продажи', 'Стоимость (прод.)']];
+        foreach ($items as $i) {
+            $rows[] = [$i->brand, $i->model, $i->size, $i->quantity, $i->reserved, $i->available, $i->avg_cost, $i->sale_price, (int) $i->quantity * (float) ($i->sale_price ?? 0)];
+        }
+
+        return response()->streamDownload(function () use ($rows) {
+            echo "\xEF\xBB\xBF"; // UTF-8 BOM для корректной кириллицы в Excel
+            $out = fopen('php://output', 'w');
+            foreach ($rows as $r) {
+                fputcsv($out, $r, ';');
+            }
+            fclose($out);
+        }, 'sklad-krossovki-'.date('Y-m-d').'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
     private function isHead(): bool
     {
         return Auth::user()?->role === 'sneaker_head';

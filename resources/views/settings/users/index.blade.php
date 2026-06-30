@@ -8,6 +8,8 @@
         'documents_operator' => 'documents_operator (документы)',
         'measurer' => 'measurer (замерщик)',
         'constructor' => 'constructor (проектировка)',
+        'sneaker_head' => 'sneaker_head (рук. кроссовок)',
+        'sneaker_operator' => 'sneaker_operator (кроссовки)',
     ];
 @endphp
 
@@ -56,12 +58,19 @@
                     @endif
                   </td>
                   <td class="text-end">
-                    @if(auth()->id() !== $u->id)
-                      <form method="POST" action="{{ route('settings.users.toggle', $u) }}">
+                    <div class="d-flex gap-1 justify-content-end align-items-center flex-wrap">
+                      <form method="POST" action="{{ route('settings.users.password', $u) }}" class="d-flex gap-1">
                         @csrf
-                        <button class="btn btn-sm btn-outline-warning">{{ $u->is_active ? 'Отключить' : 'Включить' }}</button>
+                        <input type="password" name="password" class="form-control form-control-sm" placeholder="новый пароль" minlength="6" style="width:140px" required>
+                        <button class="btn btn-sm btn-outline-secondary" title="Сменить пароль">Пароль</button>
                       </form>
-                    @endif
+                      @if(auth()->id() !== $u->id)
+                        <form method="POST" action="{{ route('settings.users.toggle', $u) }}">
+                          @csrf
+                          <button class="btn btn-sm btn-outline-warning">{{ $u->is_active ? 'Отключить' : 'Включить' }}</button>
+                        </form>
+                      @endif
+                    </div>
                   </td>
                 </tr>
               @endforeach
@@ -113,12 +122,17 @@
           <div class="mb-2">
             <label class="form-label">Роль</label>
             <select name="role" class="form-select">
-              <option value="operator" @selected(old('role', 'operator') === 'operator')>{{ $roleLabels['operator'] }}</option>
-              <option value="main_operator" @selected(old('role') === 'main_operator')>{{ $roleLabels['main_operator'] }}</option>
-              <option value="documents_operator" @selected(old('role') === 'documents_operator')>{{ $roleLabels['documents_operator'] }}</option>
-              <option value="measurer" @selected(old('role') === 'measurer')>{{ $roleLabels['measurer'] }}</option>
-              <option value="constructor" @selected(old('role') === 'constructor')>{{ $roleLabels['constructor'] }}</option>
-              <option value="admin" @selected(old('role') === 'admin')>{{ $roleLabels['admin'] }}</option>
+              @if(!empty($isSneakerSpace))
+                <option value="sneaker_operator" @selected(old('role', 'sneaker_operator') === 'sneaker_operator')>{{ $roleLabels['sneaker_operator'] }}</option>
+                <option value="sneaker_head" @selected(old('role') === 'sneaker_head')>{{ $roleLabels['sneaker_head'] }}</option>
+              @else
+                <option value="operator" @selected(old('role', 'operator') === 'operator')>{{ $roleLabels['operator'] }}</option>
+                <option value="main_operator" @selected(old('role') === 'main_operator')>{{ $roleLabels['main_operator'] }}</option>
+                <option value="documents_operator" @selected(old('role') === 'documents_operator')>{{ $roleLabels['documents_operator'] }}</option>
+                <option value="measurer" @selected(old('role') === 'measurer')>{{ $roleLabels['measurer'] }}</option>
+                <option value="constructor" @selected(old('role') === 'constructor')>{{ $roleLabels['constructor'] }}</option>
+                <option value="admin" @selected(old('role') === 'admin')>{{ $roleLabels['admin'] }}</option>
+              @endif
             </select>
           </div>
           <div class="form-check mb-3">

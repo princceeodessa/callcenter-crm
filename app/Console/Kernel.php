@@ -16,6 +16,11 @@ class Kernel extends ConsoleKernel
         $schedule->command('integrations:avito-poll --limit=100')
             ->everyMinute()
             ->withoutOverlapping();
+
+        // Дайджест низкого остатка склада кроссовок.
+        $schedule->command('warehouse:low-stock-digest')
+            ->dailyAt('09:00')
+            ->withoutOverlapping();
     }
 
     protected function commands(): void

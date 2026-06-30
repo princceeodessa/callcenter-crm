@@ -35,11 +35,14 @@
 
     <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
         <h4 class="mb-0">Отчёт · Кроссовки</h4>
-        <form method="GET" action="{{ route('sneaker.report') }}" class="d-flex gap-2 align-items-center">
-            <label class="form-label mb-0 small text-muted">Период</label>
-            <input type="month" name="month" value="{{ $monthValue }}" class="form-control form-control-sm">
-            <button class="btn btn-sm btn-primary">Показать</button>
-        </form>
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+            <form method="GET" action="{{ route('sneaker.report') }}" class="d-flex gap-2 align-items-center">
+                <label class="form-label mb-0 small text-muted">Период</label>
+                <input type="month" name="month" value="{{ $monthValue }}" class="form-control form-control-sm">
+                <button class="btn btn-sm btn-primary">Показать</button>
+            </form>
+            <a class="btn btn-sm btn-outline-success" href="{{ route('sneaker.report.export', ['month' => $monthValue]) }}">Экспорт CSV</a>
+        </div>
     </div>
 
     {{-- KPI с авто-сравнением --}}
@@ -136,6 +139,31 @@
                     </tbody>
                 </table></div>
             </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header fw-semibold">По источникам за период</div>
+                <div class="table-responsive"><table class="table table-sm mb-0 align-middle">
+                    <thead><tr><th>Источник</th><th class="text-end">Сделок</th><th class="text-end">Выручка</th></tr></thead>
+                    <tbody>
+                    @forelse($bySource as $s)
+                        <tr><td>{{ $s['name'] }}</td><td class="text-end">{{ $s['count'] }}</td><td class="text-end">{{ $money($s['revenue']) }}</td></tr>
+                    @empty
+                        <tr><td colspan="3" class="text-muted small text-center py-3">Нет данных за период.</td></tr>
+                    @endforelse
+                    </tbody>
+                </table></div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100"><div class="card-body d-flex flex-column justify-content-center">
+                <div class="text-muted small">Возвраты за период</div>
+                <div class="h3 mb-0">{{ $returnsCount }}</div>
+                <div class="small text-muted">оформленных возвратов товара на склад</div>
+            </div></div>
         </div>
     </div>
 

@@ -38,7 +38,7 @@
         $moveLabels = [
             'in' => ['Приход (закупка)', 'success'], 'in_adjust' => ['Корректировка прихода', 'secondary'],
             'in_reversal' => ['Откат прихода', 'warning'], 'out' => ['Продажа', 'danger'],
-            'out_reversal' => ['Возврат на склад', 'info'], 'reserve' => ['Резерв', 'warning'],
+            'out_reversal' => ['Возврат на склад', 'info'], 'return' => ['Возврат продажи', 'info'], 'reserve' => ['Резерв', 'warning'],
             'reserve_release' => ['Снятие резерва', 'info'], 'replenish' => ['Пополнение', 'success'],
             'adjust' => ['Корректировка', 'secondary'],
         ];
@@ -46,11 +46,14 @@
 
     <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
         <h4 class="mb-0">Склад</h4>
-        <form method="GET" action="{{ route('warehouse.index') }}" class="d-flex gap-2">
-            <input type="search" name="q" value="{{ $q }}" class="form-control form-control-sm" placeholder="Поиск: бренд, модель, размер" style="min-width:260px;">
-            <button class="btn btn-sm btn-primary">Найти</button>
-            @if($q !== '')<a class="btn btn-sm btn-outline-secondary" href="{{ route('warehouse.index') }}">Сброс</a>@endif
-        </form>
+        <div class="d-flex gap-2 flex-wrap">
+            <form method="GET" action="{{ route('warehouse.index') }}" class="d-flex gap-2">
+                <input type="search" name="q" value="{{ $q }}" class="form-control form-control-sm" placeholder="Поиск: бренд, модель, размер" style="min-width:240px;">
+                <button class="btn btn-sm btn-primary">Найти</button>
+                @if($q !== '')<a class="btn btn-sm btn-outline-secondary" href="{{ route('warehouse.index') }}">Сброс</a>@endif
+            </form>
+            <a class="btn btn-sm btn-outline-success" href="{{ route('warehouse.export', request()->only('q')) }}">Экспорт CSV</a>
+        </div>
     </div>
 
     <div class="wh-summary mb-3">

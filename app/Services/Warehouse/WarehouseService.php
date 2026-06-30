@@ -5,6 +5,8 @@ namespace App\Services\Warehouse;
 use App\Models\Deal;
 use App\Models\Purchase;
 use App\Models\StockMovement;
+use App\Models\User;
+use App\Models\UserNotification;
 use App\Models\WarehouseItem;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -64,7 +66,7 @@ class WarehouseService
 
     public function syncDealStock(Deal $deal): void
     {
-        if (! $deal->warehouse_item_id || ! (int) $deal->sold_quantity) {
+        if (! $deal->warehouse_item_id || ! (int) $deal->sold_quantity || $deal->returned_at) {
             return;
         }
         $deal->load('stage');
@@ -88,6 +90,7 @@ class WarehouseService
                 $deal->forceFill(['sold_unit_cost' => $item->avg_cost])->save();
                 $this->changeQty($item, -$qty, 'out', "Продажа · сделка #{$deal->id}", 'deal', $deal->id);
                 $deal->forceFill(['stock_deducted_at' => now()])->save();
+                $this->notifySale($deal, $item);
             } elseif (! $desiredDeducted && $deal->stock_deducted_at) {
                 $this->changeQty($item, $qty, 'out_reversal', "Возврат на склад · сделка #{$deal->id}", 'deal', $deal->id);
                 $deal->forceFill(['stock_deducted_at' => null, 'sold_unit_cost' => null])->save();
@@ -125,6 +128,27 @@ class WarehouseService
                 }
             }
             $deal->forceFill(['stock_deducted_at' => null, 'stock_reserved_at' => null, 'sold_unit_cost' => null])->save();
+        });
+    }
+
+    /** Оформить возврат: вернуть пары на склад, пометить сделку возвращённой (терминально). */
+    public function returnDealStock(Deal $deal): void
+    {
+        if (! $deal->warehouse_item_id || ! (int) $deal->sold_quantity || $deal->returned_at) {
+            return;
+        }
+        DB::transaction(function () use ($deal) {
+            $item = WarehouseItem::find($deal->warehouse_item_id);
+            $qty = (int) $deal->sold_quantity;
+            if ($item) {
+                if ($deal->stock_deducted_at) {
+                    $this->changeQty($item, $qty, 'return', "Возврат · сделка #{$deal->id}", 'deal', $deal->id);
+                }
+                if ($deal->stock_reserved_at) {
+                    $this->changeReserved($item, -$qty, 'reserve_release', "Снятие резерва (возврат) · сделка #{$deal->id}", $deal->id);
+                }
+            }
+            $deal->forceFill(['returned_at' => now(), 'stock_deducted_at' => null, 'stock_reserved_at' => null, 'sold_unit_cost' => null])->save();
         });
     }
 
@@ -190,6 +214,31 @@ class WarehouseService
             'user_id' => Auth::id(),
             'note' => $note,
         ]);
+    }
+
+    /** Уведомить руководителей отдела о новой продаже (тост/колокольчик). */
+    private function notifySale(Deal $deal, WarehouseItem $item): void
+    {
+        $heads = User::where('account_id', $deal->account_id)
+            ->where('role', 'sneaker_head')->where('is_active', true)->pluck('id');
+        if ($heads->isEmpty()) {
+            return;
+        }
+        $amount = $deal->amount ? number_format((float) $deal->amount, 0, '', ' ') : '—';
+        $body = 'Сделка #'.$deal->id.': '.$item->display_name.' × '.(int) $deal->sold_quantity.' — '.$amount.' ₽';
+        foreach ($heads as $uid) {
+            UserNotification::create([
+                'account_id' => $deal->account_id,
+                'user_id' => $uid,
+                'type' => 'sneaker_sale',
+                'title' => 'Новая продажа кроссовок',
+                'body' => $body,
+                'source_type' => 'deal',
+                'source_id' => $deal->id,
+                'payload' => ['deal_id' => $deal->id],
+                'is_read' => false,
+            ]);
+        }
     }
 
     private function unitCost(Purchase $purchase): ?float

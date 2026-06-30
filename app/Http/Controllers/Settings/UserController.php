@@ -20,7 +20,24 @@ class UserController extends Controller
             ->orderBy('name')
             ->get();
 
-        return view('settings.users.index', compact('users'));
+        $isSneakerSpace = in_array(Auth::user()->role, ['sneaker_head', 'sneaker_operator'], true);
+
+        return view('settings.users.index', compact('users', 'isSneakerSpace'));
+    }
+
+    public function updatePassword(Request $request, User $user)
+    {
+        $me = Auth::user();
+        abort_unless($user->account_id === $me->account_id, 403);
+
+        $data = $request->validate([
+            'password' => ['required', 'string', 'min:6'],
+        ]);
+
+        $user->password = Hash::make($data['password']);
+        $user->save();
+
+        return back()->with('status', 'Пароль обновлён для «'.$user->name.'».');
     }
 
     public function store(Request $request)

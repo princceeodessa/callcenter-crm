@@ -164,6 +164,14 @@ class SneakerReportController extends Controller
             ])
             ->sortByDesc('revenue')->values();
 
+        $returnsCount = Deal::query()->where('account_id', $accId)
+            ->whereNotNull('returned_at')->whereBetween('returned_at', [$start, $end])->count();
+
+        $bySource = $current
+            ->groupBy(fn ($d) => $d->manual_source ?: 'Не указан')
+            ->map(fn ($g, $name) => ['name' => $name, 'count' => $g->count(), 'revenue' => (float) $g->sum(fn ($d) => (float) ($d->amount ?? 0))])
+            ->sortByDesc('revenue')->values();
+
         $soldDeals = $current->sortByDesc('stock_deducted_at')->values();
         $monthValue = $month->format('Y-m');
 
@@ -171,7 +179,39 @@ class SneakerReportController extends Controller
             'cur', 'prev', 'delta', 'dynamics', 'dynMax',
             'funnel', 'pipelineValue', 'pipelineCount', 'conversion', 'wonCount', 'lostCount',
             'purchaseSpend', 'stockUnits', 'reservedUnits', 'stockCostValue', 'stockSaleValue', 'openPurchases',
-            'topModels', 'deadStock', 'reorder', 'byOperator', 'soldDeals', 'monthValue'
+            'topModels', 'deadStock', 'reorder', 'byOperator', 'bySource', 'returnsCount', 'soldDeals', 'monthValue'
         ));
+    }
+
+    public function export(Request $request)
+    {
+        $user = Auth::user();
+        $monthStr = $request->string('month')->toString();
+        try {
+            $month = $monthStr !== '' ? Carbon::createFromFormat('Y-m', $monthStr)->startOfMonth() : Carbon::now()->startOfMonth();
+        } catch (\Throwable) {
+            $month = Carbon::now()->startOfMonth();
+        }
+        $start = $month->copy()->startOfMonth();
+        $end = $month->copy()->endOfMonth();
+
+        $sold = Deal::where('account_id', $user->account_id)
+            ->whereNotNull('stock_deducted_at')->whereBetween('stock_deducted_at', [$start, $end])
+            ->with('warehouseItem:id,brand,model')->orderBy('stock_deducted_at')->get();
+
+        $rows = [['Дата', 'Сделка', 'Товар', 'Источник', 'Пар', 'Сумма', 'Себест./пара', 'Прибыль']];
+        foreach ($sold as $d) {
+            $profit = (float) ($d->amount ?? 0) - (float) ($d->sold_unit_cost ?? 0) * (int) $d->sold_quantity;
+            $rows[] = [optional($d->stock_deducted_at)->format('Y-m-d H:i'), $d->title, $d->warehouseItem?->display_name, $d->manual_source, $d->sold_quantity, $d->amount, $d->sold_unit_cost, $profit];
+        }
+
+        return response()->streamDownload(function () use ($rows) {
+            echo "\xEF\xBB\xBF";
+            $out = fopen('php://output', 'w');
+            foreach ($rows as $r) {
+                fputcsv($out, $r, ';');
+            }
+            fclose($out);
+        }, 'prodazhi-krossovki-'.$month->format('Y-m').'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 }
