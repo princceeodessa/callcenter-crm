@@ -282,6 +282,7 @@
         @php($isMeasurer = $navUser?->role === 'measurer')
         @php($isSneaker = in_array($navUser?->role, ['sneaker_head','sneaker_operator'], true))
         @php($isSneakerHead = $navUser?->role === 'sneaker_head')
+        @php($lowStock = $isSneaker ? \App\Models\WarehouseItem::where('account_id', $navUser->account_id)->where('low_stock_threshold', '>', 0)->whereRaw('(quantity - reserved) <= low_stock_threshold')->count() : 0)
         @php($canUseProjecting = $isConstructor)
         @php($homeRoute = $isMeasurer ? 'calendar.index' : ($isConstructor ? 'ceiling-projects.index' : ($isDocumentsOperator ? 'nonclosures.index' : ($isSneaker ? 'purchases.kanban' : 'deals.kanban'))))
         <a class="navbar-brand fw-semibold" href="{{ route($homeRoute) }}">{{ config('app.name') }}</a>
@@ -296,7 +297,9 @@
                 @endif
                 @if($isSneaker)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('purchases.kanban') }}">Закупки</a>
-                    <a class="btn btn-sm btn-outline-light" href="{{ route('warehouse.index') }}">Склад</a>
+                    <a class="btn btn-sm btn-outline-light position-relative" href="{{ route('warehouse.index') }}">Склад
+                        @if($lowStock > 0)<span class="position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-danger" title="Заканчивается позиций: {{ $lowStock }}">{{ $lowStock }}</span>@endif
+                    </a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('deals.kanban') }}">Продажи</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('deals.index') }}">Список</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('tasks.index') }}">Дела</a>
