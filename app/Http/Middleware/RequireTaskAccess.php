@@ -11,7 +11,7 @@ class RequireTaskAccess
     {
         $user = $request->user();
 
-        if (! $user || ! in_array($user->role, ['admin', 'main_operator', 'operator', 'documents_operator'], true)) {
+        if (! $user || ! in_array($user->role, ['admin', 'main_operator', 'operator', 'documents_operator', 'sneaker_head', 'sneaker_operator'], true)) {
             abort(403);
         }
 

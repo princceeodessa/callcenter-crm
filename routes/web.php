@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DealController;
+use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\CallRecordingController;
 use App\Http\Controllers\ReportController;
@@ -49,6 +50,7 @@ Route::get('/', function () {
         'measurer' => 'calendar.index',
         'constructor' => 'ceiling-projects.index',
         'documents_operator' => 'nonclosures.index',
+        'sneaker_head', 'sneaker_operator' => 'purchases.kanban',
         default => 'deals.kanban',
     });
 })->middleware('auth');
@@ -106,6 +108,16 @@ Route::middleware('auth')->group(function () {
         Route::get('/tasks', [TaskController::class, 'index'])->name('tasks.index');
         Route::patch('/tasks/{task}', [TaskController::class, 'update'])->name('tasks.update');
         Route::post('/tasks/{task}/complete', [TaskController::class, 'complete'])->name('tasks.complete');
+    });
+
+    // Кроссовки: канбан закупок (отдельное пространство, роли sneaker_*)
+    Route::middleware('purchases')->group(function () {
+        Route::get('/purchases/kanban', [PurchaseController::class, 'kanban'])->name('purchases.kanban');
+        Route::get('/purchases/create', [PurchaseController::class, 'create'])->name('purchases.create');
+        Route::post('/purchases', [PurchaseController::class, 'store'])->name('purchases.store');
+        Route::get('/purchases/{purchase}', [PurchaseController::class, 'show'])->name('purchases.show');
+        Route::patch('/purchases/{purchase}', [PurchaseController::class, 'update'])->name('purchases.update');
+        Route::post('/purchases/{purchase}/move', [PurchaseController::class, 'move'])->name('purchases.move');
     });
 
     // Projecting (admin + constructor)

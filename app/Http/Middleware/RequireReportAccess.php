@@ -11,7 +11,7 @@ class RequireReportAccess
     {
         $user = $request->user();
 
-        if (!$user || !in_array($user->role, ['admin', 'main_operator', 'operator', 'measurer'], true)) {
+        if (!$user || !in_array($user->role, ['admin', 'main_operator', 'operator', 'measurer', 'sneaker_head', 'sneaker_operator'], true)) {
             abort(403);
         }
 

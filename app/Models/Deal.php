@@ -16,6 +16,11 @@ class Deal extends Model
         'air_conditioner' => 'Кондиционер',
     ];
 
+    // Категории пространства кроссовок (роли sneaker_head/sneaker_operator).
+    private const SNEAKER_PRODUCT_CATEGORY_OPTIONS = [
+        'sneakers' => 'Кроссовки',
+    ];
+
     private const SOURCE_FILTER_PHONE = 'phone';
     private const SOURCE_FILTER_CRM = 'crm';
     private const PHONE_SOURCE_FILTER_PREFIX = 'phone:';
@@ -169,9 +174,23 @@ SQL;
         return self::PRODUCT_CATEGORY_OPTIONS;
     }
 
+    /** Все допустимые ключи категорий (оба пространства) — для валидации. */
+    public static function allProductCategoryOptions(): array
+    {
+        return self::PRODUCT_CATEGORY_OPTIONS + self::SNEAKER_PRODUCT_CATEGORY_OPTIONS;
+    }
+
+    /** Категории для формы создания, ограниченные пространством пользователя. */
+    public static function productCategoryOptionsForUser(?User $user): array
+    {
+        return in_array((string) $user?->role, ['sneaker_head', 'sneaker_operator'], true)
+            ? self::SNEAKER_PRODUCT_CATEGORY_OPTIONS
+            : self::PRODUCT_CATEGORY_OPTIONS;
+    }
+
     public static function isValidProductCategory(?string $category): bool
     {
-        return is_string($category) && array_key_exists($category, self::PRODUCT_CATEGORY_OPTIONS);
+        return is_string($category) && array_key_exists($category, self::allProductCategoryOptions());
     }
 
     public static function incomingPhoneSourceOptions(): array
@@ -312,7 +331,7 @@ SQL;
 
     public function getProductCategoryLabelAttribute(): ?string
     {
-        return self::PRODUCT_CATEGORY_OPTIONS[$this->product_category] ?? null;
+        return self::allProductCategoryOptions()[$this->product_category] ?? null;
     }
 
     public function getProductCategoryBadgeClassAttribute(): string

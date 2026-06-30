@@ -60,5 +60,8 @@ class DatabaseSeeder extends Seeder
             ['account_id' => $account->id, 'name' => 'BitrixGPT'],
             []
         );
+
+        // Второе пространство — кроссовочный отдел (изолированный Account).
+        $this->call(SneakerSpaceSeeder::class);
     }
 }

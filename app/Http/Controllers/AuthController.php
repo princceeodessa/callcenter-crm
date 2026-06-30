@@ -31,6 +31,7 @@ class AuthController extends Controller
                 'measurer' => 'calendar.index',
                 'constructor' => 'ceiling-projects.index',
                 'documents_operator' => 'nonclosures.index',
+                'sneaker_head', 'sneaker_operator' => 'purchases.kanban',
                 default => 'deals.kanban',
             };
 

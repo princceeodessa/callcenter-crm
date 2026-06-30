@@ -40,5 +40,6 @@ class Kernel extends HttpKernel
         'nonclosure' => \App\Http\Middleware\RequireNonClosureAccess::class,
         'projecting' => \App\Http\Middleware\RequireProjectingAccess::class,
         'reports' => \App\Http\Middleware\RequireReportAccess::class,
+        'purchases' => \App\Http\Middleware\RequirePurchasesAccess::class,
     ];
 }

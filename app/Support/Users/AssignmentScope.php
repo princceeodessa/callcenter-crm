@@ -17,7 +17,7 @@ class AssignmentScope
 
     public static function canAssignToAll(User $actor): bool
     {
-        return in_array((string) $actor->role, ['admin', 'main_operator', 'operator'], true);
+        return in_array((string) $actor->role, ['admin', 'main_operator', 'operator', 'sneaker_head', 'sneaker_operator'], true);
     }
 
     public static function groupForAll(User $actor): string

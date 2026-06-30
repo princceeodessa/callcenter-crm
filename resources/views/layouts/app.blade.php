@@ -251,6 +251,22 @@
         body[data-role="documents_operator"] .navbar a[href$="/ceiling-projects"] {
             display: none !important;
         }
+
+        body[data-role="sneaker_head"] .navbar a[href$="/calendar"],
+        body[data-role="sneaker_head"] .navbar a[href$="/nonclosures"],
+        body[data-role="sneaker_head"] .navbar a[href$="/ceiling-projects"],
+        body[data-role="sneaker_head"] .navbar a[href$="/chats"],
+        body[data-role="sneaker_head"] .navbar a[href$="/settings/integrations"],
+        body[data-role="sneaker_head"] .navbar a[href$="/settings/imports/bitrix"],
+        body[data-role="sneaker_operator"] .navbar a[href$="/calendar"],
+        body[data-role="sneaker_operator"] .navbar a[href$="/nonclosures"],
+        body[data-role="sneaker_operator"] .navbar a[href$="/ceiling-projects"],
+        body[data-role="sneaker_operator"] .navbar a[href$="/chats"],
+        body[data-role="sneaker_operator"] .navbar a[href$="/settings/integrations"],
+        body[data-role="sneaker_operator"] .navbar a[href$="/settings/imports/bitrix"],
+        body[data-role="sneaker_operator"] .navbar a[href$="/settings/users"] {
+            display: none !important;
+        }
     </style>
     @stack('styles')
 </head>
@@ -264,22 +280,31 @@
         @php($isDocumentsOperator = $navUser?->role === 'documents_operator')
         @php($isNc = in_array($navUser?->role, ['admin','main_operator','operator','documents_operator'], true))
         @php($isMeasurer = $navUser?->role === 'measurer')
+        @php($isSneaker = in_array($navUser?->role, ['sneaker_head','sneaker_operator'], true))
+        @php($isSneakerHead = $navUser?->role === 'sneaker_head')
         @php($canUseProjecting = $isConstructor)
-        @php($homeRoute = $isMeasurer ? 'calendar.index' : ($isConstructor ? 'ceiling-projects.index' : ($isDocumentsOperator ? 'nonclosures.index' : 'deals.kanban')))
+        @php($homeRoute = $isMeasurer ? 'calendar.index' : ($isConstructor ? 'ceiling-projects.index' : ($isDocumentsOperator ? 'nonclosures.index' : ($isSneaker ? 'purchases.kanban' : 'deals.kanban'))))
         <a class="navbar-brand fw-semibold" href="{{ route($homeRoute) }}">{{ config('app.name') }}</a>
         <div class="d-flex gap-2 flex-wrap align-items-center">
             @auth
-                @if(!$isMeasurer && !$isConstructor && !$isDocumentsOperator)
+                @if(!$isMeasurer && !$isConstructor && !$isDocumentsOperator && !$isSneaker)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('deals.kanban') }}">Канбан</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('deals.index') }}">Список</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('tasks.index') }}">Дела</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('deals.closed') }}">Завершённые</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('chats.index') }}">Чаты</a>
                 @endif
+                @if($isSneaker)
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('purchases.kanban') }}">Закупки</a>
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('deals.kanban') }}">Продажи</a>
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('deals.index') }}">Список</a>
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('tasks.index') }}">Дела</a>
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('deals.closed') }}">Завершённые</a>
+                @endif
                 @if($isDocumentsOperator)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('tasks.index') }}">Дела</a>
                 @endif
-                @if(!$isDocumentsOperator)
+                @if(!$isDocumentsOperator && !$isSneaker)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('calendar.index') }}">Календарь</a>
                 @endif
                 @if($isNc)
@@ -293,7 +318,7 @@
                     <a class="btn btn-sm btn-outline-light" href="{{ route('settings.integrations.index') }}">Интеграции</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('settings.imports.bitrix.index') }}">Импорт Bitrix</a>
                 @endif
-                @if($isPriv && !$isDocumentsOperator)
+                @if(($isPriv || $isSneakerHead) && !$isDocumentsOperator)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('settings.users.index') }}">Пользователи</a>
                 @endif
 

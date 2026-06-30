@@ -36,7 +36,7 @@ class DealController extends Controller
         $source = trim($request->string('source')->toString());
         $productCategory = trim($request->string('product_category')->toString());
         $sourceOptions = Deal::sourceFilterOptions();
-        $productCategoryOptions = Deal::productCategoryOptions();
+        $productCategoryOptions = Deal::productCategoryOptionsForUser($user);
 
         if (!in_array($status, ['open','closed','all'], true)) {
             $status = 'open';
@@ -227,7 +227,7 @@ class DealController extends Controller
             ->orderBy('name')
             ->get();
 
-        $productCategoryOptions = Deal::productCategoryOptions();
+        $productCategoryOptions = Deal::productCategoryOptionsForUser($user);
 
         $canAssignToAll = AssignmentScope::canAssignToAll($user);
         $assignAllLabel = AssignmentScope::groupForAll($user) === AssignmentScope::GROUP_CALL_CENTER
@@ -243,7 +243,7 @@ class DealController extends Controller
             'title' => ['required','string','max:255'],
             'responsible_user_id' => ['required','integer','exists:users,id'],
             'amount' => ['nullable','numeric','min:0.01'],
-            'product_category' => ['required', Rule::in(array_keys(Deal::productCategoryOptions()))],
+            'product_category' => ['required', Rule::in(array_keys(Deal::allProductCategoryOptions()))],
             'contact_name' => ['nullable','string','max:255'],
             'contact_phone' => ['nullable','string','max:32'],
             'stage_id' => ['required','exists:pipeline_stages,id'],
@@ -368,7 +368,7 @@ class DealController extends Controller
             'title' => ['required','string','max:255'],
             'responsible_user_id' => ['required','integer','exists:users,id'],
             'amount' => ['nullable','numeric','min:0.01'],
-            'product_category' => ['required', Rule::in(array_keys(Deal::productCategoryOptions()))],
+            'product_category' => ['required', Rule::in(array_keys(Deal::allProductCategoryOptions()))],
         ]);
 
         $responsible = AssignmentScope::query($user)
@@ -442,7 +442,7 @@ class DealController extends Controller
         $assignAllLabel = AssignmentScope::groupForAll($user) === AssignmentScope::GROUP_CALL_CENTER
             ? 'Всем (колл-центр)'
             : 'Всем';
-        $productCategoryOptions = Deal::productCategoryOptions();
+        $productCategoryOptions = Deal::productCategoryOptionsForUser($user);
 
         // If we have call activities with recording_url but no call_recordings row yet, create it.
         foreach ($deal->activities as $a) {
@@ -575,7 +575,7 @@ class DealController extends Controller
     public function broadcastToday(Request $request, ChatSendService $chatSendService)
     {
         $user = Auth::user();
-        $productCategoryOptions = Deal::productCategoryOptions();
+        $productCategoryOptions = Deal::productCategoryOptionsForUser($user);
         $targetModeOptions = $this->traitBroadcastTargetModeOptions();
 
         $data = $request->validate([

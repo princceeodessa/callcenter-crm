@@ -11,7 +11,7 @@ class RequireAdmin
     {
         $user = $request->user();
         // "admin" and "main_operator" are privileged roles.
-        if (!$user || !in_array($user->role, ['admin', 'main_operator'], true)) {
+        if (!$user || !in_array($user->role, ['admin', 'main_operator', 'sneaker_head'], true)) {
             abort(403);
         }
 
