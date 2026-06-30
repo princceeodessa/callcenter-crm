@@ -26,6 +26,8 @@ class Purchase extends Model
         'notes',
         'sort',
         'closed_at',
+        'stocked_at',
+        'warehouse_item_id',
     ];
 
     protected $casts = [
@@ -33,6 +35,7 @@ class Purchase extends Model
         'cost' => 'decimal:2',
         'expected_sale_price' => 'decimal:2',
         'closed_at' => 'datetime',
+        'stocked_at' => 'datetime',
     ];
 
     public function stage()
@@ -43,5 +46,10 @@ class Purchase extends Model
     public function responsible()
     {
         return $this->belongsTo(User::class, 'responsible_user_id');
+    }
+
+    public function warehouseItem()
+    {
+        return $this->belongsTo(WarehouseItem::class, 'warehouse_item_id');
     }
 }

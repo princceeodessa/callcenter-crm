@@ -8,8 +8,10 @@ use App\Models\PipelineStage;
 use App\Models\DealActivity;
 use App\Models\DealStageHistory;
 use App\Models\CallRecording;
+use App\Models\WarehouseItem;
 use App\Services\Chat\ChatSendService;
 use App\Services\Tasks\TaskWorkflowService;
+use App\Services\Warehouse\WarehouseService;
 use App\Support\Users\AssignmentScope;
 use App\Support\Deals\InteractsWithDealBroadcasts;
 use Carbon\Carbon;
@@ -516,9 +518,17 @@ class DealController extends Controller
             }
         });
 
+        $isSneakerSpace = in_array($user->role, ['sneaker_head', 'sneaker_operator'], true);
+        $warehouseItems = $isSneakerSpace
+            ? WarehouseItem::where('account_id', $user->account_id)
+                ->orderBy('brand')->orderBy('model')->orderBy('size')->get()
+            : collect();
+
         return view('deals.show', compact(
             'deal',
             'stages',
+            'isSneakerSpace',
+            'warehouseItems',
             'recordingsByCallid',
             'users',
             'dealLeadDisplayName',
@@ -741,7 +751,7 @@ class DealController extends Controller
         return view('deals.closed', compact('deals','q','result','month'));
     }
 
-    public function close(Request $request, Deal $deal)
+    public function close(Request $request, Deal $deal, WarehouseService $warehouse)
     {
         $user = Auth::user();
         abort_unless($deal->account_id === $user->account_id, 403);
@@ -780,10 +790,12 @@ class DealController extends Controller
             ],
         ]);
 
+        $warehouse->syncDealStock($deal);
+
         return redirect()->route('deals.show', $deal)->with('status', $this->dealClosedStatusMessage());
     }
 
-    public function changeStage(Request $request, Deal $deal)
+    public function changeStage(Request $request, Deal $deal, WarehouseService $warehouse)
     {
         $data = $request->validate([
             'stage_id' => ['required','exists:pipeline_stages,id']
@@ -850,13 +862,15 @@ class DealController extends Controller
             ]);
         }
 
+        $warehouse->syncDealStock($deal);
+
         return back()->with('status', $reopened
             ? $this->dealReopenedStatusMessage()
             : null);
     }
 
     /** Kanban drag&drop move. */
-    public function move(Request $request, Deal $deal)
+    public function move(Request $request, Deal $deal, WarehouseService $warehouse)
     {
         $data = $request->validate([
             'to_stage_id' => ['required', 'integer', 'exists:pipeline_stages,id'],
@@ -905,10 +919,44 @@ class DealController extends Controller
             'changed_at' => now(),
         ]);
 
+        $warehouse->syncDealStock($deal);
+
         return response()->json([
             'ok' => true,
             'last_moved_by_label' => $this->lastMovedByLabel($user->name),
         ]);
+    }
+
+    /** Привязать к сделке кроссовок товар со склада и кол-во для списания при продаже. */
+    public function setSaleItem(Request $request, Deal $deal, WarehouseService $warehouse)
+    {
+        $user = Auth::user();
+        abort_unless($deal->account_id === $user->account_id, 403);
+
+        $data = $request->validate([
+            'warehouse_item_id' => ['nullable', 'integer'],
+            'sold_quantity' => ['nullable', 'integer', 'min:1', 'max:1000000'],
+        ]);
+
+        $itemId = null;
+        if (! empty($data['warehouse_item_id'])) {
+            $itemId = WarehouseItem::where('account_id', $user->account_id)
+                ->whereKey((int) $data['warehouse_item_id'])
+                ->value('id');
+        }
+
+        // Если уже было списание — вернуть прежнюю позицию на склад перед переназначением.
+        if ($deal->stock_deducted_at) {
+            $warehouse->reverseDealDeduction($deal);
+        }
+
+        $deal->warehouse_item_id = $itemId;
+        $deal->sold_quantity = $itemId ? (int) ($data['sold_quantity'] ?? 1) : null;
+        $deal->save();
+
+        $warehouse->syncDealStock($deal);
+
+        return back()->with('status', 'Товар для списания со склада обновлён.');
     }
 
     private function dealCreatedActivityBody(): string

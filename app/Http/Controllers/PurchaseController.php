@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Purchase;
 use App\Models\PurchaseStage;
+use App\Services\Warehouse\WarehouseService;
 use App\Support\Users\AssignmentScope;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -56,7 +57,7 @@ class PurchaseController extends Controller
         return view('purchases.create', compact('stages', 'users'));
     }
 
-    public function store(Request $request)
+    public function store(Request $request, WarehouseService $warehouse)
     {
         $user = Auth::user();
         $data = $this->validateData($request);
@@ -84,6 +85,8 @@ class PurchaseController extends Controller
             'notes' => $data['notes'] ?? null,
         ]);
 
+        $warehouse->syncPurchaseStock($purchase);
+
         return redirect()->route('purchases.show', $purchase);
     }
 
@@ -104,7 +107,7 @@ class PurchaseController extends Controller
         return view('purchases.show', compact('purchase', 'stages', 'users'));
     }
 
-    public function update(Request $request, Purchase $purchase)
+    public function update(Request $request, Purchase $purchase, WarehouseService $warehouse)
     {
         $user = Auth::user();
         abort_unless($purchase->account_id === $user->account_id, 403);
@@ -131,11 +134,13 @@ class PurchaseController extends Controller
         ]);
         $purchase->save();
 
+        $warehouse->syncPurchaseStock($purchase);
+
         return redirect()->route('purchases.show', $purchase)->with('status', 'Закупка обновлена.');
     }
 
     /** Канбан drag&drop: перенос карточки в другую стадию. */
-    public function move(Request $request, Purchase $purchase)
+    public function move(Request $request, Purchase $purchase, WarehouseService $warehouse)
     {
         $user = Auth::user();
         if ($purchase->account_id !== $user->account_id) {
@@ -157,6 +162,7 @@ class PurchaseController extends Controller
         if ((int) $purchase->purchase_stage_id !== (int) $to->id) {
             $purchase->purchase_stage_id = $to->id;
             $purchase->save();
+            $warehouse->syncPurchaseStock($purchase);
         }
 
         return response()->json([

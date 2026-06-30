@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DealController;
 use App\Http\Controllers\PurchaseController;
+use App\Http\Controllers\WarehouseController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\CallRecordingController;
 use App\Http\Controllers\ReportController;
@@ -75,6 +76,7 @@ Route::middleware('auth')->group(function () {
         Route::patch('/deals/{deal}', [DealController::class, 'update'])->name('deals.update');
         Route::post('/deals/{deal}/stage', [DealController::class, 'changeStage'])->name('deals.stage');
         Route::post('/deals/{deal}/close', [DealController::class, 'close'])->name('deals.close');
+        Route::post('/deals/{deal}/sale-item', [DealController::class, 'setSaleItem'])->name('deals.sale-item');
         Route::post('/deals/{deal}/voice-note', [DealController::class, 'storeVoiceNote'])->name('deals.voice-note.store');
         Route::post('/deals/broadcast-today', [DealController::class, 'broadcastToday'])->name('deals.broadcast-today');
         Route::middleware('admin.only')->group(function () {
@@ -118,6 +120,13 @@ Route::middleware('auth')->group(function () {
         Route::get('/purchases/{purchase}', [PurchaseController::class, 'show'])->name('purchases.show');
         Route::patch('/purchases/{purchase}', [PurchaseController::class, 'update'])->name('purchases.update');
         Route::post('/purchases/{purchase}/move', [PurchaseController::class, 'move'])->name('purchases.move');
+
+        // Склад кроссовок (остатки по позициям)
+        Route::get('/warehouse', [WarehouseController::class, 'index'])->name('warehouse.index');
+        Route::post('/warehouse', [WarehouseController::class, 'store'])->name('warehouse.store');
+        Route::patch('/warehouse/{item}', [WarehouseController::class, 'update'])->name('warehouse.update');
+        Route::post('/warehouse/{item}/replenish', [WarehouseController::class, 'replenish'])->name('warehouse.replenish');
+        Route::delete('/warehouse/{item}', [WarehouseController::class, 'destroy'])->name('warehouse.destroy');
     });
 
     // Projecting (admin + constructor)

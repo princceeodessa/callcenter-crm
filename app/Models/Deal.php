@@ -91,7 +91,8 @@ class Deal extends Model
         'amount','currency',
         'product_category',
         'readiness_status','is_unread','has_script_deviation',
-        'closed_at','closed_result','closed_reason','closed_by_user_id'
+        'closed_at','closed_result','closed_reason','closed_by_user_id',
+        'warehouse_item_id','sold_quantity','stock_deducted_at',
     ];
 
     protected $casts = [
@@ -99,6 +100,8 @@ class Deal extends Model
         'has_script_deviation' => 'boolean',
         'closed_at' => 'datetime',
         'title_is_custom' => 'boolean',
+        'sold_quantity' => 'integer',
+        'stock_deducted_at' => 'datetime',
     ];
 
     protected $appends = [
@@ -191,6 +194,11 @@ SQL;
     public static function isValidProductCategory(?string $category): bool
     {
         return is_string($category) && array_key_exists($category, self::allProductCategoryOptions());
+    }
+
+    public function warehouseItem()
+    {
+        return $this->belongsTo(WarehouseItem::class, 'warehouse_item_id');
     }
 
     public static function incomingPhoneSourceOptions(): array

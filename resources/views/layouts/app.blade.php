@@ -296,6 +296,7 @@
                 @endif
                 @if($isSneaker)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('purchases.kanban') }}">Закупки</a>
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('warehouse.index') }}">Склад</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('deals.kanban') }}">Продажи</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('deals.index') }}">Список</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('tasks.index') }}">Дела</a>

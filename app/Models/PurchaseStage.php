@@ -9,9 +9,9 @@ class PurchaseStage extends Model
 {
     use BelongsToAccount;
 
-    protected $fillable = ['account_id', 'name', 'sort', 'color', 'is_final'];
+    protected $fillable = ['account_id', 'name', 'sort', 'color', 'is_final', 'is_stock_in'];
 
-    protected $casts = ['is_final' => 'boolean'];
+    protected $casts = ['is_final' => 'boolean', 'is_stock_in' => 'boolean'];
 
     public function purchases()
     {

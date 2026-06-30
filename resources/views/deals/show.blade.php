@@ -471,6 +471,38 @@
       </div>
     </div>
 
+    @if(!empty($isSneakerSpace))
+    <div class="card shadow-sm mb-3">
+      <div class="card-header fw-semibold">Склад · что продаём</div>
+      <div class="card-body">
+        <form method="POST" action="{{ route('deals.sale-item', $deal) }}" class="row g-2 align-items-end">
+          @csrf
+          <div class="col-md-7">
+            <label class="form-label small mb-1">Товар со склада</label>
+            <select name="warehouse_item_id" class="form-select form-select-sm">
+              <option value="">— не выбрано —</option>
+              @foreach($warehouseItems as $wi)
+                <option value="{{ $wi->id }}" @selected((int) $deal->warehouse_item_id === $wi->id)>{{ $wi->display_name }} (на складе: {{ $wi->quantity }})</option>
+              @endforeach
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small mb-1">Кол-во пар</label>
+            <input type="number" name="sold_quantity" min="1" value="{{ $deal->sold_quantity ?? 1 }}" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-2"><button class="btn btn-sm btn-primary w-100">Сохранить</button></div>
+        </form>
+        <div class="form-text mt-1">
+          @if($deal->stock_deducted_at)
+            <span class="text-success">Списано со склада {{ $deal->stock_deducted_at->format('d.m.Y H:i') }}.</span>
+          @else
+            Спишется автоматически при переходе сделки в стадию «Продано».
+          @endif
+        </div>
+      </div>
+    </div>
+    @endif
+
     <div class="card shadow-sm mb-3">
       <div class="card-header fw-semibold">Чаты</div>
       <div class="card-body">

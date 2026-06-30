@@ -79,5 +79,10 @@ class SneakerSpaceSeeder extends Seeder
                 ['sort' => $s['sort'], 'is_final' => $s['is_final'] ?? 0]
             );
         }
+
+        // Стадии, при попадании в которые закупка приходуется на склад.
+        PurchaseStage::where('account_id', $account->id)
+            ->whereIn('name', ['Получено / На складе', 'Готово к продаже'])
+            ->update(['is_stock_in' => 1]);
     }
 }
