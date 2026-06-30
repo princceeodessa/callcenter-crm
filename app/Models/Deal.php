@@ -92,7 +92,7 @@ class Deal extends Model
         'product_category',
         'readiness_status','is_unread','has_script_deviation',
         'closed_at','closed_result','closed_reason','closed_by_user_id',
-        'warehouse_item_id','sold_quantity','stock_deducted_at',
+        'warehouse_item_id','sold_quantity','stock_deducted_at','sold_unit_cost','stock_reserved_at',
     ];
 
     protected $casts = [
@@ -102,6 +102,8 @@ class Deal extends Model
         'title_is_custom' => 'boolean',
         'sold_quantity' => 'integer',
         'stock_deducted_at' => 'datetime',
+        'sold_unit_cost' => 'decimal:2',
+        'stock_reserved_at' => 'datetime',
     ];
 
     protected $appends = [

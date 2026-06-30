@@ -32,8 +32,31 @@ class WarehouseController extends Controller
             ->get();
 
         $totalUnits = (int) $items->sum('quantity');
+        $stockValue = (float) $items->sum(fn ($i) => (int) $i->quantity * (float) ($i->sale_price ?? 0));
+        $isHead = $this->isHead();
 
-        return view('warehouse.index', compact('items', 'movements', 'q', 'totalUnits'));
+        // Группируем размеры под одним товаром (бренд + модель).
+        $products = $items
+            ->groupBy(fn ($i) => mb_strtolower(trim(($i->brand ?? '').'|'.($i->model ?? ''))))
+            ->map(function ($group) {
+                $first = $group->first();
+
+                return [
+                    'name' => trim(($first->brand ?? '').' '.($first->model ?? '')) ?: 'Без названия',
+                    'brand' => (string) ($first->brand ?? ''),
+                    'model' => (string) ($first->model ?? ''),
+                    'sizes' => $group->sortBy('size', SORT_NATURAL)->values(),
+                    'total' => (int) $group->sum('quantity'),
+                    'available' => (int) $group->sum(fn ($i) => $i->available),
+                    'reserved' => (int) $group->sum('reserved'),
+                    'value' => (float) $group->sum(fn ($i) => (int) $i->quantity * (float) ($i->sale_price ?? 0)),
+                    'low' => $group->contains(fn ($i) => $i->is_low),
+                ];
+            })
+            ->sortBy('name')
+            ->values();
+
+        return view('warehouse.index', compact('products', 'movements', 'q', 'totalUnits', 'stockValue', 'isHead'));
     }
 
     public function store(Request $request, WarehouseService $warehouse)
@@ -84,8 +107,11 @@ class WarehouseController extends Controller
             'notes' => ['nullable', 'string', 'max:255'],
         ]);
 
-        $item->sale_price = $data['sale_price'] ?? null;
-        $item->low_stock_threshold = (int) ($data['low_stock_threshold'] ?? 0);
+        // Цену продажи и порог меняет только руководитель отдела.
+        if ($this->isHead()) {
+            $item->sale_price = $data['sale_price'] ?? null;
+            $item->low_stock_threshold = (int) ($data['low_stock_threshold'] ?? 0);
+        }
         $item->notes = $data['notes'] ?? null;
         $item->save();
 
@@ -112,9 +138,15 @@ class WarehouseController extends Controller
     {
         $user = Auth::user();
         abort_unless($item->account_id === $user->account_id, 403);
+        abort_unless($this->isHead(), 403);
 
         $item->delete();
 
         return redirect()->route('warehouse.index')->with('status', 'Позиция удалена.');
+    }
+
+    private function isHead(): bool
+    {
+        return Auth::user()?->role === 'sneaker_head';
     }
 }

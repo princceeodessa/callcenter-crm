@@ -64,6 +64,12 @@ class SneakerSpaceSeeder extends Seeder
             );
         }
 
+        // Стадия, резервирующая товар на складе.
+        PipelineStage::where('account_id', $account->id)
+            ->where('pipeline_id', $pipeline->id)
+            ->where('name', 'Бронь / Счёт')
+            ->update(['is_reserve' => 1]);
+
         // Канбан №1 — закупки (новая сущность)
         $purchaseStages = [
             ['name' => 'Надо купить', 'sort' => 10],

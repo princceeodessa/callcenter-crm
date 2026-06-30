@@ -27,6 +27,7 @@ class Purchase extends Model
         'sort',
         'closed_at',
         'stocked_at',
+        'stocked_quantity',
         'warehouse_item_id',
     ];
 
@@ -36,6 +37,7 @@ class Purchase extends Model
         'expected_sale_price' => 'decimal:2',
         'closed_at' => 'datetime',
         'stocked_at' => 'datetime',
+        'stocked_quantity' => 'integer',
     ];
 
     public function stage()

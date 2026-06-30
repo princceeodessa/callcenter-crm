@@ -15,14 +15,18 @@ class WarehouseItem extends Model
         'model',
         'size',
         'quantity',
+        'reserved',
         'sale_price',
+        'avg_cost',
         'low_stock_threshold',
         'notes',
     ];
 
     protected $casts = [
         'quantity' => 'integer',
+        'reserved' => 'integer',
         'sale_price' => 'decimal:2',
+        'avg_cost' => 'decimal:2',
         'low_stock_threshold' => 'integer',
     ];
 
@@ -44,8 +48,13 @@ class WarehouseItem extends Model
         return $name;
     }
 
+    public function getAvailableAttribute(): int
+    {
+        return (int) $this->quantity - (int) $this->reserved;
+    }
+
     public function getIsLowAttribute(): bool
     {
-        return $this->low_stock_threshold > 0 && $this->quantity <= $this->low_stock_threshold;
+        return $this->low_stock_threshold > 0 && $this->available <= $this->low_stock_threshold;
     }
 }

@@ -9,9 +9,9 @@ class PipelineStage extends Model
 {
     use BelongsToAccount;
 
-    protected $fillable = ['account_id','pipeline_id','name','sort','color','is_final'];
+    protected $fillable = ['account_id','pipeline_id','name','sort','color','is_final','is_reserve'];
 
-    protected $casts = ['is_final' => 'boolean'];
+    protected $casts = ['is_final' => 'boolean', 'is_reserve' => 'boolean'];
 
     public function pipeline()
     {

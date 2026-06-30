@@ -482,7 +482,7 @@
             <select name="warehouse_item_id" class="form-select form-select-sm">
               <option value="">— не выбрано —</option>
               @foreach($warehouseItems as $wi)
-                <option value="{{ $wi->id }}" @selected((int) $deal->warehouse_item_id === $wi->id)>{{ $wi->display_name }} (на складе: {{ $wi->quantity }})</option>
+                <option value="{{ $wi->id }}" @selected((int) $deal->warehouse_item_id === $wi->id)>{{ $wi->display_name }} (доступно: {{ $wi->available }} / {{ $wi->quantity }}@if($wi->sale_price), {{ number_format((float) $wi->sale_price, 0, ',', ' ') }} ₽@endif)</option>
               @endforeach
             </select>
           </div>
@@ -495,8 +495,10 @@
         <div class="form-text mt-1">
           @if($deal->stock_deducted_at)
             <span class="text-success">Списано со склада {{ $deal->stock_deducted_at->format('d.m.Y H:i') }}.</span>
+          @elseif($deal->stock_reserved_at)
+            <span class="text-warning-emphasis">Зарезервировано {{ $deal->stock_reserved_at->format('d.m.Y H:i') }}. Списание — при «Продано».</span>
           @else
-            Спишется автоматически при переходе сделки в стадию «Продано».
+            Резерв — на стадии «Бронь/Счёт», списание — на «Продано».
           @endif
         </div>
       </div>

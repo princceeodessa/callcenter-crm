@@ -171,6 +171,20 @@ class PurchaseController extends Controller
         ]);
     }
 
+    /** Закрыть (архивировать) закупку — уходит из канбана, остаток на складе сохраняется. */
+    public function close(Purchase $purchase)
+    {
+        $user = Auth::user();
+        abort_unless($purchase->account_id === $user->account_id, 403);
+
+        if (! $purchase->closed_at) {
+            $purchase->closed_at = now();
+            $purchase->save();
+        }
+
+        return redirect()->route('purchases.kanban')->with('status', 'Закупка закрыта (архив). Остаток на складе сохранён.');
+    }
+
     private function validateData(Request $request): array
     {
         return $request->validate([

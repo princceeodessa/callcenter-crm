@@ -938,25 +938,35 @@ class DealController extends Controller
             'sold_quantity' => ['nullable', 'integer', 'min:1', 'max:1000000'],
         ]);
 
-        $itemId = null;
+        $item = null;
         if (! empty($data['warehouse_item_id'])) {
-            $itemId = WarehouseItem::where('account_id', $user->account_id)
+            $item = WarehouseItem::where('account_id', $user->account_id)
                 ->whereKey((int) $data['warehouse_item_id'])
-                ->value('id');
+                ->first();
         }
 
-        // Если уже было списание — вернуть прежнюю позицию на склад перед переназначением.
-        if ($deal->stock_deducted_at) {
+        // Если уже было резерв/списание — откатить прежнюю позицию перед переназначением.
+        if ($deal->stock_deducted_at || $deal->stock_reserved_at) {
             $warehouse->reverseDealDeduction($deal);
         }
 
-        $deal->warehouse_item_id = $itemId;
-        $deal->sold_quantity = $itemId ? (int) ($data['sold_quantity'] ?? 1) : null;
+        $qty = $item ? (int) ($data['sold_quantity'] ?? 1) : null;
+        $deal->warehouse_item_id = $item?->id;
+        $deal->sold_quantity = $qty;
+        // Авто-подстановка суммы сделки из цены продажи (если сумма ещё не задана).
+        if ($item && $qty && ($deal->amount === null || (float) $deal->amount == 0.0) && $item->sale_price !== null) {
+            $deal->amount = round((float) $item->sale_price * $qty, 2);
+        }
         $deal->save();
 
         $warehouse->syncDealStock($deal);
 
-        return back()->with('status', 'Товар для списания со склада обновлён.');
+        $msg = 'Товар для списания со склада обновлён.';
+        if ($item && $qty && $qty > (int) $item->quantity) {
+            $msg .= " Внимание: на складе всего {$item->quantity} пар — продаёте больше, чем есть.";
+        }
+
+        return back()->with('status', $msg);
     }
 
     private function dealCreatedActivityBody(): string

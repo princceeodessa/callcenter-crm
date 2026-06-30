@@ -12,111 +12,174 @@ use Illuminate\Support\Facades\DB;
 /**
  * Складской учёт кроссовочного пространства.
  *
- * Остаток ведётся по позиции «бренд+модель+размер» (warehouse_items).
- * Канбан закупок приходует на склад (при стадии is_stock_in), продажи — списывают.
- * Все операции идемпотентны и логируются в stock_movements.
+ * Остаток по позиции «бренд+модель+размер» (warehouse_items): quantity (на руках),
+ * reserved (зарезервировано открытыми сделками), avg_cost (средневзвешенная себестоимость).
+ * Закупки приходуют (стадия is_stock_in), сделки резервируют (is_reserve) и списывают (is_final).
+ * Всё идемпотентно и логируется в stock_movements.
  */
 class WarehouseService
 {
-    /** Приход с закупки при попадании в стадию склада; реверс при уходе. Идемпотентно (purchases.stocked_at). */
+    // ===================== Закупки → склад =====================
+
     public function syncPurchaseStock(Purchase $purchase): void
     {
         $purchase->load('stage');
-        $shouldStock = $purchase->stage
-            && $purchase->stage->is_stock_in
-            && ! $purchase->closed_at
-            && (int) $purchase->quantity > 0;
+        $qty = (int) $purchase->quantity;
+        // Приход зависит только от стадии — закрытие (архив) закупки остаток НЕ снимает.
+        $shouldStock = $purchase->stage && $purchase->stage->is_stock_in && $qty > 0;
         $isStocked = $purchase->stocked_at !== null;
 
         if ($shouldStock && ! $isStocked) {
-            DB::transaction(function () use ($purchase) {
+            DB::transaction(function () use ($purchase, $qty) {
                 $item = $this->resolveItemForPurchase($purchase);
-                $this->applyDelta($item, (int) $purchase->quantity, 'in', 'purchase', $purchase->id, "Приход с закупки #{$purchase->id}");
-                $purchase->forceFill(['stocked_at' => now(), 'warehouse_item_id' => $item->id])->save();
+                $this->receive($item, $qty, $this->unitCost($purchase), $purchase->expected_sale_price, "Приход с закупки #{$purchase->id}", 'purchase', $purchase->id);
+                $purchase->forceFill(['stocked_at' => now(), 'stocked_quantity' => $qty, 'warehouse_item_id' => $item->id])->save();
+            });
+        } elseif ($shouldStock && $isStocked && (int) $purchase->stocked_quantity !== $qty) {
+            // Кол-во изменили у уже оприходованной закупки — досинхронизировать дельту.
+            DB::transaction(function () use ($purchase, $qty) {
+                $item = $purchase->warehouse_item_id ? WarehouseItem::find($purchase->warehouse_item_id) : $this->resolveItemForPurchase($purchase);
+                if ($item) {
+                    $delta = $qty - (int) $purchase->stocked_quantity;
+                    if ($delta > 0) {
+                        $this->receive($item, $delta, $this->unitCost($purchase), null, "Докуплено по закупке #{$purchase->id}", 'purchase', $purchase->id);
+                    } else {
+                        $this->changeQty($item, $delta, 'in_adjust', "Уменьшение по закупке #{$purchase->id}", 'purchase', $purchase->id);
+                    }
+                    $purchase->forceFill(['stocked_quantity' => $qty])->save();
+                }
             });
         } elseif (! $shouldStock && $isStocked) {
             DB::transaction(function () use ($purchase) {
-                $item = $purchase->warehouse_item_id
-                    ? WarehouseItem::find($purchase->warehouse_item_id)
-                    : $this->resolveItemForPurchase($purchase);
+                $item = $purchase->warehouse_item_id ? WarehouseItem::find($purchase->warehouse_item_id) : $this->resolveItemForPurchase($purchase);
                 if ($item) {
-                    $this->applyDelta($item, -(int) $purchase->quantity, 'in_reversal', 'purchase', $purchase->id, "Откат прихода закупки #{$purchase->id}");
+                    $this->changeQty($item, -(int) $purchase->stocked_quantity, 'in_reversal', "Откат прихода закупки #{$purchase->id}", 'purchase', $purchase->id);
                 }
-                $purchase->forceFill(['stocked_at' => null])->save();
+                $purchase->forceFill(['stocked_at' => null, 'stocked_quantity' => null])->save();
             });
         }
     }
 
-    /** Списание по сделке при финальной стадии «Продано»; реверс при reopen/закрытии не в плюс. Идемпотентно. */
+    // ===================== Сделка: резерв / списание =====================
+
     public function syncDealStock(Deal $deal): void
     {
         if (! $deal->warehouse_item_id || ! (int) $deal->sold_quantity) {
             return;
         }
-
         $deal->load('stage');
+        $qty = (int) $deal->sold_quantity;
         $wonish = is_null($deal->closed_result) || $deal->closed_result === 'won';
-        $shouldDeduct = $deal->stage && $deal->stage->is_final && (int) $deal->sold_quantity > 0 && $wonish;
-        $isDeducted = $deal->stock_deducted_at !== null;
+        $desiredDeducted = $wonish && $deal->stage && $deal->stage->is_final;
+        $desiredReserved = $wonish && ! $desiredDeducted && $deal->stage && $deal->stage->is_reserve;
 
-        if ($shouldDeduct && ! $isDeducted) {
-            DB::transaction(function () use ($deal) {
-                $item = WarehouseItem::find($deal->warehouse_item_id);
-                if ($item) {
-                    $this->applyDelta($item, -(int) $deal->sold_quantity, 'out', 'deal', $deal->id, "Продажа · сделка #{$deal->id}");
+        DB::transaction(function () use ($deal, $qty, $desiredDeducted, $desiredReserved) {
+            $item = WarehouseItem::find($deal->warehouse_item_id);
+            if (! $item) {
+                return;
+            }
+
+            // --- Списание ---
+            if ($desiredDeducted && ! $deal->stock_deducted_at) {
+                if ($deal->stock_reserved_at) {
+                    $this->changeReserved($item, -$qty, 'reserve_release', "Резерв снят (продажа) · сделка #{$deal->id}", $deal->id);
+                    $deal->forceFill(['stock_reserved_at' => null])->save();
                 }
+                $deal->forceFill(['sold_unit_cost' => $item->avg_cost])->save();
+                $this->changeQty($item, -$qty, 'out', "Продажа · сделка #{$deal->id}", 'deal', $deal->id);
                 $deal->forceFill(['stock_deducted_at' => now()])->save();
-            });
-        } elseif (! $shouldDeduct && $isDeducted) {
-            DB::transaction(function () use ($deal) {
-                $item = WarehouseItem::find($deal->warehouse_item_id);
-                if ($item) {
-                    $this->applyDelta($item, (int) $deal->sold_quantity, 'out_reversal', 'deal', $deal->id, "Возврат на склад · сделка #{$deal->id}");
+            } elseif (! $desiredDeducted && $deal->stock_deducted_at) {
+                $this->changeQty($item, $qty, 'out_reversal', "Возврат на склад · сделка #{$deal->id}", 'deal', $deal->id);
+                $deal->forceFill(['stock_deducted_at' => null, 'sold_unit_cost' => null])->save();
+            }
+
+            // --- Резерв (только пока не списано) ---
+            if (! $deal->stock_deducted_at) {
+                $reservedNow = $deal->stock_reserved_at !== null;
+                if ($desiredReserved && ! $reservedNow) {
+                    $this->changeReserved($item, $qty, 'reserve', "Резерв (бронь) · сделка #{$deal->id}", $deal->id);
+                    $deal->forceFill(['stock_reserved_at' => now()])->save();
+                } elseif (! $desiredReserved && $reservedNow) {
+                    $this->changeReserved($item, -$qty, 'reserve_release', "Снятие резерва · сделка #{$deal->id}", $deal->id);
+                    $deal->forceFill(['stock_reserved_at' => null])->save();
                 }
-                $deal->forceFill(['stock_deducted_at' => null])->save();
-            });
-        }
+            }
+        });
     }
 
-    /** Вернуть на склад прежнее списание сделки (используется при переназначении товара). */
+    /** Полный откат резерва и списания сделки (для переназначения товара). */
     public function reverseDealDeduction(Deal $deal): void
     {
-        if (! $deal->stock_deducted_at || ! $deal->warehouse_item_id || ! (int) $deal->sold_quantity) {
+        if (! $deal->warehouse_item_id) {
             return;
         }
         DB::transaction(function () use ($deal) {
             $item = WarehouseItem::find($deal->warehouse_item_id);
-            if ($item) {
-                $this->applyDelta($item, (int) $deal->sold_quantity, 'out_reversal', 'deal', $deal->id, "Возврат (переназначение) · сделка #{$deal->id}");
+            $qty = (int) $deal->sold_quantity;
+            if ($item && $qty > 0) {
+                if ($deal->stock_deducted_at) {
+                    $this->changeQty($item, $qty, 'out_reversal', "Возврат (переназначение) · сделка #{$deal->id}", 'deal', $deal->id);
+                }
+                if ($deal->stock_reserved_at) {
+                    $this->changeReserved($item, -$qty, 'reserve_release', "Снятие резерва (переназначение) · сделка #{$deal->id}", $deal->id);
+                }
             }
-            $deal->forceFill(['stock_deducted_at' => null])->save();
+            $deal->forceFill(['stock_deducted_at' => null, 'stock_reserved_at' => null, 'sold_unit_cost' => null])->save();
         });
     }
 
-    /** Ручное пополнение (+/- qty) с записью движения. */
+    // ===================== Ручные операции =====================
+
     public function replenish(WarehouseItem $item, int $qty, ?string $note = null): void
     {
         if ($qty === 0) {
             return;
         }
-        DB::transaction(fn () => $this->applyDelta($item, $qty, $qty > 0 ? 'replenish' : 'adjust', 'manual', null, $note ?? 'Ручное пополнение'));
+        DB::transaction(fn () => $this->changeQty($item, $qty, $qty > 0 ? 'replenish' : 'adjust', $note ?? 'Ручное пополнение', 'manual', null));
     }
 
-    /** Ручная установка точного остатка. */
     public function setQuantity(WarehouseItem $item, int $newQty, ?string $note = null): void
     {
         $delta = $newQty - (int) $item->quantity;
         if ($delta === 0) {
             return;
         }
-        DB::transaction(fn () => $this->applyDelta($item, $delta, 'adjust', 'manual', null, $note ?? 'Ручная корректировка остатка'));
+        DB::transaction(fn () => $this->changeQty($item, $delta, 'adjust', $note ?? 'Ручная корректировка остатка', 'manual', null));
     }
 
-    private function applyDelta(WarehouseItem $item, int $delta, string $type, string $sourceType, ?int $sourceId, string $note): void
-    {
-        $item->quantity = max(0, (int) $item->quantity + $delta);
-        $item->save();
+    // ===================== Низкоуровневое =====================
 
+    /** Приход с обновлением средневзвешенной себестоимости. */
+    private function receive(WarehouseItem $item, int $qty, ?float $unitCost, $defaultSalePrice, string $note, string $sourceType, ?int $sourceId): void
+    {
+        if ($unitCost !== null) {
+            $oldQ = max(0, (int) $item->quantity);
+            $oldC = (float) ($item->avg_cost ?? 0);
+            $newQ = $oldQ + $qty;
+            $item->avg_cost = $newQ > 0 ? round((($oldQ * $oldC) + ($qty * $unitCost)) / $newQ, 2) : $unitCost;
+        }
+        if ($item->sale_price === null && $defaultSalePrice !== null) {
+            $item->sale_price = $defaultSalePrice;
+        }
+        $this->changeQty($item, $qty, 'in', $note, $sourceType, $sourceId);
+    }
+
+    private function changeQty(WarehouseItem $item, int $delta, string $type, string $note, string $sourceType, ?int $sourceId): void
+    {
+        $item->quantity = (int) $item->quantity + $delta;
+        $item->save();
+        $this->logMovement($item, $type, $delta, $sourceType, $sourceId, $note);
+    }
+
+    private function changeReserved(WarehouseItem $item, int $delta, string $type, string $note, ?int $dealId): void
+    {
+        $item->reserved = max(0, (int) $item->reserved + $delta);
+        $item->save();
+        $this->logMovement($item, $type, $delta, 'deal', $dealId, $note);
+    }
+
+    private function logMovement(WarehouseItem $item, string $type, int $delta, string $sourceType, ?int $sourceId, string $note): void
+    {
         StockMovement::create([
             'account_id' => $item->account_id,
             'warehouse_item_id' => $item->id,
@@ -129,6 +192,11 @@ class WarehouseService
         ]);
     }
 
+    private function unitCost(Purchase $purchase): ?float
+    {
+        return $purchase->cost !== null ? (float) $purchase->cost : null;
+    }
+
     private function resolveItemForPurchase(Purchase $purchase): WarehouseItem
     {
         return WarehouseItem::firstOrCreate(
@@ -138,9 +206,7 @@ class WarehouseService
                 'model' => (string) ($purchase->model ?? ''),
                 'size' => (string) ($purchase->size ?? ''),
             ],
-            [
-                'sale_price' => $purchase->expected_sale_price,
-            ]
+            ['sale_price' => $purchase->expected_sale_price]
         );
     }
 }

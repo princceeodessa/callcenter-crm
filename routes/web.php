@@ -5,6 +5,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DealController;
 use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\WarehouseController;
+use App\Http\Controllers\SneakerReportController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\CallRecordingController;
 use App\Http\Controllers\ReportController;
@@ -120,6 +121,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/purchases/{purchase}', [PurchaseController::class, 'show'])->name('purchases.show');
         Route::patch('/purchases/{purchase}', [PurchaseController::class, 'update'])->name('purchases.update');
         Route::post('/purchases/{purchase}/move', [PurchaseController::class, 'move'])->name('purchases.move');
+        Route::post('/purchases/{purchase}/close', [PurchaseController::class, 'close'])->name('purchases.close');
 
         // Склад кроссовок (остатки по позициям)
         Route::get('/warehouse', [WarehouseController::class, 'index'])->name('warehouse.index');
@@ -127,6 +129,9 @@ Route::middleware('auth')->group(function () {
         Route::patch('/warehouse/{item}', [WarehouseController::class, 'update'])->name('warehouse.update');
         Route::post('/warehouse/{item}/replenish', [WarehouseController::class, 'replenish'])->name('warehouse.replenish');
         Route::delete('/warehouse/{item}', [WarehouseController::class, 'destroy'])->name('warehouse.destroy');
+
+        // Отчёт по кроссовкам (продажи/прибыль/склад)
+        Route::get('/sneaker/report', [SneakerReportController::class, 'index'])->name('sneaker.report');
     });
 
     // Projecting (admin + constructor)

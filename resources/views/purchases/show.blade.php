@@ -17,6 +17,16 @@
                     <a class="btn btn-outline-secondary" href="{{ route('purchases.kanban') }}">Назад</a>
                 </div>
             </form>
+            @unless($purchase->closed_at)
+                <hr>
+                <form method="POST" action="{{ route('purchases.close', $purchase) }}" onsubmit="return confirm('Закрыть закупку и убрать из канбана? Остаток на складе сохранится.')">
+                    @csrf
+                    <button class="btn btn-sm btn-outline-danger">Закрыть / Архив</button>
+                    <span class="form-text ms-2">Уйдёт из канбана; то, что уже на складе — останется.</span>
+                </form>
+            @else
+                <hr><div class="text-muted small">Закупка закрыта {{ $purchase->closed_at->format('d.m.Y H:i') }}.</div>
+            @endunless
         </div>
     </div>
 @endsection
