@@ -233,6 +233,8 @@
         if ($lowFilter) {
             $productsView = $productsView->filter(fn ($p) => $p['low'])->values();
         }
+        $exportParams = array_filter(['q' => $q ?: null, 'low' => $lowFilter ? '1' : null]);
+        $lowToggleParams = array_filter(['q' => $q ?: null, 'low' => $lowFilter ? null : '1']);
 
         $moveLabels = [
             'in' => 'Приход', 'in_adjust' => 'Корректировка прихода',
@@ -283,12 +285,12 @@
         @if($q !== '' || $lowFilter)
             <a class="filter-chip" href="{{ route('warehouse.index') }}">Сброс</a>
         @endif
-        <a class="filter-chip {{ $lowFilter ? 'active' : '' }}" href="{{ route('warehouse.index', array_filter(['q' => $q ?: null, 'low' => $lowFilter ? null : '1'])) }}">
+        @php($lowCount = $products->filter(fn ($p) => $p['low'])->count())
+        <a class="filter-chip {{ $lowFilter ? 'active' : '' }}" href="{{ route('warehouse.index', $lowToggleParams) }}">
             Заканчивается
-            @php($lowCount = $products->filter(fn ($p) => $p['low'])->count())
             @if($lowCount > 0)<span class="count">{{ $lowCount }}</span>@endif
         </a>
-        <a class="filter-chip" href="{{ route('warehouse.export', request()->only('q', 'low')) }}">Экспорт CSV</a>
+        <a class="filter-chip" href="{{ route('warehouse.export', $exportParams) }}">Экспорт CSV</a>
     </form>
 
     {{-- PRODUCTS --}}
