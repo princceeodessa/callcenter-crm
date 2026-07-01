@@ -482,8 +482,9 @@
             <select name="warehouse_item_id" class="form-select form-select-sm">
               <option value="">— не выбрано —</option>
               @foreach($warehouseItems as $wi)
-                @php($whPrice = $wi->sale_price ? ', '.number_format((float) $wi->sale_price, 0, ',', ' ').' ₽' : '')
-                <option value="{{ $wi->id }}" @selected((int) $deal->warehouse_item_id === $wi->id)>{{ $wi->display_name }} (доступно: {{ $wi->available }} / {{ $wi->quantity }}{{ $whPrice }})</option>
+                <option value="{{ $wi->id }}" @selected((int) $deal->warehouse_item_id === $wi->id)>
+                    {{ $wi->display_name }} (доступно: {{ $wi->available }} / {{ $wi->quantity }}{{ $wi->sale_price ? ', '.number_format((float) $wi->sale_price, 0, ',', ' ').' ₽' : '' }})
+                </option>
               @endforeach
             </select>
           </div>
@@ -493,10 +494,11 @@
           </div>
           <div class="col-md-3">
             <label class="form-label small mb-1">Источник</label>
-            @php($srcOpts = ['Avito','Instagram','Telegram','Сайт','Сарафан','Другое'])
             <select name="manual_source" class="form-select form-select-sm">
               <option value="">— не указан —</option>
-              @foreach($srcOpts as $so)<option value="{{ $so }}" @selected($deal->manual_source === $so)>{{ $so }}</option>@endforeach
+              @foreach(['Avito','Instagram','Telegram','Сайт','Сарафан','Другое'] as $so)
+                <option value="{{ $so }}" @selected($deal->manual_source === $so)>{{ $so }}</option>
+              @endforeach
             </select>
           </div>
           <div class="col-md-2"><button class="btn btn-sm btn-primary w-100">Сохранить</button></div>
