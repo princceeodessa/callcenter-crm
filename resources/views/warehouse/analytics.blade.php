@@ -179,6 +179,37 @@
     </table></div>
 </div>
 
+{{-- === Разбивка по категории/полу/сезону === --}}
+<div class="an-card">
+    <h6>🧩 Структура склада и продаж</h6>
+    <div class="row g-3">
+        @foreach(['category' => 'Категории', 'gender' => 'Пол', 'season' => 'Сезон'] as $tax => $title)
+            <div class="col-lg-4">
+                <div class="fw-semibold small mb-2">{{ $title }}</div>
+                <table class="table table-sm mb-0 align-middle">
+                    <thead><tr><th></th><th class="text-end">На складе</th><th class="text-end">Продано 12 мес</th></tr></thead>
+                    <tbody>
+                    @foreach($taxonomy[$tax]['options'] as $key => $label)
+                        <tr>
+                            <td>{{ $label }}</td>
+                            <td class="text-end">{{ $taxonomy[$tax]['stock'][$key] ?? 0 }}</td>
+                            <td class="text-end">{{ $taxonomy[$tax]['sold'][$key] ?? 0 }}</td>
+                        </tr>
+                    @endforeach
+                    @if($taxonomy[$tax]['unset'] > 0)
+                        <tr class="text-muted small">
+                            <td>— не указано —</td>
+                            <td class="text-end">{{ $taxonomy[$tax]['unset'] }}</td>
+                            <td class="text-end">—</td>
+                        </tr>
+                    @endif
+                    </tbody>
+                </table>
+            </div>
+        @endforeach
+    </div>
+</div>
+
 {{-- === 6. ABC-анализ === --}}
 <div class="an-card">
     <h6>🎯 ABC-анализ моделей по прибыли за 12 месяцев <span class="text-muted small fw-normal">(A — 80% прибыли, B — ещё 15%, C — хвост)</span></h6>

@@ -12,6 +12,7 @@ class WarehouseProduct extends Model
 
     protected $fillable = [
         'account_id', 'brand', 'model', 'article', 'custom_name', 'image_path',
+        'category', 'gender', 'season',
     ];
 
     protected static function bootWarehouseProduct(): void
@@ -20,12 +21,26 @@ class WarehouseProduct extends Model
             if (empty($p->article)) {
                 $p->article = self::nextArticle($p->account_id);
             }
+            self::autoTaxonomy($p);
         });
         static::saving(function (WarehouseProduct $p) {
             if (empty($p->article)) {
                 $p->article = self::nextArticle($p->account_id);
             }
         });
+    }
+
+    /** Заполнить category/gender/season эвристикой (только если поля пустые). */
+    public static function autoTaxonomy(WarehouseProduct $p): void
+    {
+        $guess = \App\Support\Warehouse\ProductClassifier::guessAll(
+            (string) ($p->brand ?? ''),
+            (string) ($p->model ?? ''),
+            $p->custom_name
+        );
+        if (empty($p->category) && ! empty($guess['category'])) $p->category = $guess['category'];
+        if (empty($p->gender)) $p->gender = $guess['gender'];
+        if (empty($p->season)) $p->season = $guess['season'];
     }
 
     public function photos()

@@ -316,8 +316,22 @@
         if ($lowFilter) {
             $productsView = $productsView->filter(fn ($p) => $p['low'])->values();
         }
-        $exportParams = array_filter(['q' => $q ?: null, 'low' => $lowFilter ? '1' : null]);
-        $lowToggleParams = array_filter(['q' => $q ?: null, 'low' => $lowFilter ? null : '1']);
+        $exportParams = array_filter([
+            'q' => $q ?: null, 'low' => $lowFilter ? '1' : null,
+            'cat' => $filterCategory ?: null, 'sex' => $filterGender ?: null, 'sea' => $filterSeason ?: null,
+        ]);
+        $lowToggleParams = array_filter([
+            'q' => $q ?: null, 'low' => $lowFilter ? null : '1',
+            'cat' => $filterCategory ?: null, 'sex' => $filterGender ?: null, 'sea' => $filterSeason ?: null,
+        ]);
+        $baseFilterParams = array_filter([
+            'q' => $q ?: null, 'low' => $lowFilter ? '1' : null,
+        ]);
+        $chipParams = fn ($key, $val) => array_filter(array_merge($baseFilterParams, [
+            'cat' => $key === 'cat' ? $val : ($filterCategory ?: null),
+            'sex' => $key === 'sex' ? $val : ($filterGender ?: null),
+            'sea' => $key === 'sea' ? $val : ($filterSeason ?: null),
+        ]));
         $isEmpty = $productsView->isEmpty();
         $hasMovements = $movements->isNotEmpty();
         $lowCount = $products->filter(fn ($p) => $p['low'])->count();
@@ -380,6 +394,21 @@
         <a class="filter-chip" href="{{ route('warehouse.analytics') }}">📊 Аналитика</a>
     </form>
 
+    <div class="d-flex flex-wrap gap-1 mb-3 align-items-center">
+        <span class="small text-muted me-2">Категория:</span>
+        @foreach($categoryOptions as $key => $label)
+            <a class="filter-chip {{ $filterCategory === $key ? 'active' : '' }}" href="{{ route('warehouse.index', $chipParams('cat', $filterCategory === $key ? null : $key)) }}">{{ $label }}</a>
+        @endforeach
+        <span class="small text-muted mx-2">·</span>
+        @foreach($genderOptions as $key => $label)
+            <a class="filter-chip {{ $filterGender === $key ? 'active' : '' }}" href="{{ route('warehouse.index', $chipParams('sex', $filterGender === $key ? null : $key)) }}">{{ $label }}</a>
+        @endforeach
+        <span class="small text-muted mx-2">·</span>
+        @foreach($seasonOptions as $key => $label)
+            <a class="filter-chip {{ $filterSeason === $key ? 'active' : '' }}" href="{{ route('warehouse.index', $chipParams('sea', $filterSeason === $key ? null : $key)) }}">{{ $label }}</a>
+        @endforeach
+    </div>
+
     {{-- PRODUCTS --}}
     @if($isEmpty)
         <div class="alert alert-light border" style="border-radius:var(--wh-radius)">
@@ -431,6 +460,27 @@
                                 </form>
                             </details>
                             <div class="prod-sub">{{ $prod['brand'] ?: '—' }} · {{ $prod['sizes']->count() }} разм.</div>
+                            <form method="POST" action="{{ route('warehouse.product.update', $prod['entity']) }}" class="tax-row" style="display:flex;flex-wrap:wrap;gap:.25rem;margin-top:.35rem;">
+                                @csrf @method('PATCH')
+                                <select name="category" onchange="this.form.submit()" class="form-select form-select-sm" style="width:auto;font-size:.7rem;padding:.05rem 1.5rem .05rem .35rem;height:auto">
+                                    <option value="">— категория —</option>
+                                    @foreach($categoryOptions as $k => $l)
+                                        <option value="{{ $k }}" @selected($prod['category'] === $k)>{{ $l }}</option>
+                                    @endforeach
+                                </select>
+                                <select name="gender" onchange="this.form.submit()" class="form-select form-select-sm" style="width:auto;font-size:.7rem;padding:.05rem 1.5rem .05rem .35rem;height:auto">
+                                    <option value="">— пол —</option>
+                                    @foreach($genderOptions as $k => $l)
+                                        <option value="{{ $k }}" @selected($prod['gender'] === $k)>{{ $l }}</option>
+                                    @endforeach
+                                </select>
+                                <select name="season" onchange="this.form.submit()" class="form-select form-select-sm" style="width:auto;font-size:.7rem;padding:.05rem 1.5rem .05rem .35rem;height:auto">
+                                    <option value="">— сезон —</option>
+                                    @foreach($seasonOptions as $k => $l)
+                                        <option value="{{ $k }}" @selected($prod['season'] === $k)>{{ $l }}</option>
+                                    @endforeach
+                                </select>
+                            </form>
                             @if($prod['article'] !== '')
                                 <div class="article-row">
                                     <span class="article-code">{{ $prod['article'] }}</span>

@@ -6,6 +6,8 @@ use App\Models\Deal;
 use App\Models\Purchase;
 use App\Models\StockMovement;
 use App\Models\WarehouseItem;
+use App\Models\WarehouseProduct;
+use App\Support\Warehouse\ProductClassifier;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -187,13 +189,58 @@ class WarehouseAnalyticsController extends Controller
         }
         usort($brandStock, fn ($a, $b) => $b['stock_units'] <=> $a['stock_units']);
 
+        // --- Разбивка склада по категориям / полу / сезону ---
+        $products = WarehouseProduct::where('account_id', $accId)->get();
+        $productMap = [];
+        foreach ($products as $p) {
+            $key = mb_strtolower(trim(($p->brand ?? '').'|'.($p->model ?? '')));
+            $productMap[$key] = $p;
+        }
+        $taxonomy = [
+            'category' => [
+                'options' => ProductClassifier::categoryOptions(),
+                'stock' => [], 'sold' => [], 'unset' => 0,
+            ],
+            'gender' => [
+                'options' => ProductClassifier::genderOptions(),
+                'stock' => [], 'sold' => [], 'unset' => 0,
+            ],
+            'season' => [
+                'options' => ProductClassifier::seasonOptions(),
+                'stock' => [], 'sold' => [], 'unset' => 0,
+            ],
+        ];
+        foreach ($items as $i) {
+            $key = mb_strtolower(trim(($i->brand ?? '').'|'.($i->model ?? '')));
+            $p = $productMap[$key] ?? null;
+            foreach (['category', 'gender', 'season'] as $tax) {
+                $v = $p?->{$tax};
+                if ($v) {
+                    $taxonomy[$tax]['stock'][$v] = ($taxonomy[$tax]['stock'][$v] ?? 0) + (int) $i->quantity;
+                } else {
+                    $taxonomy[$tax]['unset'] += (int) $i->quantity;
+                }
+            }
+        }
+        foreach ($sold as $d) {
+            $wi = $d->warehouseItem;
+            if (! $wi) continue;
+            $key = mb_strtolower(trim(($wi->brand ?? '').'|'.($wi->model ?? '')));
+            $p = $productMap[$key] ?? null;
+            $qty = (int) $d->sold_quantity;
+            foreach (['category', 'gender', 'season'] as $tax) {
+                $v = $p?->{$tax};
+                if ($v) $taxonomy[$tax]['sold'][$v] = ($taxonomy[$tax]['sold'][$v] ?? 0) + $qty;
+            }
+        }
+
         return view('warehouse.analytics', compact(
             'seasonality', 'seasMax', 'topBrandsForLegend',
             'flow', 'flowMax',
             'abc', 'totalProfit',
             'fastMovers', 'slowMovers', 'endingSoon',
             'sizesData', 'sizeMax',
-            'brandStock'
+            'brandStock', 'taxonomy'
         ));
     }
 }

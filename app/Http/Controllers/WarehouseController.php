@@ -9,6 +9,7 @@ use App\Models\WarehouseProduct;
 use App\Models\WarehouseProductPhoto;
 use App\Services\Warehouse\WarehouseService;
 use App\Support\Warehouse\Code128;
+use App\Support\Warehouse\ProductClassifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
@@ -40,6 +41,14 @@ class WarehouseController extends Controller
         $stockValue = (float) $items->sum(fn ($i) => (int) $i->quantity * (float) ($i->sale_price ?? 0));
         $isHead = $this->isHead();
 
+        // Опции таксономии + текущие фильтры
+        $categoryOptions = ProductClassifier::categoryOptions();
+        $genderOptions = ProductClassifier::genderOptions();
+        $seasonOptions = ProductClassifier::seasonOptions();
+        $filterCategory = trim((string) $request->query('cat'));
+        $filterGender = trim((string) $request->query('sex'));
+        $filterSeason = trim((string) $request->query('sea'));
+
         // Группируем размеры под одним товаром (бренд + модель).
         // Заодно подмешиваем warehouse_products (кастомное имя, фото).
         $accId = $user->account_id;
@@ -66,6 +75,9 @@ class WarehouseController extends Controller
                     'gallery' => $gallery,
                     'article' => $article,
                     'barcode_svg' => $article !== '' ? Code128::svg($article, 30, 1) : '',
+                    'category' => $product->category,
+                    'gender' => $product->gender,
+                    'season' => $product->season,
                     'brand' => $brand,
                     'model' => $model,
                     'sizes' => $group->sortBy('size', SORT_NATURAL)->values(),
@@ -79,7 +91,20 @@ class WarehouseController extends Controller
             ->sortBy('name')
             ->values();
 
-        return view('warehouse.index', compact('products', 'movements', 'q', 'totalUnits', 'stockValue', 'isHead'));
+        if ($filterCategory !== '' || $filterGender !== '' || $filterSeason !== '') {
+            $products = $products->filter(function ($p) use ($filterCategory, $filterGender, $filterSeason) {
+                if ($filterCategory !== '' && (string) $p['category'] !== $filterCategory) return false;
+                if ($filterGender !== '' && (string) $p['gender'] !== $filterGender) return false;
+                if ($filterSeason !== '' && (string) $p['season'] !== $filterSeason) return false;
+                return true;
+            })->values();
+        }
+
+        return view('warehouse.index', compact(
+            'products', 'movements', 'q', 'totalUnits', 'stockValue', 'isHead',
+            'categoryOptions', 'genderOptions', 'seasonOptions',
+            'filterCategory', 'filterGender', 'filterSeason'
+        ));
     }
 
     public function store(Request $request, WarehouseService $warehouse)
@@ -177,6 +202,9 @@ class WarehouseController extends Controller
         $data = $request->validate([
             'custom_name' => ['nullable', 'string', 'max:255'],
             'article' => ['nullable', 'string', 'max:64'],
+            'category' => ['nullable', 'in:sport,casual,premium,winter,kids'],
+            'gender' => ['nullable', 'in:male,female,unisex,kids'],
+            'season' => ['nullable', 'in:summer,winter,demi'],
         ]);
 
         if ($request->has('custom_name')) {
@@ -186,6 +214,12 @@ class WarehouseController extends Controller
         if ($request->has('article')) {
             $article = trim((string) ($data['article'] ?? ''));
             $product->article = $article !== '' ? $article : WarehouseProduct::nextArticle($product->account_id);
+        }
+        foreach (['category', 'gender', 'season'] as $tax) {
+            if ($request->has($tax)) {
+                $v = trim((string) ($data[$tax] ?? ''));
+                $product->{$tax} = $v !== '' ? $v : null;
+            }
         }
         $product->save();
 
