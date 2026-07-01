@@ -482,7 +482,8 @@
             <select name="warehouse_item_id" class="form-select form-select-sm">
               <option value="">— не выбрано —</option>
               @foreach($warehouseItems as $wi)
-                <option value="{{ $wi->id }}" @selected((int) $deal->warehouse_item_id === $wi->id)>{{ $wi->display_name }} (доступно: {{ $wi->available }} / {{ $wi->quantity }}@if($wi->sale_price), {{ number_format((float) $wi->sale_price, 0, ',', ' ') }} ₽@endif)</option>
+                @php($whPrice = $wi->sale_price ? ', '.number_format((float) $wi->sale_price, 0, ',', ' ').' ₽' : '')
+                <option value="{{ $wi->id }}" @selected((int) $deal->warehouse_item_id === $wi->id)>{{ $wi->display_name }} (доступно: {{ $wi->available }} / {{ $wi->quantity }}{{ $whPrice }})</option>
               @endforeach
             </select>
           </div>
