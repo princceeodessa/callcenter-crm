@@ -1,6 +1,7 @@
 @extends('layouts.app')
 
 @push('styles')
+@verbatim
 <style>
     :root {
         --wh-radius: 1.2rem;
@@ -210,6 +211,7 @@
     .move .m-delta{ font-weight:800; }
     .move .m-delta.pos{ color:var(--wh-green); } .move .m-delta.neg{ color:var(--wh-red); }
 </style>
+@endverbatim
 @endpush
 
 @section('content')
@@ -426,11 +428,13 @@
             </form>
         </div>
     </details>
+    @verbatim
     <style>
         .wh-details > summary::-webkit-details-marker{ display:none; }
         .wh-details > summary{ list-style:none; }
         .wh-details:not([open]) .new-product-panel{ display:none; }
     </style>
+    @endverbatim
 
     {{-- MOVEMENTS TIMELINE --}}
     @if($movements->isNotEmpty())
