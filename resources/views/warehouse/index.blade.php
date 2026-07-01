@@ -366,11 +366,14 @@
                                         @endif
                                         <div class="actions">
                                             <button type="submit" class="btn btn-primary">Сохранить</button>
-                                            @if($isHead)
-                                                <button type="submit" formaction="{{ route('warehouse.destroy', $i) }}" formmethod="POST" onclick="event.preventDefault(); if(confirm('Удалить размер {{ $i->size }}?')){ this.form.action='{{ route('warehouse.destroy', $i) }}'; const m=document.createElement('input'); m.type='hidden'; m.name='_method'; m.value='DELETE'; this.form.appendChild(m); this.form.submit(); }" class="btn btn-outline-danger">Удалить</button>
-                                            @endif
                                         </div>
                                     </form>
+                                    @if($isHead)
+                                        <form method="POST" action="{{ route('warehouse.destroy', $i) }}" onsubmit="return confirm('Удалить размер?')" class="mt-2">
+                                            @csrf @method('DELETE')
+                                            <button type="submit" class="btn btn-outline-danger w-100" style="font-size:.78rem;padding:.35rem .5rem;border-radius:.5rem">Удалить размер</button>
+                                        </form>
+                                    @endif
                                 </div>
                             </details>
                         @endforeach
