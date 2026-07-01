@@ -108,6 +108,41 @@
     }
     .brand-avatar .photo-actions button:hover{ background:rgba(220,38,38,.85); }
 
+    /* Мини-галерея под аватаром */
+    .thumb-strip{ display:flex; flex-wrap:wrap; gap:.25rem; margin-top:.35rem; }
+    .thumb{
+        width:34px; height:34px; border-radius:8px; overflow:hidden; position:relative;
+        border:1px solid var(--crm-border); cursor:zoom-in; background:var(--crm-surface);
+    }
+    .thumb img{ width:100%; height:100%; object-fit:cover; }
+    .thumb .thumb-del{
+        position:absolute; top:-4px; right:-4px; width:18px; height:18px;
+        border-radius:50%; border:0; background:rgba(220,38,38,.9); color:#fff;
+        font-size:.75rem; line-height:1; padding:0; cursor:pointer; opacity:0;
+        transition:opacity .12s;
+    }
+    .thumb:hover .thumb-del{ opacity:1; }
+    .thumb-add{
+        position:relative;
+        width:34px; height:34px; border-radius:8px;
+        border:1px dashed var(--crm-border); background:var(--crm-surface);
+        display:flex; align-items:center; justify-content:center;
+        color:var(--crm-muted); font-size:1.1rem; cursor:pointer;
+    }
+    .thumb-add:hover{ color:var(--crm-accent); border-color:var(--crm-accent); }
+
+    /* Артикул + штрих-код */
+    .article-row{ margin-top:.5rem; display:flex; align-items:center; gap:.5rem; font-size:.72rem; }
+    .article-code{ font-family:ui-monospace, "SFMono-Regular", Menlo, monospace; font-weight:700; color:var(--crm-muted); letter-spacing:.05em; }
+    .barcode-mini{ height:22px; }
+    .barcode-mini svg{ height:100%; width:auto; max-width:120px; }
+    .label-btn{
+        margin-left:auto; padding:.15rem .55rem; border-radius:.4rem;
+        font-size:.7rem; border:1px solid var(--crm-border); background:var(--crm-surface);
+        color:var(--crm-text); text-decoration:none;
+    }
+    .label-btn:hover{ border-color:var(--crm-accent); color:var(--crm-accent); }
+
     /* Inline edit имени */
     .prod-name-wrap{ display:flex; align-items:center; gap:.4rem; }
     .prod-name-edit-btn{
@@ -341,6 +376,7 @@
             @if($lowCount > 0)<span class="count">{{ $lowCount }}</span>@endif
         </a>
         <a class="filter-chip" href="{{ route('warehouse.export', $exportParams) }}">Экспорт CSV</a>
+        <a class="filter-chip" href="{{ route('warehouse.import.form') }}">Импорт пачкой</a>
     </form>
 
     {{-- PRODUCTS --}}
@@ -394,11 +430,41 @@
                                 </form>
                             </details>
                             <div class="prod-sub">{{ $prod['brand'] ?: '—' }} · {{ $prod['sizes']->count() }} разм.</div>
+                            @if($prod['article'] !== '')
+                                <div class="article-row">
+                                    <span class="article-code">{{ $prod['article'] }}</span>
+                                    <span class="barcode-mini">{!! $prod['barcode_svg'] !!}</span>
+                                    <a class="label-btn" href="{{ route('warehouse.product.label', $prod['entity']) }}" target="_blank" title="Печатная этикетка">🖨️ Этикетка</a>
+                                </div>
+                            @endif
                         </div>
                         @if($prod['low'])
                             <span class="prod-badge low">заканчивается</span>
                         @endif
                     </div>
+
+                    {{-- Мини-галерея дополнительных фото товара (всегда, чтобы иметь «+») --}}
+                    <div class="thumb-strip">
+                        @foreach($prod['gallery'] as $photo)
+                            <div class="thumb">
+                                <img src="{{ $photo['url'] }}" alt="">
+                                @if($photo['id'])
+                                    <form method="POST" action="{{ route('warehouse.product.photo.delete', $prod['entity']) }}" onsubmit="return confirm('Удалить это фото?')">
+                                        @csrf @method('DELETE')
+                                        <input type="hidden" name="photo_id" value="{{ $photo['id'] }}">
+                                        <button type="submit" class="thumb-del" title="Удалить">×</button>
+                                    </form>
+                                @endif
+                            </div>
+                        @endforeach
+                        <label class="thumb-add" title="Добавить фото">＋
+                            <form method="POST" action="{{ route('warehouse.product.photo.upload', $prod['entity']) }}" enctype="multipart/form-data" style="position:absolute;inset:0;margin:0;">
+                                @csrf
+                                <input type="file" name="photo" accept="image/*" onchange="this.form.submit()" style="position:absolute;inset:0;opacity:0;cursor:pointer;">
+                            </form>
+                        </label>
+                    </div>
+                    <div style="height:.5rem"></div>
 
                     <div class="prod-summary">
                         <div><span class="k">Пар</span><span class="v">{{ $prod['total'] }}</span></div>
