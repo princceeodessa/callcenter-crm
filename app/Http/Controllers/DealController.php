@@ -8,6 +8,7 @@ use App\Models\PipelineStage;
 use App\Models\DealActivity;
 use App\Models\DealStageHistory;
 use App\Models\CallRecording;
+use App\Models\StockMark;
 use App\Models\WarehouseItem;
 use App\Services\Chat\ChatSendService;
 use App\Services\Tasks\TaskWorkflowService;
@@ -969,6 +970,58 @@ class DealController extends Controller
         }
 
         return back()->with('status', $msg);
+    }
+
+    /** Привязать коды маркировки к сделке (сканирование при продаже). */
+    public function addDealMarks(Request $request, Deal $deal)
+    {
+        $user = Auth::user();
+        abort_unless($deal->account_id === $user->account_id, 403);
+
+        $data = $request->validate([
+            'codes' => ['required', 'string', 'max:100000'],
+        ]);
+        $codes = array_values(array_filter(array_map('trim', preg_split('/\r?\n/', $data['codes']))));
+        $itemId = $deal->warehouse_item_id;
+        $bound = 0; $created = 0; $dup = 0;
+        foreach ($codes as $code) {
+            if ($code === '') continue;
+            $mark = StockMark::where('account_id', $user->account_id)->where('code', $code)->first();
+            if ($mark) {
+                if ($mark->deal_id && $mark->deal_id !== $deal->id) { $dup++; continue; }
+                $mark->deal_id = $deal->id;
+                if (! $mark->warehouse_item_id && $itemId) $mark->warehouse_item_id = $itemId;
+                $mark->save();
+                $bound++;
+            } else {
+                StockMark::create([
+                    'account_id' => $user->account_id,
+                    'warehouse_item_id' => $itemId,
+                    'deal_id' => $deal->id,
+                    'code' => $code,
+                    'status' => 'in_stock',
+                ]);
+                $created++;
+            }
+        }
+        return back()->with('status', "Коды: привязано {$bound}, создано {$created}, уже занято {$dup}.");
+    }
+
+    /** Печатный чек по сделке (HTML, готов под ККТ). */
+    public function receipt(Deal $deal)
+    {
+        $user = Auth::user();
+        abort_unless($deal->account_id === $user->account_id, 403);
+        $deal->load('warehouseItem', 'responsible', 'contact');
+
+        return view('deals.receipt', [
+            'deal' => $deal,
+            'company' => [
+                'name' => config('app.name'),
+                'inn' => '',            // подставьте реальный ИНН для боевого чека
+                'address' => '',
+            ],
+        ]);
     }
 
     /** Оформить возврат проданного товара на склад (кроссовки). */

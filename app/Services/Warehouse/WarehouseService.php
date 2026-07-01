@@ -4,6 +4,7 @@ namespace App\Services\Warehouse;
 
 use App\Models\Deal;
 use App\Models\Purchase;
+use App\Models\StockMark;
 use App\Models\StockMovement;
 use App\Models\User;
 use App\Models\UserNotification;
@@ -90,10 +91,20 @@ class WarehouseService
                 $deal->forceFill(['sold_unit_cost' => $item->avg_cost])->save();
                 $this->changeQty($item, -$qty, 'out', "Продажа · сделка #{$deal->id}", 'deal', $deal->id);
                 $deal->forceFill(['stock_deducted_at' => now()])->save();
+                // Пометить коды маркировки этой сделки как sold («Честный знак» — вывод из оборота).
+                StockMark::where('account_id', $deal->account_id)
+                    ->where('deal_id', $deal->id)
+                    ->where('status', 'in_stock')
+                    ->update(['status' => 'sold', 'sold_at' => now()]);
                 $this->notifySale($deal, $item);
             } elseif (! $desiredDeducted && $deal->stock_deducted_at) {
                 $this->changeQty($item, $qty, 'out_reversal', "Возврат на склад · сделка #{$deal->id}", 'deal', $deal->id);
                 $deal->forceFill(['stock_deducted_at' => null, 'sold_unit_cost' => null])->save();
+                // Коды маркировки: вернуть в оборот.
+                StockMark::where('account_id', $deal->account_id)
+                    ->where('deal_id', $deal->id)
+                    ->where('status', 'sold')
+                    ->update(['status' => 'in_stock', 'sold_at' => null]);
             }
 
             // --- Резерв (только пока не списано) ---
@@ -128,6 +139,10 @@ class WarehouseService
                 }
             }
             $deal->forceFill(['stock_deducted_at' => null, 'stock_reserved_at' => null, 'sold_unit_cost' => null])->save();
+            // Отвязать коды маркировки от сделки при переназначении.
+            StockMark::where('account_id', $deal->account_id)
+                ->where('deal_id', $deal->id)
+                ->update(['deal_id' => null, 'status' => 'in_stock', 'sold_at' => null]);
         });
     }
 

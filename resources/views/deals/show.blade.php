@@ -515,10 +515,36 @@
           @endif
         </div>
         @if($deal->stock_deducted_at && ! $deal->returned_at)
-          <form method="POST" action="{{ route('deals.return', $deal) }}" class="mt-2" onsubmit="return confirm('Оформить возврат? Пары вернутся на склад, продажа отменится.')">
-            @csrf
-            <button class="btn btn-sm btn-outline-info">Оформить возврат</button>
-          </form>
+          <div class="mt-2 d-flex gap-2 flex-wrap">
+            <a class="btn btn-sm btn-outline-primary" href="{{ route('deals.receipt', $deal) }}" target="_blank">🖨️ Печать чека</a>
+            <form method="POST" action="{{ route('deals.return', $deal) }}" onsubmit="return confirm('Оформить возврат? Пары вернутся на склад, продажа отменится.')">
+              @csrf
+              <button class="btn btn-sm btn-outline-info">Оформить возврат</button>
+            </form>
+          </div>
+        @endif
+
+        {{-- Коды маркировки (Честный знак) --}}
+        <hr class="my-2">
+        <div class="fw-semibold small mb-1">Коды маркировки («Честный знак»)</div>
+        <form method="POST" action="{{ route('deals.marks.add', $deal) }}">
+          @csrf
+          <textarea name="codes" class="form-control form-control-sm font-monospace" rows="2" placeholder="Отсканируйте или вставьте коды — по одному в строке"></textarea>
+          <button type="submit" class="btn btn-sm btn-outline-secondary mt-1">Добавить коды</button>
+        </form>
+        @php
+            $dealMarks = \App\Models\StockMark::where('account_id', $deal->account_id)->where('deal_id', $deal->id)->get();
+        @endphp
+        @if($dealMarks->count() > 0)
+          <div class="small text-muted mt-2">Привязано кодов: <b>{{ $dealMarks->count() }}</b></div>
+          <ul class="small mb-0" style="list-style:none;padding:0;">
+            @foreach($dealMarks as $mk)
+              <li class="d-flex justify-content-between align-items-center py-1" style="border-bottom:1px dashed var(--crm-border);">
+                <code style="font-size:.7rem;">{{ \Illuminate\Support\Str::limit($mk->code, 44) }}</code>
+                <span class="badge text-bg-{{ $mk->status === 'sold' ? 'success' : ($mk->status === 'returned' ? 'info' : 'secondary') }}">{{ $mk->status }}</span>
+              </li>
+            @endforeach
+          </ul>
         @endif
       </div>
     </div>

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\StockMark;
 use App\Models\StockMovement;
 use App\Models\WarehouseItem;
 use App\Models\WarehouseProduct;
@@ -253,6 +254,132 @@ class WarehouseController extends Controller
             'display_name' => $product->display_name,
         ]);
     }
+
+    // ==================== ПРИЁМКА (ТСД / сканер) ====================
+
+    /** Страница приёмки со сканером-input. */
+    public function receivingForm(Request $request)
+    {
+        $user = Auth::user();
+        $recent = StockMovement::with('item:id,brand,model,size')
+            ->where('account_id', $user->account_id)
+            ->whereIn('type', ['in', 'replenish'])
+            ->orderByDesc('id')->limit(15)->get();
+        $lastCode = $request->session()->get('receive_last', '');
+        $lastResult = $request->session()->get('receive_result', '');
+
+        return view('warehouse.receiving', compact('recent', 'lastCode', 'lastResult'));
+    }
+
+    /** Приём кода со сканера: находим товар по артикулу (K-XXXXX), +qty в остаток; либо принимаем как код маркировки. */
+    public function receivingScan(Request $request, WarehouseService $warehouse)
+    {
+        $user = Auth::user();
+        $data = $request->validate([
+            'code' => ['required', 'string', 'max:512'],
+            'quantity' => ['nullable', 'integer', 'min:1', 'max:1000'],
+            'mode' => ['nullable', 'in:article,mark'],
+        ]);
+        $code = trim($data['code']);
+        $qty = (int) ($data['quantity'] ?? 1);
+        $mode = $data['mode'] ?? 'article';
+        $result = '';
+
+        if ($mode === 'mark') {
+            // Приём кода маркировки — привязываем к последней добавленной позиции (или показываем ошибку)
+            $lastItemId = $request->session()->get('receive_target_item_id');
+            if (! $lastItemId) {
+                $result = 'MARK_NO_TARGET';
+            } else {
+                $item = WarehouseItem::where('account_id', $user->account_id)->find($lastItemId);
+                if (! $item) {
+                    $result = 'MARK_NO_TARGET';
+                } else {
+                    $exists = StockMark::where('account_id', $user->account_id)->where('code', $code)->exists();
+                    if ($exists) {
+                        $result = 'MARK_DUP';
+                    } else {
+                        StockMark::create([
+                            'account_id' => $user->account_id,
+                            'warehouse_item_id' => $item->id,
+                            'code' => $code,
+                            'status' => 'in_stock',
+                        ]);
+                        $result = 'MARK_OK:'.$item->display_name;
+                    }
+                }
+            }
+        } else {
+            // Поиск по артикулу — если формат K-XXXXX, ищем продукт и берём первую позицию.
+            $product = WarehouseProduct::where('account_id', $user->account_id)->where('article', $code)->first();
+            if (! $product) {
+                // Может это сам штрих-код товара как есть — пробуем по customName / brand model
+                $result = 'NOT_FOUND';
+            } else {
+                $items = WarehouseItem::where('account_id', $user->account_id)
+                    ->where('brand', $product->brand)->where('model', $product->model)
+                    ->orderBy('size')->get();
+                if ($items->isEmpty()) {
+                    $result = 'NO_SIZES:'.$product->display_name;
+                } else {
+                    // Приход в первую позицию (обычно у товара один размер, либо оператор потом уточнит).
+                    $item = $items->first();
+                    $warehouse->replenish($item, $qty, 'Приёмка ТСД ('.date('Y-m-d H:i').')');
+                    $request->session()->put('receive_target_item_id', $item->id);
+                    $result = 'RECEIVED:'.$product->display_name.' · р. '.$item->size.' × +'.$qty;
+                }
+            }
+        }
+
+        $request->session()->flash('receive_last', $code);
+        $request->session()->flash('receive_result', $result);
+
+        return back();
+    }
+
+    // ==================== КОДЫ МАРКИРОВКИ («Честный знак») ====================
+
+    /** Добавить коды маркировки к позиции склада (по одному коду в строке). */
+    public function addItemMarks(Request $request, WarehouseItem $item)
+    {
+        $user = Auth::user();
+        abort_unless($item->account_id === $user->account_id, 403);
+
+        $data = $request->validate([
+            'codes' => ['required', 'string', 'max:100000'],
+        ]);
+        $codes = array_values(array_filter(array_map('trim', preg_split('/\r?\n/', $data['codes']))));
+        $added = 0;
+        $dup = 0;
+        foreach ($codes as $code) {
+            if ($code === '') {
+                continue;
+            }
+            if (StockMark::where('account_id', $user->account_id)->where('code', $code)->exists()) {
+                $dup++;
+                continue;
+            }
+            StockMark::create([
+                'account_id' => $user->account_id,
+                'warehouse_item_id' => $item->id,
+                'code' => $code,
+                'status' => 'in_stock',
+            ]);
+            $added++;
+        }
+        return back()->with('status', "Добавлено кодов: {$added}, дубликатов пропущено: {$dup}.");
+    }
+
+    /** Удалить один код маркировки. */
+    public function deleteMark(StockMark $mark)
+    {
+        $user = Auth::user();
+        abort_unless($mark->account_id === $user->account_id, 403);
+        $mark->delete();
+        return back()->with('status', 'Код удалён.');
+    }
+
+    // ==================== МАССОВЫЙ ИМПОРТ ====================
 
     /** Массовый импорт: показать форму. */
     public function importForm()

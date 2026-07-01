@@ -79,6 +79,8 @@ Route::middleware('auth')->group(function () {
         Route::post('/deals/{deal}/close', [DealController::class, 'close'])->name('deals.close');
         Route::post('/deals/{deal}/sale-item', [DealController::class, 'setSaleItem'])->name('deals.sale-item');
         Route::post('/deals/{deal}/return', [DealController::class, 'returnSale'])->name('deals.return');
+        Route::post('/deals/{deal}/marks', [DealController::class, 'addDealMarks'])->name('deals.marks.add');
+        Route::get('/deals/{deal}/receipt', [DealController::class, 'receipt'])->name('deals.receipt');
         Route::post('/deals/{deal}/voice-note', [DealController::class, 'storeVoiceNote'])->name('deals.voice-note.store');
         Route::post('/deals/broadcast-today', [DealController::class, 'broadcastToday'])->name('deals.broadcast-today');
         Route::middleware('admin.only')->group(function () {
@@ -137,6 +139,12 @@ Route::middleware('auth')->group(function () {
         Route::get('/warehouse/products/{product}/label', [WarehouseController::class, 'label'])->name('warehouse.product.label');
         Route::get('/warehouse/import', [WarehouseController::class, 'importForm'])->name('warehouse.import.form');
         Route::post('/warehouse/import', [WarehouseController::class, 'importRun'])->name('warehouse.import.run');
+        // Приёмка со сканером (ТСД)
+        Route::get('/warehouse/receiving', [WarehouseController::class, 'receivingForm'])->name('warehouse.receiving');
+        Route::post('/warehouse/receiving', [WarehouseController::class, 'receivingScan'])->name('warehouse.receiving.scan');
+        // Коды маркировки (Честный знак)
+        Route::post('/warehouse/items/{item}/marks', [WarehouseController::class, 'addItemMarks'])->name('warehouse.item.marks.add');
+        Route::delete('/warehouse/marks/{mark}', [WarehouseController::class, 'deleteMark'])->name('warehouse.mark.delete');
 
         // Отчёт по кроссовкам (продажи/прибыль/склад)
         Route::get('/sneaker/report', [SneakerReportController::class, 'index'])->name('sneaker.report');
