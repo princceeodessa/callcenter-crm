@@ -12,7 +12,11 @@ class WarehouseProduct extends Model
 
     protected $fillable = [
         'account_id', 'brand', 'model', 'article', 'custom_name', 'image_path',
-        'category', 'gender', 'season',
+        'category', 'gender', 'season', 'tags',
+    ];
+
+    protected $casts = [
+        'tags' => 'array',
     ];
 
     protected static function bootWarehouseProduct(): void

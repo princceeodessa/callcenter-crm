@@ -144,6 +144,8 @@ Route::middleware('auth')->group(function () {
         // Приёмка со сканером (ТСД)
         Route::get('/warehouse/receiving', [WarehouseController::class, 'receivingForm'])->name('warehouse.receiving');
         Route::get('/warehouse/analytics', [WarehouseAnalyticsController::class, 'index'])->name('warehouse.analytics');
+        Route::get('/warehouse/reorder', [WarehouseController::class, 'reorderSuggestions'])->name('warehouse.reorder');
+        Route::post('/warehouse/bulk', [WarehouseController::class, 'bulkAction'])->name('warehouse.bulk');
         Route::get('/help', [HelpController::class, 'index'])->name('help.index');
         Route::get('/help/download', [HelpController::class, 'download'])->name('help.download');
         Route::post('/warehouse/receiving', [WarehouseController::class, 'receivingScan'])->name('warehouse.receiving.scan');

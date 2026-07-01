@@ -179,6 +179,50 @@
     </table></div>
 </div>
 
+{{-- === Прогноз выручки на следующий месяц === --}}
+<div class="an-card" style="background:linear-gradient(135deg, rgba(99,102,241,.08), rgba(139,92,246,.05));">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <div>
+            <h6 class="mb-1">🔮 Прогноз выручки на следующий месяц</h6>
+            <div class="text-muted small">по средним темпам последних 3 месяцев + сезонный коэффициент</div>
+        </div>
+        <div style="text-align:right">
+            <div style="font-size:2.4rem;font-weight:800;line-height:1;letter-spacing:-.02em">{{ $money($forecastNextMonth) }} ₽</div>
+            <div class="small text-muted">коэф. сезонности: ×{{ number_format($seasCoef, 2, '.', '') }} · тренд: {{ $money($trendAvg) }} ₽/мес</div>
+        </div>
+    </div>
+</div>
+
+{{-- === Heatmap: день недели × час === --}}
+<div class="an-card">
+    <h6>🔥 Тепловая карта продаж <span class="text-muted small fw-normal">(день недели × час)</span></h6>
+    <div style="overflow-x:auto">
+        <table style="border-collapse:separate;border-spacing:2px;min-width:520px;">
+            <thead><tr><th></th>
+                @for($h = 0; $h < 24; $h++)
+                    <th style="font-size:.62rem;color:var(--crm-muted);font-weight:600;text-align:center;width:22px;">{{ $h }}</th>
+                @endfor
+            </tr></thead>
+            <tbody>
+                @foreach($dayNames as $d => $dn)
+                    <tr>
+                        <td style="font-size:.72rem;color:var(--crm-muted);padding-right:.4rem;text-align:right;font-weight:600;">{{ $dn }}</td>
+                        @for($h = 0; $h < 24; $h++)
+                            @php
+                                $v = $heatmap[$d][$h];
+                                $opacity = $heatmapMax > 0 ? min(1, $v / $heatmapMax) : 0;
+                                $bg = $v > 0 ? "rgba(99,102,241, " . number_format(max(0.1, $opacity), 2, '.', '') . ")" : 'rgba(148,163,184,.08)';
+                            @endphp
+                            <td style="width:22px;height:22px;background:{{ $bg }};border-radius:3px;text-align:center;font-size:.6rem;color:{{ $opacity > 0.5 ? '#fff' : 'var(--crm-muted)' }};" title="{{ $dn }} {{ $h }}:00 — {{ $v }} прод.">{{ $v > 0 ? $v : '' }}</td>
+                        @endfor
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+    </div>
+    <div class="small text-muted mt-2">Наведите на клетку — увидите точное количество. Чем ярче — тем больше продаж в этот час/день.</div>
+</div>
+
 {{-- === Разбивка по категории/полу/сезону === --}}
 <div class="an-card">
     <h6>🧩 Структура склада и продаж</h6>

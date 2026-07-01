@@ -234,13 +234,51 @@ class WarehouseAnalyticsController extends Controller
             }
         }
 
+        // --- Прогноз выручки на следующий месяц ---
+        // Простая модель: среднее последних 3 мес, скорректированное на сезонный коэффициент.
+        // Сезонный коэффициент = (продажи этого месяца в среднем за 3 прошлых года) / (среднее месячных продаж за все годы).
+        $recentRev = collect($seasonality->slice(-3)->pluck('revenue'))->filter()->values();
+        $trendAvg = $recentRev->avg() ?: 0.0;
+        $nextMonth = $now->copy()->addMonthNoOverflow();
+        $seasonalRevenue = collect(
+            Deal::where('account_id', $accId)
+                ->whereNotNull('stock_deducted_at')
+                ->whereRaw('MONTH(stock_deducted_at) = ?', [$nextMonth->month])
+                ->get(['amount'])
+        )->sum('amount');
+        $averageMonthlyRevenue = (float) collect($seasonality)->avg('revenue') ?: 1.0;
+        $seasCoef = $averageMonthlyRevenue > 0
+            ? max(0.5, min(2.0, ($seasonalRevenue ?: $averageMonthlyRevenue) / max(1, $averageMonthlyRevenue)))
+            : 1.0;
+        $forecastNextMonth = round($trendAvg * $seasCoef);
+
+        // --- Heatmap: день недели × час ---
+        $heatmap = [];
+        for ($d = 0; $d < 7; $d++) {
+            for ($h = 0; $h < 24; $h++) {
+                $heatmap[$d][$h] = 0;
+            }
+        }
+        foreach ($sold as $d) {
+            if (! $d->stock_deducted_at) continue;
+            $dow = (int) $d->stock_deducted_at->dayOfWeek;   // 0=вс..6=сб (Carbon дефолт)
+            $dow = ($dow + 6) % 7;                            // 0=пн..6=вс
+            $h = (int) $d->stock_deducted_at->hour;
+            $heatmap[$dow][$h]++;
+        }
+        $heatmapMax = 0;
+        for ($d = 0; $d < 7; $d++) for ($h = 0; $h < 24; $h++) if ($heatmap[$d][$h] > $heatmapMax) $heatmapMax = $heatmap[$d][$h];
+        $dayNames = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+
         return view('warehouse.analytics', compact(
             'seasonality', 'seasMax', 'topBrandsForLegend',
             'flow', 'flowMax',
             'abc', 'totalProfit',
             'fastMovers', 'slowMovers', 'endingSoon',
             'sizesData', 'sizeMax',
-            'brandStock', 'taxonomy'
+            'brandStock', 'taxonomy',
+            'trendAvg', 'forecastNextMonth', 'seasCoef',
+            'heatmap', 'heatmapMax', 'dayNames'
         ));
     }
 }

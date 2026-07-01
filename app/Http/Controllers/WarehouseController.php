@@ -48,6 +48,13 @@ class WarehouseController extends Controller
         $filterCategory = trim((string) $request->query('cat'));
         $filterGender = trim((string) $request->query('sex'));
         $filterSeason = trim((string) $request->query('sea'));
+        $filterTag = trim((string) $request->query('tag'));
+        // Все уникальные теги для фильтра
+        $allTags = collect();
+        WarehouseProduct::where('account_id', $user->account_id)->whereNotNull('tags')->pluck('tags')->each(function ($tags) use ($allTags) {
+            if (is_array($tags)) foreach ($tags as $t) $allTags->push($t);
+        });
+        $allTags = $allTags->unique()->sort()->values();
 
         // Группируем размеры под одним товаром (бренд + модель).
         // Заодно подмешиваем warehouse_products (кастомное имя, фото).
@@ -78,6 +85,7 @@ class WarehouseController extends Controller
                     'category' => $product->category,
                     'gender' => $product->gender,
                     'season' => $product->season,
+                    'tags' => is_array($product->tags) ? $product->tags : [],
                     'brand' => $brand,
                     'model' => $model,
                     'sizes' => $group->sortBy('size', SORT_NATURAL)->values(),
@@ -91,11 +99,12 @@ class WarehouseController extends Controller
             ->sortBy('name')
             ->values();
 
-        if ($filterCategory !== '' || $filterGender !== '' || $filterSeason !== '') {
-            $products = $products->filter(function ($p) use ($filterCategory, $filterGender, $filterSeason) {
+        if ($filterCategory !== '' || $filterGender !== '' || $filterSeason !== '' || $filterTag !== '') {
+            $products = $products->filter(function ($p) use ($filterCategory, $filterGender, $filterSeason, $filterTag) {
                 if ($filterCategory !== '' && (string) $p['category'] !== $filterCategory) return false;
                 if ($filterGender !== '' && (string) $p['gender'] !== $filterGender) return false;
                 if ($filterSeason !== '' && (string) $p['season'] !== $filterSeason) return false;
+                if ($filterTag !== '' && ! in_array($filterTag, $p['tags'] ?? [], true)) return false;
                 return true;
             })->values();
         }
@@ -103,7 +112,7 @@ class WarehouseController extends Controller
         return view('warehouse.index', compact(
             'products', 'movements', 'q', 'totalUnits', 'stockValue', 'isHead',
             'categoryOptions', 'genderOptions', 'seasonOptions',
-            'filterCategory', 'filterGender', 'filterSeason'
+            'filterCategory', 'filterGender', 'filterSeason', 'filterTag', 'allTags'
         ));
     }
 
@@ -414,6 +423,115 @@ class WarehouseController extends Controller
     }
 
     // ==================== МАССОВЫЙ ИМПОРТ ====================
+
+    // ==================== BULK-ДЕЙСТВИЯ + ТЕГИ ====================
+
+    /** Массовое действие над выбранными товарами. */
+    public function bulkAction(Request $request)
+    {
+        $user = Auth::user();
+        $data = $request->validate([
+            'product_ids' => ['required', 'array', 'min:1'],
+            'product_ids.*' => ['integer'],
+            'action' => ['required', 'in:category,gender,season,tag_add,tag_remove'],
+            'value' => ['nullable', 'string', 'max:64'],
+        ]);
+        $ids = array_map('intval', $data['product_ids']);
+        $products = WarehouseProduct::where('account_id', $user->account_id)->whereIn('id', $ids)->get();
+        $count = 0;
+        foreach ($products as $p) {
+            switch ($data['action']) {
+                case 'category':
+                    if (in_array($data['value'], ['sport', 'casual', 'premium', 'winter', 'kids', ''], true)) {
+                        $p->category = $data['value'] === '' ? null : $data['value'];
+                    }
+                    break;
+                case 'gender':
+                    if (in_array($data['value'], ['male', 'female', 'unisex', 'kids', ''], true)) {
+                        $p->gender = $data['value'] === '' ? null : $data['value'];
+                    }
+                    break;
+                case 'season':
+                    if (in_array($data['value'], ['summer', 'winter', 'demi', ''], true)) {
+                        $p->season = $data['value'] === '' ? null : $data['value'];
+                    }
+                    break;
+                case 'tag_add':
+                    $tag = trim((string) $data['value']);
+                    if ($tag !== '') {
+                        $tags = is_array($p->tags) ? $p->tags : [];
+                        if (! in_array($tag, $tags, true)) {
+                            $tags[] = $tag;
+                            $p->tags = $tags;
+                        }
+                    }
+                    break;
+                case 'tag_remove':
+                    $tag = trim((string) $data['value']);
+                    if ($tag !== '' && is_array($p->tags)) {
+                        $p->tags = array_values(array_filter($p->tags, fn ($t) => $t !== $tag));
+                    }
+                    break;
+            }
+            $p->save();
+            $count++;
+        }
+
+        return back()->with('status', "Обновлено товаров: {$count}");
+    }
+
+    // ==================== УМНЫЕ ПОДСКАЗКИ ЗАКУПОК ====================
+
+    public function reorderSuggestions(Request $request)
+    {
+        $user = Auth::user();
+        $accId = $user->account_id;
+        $days = (int) $request->query('days', 30); // горизонт прогноза
+        if (! in_array($days, [7, 14, 30, 60, 90], true)) $days = 30;
+
+        // Продажи за 90 дней по модели+размеру
+        $windowStart = now()->subDays(90);
+        $soldRows = \App\Models\Deal::where('account_id', $accId)
+            ->whereNotNull('stock_deducted_at')->where('stock_deducted_at', '>=', $windowStart)
+            ->with('warehouseItem:id,brand,model,size')->get();
+        $soldBySku = [];
+        foreach ($soldRows as $d) {
+            $wi = $d->warehouseItem;
+            if (! $wi) continue;
+            $sku = $wi->id;
+            $soldBySku[$sku] = ($soldBySku[$sku] ?? 0) + (int) $d->sold_quantity;
+        }
+
+        $items = WarehouseItem::where('account_id', $accId)->get();
+        $suggestions = [];
+        foreach ($items as $i) {
+            $sold90 = (int) ($soldBySku[$i->id] ?? 0);
+            $perDay = $sold90 / 90;
+            if ($perDay <= 0) continue;
+            $available = (int) $i->available;
+            $forecastNeed = (int) ceil($perDay * $days);
+            $safetyBuffer = max(1, (int) round($perDay * 7)); // недельный запас
+            $suggested = max(0, $forecastNeed + $safetyBuffer - $available);
+            if ($suggested <= 0) continue;
+            $daysLeft = $perDay > 0 ? (int) floor($available / $perDay) : null;
+            $priority = $daysLeft !== null && $daysLeft < 7 ? 'high' : ($daysLeft !== null && $daysLeft < 21 ? 'mid' : 'low');
+            $suggestions[] = [
+                'name' => $i->display_name,
+                'available' => $available,
+                'sold_90d' => $sold90,
+                'per_day' => $perDay,
+                'days_left' => $daysLeft,
+                'suggested' => $suggested,
+                'priority' => $priority,
+                'brand' => $i->brand,
+                'model' => $i->model,
+                'size' => $i->size,
+            ];
+        }
+        usort($suggestions, fn ($a, $b) => ($a['days_left'] ?? 999) <=> ($b['days_left'] ?? 999));
+
+        return view('warehouse.reorder', compact('suggestions', 'days'));
+    }
 
     /** Массовый импорт: показать форму. */
     public function importForm()

@@ -392,6 +392,7 @@
         <a class="filter-chip" href="{{ route('warehouse.export', $exportParams) }}">Экспорт CSV</a>
         <a class="filter-chip" href="{{ route('warehouse.import.form') }}">Импорт пачкой</a>
         <a class="filter-chip" href="{{ route('warehouse.analytics') }}">📊 Аналитика</a>
+        <a class="filter-chip" href="{{ route('warehouse.reorder') }}">🧠 Что заказать</a>
     </form>
 
     <div class="d-flex flex-wrap gap-1 mb-3 align-items-center">
@@ -408,6 +409,17 @@
             <a class="filter-chip {{ $filterSeason === $key ? 'active' : '' }}" href="{{ route('warehouse.index', $chipParams('sea', $filterSeason === $key ? null : $key)) }}">{{ $label }}</a>
         @endforeach
     </div>
+    @if($allTags->count() > 0)
+        <div class="d-flex flex-wrap gap-1 mb-3 align-items-center">
+            <span class="small text-muted me-2">Теги:</span>
+            @foreach($allTags as $t)
+                <a class="filter-chip {{ $filterTag === $t ? 'active' : '' }}" href="{{ route('warehouse.index', array_filter(array_merge($baseFilterParams, ['cat' => $filterCategory ?: null, 'sex' => $filterGender ?: null, 'sea' => $filterSeason ?: null, 'tag' => $filterTag === $t ? null : $t]))) }}">#{{ $t }}</a>
+            @endforeach
+        </div>
+    @endif
+
+    <form method="POST" action="{{ route('warehouse.bulk') }}" id="bulk-form" style="display:contents;">
+        @csrf
 
     {{-- PRODUCTS --}}
     @if($isEmpty)
@@ -425,7 +437,10 @@
                     $hasDanger = $prod['sizes']->contains(fn ($i) => (int) $i->available <= 0);
                     $prodClass = $prod['low'] ? ($hasDanger ? 'is-danger' : 'is-low') : '';
                 @endphp
-                <article class="prod {{ $prodClass }}">
+                <article class="prod {{ $prodClass }}" style="position:relative">
+                    <label style="position:absolute;top:.6rem;right:.6rem;z-index:2;background:var(--crm-surface-strong);border-radius:.4rem;padding:.15rem .35rem;cursor:pointer;">
+                        <input type="checkbox" name="product_ids[]" value="{{ $prod['entity']->id }}" class="bulk-check" form="bulk-form">
+                    </label>
                     <div class="prod-head">
                         <label class="brand-avatar" style="background:{{ empty($prod['image_url']) ? $brandColor($prod['brand']) : 'transparent' }}" title="Нажмите чтобы {{ empty($prod['image_url']) ? 'загрузить' : 'заменить' }} фото">
                             @if(!empty($prod['image_url']))
@@ -517,6 +532,14 @@
                     </div>
                     <div style="height:.5rem"></div>
 
+                    @if(!empty($prod['tags']))
+                        <div class="d-flex flex-wrap gap-1 mt-1">
+                            @foreach($prod['tags'] as $t)
+                                <span class="badge text-bg-secondary" style="font-weight:500;font-size:.68rem;">#{{ $t }}</span>
+                            @endforeach
+                        </div>
+                    @endif
+
                     <div class="prod-summary">
                         <div><span class="k">Пар</span><span class="v">{{ $prod['total'] }}</span></div>
                         <div><span class="k">Доступно</span><span class="v">{{ $prod['available'] }}</span></div>
@@ -602,6 +625,76 @@
             @endforeach
         </div>
     @endif
+
+    </form>{{-- закрыли bulk-form --}}
+
+    {{-- Плавающая панель массовых действий (появляется при выборе) --}}
+    <div id="bulk-panel" style="display:none;position:fixed;left:50%;bottom:1.5rem;transform:translateX(-50%);z-index:25;
+         background:var(--crm-surface-strong);border:1px solid var(--crm-border);border-radius:1rem;
+         box-shadow:0 20px 45px rgba(15,23,42,.2);padding:.7rem 1rem;">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <span class="fw-semibold">Выбрано: <span id="bulk-count">0</span></span>
+            <select class="form-select form-select-sm" id="bulk-action" style="width:auto">
+                <option value="">— действие —</option>
+                <optgroup label="Категория">
+                    @foreach($categoryOptions as $k => $l)
+                        <option value="category:{{ $k }}">Задать: {{ $l }}</option>
+                    @endforeach
+                    <option value="category:">Снять категорию</option>
+                </optgroup>
+                <optgroup label="Пол">
+                    @foreach($genderOptions as $k => $l)
+                        <option value="gender:{{ $k }}">Задать: {{ $l }}</option>
+                    @endforeach
+                    <option value="gender:">Снять пол</option>
+                </optgroup>
+                <optgroup label="Сезон">
+                    @foreach($seasonOptions as $k => $l)
+                        <option value="season:{{ $k }}">Задать: {{ $l }}</option>
+                    @endforeach
+                    <option value="season:">Снять сезон</option>
+                </optgroup>
+                <option value="tag_add:">➕ Добавить тег…</option>
+                <option value="tag_remove:">➖ Убрать тег…</option>
+            </select>
+            <button type="button" class="btn btn-primary btn-sm" id="bulk-apply">Применить</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="bulk-clear">×</button>
+        </div>
+    </div>
+    <script>
+        (() => {
+            const form = document.getElementById('bulk-form');
+            const panel = document.getElementById('bulk-panel');
+            const countEl = document.getElementById('bulk-count');
+            const actionSel = document.getElementById('bulk-action');
+            const applyBtn = document.getElementById('bulk-apply');
+            const clearBtn = document.getElementById('bulk-clear');
+            const update = () => {
+                const n = document.querySelectorAll('.bulk-check:checked').length;
+                countEl.textContent = n;
+                panel.style.display = n > 0 ? 'block' : 'none';
+            };
+            document.querySelectorAll('.bulk-check').forEach(c => c.addEventListener('change', update));
+            applyBtn.addEventListener('click', () => {
+                const [action, value] = actionSel.value.split(':');
+                if (!action) return alert('Выберите действие');
+                let realValue = value ?? '';
+                if (action === 'tag_add' || action === 'tag_remove') {
+                    realValue = prompt(action === 'tag_add' ? 'Название тега для добавления' : 'Название тега для удаления', '');
+                    if (realValue === null || realValue.trim() === '') return;
+                }
+                // Добавляем hidden поля action и value в форму, сабмитим
+                let a = document.createElement('input'); a.type = 'hidden'; a.name = 'action'; a.value = action;
+                let v = document.createElement('input'); v.type = 'hidden'; v.name = 'value'; v.value = realValue;
+                form.appendChild(a); form.appendChild(v);
+                form.submit();
+            });
+            clearBtn.addEventListener('click', () => {
+                document.querySelectorAll('.bulk-check:checked').forEach(c => c.checked = false);
+                update();
+            });
+        })();
+    </script>
 
     {{-- FAB + panel --}}
     <details class="wh-details">
