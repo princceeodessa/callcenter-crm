@@ -235,6 +235,9 @@
         }
         $exportParams = array_filter(['q' => $q ?: null, 'low' => $lowFilter ? '1' : null]);
         $lowToggleParams = array_filter(['q' => $q ?: null, 'low' => $lowFilter ? null : '1']);
+        $isEmpty = $productsView->isEmpty();
+        $hasMovements = $movements->isNotEmpty();
+        $lowCount = $products->filter(fn ($p) => $p['low'])->count();
 
         $moveLabels = [
             'in' => 'Приход', 'in_adjust' => 'Корректировка прихода',
@@ -285,7 +288,6 @@
         @if($q !== '' || $lowFilter)
             <a class="filter-chip" href="{{ route('warehouse.index') }}">Сброс</a>
         @endif
-        @php($lowCount = $products->filter(fn ($p) => $p['low'])->count())
         <a class="filter-chip {{ $lowFilter ? 'active' : '' }}" href="{{ route('warehouse.index', $lowToggleParams) }}">
             Заканчивается
             @if($lowCount > 0)<span class="count">{{ $lowCount }}</span>@endif
@@ -294,7 +296,7 @@
     </form>
 
     {{-- PRODUCTS --}}
-    @if($productsView->isEmpty())
+    @if($isEmpty)
         <div class="alert alert-light border" style="border-radius:var(--wh-radius)">
             @if($q !== '' || $lowFilter)
                 Ничего не нашли по запросу. <a href="{{ route('warehouse.index') }}">Сбросить фильтры</a>.
@@ -435,7 +437,7 @@
     </style>
 
     {{-- MOVEMENTS TIMELINE --}}
-    @if($movements->isNotEmpty())
+    @if($hasMovements)
         <details class="mt-4 wh-details">
             <summary class="moves-title">📜 Последние движения · {{ $movements->count() }}</summary>
             <div class="moves-timeline">
