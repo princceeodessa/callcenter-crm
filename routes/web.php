@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DealController;
 use App\Http\Controllers\PurchaseController;
+use App\Http\Controllers\HelpController;
 use App\Http\Controllers\WarehouseAnalyticsController;
 use App\Http\Controllers\WarehouseController;
 use App\Http\Controllers\SneakerReportController;
@@ -143,6 +144,8 @@ Route::middleware('auth')->group(function () {
         // Приёмка со сканером (ТСД)
         Route::get('/warehouse/receiving', [WarehouseController::class, 'receivingForm'])->name('warehouse.receiving');
         Route::get('/warehouse/analytics', [WarehouseAnalyticsController::class, 'index'])->name('warehouse.analytics');
+        Route::get('/help', [HelpController::class, 'index'])->name('help.index');
+        Route::get('/help/download', [HelpController::class, 'download'])->name('help.download');
         Route::post('/warehouse/receiving', [WarehouseController::class, 'receivingScan'])->name('warehouse.receiving.scan');
         // Коды маркировки (Честный знак)
         Route::post('/warehouse/items/{item}/marks', [WarehouseController::class, 'addItemMarks'])->name('warehouse.item.marks.add');

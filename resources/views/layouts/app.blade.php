@@ -301,6 +301,7 @@
                         @if($lowStock > 0)<span class="position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-danger" title="Заканчивается позиций: {{ $lowStock }}">{{ $lowStock }}</span>@endif
                     </a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('warehouse.receiving') }}">Приёмка</a>
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('help.index') }}" title="Инструкция">📖 Помощь</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('deals.kanban') }}">Продажи</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('deals.index') }}">Список</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('tasks.index') }}">Дела</a>
