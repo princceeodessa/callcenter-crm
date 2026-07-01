@@ -99,8 +99,13 @@
                 <div>
                     <div class="pname">{{ $prod['name'] }} <span class="text-muted small fw-normal">· {{ $prod['sizes']->count() }} разм.</span></div>
                     <div class="pmeta">
-                        пар <b>{{ $prod['total'] }}</b> · доступно <b>{{ $prod['available'] }}</b>@if($prod['reserved'] > 0) · резерв {{ $prod['reserved'] }}@endif@if($prod['value'] > 0) · <b>{{ $money($prod['value']) }} ₽</b>@endif
-                        @if($prod['low']) <span class="badge text-bg-warning ms-1">заканчивается</span>@endif
+                        пар <b>{{ $prod['total'] }}</b> · доступно <b>{{ $prod['available'] }}</b>{{ $prod['reserved'] > 0 ? ' · резерв '.$prod['reserved'] : '' }}
+                        @if($prod['value'] > 0)
+                            · <b>{{ $money($prod['value']) }} ₽</b>
+                        @endif
+                        @if($prod['low'])
+                            <span class="badge text-bg-warning ms-1">заканчивается</span>
+                        @endif
                     </div>
                 </div>
             </div>
