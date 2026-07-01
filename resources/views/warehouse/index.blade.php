@@ -1,7 +1,6 @@
 @extends('layouts.app')
 
-@push('styles')
-@verbatim
+@section('content')
 <style>
     :root {
         --wh-radius: 1.2rem;
@@ -146,7 +145,6 @@
         border-radius:.8rem; box-shadow:var(--wh-shadow-md);
         animation:pop .12s ease-out;
     }
-    @keyframes pop{ from{ opacity:0; transform:translateY(-4px); } to{ opacity:1; transform:translateY(0); } }
     .pill-popover .qmini{
         display:flex; align-items:center; justify-content:space-between; gap:.5rem;
         margin-bottom:.5rem; padding-bottom:.5rem;
@@ -189,7 +187,7 @@
         width:min(420px, calc(100vw - 3rem));
         background:var(--crm-surface-strong); border:1px solid var(--crm-border);
         border-radius:var(--wh-radius); box-shadow:var(--wh-shadow-lg);
-        padding:1rem; animation:pop .15s ease-out;
+        padding:1rem;
     }
     .new-product-panel h6{ margin:0 0 .5rem; font-size:.9rem; letter-spacing:-.01em; }
 
@@ -211,10 +209,7 @@
     .move .m-delta{ font-weight:800; }
     .move .m-delta.pos{ color:var(--wh-green); } .move .m-delta.neg{ color:var(--wh-red); }
 </style>
-@endverbatim
-@endpush
 
-@section('content')
     @php
         $money = fn ($v) => number_format((float) $v, 0, ',', ' ');
         $state = fn ($i) => (int) $i->available <= 0 ? 'danger' : ($i->is_low ? 'warning' : 'success');
@@ -428,13 +423,11 @@
             </form>
         </div>
     </details>
-    @verbatim
     <style>
         .wh-details > summary::-webkit-details-marker{ display:none; }
         .wh-details > summary{ list-style:none; }
         .wh-details:not([open]) .new-product-panel{ display:none; }
     </style>
-    @endverbatim
 
     {{-- MOVEMENTS TIMELINE --}}
     @if($movements->isNotEmpty())
