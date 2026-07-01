@@ -111,12 +111,13 @@
     /* Inline edit имени */
     .prod-name-wrap{ display:flex; align-items:center; gap:.4rem; }
     .prod-name-edit-btn{
+        flex-shrink:0; align-self:flex-start;
         border:0; background:transparent; color:var(--crm-muted); font-size:.85rem;
-        padding:.1rem .35rem; border-radius:.35rem; line-height:1; cursor:pointer;
-        opacity:0; transition:opacity .12s, background .12s, color .12s;
+        padding:.15rem .4rem; border-radius:.35rem; line-height:1; cursor:pointer;
+        opacity:.55; transition:opacity .12s, background .12s, color .12s;
     }
     .prod:hover .prod-name-edit-btn{ opacity:1; }
-    .prod-name-edit-btn:hover{ background:var(--crm-surface); color:var(--crm-accent); }
+    .prod-name-edit-btn:hover{ background:var(--crm-surface); color:var(--crm-accent); opacity:1; }
     details.name-edit > summary{ list-style:none; }
     details.name-edit > summary::-webkit-details-marker{ display:none; }
     details.name-edit[open] .prod-name{ display:none; }
@@ -131,7 +132,10 @@
     }
     .name-edit-form input:focus{ border-color:var(--crm-accent); }
     .name-edit-form button{ padding:.25rem .55rem; font-size:.78rem; border-radius:.4rem; font-weight:600; }
-    .prod-name{ font-weight:700; font-size:.98rem; line-height:1.15; letter-spacing:-.01em; }
+    .prod-name{
+        font-weight:700; font-size:.98rem; line-height:1.2; letter-spacing:-.01em;
+        white-space:normal; word-break:break-word; overflow-wrap:anywhere;
+    }
     .prod-sub{ font-size:.72rem; color:var(--crm-muted); margin-top:.15rem; }
     .prod-badge{
         margin-left:auto; padding:.15rem .6rem; border-radius:var(--wh-pill);
@@ -380,7 +384,7 @@
                         <div style="min-width:0;flex:1">
                             <details class="name-edit">
                                 <div class="prod-name-wrap">
-                                    <div class="prod-name text-truncate" title="{{ $prod['name'] }}">{{ $prod['name'] }}</div>
+                                    <div class="prod-name" title="{{ $prod['name'] }}">{{ $prod['name'] }}</div>
                                     <summary class="prod-name-edit-btn" title="Изменить название">✎</summary>
                                 </div>
                                 <form method="POST" action="{{ route('warehouse.product.update', $prod['entity']) }}" class="name-edit-form">
