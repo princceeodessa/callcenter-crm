@@ -377,6 +377,7 @@
         </a>
         <a class="filter-chip" href="{{ route('warehouse.export', $exportParams) }}">Экспорт CSV</a>
         <a class="filter-chip" href="{{ route('warehouse.import.form') }}">Импорт пачкой</a>
+        <a class="filter-chip" href="{{ route('warehouse.analytics') }}">📊 Аналитика</a>
     </form>
 
     {{-- PRODUCTS --}}
