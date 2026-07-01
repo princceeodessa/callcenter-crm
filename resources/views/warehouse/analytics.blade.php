@@ -48,13 +48,73 @@
 <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
     <div>
         <h4 class="mb-0 an-title">Аналитика склада</h4>
-        <div class="text-muted small">сезонность · оборачиваемость · ABC · размеры · бренды</div>
+        <div class="text-muted small">KPI · клиенты · финансы · сезонность · оборачиваемость · ABC · размеры · бренды</div>
     </div>
-    <a class="btn btn-sm btn-outline-secondary" href="{{ route('warehouse.index') }}">← К складу</a>
+    <div class="d-flex gap-2">
+        <a class="btn btn-sm btn-outline-success" href="{{ route('warehouse.analytics.export') }}">📥 CSV</a>
+        <button class="btn btn-sm btn-outline-primary" onclick="window.print()">🖨️ Печать</button>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ route('warehouse.index') }}">← К складу</a>
+    </div>
+</div>
+
+{{-- Оглавление --}}
+<div class="an-card mb-3" style="padding:.7rem 1.1rem">
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+        <span class="small text-muted me-2">Разделы:</span>
+        <a href="#kpi" class="filter-chip">📌 KPI месяца</a>
+        <a href="#forecast" class="filter-chip">🔮 Прогноз</a>
+        <a href="#clients" class="filter-chip">👥 Клиенты</a>
+        <a href="#finance" class="filter-chip">💰 Финансы</a>
+        <a href="#seasonality" class="filter-chip">📅 Сезонность</a>
+        <a href="#heatmap" class="filter-chip">🔥 Heatmap</a>
+        <a href="#flow" class="filter-chip">📈 Потоки</a>
+        <a href="#turnover" class="filter-chip">🚀 Оборачиваемость</a>
+        <a href="#abc" class="filter-chip">🎯 ABC</a>
+        <a href="#taxonomy" class="filter-chip">🧩 Структура</a>
+        <a href="#sizes" class="filter-chip">👟 Размеры</a>
+        <a href="#brands" class="filter-chip">🏷️ Бренды</a>
+    </div>
+</div>
+
+{{-- === KPI HERO === --}}
+@php
+    $money = fn ($v) => number_format((float) $v, 0, ',', ' ');
+    $dlt = function ($d) {
+        if ($d === 0) return '<span class="text-muted">±0%</span>';
+        $cls = $d > 0 ? 'text-success' : 'text-danger';
+        $ar = $d > 0 ? '▲' : '▼';
+        return '<span class="'.$cls.'">'.$ar.' '.abs($d).'% к пр. мес.</span>';
+    };
+@endphp
+
+<div id="kpi" class="an-card">
+    <h6>📌 KPI текущего месяца</h6>
+    <div class="kpi-row">
+        <div class="kpi">
+            <div class="l">Выручка</div>
+            <div class="v">{{ $money($cur['revenue']) }} ₽</div>
+            <div class="s">{!! $dlt($delta['revenue']) !!}</div>
+        </div>
+        <div class="kpi">
+            <div class="l">Прибыль · маржа {{ round($cur['margin']) }}%</div>
+            <div class="v {{ $cur['profit'] >= 0 ? 'text-success' : 'text-danger' }}">{{ $money($cur['profit']) }} ₽</div>
+            <div class="s">{!! $dlt($delta['profit']) !!}</div>
+        </div>
+        <div class="kpi">
+            <div class="l">Продано пар</div>
+            <div class="v">{{ $cur['units'] }}</div>
+            <div class="s">сделок {{ $cur['count'] }} · {!! $dlt($delta['units']) !!}</div>
+        </div>
+        <div class="kpi">
+            <div class="l">Средний чек</div>
+            <div class="v">{{ $cur['count'] ? $money($cur['avg']) : '—' }} ₽</div>
+            <div class="s">{!! $dlt($delta['avg']) !!}</div>
+        </div>
+    </div>
 </div>
 
 {{-- === 1. Сезонность продаж === --}}
-<div class="an-card">
+<div id="seasonality" class="an-card">
     <h6>Сезонность продаж — 12 месяцев <span class="text-muted small fw-normal">(столбики по брендам)</span></h6>
     <div class="bars">
         @foreach($seasonality as $m)
@@ -99,7 +159,7 @@
 </div>
 
 {{-- === 2. Закупки vs продажи по месяцам === --}}
-<div class="an-card">
+<div id="flow" class="an-card">
     <h6>Закупки vs продажи <span class="text-muted small fw-normal">(<span class="text-success">закуплено</span> / <span class="text-danger">продано</span>)</span></h6>
     <div class="bars">
         @foreach($flow as $m)
@@ -114,7 +174,7 @@
     </div>
 </div>
 
-<div class="row g-3">
+<div id="turnover" class="row g-3">
     {{-- === 3. Быстро оборачивающиеся === --}}
     <div class="col-lg-6">
         <div class="an-card h-100">
@@ -180,7 +240,7 @@
 </div>
 
 {{-- === Прогноз выручки на следующий месяц === --}}
-<div class="an-card" style="background:linear-gradient(135deg, rgba(99,102,241,.08), rgba(139,92,246,.05));">
+<div id="forecast" class="an-card" style="background:linear-gradient(135deg, rgba(99,102,241,.08), rgba(139,92,246,.05));">
     <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
         <div>
             <h6 class="mb-1">🔮 Прогноз выручки на следующий месяц</h6>
@@ -193,8 +253,70 @@
     </div>
 </div>
 
+{{-- === Клиентская аналитика === --}}
+<div id="clients" class="an-card">
+    <h6>👥 Клиентская аналитика <span class="text-muted small fw-normal">(за 12 месяцев)</span></h6>
+    <div class="kpi-row">
+        <div class="kpi"><div class="l">Всего клиентов</div><div class="v">{{ $totalClients }}</div><div class="s">уникальных</div></div>
+        <div class="kpi"><div class="l">Повторные</div><div class="v">{{ $repeatClients }}</div><div class="s">{{ $totalClients ? round($repeatClients / $totalClients * 100) : 0 }}% retention</div></div>
+        <div class="kpi"><div class="l">Заказов на клиента</div><div class="v">{{ number_format($avgOrdersPerClient, 1, ',', '') }}</div><div class="s">среднее</div></div>
+        <div class="kpi"><div class="l">Средняя выручка/клиент</div><div class="v">{{ $money($avgClientRevenue) }} ₽</div><div class="s">LTV косвенно</div></div>
+    </div>
+    <div class="mt-3">
+        <div class="fw-semibold small mb-2">🏆 Топ покупателей</div>
+        <div class="table-responsive"><table class="table table-sm mb-0 align-middle">
+            <thead><tr><th>#</th><th>Клиент</th><th>Телефон</th><th class="text-end">Заказов</th><th class="text-end">Пар</th><th class="text-end">Выручка</th><th>Последняя покупка</th></tr></thead>
+            <tbody>
+            @forelse($topClients as $i => $c)
+                <tr>
+                    <td class="text-muted small">{{ $i + 1 }}</td>
+                    <td>{{ $c['name'] ?: '—' }} @if($c['orders'] >= 2)<span class="badge text-bg-success" style="font-size:.65rem">повторный</span>@endif</td>
+                    <td class="small">{{ $c['phone'] }}</td>
+                    <td class="text-end">{{ $c['orders'] }}</td>
+                    <td class="text-end">{{ $c['units'] }}</td>
+                    <td class="text-end fw-semibold">{{ $money($c['revenue']) }} ₽</td>
+                    <td class="small text-muted">{{ $c['last_at'] ? $c['last_at']->format('d.m.Y') : '—' }}</td>
+                </tr>
+            @empty
+                <tr><td colspan="7" class="text-muted small text-center py-3">Данных пока нет.</td></tr>
+            @endforelse
+            </tbody>
+        </table></div>
+    </div>
+</div>
+
+{{-- === Финансовые метрики === --}}
+<div id="finance" class="an-card">
+    <h6>💰 Финансовые метрики</h6>
+    <div class="kpi-row">
+        <div class="kpi"><div class="l">Оборотный капитал</div><div class="v">{{ $money($workingCapital) }} ₽</div><div class="s">заморожено в товаре</div></div>
+        <div class="kpi"><div class="l">Средняя наценка</div><div class="v">{{ round($avgMarkup) }}%</div><div class="s">по позициям с ценой</div></div>
+        <div class="kpi"><div class="l">Sell-through</div><div class="v">{{ round($sellThrough) }}%</div><div class="s">продано / (продано + остаток)</div></div>
+        <div class="kpi"><div class="l">Дней оборота склада</div><div class="v">{{ $dio !== null ? $dio.' дн' : '—' }}</div><div class="s">DIO ≈ остаток / средн. продажи</div></div>
+    </div>
+    <div class="mt-3">
+        <div class="fw-semibold small mb-2">Маржа по категориям (за 12 мес)</div>
+        <div class="table-responsive"><table class="table table-sm mb-0 align-middle">
+            <thead><tr><th>Категория</th><th class="text-end">Пар</th><th class="text-end">Выручка</th><th class="text-end">Прибыль</th><th class="text-end">Маржа %</th></tr></thead>
+            <tbody>
+            @forelse($marginByCategory as $c)
+                <tr>
+                    <td>{{ $c['label'] }}</td>
+                    <td class="text-end">{{ $c['units'] }}</td>
+                    <td class="text-end">{{ $money($c['revenue']) }}</td>
+                    <td class="text-end {{ $c['profit'] >= 0 ? 'text-success' : 'text-danger' }}">{{ $money($c['profit']) }}</td>
+                    <td class="text-end fw-semibold">{{ round($c['margin']) }}%</td>
+                </tr>
+            @empty
+                <tr><td colspan="5" class="text-muted small text-center py-3">Продаж по категориям пока нет.</td></tr>
+            @endforelse
+            </tbody>
+        </table></div>
+    </div>
+</div>
+
 {{-- === Heatmap: день недели × час === --}}
-<div class="an-card">
+<div id="heatmap" class="an-card">
     <h6>🔥 Тепловая карта продаж <span class="text-muted small fw-normal">(день недели × час)</span></h6>
     <div style="overflow-x:auto">
         <table style="border-collapse:separate;border-spacing:2px;min-width:520px;">
@@ -224,7 +346,7 @@
 </div>
 
 {{-- === Разбивка по категории/полу/сезону === --}}
-<div class="an-card">
+<div id="taxonomy" class="an-card">
     <h6>🧩 Структура склада и продаж</h6>
     <div class="row g-3">
         @foreach(['category' => 'Категории', 'gender' => 'Пол', 'season' => 'Сезон'] as $tax => $title)
@@ -255,7 +377,7 @@
 </div>
 
 {{-- === 6. ABC-анализ === --}}
-<div class="an-card">
+<div id="abc" class="an-card">
     <h6>🎯 ABC-анализ моделей по прибыли за 12 месяцев <span class="text-muted small fw-normal">(A — 80% прибыли, B — ещё 15%, C — хвост)</span></h6>
     <div class="row g-3">
         @foreach(['A','B','C'] as $klass)
@@ -299,7 +421,7 @@
     </div>
 
     {{-- === 8. Топ брендов === --}}
-    <div class="col-lg-6">
+    <div class="col-lg-6" id="brands">
         <div class="an-card h-100">
             <h6>🏷️ Топ брендов на складе</h6>
             <div class="table-responsive"><table class="table table-sm mb-0 align-middle">

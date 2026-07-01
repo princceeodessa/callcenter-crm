@@ -11,6 +11,7 @@ use App\Support\Warehouse\ProductClassifier;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class WarehouseAnalyticsController extends Controller
 {
@@ -25,7 +26,7 @@ class WarehouseAnalyticsController extends Controller
         $sold = Deal::where('account_id', $accId)
             ->whereNotNull('stock_deducted_at')
             ->whereBetween('stock_deducted_at', [$soldWindowStart, $now->copy()->endOfMonth()])
-            ->with('warehouseItem:id,brand,model,size')
+            ->with(['warehouseItem:id,brand,model,size', 'contact:id,name,phone'])
             ->get();
 
         // --- Сезонность: по месяцам ---
@@ -189,13 +190,129 @@ class WarehouseAnalyticsController extends Controller
         }
         usort($brandStock, fn ($a, $b) => $b['stock_units'] <=> $a['stock_units']);
 
-        // --- Разбивка склада по категориям / полу / сезону ---
-        $products = WarehouseProduct::where('account_id', $accId)->get();
+        // Карта продуктов (brand+model → WarehouseProduct) — используется в нескольких блоках ниже.
+        $productList = WarehouseProduct::where('account_id', $accId)->get();
         $productMap = [];
-        foreach ($products as $p) {
+        foreach ($productList as $p) {
             $key = mb_strtolower(trim(($p->brand ?? '').'|'.($p->model ?? '')));
             $productMap[$key] = $p;
         }
+
+        // ==================== KPI-хедер: текущий и прошлый месяц ====================
+        $curStart = $now->copy()->startOfMonth();
+        $curEnd = $now->copy()->endOfMonth();
+        $prevStart = $now->copy()->subMonthNoOverflow()->startOfMonth();
+        $prevEnd = $now->copy()->subMonthNoOverflow()->endOfMonth();
+
+        $inRange = fn ($start, $end) => $sold->filter(fn ($d) => $d->stock_deducted_at && $d->stock_deducted_at->between($start, $end));
+        $agg = function ($col) {
+            return [
+                'revenue' => (float) $col->sum(fn ($d) => (float) ($d->amount ?? 0)),
+                'cogs' => (float) $col->sum(fn ($d) => (float) ($d->sold_unit_cost ?? 0) * (int) $d->sold_quantity),
+                'units' => (int) $col->sum(fn ($d) => (int) $d->sold_quantity),
+                'count' => $col->count(),
+            ];
+        };
+        $cur = $agg($inRange($curStart, $curEnd));
+        $prev = $agg($inRange($prevStart, $prevEnd));
+        $cur['profit'] = $cur['revenue'] - $cur['cogs'];
+        $prev['profit'] = $prev['revenue'] - $prev['cogs'];
+        $cur['avg'] = $cur['count'] ? $cur['revenue'] / $cur['count'] : 0;
+        $prev['avg'] = $prev['count'] ? $prev['revenue'] / $prev['count'] : 0;
+        $cur['margin'] = $cur['revenue'] > 0 ? ($cur['profit'] / $cur['revenue']) * 100 : 0;
+        $prev['margin'] = $prev['revenue'] > 0 ? ($prev['profit'] / $prev['revenue']) * 100 : 0;
+        $pct = fn ($c, $p) => $p > 0 ? (int) round(($c - $p) / $p * 100) : ($c > 0 ? 100 : 0);
+        $delta = [
+            'revenue' => $pct($cur['revenue'], $prev['revenue']),
+            'profit' => $pct($cur['profit'], $prev['profit']),
+            'units' => $pct($cur['units'], $prev['units']),
+            'avg' => $pct($cur['avg'], $prev['avg']),
+        ];
+
+        // ==================== Клиентская аналитика ====================
+        // Топ покупателей за 12 мес (по контактам сделок)
+        $clientMap = [];
+        foreach ($sold as $d) {
+            $contact = $d->contact ?? null;
+            if (! $contact && ! $d->title) continue;
+            $key = $contact ? (int) $contact->id : 'notitle:'.$d->title;
+            if (! isset($clientMap[$key])) {
+                $clientMap[$key] = [
+                    'name' => $contact?->name ?: ($contact?->phone ?: $d->title),
+                    'phone' => $contact?->phone ?: '—',
+                    'orders' => 0,
+                    'units' => 0,
+                    'revenue' => 0.0,
+                    'first_at' => $d->stock_deducted_at,
+                    'last_at' => $d->stock_deducted_at,
+                ];
+            }
+            $clientMap[$key]['orders']++;
+            $clientMap[$key]['units'] += (int) $d->sold_quantity;
+            $clientMap[$key]['revenue'] += (float) ($d->amount ?? 0);
+            if ($d->stock_deducted_at) {
+                if (! $clientMap[$key]['first_at'] || $d->stock_deducted_at->lt($clientMap[$key]['first_at'])) $clientMap[$key]['first_at'] = $d->stock_deducted_at;
+                if (! $clientMap[$key]['last_at'] || $d->stock_deducted_at->gt($clientMap[$key]['last_at'])) $clientMap[$key]['last_at'] = $d->stock_deducted_at;
+            }
+        }
+        usort($clientMap, fn ($a, $b) => $b['revenue'] <=> $a['revenue']);
+        $topClients = array_slice($clientMap, 0, 10);
+        $totalClients = count($clientMap);
+        $repeatClients = count(array_filter($clientMap, fn ($c) => $c['orders'] >= 2));
+        $avgOrdersPerClient = $totalClients ? array_sum(array_column($clientMap, 'orders')) / $totalClients : 0;
+        $avgClientRevenue = $totalClients ? array_sum(array_column($clientMap, 'revenue')) / $totalClients : 0;
+
+        // ==================== Финансовые метрики ====================
+        // Маржа по категориям
+        $marginByCategory = [];
+        foreach (ProductClassifier::categoryOptions() as $catKey => $catLabel) {
+            $marginByCategory[$catKey] = ['label' => $catLabel, 'revenue' => 0.0, 'profit' => 0.0, 'units' => 0];
+        }
+        $marginByCategory['_unset'] = ['label' => 'Не указано', 'revenue' => 0.0, 'profit' => 0.0, 'units' => 0];
+        foreach ($sold as $d) {
+            $wi = $d->warehouseItem;
+            if (! $wi) continue;
+            $keyProd = mb_strtolower(trim(($wi->brand ?? '').'|'.($wi->model ?? '')));
+            $prod = $productMap[$keyProd] ?? null;
+            $cat = $prod?->category ?: '_unset';
+            $qty = (int) $d->sold_quantity;
+            $rev = (float) ($d->amount ?? 0);
+            $marginByCategory[$cat]['revenue'] += $rev;
+            $marginByCategory[$cat]['profit'] += $rev - (float) ($d->sold_unit_cost ?? 0) * $qty;
+            $marginByCategory[$cat]['units'] += $qty;
+        }
+        foreach ($marginByCategory as &$c) {
+            $c['margin'] = $c['revenue'] > 0 ? ($c['profit'] / $c['revenue']) * 100 : 0;
+        }
+        unset($c);
+        $marginByCategory = array_filter($marginByCategory, fn ($c) => $c['revenue'] > 0);
+        uasort($marginByCategory, fn ($a, $b) => $b['revenue'] <=> $a['revenue']);
+
+        // Оборотный капитал = стоимость склада по себестоимости
+        $workingCapital = (float) $items->sum(fn ($i) => (int) $i->quantity * (float) ($i->avg_cost ?? 0));
+
+        // Средняя наценка: (цена продажи - себестоимость) / себестоимость * 100
+        $markupSum = 0.0; $markupCount = 0;
+        foreach ($items as $i) {
+            if ($i->avg_cost > 0 && $i->sale_price > 0) {
+                $markupSum += ((float) $i->sale_price - (float) $i->avg_cost) / (float) $i->avg_cost * 100;
+                $markupCount++;
+            }
+        }
+        $avgMarkup = $markupCount ? $markupSum / $markupCount : 0;
+
+        // Sell-through = продано за период / (продано + текущий остаток) — grubo, но информативно
+        $totalSoldWindow = (int) $sold->sum(fn ($d) => (int) $d->sold_quantity);
+        $totalOnStock = (int) $items->sum('quantity');
+        $sellThrough = ($totalSoldWindow + $totalOnStock) > 0
+            ? ($totalSoldWindow / ($totalSoldWindow + $totalOnStock)) * 100
+            : 0;
+
+        // DIO (Days Inventory Outstanding) = средний остаток / среднее продаж в день
+        $avgDailySold = $totalSoldWindow / max(1, 365); // окно ~12 мес
+        $dio = $avgDailySold > 0 ? (int) round($totalOnStock / $avgDailySold) : null;
+
+        // --- Разбивка склада по категориям / полу / сезону ---
         $taxonomy = [
             'category' => [
                 'options' => ProductClassifier::categoryOptions(),
@@ -278,7 +395,52 @@ class WarehouseAnalyticsController extends Controller
             'sizesData', 'sizeMax',
             'brandStock', 'taxonomy',
             'trendAvg', 'forecastNextMonth', 'seasCoef',
-            'heatmap', 'heatmapMax', 'dayNames'
+            'heatmap', 'heatmapMax', 'dayNames',
+            'cur', 'prev', 'delta',
+            'topClients', 'totalClients', 'repeatClients', 'avgOrdersPerClient', 'avgClientRevenue',
+            'marginByCategory', 'workingCapital', 'avgMarkup', 'sellThrough', 'dio',
+            'totalSoldWindow', 'totalOnStock'
         ));
+    }
+
+    /** Экспортировать сводку аналитики в CSV. */
+    public function export(Request $request): StreamedResponse
+    {
+        $user = Auth::user();
+        $accId = $user->account_id;
+
+        // Простая сводка: KPI + топы. Полные детали — в UI.
+        $rows = [
+            ['Метрика', 'Значение'],
+        ];
+
+        $now = Carbon::now();
+        $curStart = $now->copy()->startOfMonth();
+        $curEnd = $now->copy()->endOfMonth();
+        $prevStart = $now->copy()->subMonthNoOverflow()->startOfMonth();
+        $prevEnd = $now->copy()->subMonthNoOverflow()->endOfMonth();
+
+        $curSum = Deal::where('account_id', $accId)
+            ->whereNotNull('stock_deducted_at')
+            ->whereBetween('stock_deducted_at', [$curStart, $curEnd])
+            ->sum('amount');
+        $prevSum = Deal::where('account_id', $accId)
+            ->whereNotNull('stock_deducted_at')
+            ->whereBetween('stock_deducted_at', [$prevStart, $prevEnd])
+            ->sum('amount');
+
+        $items = WarehouseItem::where('account_id', $accId)->get();
+        $rows[] = ['Выручка текущего месяца, ₽', number_format((float) $curSum, 2, '.', '')];
+        $rows[] = ['Выручка прошлого месяца, ₽', number_format((float) $prevSum, 2, '.', '')];
+        $rows[] = ['Пар на складе', (int) $items->sum('quantity')];
+        $rows[] = ['Стоимость склада (себестоимость), ₽', number_format((float) $items->sum(fn ($i) => (int) $i->quantity * (float) ($i->avg_cost ?? 0)), 2, '.', '')];
+        $rows[] = ['Стоимость склада (продажа), ₽', number_format((float) $items->sum(fn ($i) => (int) $i->quantity * (float) ($i->sale_price ?? 0)), 2, '.', '')];
+
+        return response()->streamDownload(function () use ($rows) {
+            echo "\xEF\xBB\xBF";
+            $out = fopen('php://output', 'w');
+            foreach ($rows as $r) fputcsv($out, $r, ';');
+            fclose($out);
+        }, 'analytics-krossovki-'.$now->format('Y-m-d').'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 }
