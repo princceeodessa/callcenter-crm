@@ -131,6 +131,9 @@ Route::middleware('auth')->group(function () {
         Route::patch('/warehouse/{item}', [WarehouseController::class, 'update'])->name('warehouse.update');
         Route::post('/warehouse/{item}/replenish', [WarehouseController::class, 'replenish'])->name('warehouse.replenish');
         Route::delete('/warehouse/{item}', [WarehouseController::class, 'destroy'])->name('warehouse.destroy');
+        Route::patch('/warehouse/products/{product}', [WarehouseController::class, 'updateProduct'])->name('warehouse.product.update');
+        Route::post('/warehouse/products/{product}/photo', [WarehouseController::class, 'uploadProductPhoto'])->name('warehouse.product.photo.upload');
+        Route::delete('/warehouse/products/{product}/photo', [WarehouseController::class, 'deleteProductPhoto'])->name('warehouse.product.photo.delete');
 
         // Отчёт по кроссовкам (продажи/прибыль/склад)
         Route::get('/sneaker/report', [SneakerReportController::class, 'index'])->name('sneaker.report');

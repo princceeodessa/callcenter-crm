@@ -4,9 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\StockMovement;
 use App\Models\WarehouseItem;
+use App\Models\WarehouseProduct;
 use App\Services\Warehouse\WarehouseService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 
 class WarehouseController extends Controller
 {
@@ -36,15 +38,28 @@ class WarehouseController extends Controller
         $isHead = $this->isHead();
 
         // Группируем размеры под одним товаром (бренд + модель).
+        // Заодно подмешиваем warehouse_products (кастомное имя, фото).
+        $accId = $user->account_id;
         $products = $items
             ->groupBy(fn ($i) => mb_strtolower(trim(($i->brand ?? '').'|'.($i->model ?? ''))))
-            ->map(function ($group) {
+            ->map(function ($group) use ($accId) {
                 $first = $group->first();
+                $brand = (string) ($first->brand ?? '');
+                $model = (string) ($first->model ?? '');
+                $product = WarehouseProduct::firstOrCreate(
+                    ['account_id' => $accId, 'brand' => $brand, 'model' => $model],
+                    []
+                );
+                $autoName = trim($brand.' '.$model) ?: 'Без названия';
 
                 return [
-                    'name' => trim(($first->brand ?? '').' '.($first->model ?? '')) ?: 'Без названия',
-                    'brand' => (string) ($first->brand ?? ''),
-                    'model' => (string) ($first->model ?? ''),
+                    'entity' => $product,
+                    'name' => $product->custom_name ?: $autoName,
+                    'auto_name' => $autoName,
+                    'custom_name' => $product->custom_name,
+                    'image_url' => $product->image_url,
+                    'brand' => $brand,
+                    'model' => $model,
                     'sizes' => $group->sortBy('size', SORT_NATURAL)->values(),
                     'total' => (int) $group->sum('quantity'),
                     'available' => (int) $group->sum(fn ($i) => $i->available),
@@ -143,6 +158,60 @@ class WarehouseController extends Controller
         $item->delete();
 
         return redirect()->route('warehouse.index')->with('status', 'Позиция удалена.');
+    }
+
+    /** Изменить отображаемое имя товара (кастомное). */
+    public function updateProduct(Request $request, WarehouseProduct $product)
+    {
+        $user = Auth::user();
+        abort_unless($product->account_id === $user->account_id, 403);
+
+        $data = $request->validate([
+            'custom_name' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $name = trim((string) ($data['custom_name'] ?? ''));
+        $product->custom_name = $name !== '' ? $name : null;
+        $product->save();
+
+        return back()->with('status', 'Название товара обновлено.');
+    }
+
+    /** Загрузить/заменить фото товара. */
+    public function uploadProductPhoto(Request $request, WarehouseProduct $product)
+    {
+        $user = Auth::user();
+        abort_unless($product->account_id === $user->account_id, 403);
+
+        $data = $request->validate([
+            'photo' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+        ]);
+
+        // Удалить старое фото
+        if ($product->image_path) {
+            Storage::disk('public')->delete($product->image_path);
+        }
+
+        $path = $data['photo']->store('warehouse_products/'.$product->account_id, 'public');
+        $product->image_path = $path;
+        $product->save();
+
+        return back()->with('status', 'Фото обновлено.');
+    }
+
+    /** Удалить фото товара. */
+    public function deleteProductPhoto(WarehouseProduct $product)
+    {
+        $user = Auth::user();
+        abort_unless($product->account_id === $user->account_id, 403);
+
+        if ($product->image_path) {
+            Storage::disk('public')->delete($product->image_path);
+        }
+        $product->image_path = null;
+        $product->save();
+
+        return back()->with('status', 'Фото удалено.');
     }
 
     public function export(Request $request)

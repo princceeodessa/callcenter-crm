@@ -80,13 +80,57 @@
     .prod.is-low{ border-color:color-mix(in srgb, var(--wh-amber) 45%, var(--crm-border)); }
     .prod.is-danger{ border-color:color-mix(in srgb, var(--wh-red) 45%, var(--crm-border)); }
 
-    .prod-head{ display:flex; align-items:center; gap:.75rem; margin-bottom:.7rem; }
+    .prod-head{ display:flex; align-items:flex-start; gap:.9rem; margin-bottom:.75rem; }
     .brand-avatar{
-        width:44px; height:44px; border-radius:14px; flex-shrink:0;
+        position:relative;
+        width:120px; height:120px; border-radius:18px; flex-shrink:0;
         display:flex; align-items:center; justify-content:center;
-        color:#fff; font-weight:800; font-size:1.05rem; letter-spacing:-.02em;
-        box-shadow:0 4px 14px rgba(15,23,42,.15), inset 0 1px 0 rgba(255,255,255,.15);
+        color:#fff; font-weight:800; font-size:2.4rem; letter-spacing:-.02em;
+        box-shadow:0 6px 18px rgba(15,23,42,.18), inset 0 1px 0 rgba(255,255,255,.15);
+        overflow:hidden; background-size:cover; background-position:center;
     }
+    .brand-avatar .change-photo{
+        position:absolute; inset:auto 0 0 0; padding:.25rem 0;
+        background:rgba(0,0,0,.55); color:#fff; font-size:.65rem; text-align:center;
+        cursor:pointer; opacity:0; transition:opacity .12s; letter-spacing:.02em;
+    }
+    .brand-avatar:hover .change-photo{ opacity:1; }
+    .brand-avatar .change-photo:hover{ background:rgba(0,0,0,.75); }
+    .brand-avatar img{ width:100%; height:100%; object-fit:cover; }
+    .brand-avatar .photo-actions{
+        position:absolute; top:.3rem; right:.3rem; display:flex; gap:.2rem;
+        opacity:0; transition:opacity .12s;
+    }
+    .brand-avatar:hover .photo-actions{ opacity:1; }
+    .brand-avatar .photo-actions button{
+        width:24px; height:24px; border-radius:50%; border:0; padding:0;
+        background:rgba(0,0,0,.55); color:#fff; font-size:.85rem; line-height:1; cursor:pointer;
+    }
+    .brand-avatar .photo-actions button:hover{ background:rgba(220,38,38,.85); }
+
+    /* Inline edit имени */
+    .prod-name-wrap{ display:flex; align-items:center; gap:.4rem; }
+    .prod-name-edit-btn{
+        border:0; background:transparent; color:var(--crm-muted); font-size:.85rem;
+        padding:.1rem .35rem; border-radius:.35rem; line-height:1; cursor:pointer;
+        opacity:0; transition:opacity .12s, background .12s, color .12s;
+    }
+    .prod:hover .prod-name-edit-btn{ opacity:1; }
+    .prod-name-edit-btn:hover{ background:var(--crm-surface); color:var(--crm-accent); }
+    details.name-edit > summary{ list-style:none; }
+    details.name-edit > summary::-webkit-details-marker{ display:none; }
+    details.name-edit[open] .prod-name{ display:none; }
+    details.name-edit[open] .prod-name-edit-btn{ display:none; }
+    .name-edit-form{ display:none; }
+    details.name-edit[open] .name-edit-form{
+        display:flex; gap:.3rem; align-items:center; width:100%;
+    }
+    .name-edit-form input{
+        flex:1; padding:.25rem .5rem; font-size:.9rem; border:1px solid var(--crm-border);
+        border-radius:.4rem; background:var(--crm-surface); color:var(--crm-text); outline:none;
+    }
+    .name-edit-form input:focus{ border-color:var(--crm-accent); }
+    .name-edit-form button{ padding:.25rem .55rem; font-size:.78rem; border-radius:.4rem; font-weight:600; }
     .prod-name{ font-weight:700; font-size:.98rem; line-height:1.15; letter-spacing:-.01em; }
     .prod-sub{ font-size:.72rem; color:var(--crm-muted); margin-top:.15rem; }
     .prod-badge{
@@ -313,12 +357,43 @@
                 @endphp
                 <article class="prod {{ $prodClass }}">
                     <div class="prod-head">
-                        <div class="brand-avatar" style="background:{{ $brandColor($prod['brand']) }}">{{ $brandLetter($prod['brand']) }}</div>
+                        <label class="brand-avatar" style="background:{{ empty($prod['image_url']) ? $brandColor($prod['brand']) : 'transparent' }}" title="Нажмите чтобы {{ empty($prod['image_url']) ? 'загрузить' : 'заменить' }} фото">
+                            @if(!empty($prod['image_url']))
+                                <img src="{{ $prod['image_url'] }}" alt="{{ $prod['name'] }}">
+                            @else
+                                {{ $brandLetter($prod['brand']) }}
+                            @endif
+                            <form method="POST" action="{{ route('warehouse.product.photo.upload', $prod['entity']) }}" enctype="multipart/form-data" style="position:absolute;inset:0;margin:0;">
+                                @csrf
+                                <input type="file" name="photo" accept="image/*" onchange="this.form.submit()" style="position:absolute;inset:0;opacity:0;cursor:pointer;">
+                            </form>
+                            @if(!empty($prod['image_url']))
+                                <div class="photo-actions">
+                                    <form method="POST" action="{{ route('warehouse.product.photo.delete', $prod['entity']) }}" onsubmit="return confirm('Удалить фото?')">
+                                        @csrf @method('DELETE')
+                                        <button type="submit" title="Удалить фото">×</button>
+                                    </form>
+                                </div>
+                            @endif
+                            <div class="change-photo">Сменить фото</div>
+                        </label>
                         <div style="min-width:0;flex:1">
-                            <div class="prod-name text-truncate" title="{{ $prod['name'] }}">{{ $prod['name'] }}</div>
+                            <details class="name-edit">
+                                <div class="prod-name-wrap">
+                                    <div class="prod-name text-truncate" title="{{ $prod['name'] }}">{{ $prod['name'] }}</div>
+                                    <summary class="prod-name-edit-btn" title="Изменить название">✎</summary>
+                                </div>
+                                <form method="POST" action="{{ route('warehouse.product.update', $prod['entity']) }}" class="name-edit-form">
+                                    @csrf @method('PATCH')
+                                    <input type="text" name="custom_name" value="{{ $prod['custom_name'] ?? $prod['auto_name'] }}" maxlength="255" placeholder="{{ $prod['auto_name'] }}">
+                                    <button type="submit" class="btn btn-primary btn-sm">OK</button>
+                                </form>
+                            </details>
                             <div class="prod-sub">{{ $prod['brand'] ?: '—' }} · {{ $prod['sizes']->count() }} разм.</div>
                         </div>
-                        @if($prod['low'])<span class="prod-badge low">заканчивается</span>@endif
+                        @if($prod['low'])
+                            <span class="prod-badge low">заканчивается</span>
+                        @endif
                     </div>
 
                     <div class="prod-summary">
