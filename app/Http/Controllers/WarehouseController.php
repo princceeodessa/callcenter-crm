@@ -545,50 +545,161 @@ class WarehouseController extends Controller
      */
     public function importRun(Request $request, WarehouseService $warehouse)
     {
-        $user = Auth::user();
         $data = $request->validate([
-            'raw' => ['required', 'string', 'max:200000'],
+            'raw' => ['nullable', 'string', 'max:200000'],
             'quantity' => ['nullable', 'integer', 'min:1', 'max:1000'],
+            'xlsx' => ['nullable', 'file', 'mimes:xlsx', 'max:10240'],
+            'mode' => ['nullable', 'in:add,set'],
         ]);
-        $qty = (int) ($data['quantity'] ?? 1);
 
-        $rows = $this->parseImportText($data['raw']);
-        $positionsCreated = 0;
-        $pairsAdded = 0;
-        $errors = [];
-        $note = 'Импорт списка ('.date('Y-m-d H:i').')';
-
-        foreach ($rows as $row) {
-            foreach ($row['sizes'] as $size) {
-                try {
-                    $item = WarehouseItem::firstOrNew([
-                        'account_id' => $user->account_id,
-                        'brand' => $row['brand'],
-                        'model' => $row['model'],
-                        'size' => (string) $size,
-                    ]);
-                    if (! $item->exists) {
-                        $item->quantity = 0;
-                        $item->save();
-                        $positionsCreated++;
-                    }
-                    $warehouse->replenish($item, $qty, $note);
-                    $pairsAdded += $qty;
-                } catch (\Throwable $e) {
-                    $errors[] = $row['brand'].' | '.$row['model'].' | '.$size.' — '.$e->getMessage();
+        if ($request->hasFile('xlsx')) {
+            // Excel-файл: Название | Размер | Кол-во | Артикул
+            $rows = $this->parseImportXlsx($request->file('xlsx')->getRealPath());
+            $mode = $data['mode'] ?? 'set';
+            $note = 'Импорт из Excel ('.date('Y-m-d H:i').')';
+        } else {
+            $raw = trim((string) ($data['raw'] ?? ''));
+            if ($raw === '') {
+                return back()->withErrors(['raw' => 'Вставьте список или выберите файл .xlsx.']);
+            }
+            $qty = (int) ($data['quantity'] ?? 1);
+            $rows = [];
+            foreach ($this->parseImportText($raw) as $r) {
+                foreach ($r['sizes'] as $size) {
+                    $rows[] = ['brand' => $r['brand'], 'model' => $r['model'], 'size' => (string) $size, 'qty' => $qty, 'article' => ''];
                 }
+            }
+            $mode = 'add';
+            $note = 'Импорт списка ('.date('Y-m-d H:i').')';
+        }
+
+        [$positionsCreated, $pairsTotal, $errors] = $this->applyImportRows($rows, $mode, $note, $warehouse);
+
+        $verb = $mode === 'set' ? 'остатки установлены по файлу, всего пар' : 'оприходовано пар';
+        return redirect()->route('warehouse.index')->with('status',
+            'Импорт: строк '.count($rows).', создано позиций '.$positionsCreated.', '.$verb.' '.$pairsTotal.
+            (count($errors) ? ' · ошибок '.count($errors) : ''));
+    }
+
+    /**
+     * Разбор .xlsx формата «Название | Размер | Кол-во | Артикул».
+     * Заголовки и мусорные строки отсеиваются по нечисловому размеру/кол-ву.
+     *
+     * @return array<int, array{brand:string,model:string,size:string,qty:int,article:string}>
+     */
+    private function parseImportXlsx(string $path): array
+    {
+        $rows = [];
+        foreach (\App\Support\Warehouse\SimpleXlsxReader::rows($path, 4) as $r) {
+            [$name, $size, $qty, $article] = [$r[0] ?? null, $r[1] ?? null, $r[2] ?? null, $r[3] ?? null];
+            $name = preg_replace('/\s+/u', ' ', trim((string) $name));
+            // Размер может быть текстом вида «40,5 RU» — вытаскиваем число.
+            $sizeClean = str_replace(',', '.', trim((string) $size));
+            $qtyClean = str_replace(',', '.', trim((string) $qty));
+            if ($name === ''
+                || ! preg_match('/\d+(?:\.\d+)?/', $sizeClean, $sm)
+                || ! preg_match('/\d+(?:\.\d+)?/', $qtyClean, $qm)) {
+                continue; // заголовок или пустая строка
+            }
+            [$brand, $model] = $this->splitBrandModel($name);
+            $sizeStr = rtrim(rtrim(number_format((float) $sm[0], 2, '.', ''), '0'), '.');
+            $qty = $qm[0];
+            $articleNorm = preg_replace('/\s+/u', '-', trim((string) $article));
+            $rows[] = [
+                'brand' => $brand,
+                'model' => $model,
+                'size' => $sizeStr,
+                'qty' => max(0, (int) round((float) $qty)),
+                'article' => $articleNorm,
+            ];
+        }
+        return $rows;
+    }
+
+    /**
+     * Применить нормализованные строки импорта.
+     * Расцветка = отдельный товар: артикул добавляется к названию модели.
+     * mode=add — прибавить к остаткам, mode=set — установить остаток как в файле.
+     *
+     * @param array<int, array{brand:string,model:string,size:string,qty:int,article:string}> $rows
+     * @return array{0:int,1:int,2:array<int,string>}
+     */
+    private function applyImportRows(array $rows, string $mode, string $note, WarehouseService $warehouse): array
+    {
+        $user = Auth::user();
+
+        // Агрегируем дубликаты строк в файле (один и тот же размер несколько раз)
+        $agg = [];
+        foreach ($rows as $r) {
+            $modelDb = trim($r['model'].($r['article'] !== '' ? ' '.$r['article'] : ''));
+            $key = mb_strtolower($r['brand'].'|'.$modelDb.'|'.$r['size']);
+            if (! isset($agg[$key])) {
+                $agg[$key] = ['brand' => $r['brand'], 'model' => $modelDb, 'size' => $r['size'], 'qty' => 0, 'article' => $r['article']];
+            }
+            $agg[$key]['qty'] += $r['qty'];
+        }
+
+        $positionsCreated = 0;
+        $pairsTotal = 0;
+        $errors = [];
+
+        foreach ($agg as $r) {
+            try {
+                $item = WarehouseItem::firstOrNew([
+                    'account_id' => $user->account_id,
+                    'brand' => $r['brand'],
+                    'model' => $r['model'],
+                    'size' => $r['size'],
+                ]);
+                if (! $item->exists) {
+                    $item->quantity = 0;
+                    $item->save();
+                    $positionsCreated++;
+                }
+                if ($mode === 'set') {
+                    $warehouse->setQuantity($item, $r['qty'], $note);
+                } else {
+                    $warehouse->replenish($item, $r['qty'], $note);
+                }
+                $pairsTotal += $r['qty'];
+
+                // Товар + вендорский артикул (если указан и свободен)
+                $product = WarehouseProduct::firstOrCreate(
+                    ['account_id' => $user->account_id, 'brand' => $r['brand'], 'model' => $r['model']], []
+                );
+                if ($r['article'] !== '' && $product->article !== $r['article']) {
+                    $taken = WarehouseProduct::where('account_id', $user->account_id)
+                        ->where('article', $r['article'])->where('id', '!=', $product->id)->exists();
+                    if (! $taken) {
+                        $product->article = $r['article'];
+                        $product->save();
+                    }
+                }
+            } catch (\Throwable $e) {
+                $errors[] = $r['brand'].' | '.$r['model'].' | '.$r['size'].' — '.$e->getMessage();
             }
         }
 
-        return redirect()->route('warehouse.index')->with('status',
-            'Импорт: создано позиций '.$positionsCreated.', оприходовано пар '.$pairsAdded.
-            (count($errors) ? ' · ошибок '.count($errors) : ''));
+        return [$positionsCreated, $pairsTotal, $errors];
+    }
+
+    /** Первое слово — бренд (NEW BALANCE — двусоставный), остальное — модель. */
+    private function splitBrandModel(string $name): array
+    {
+        $multiWordBrands = ['NEW BALANCE'];
+        $upper = mb_strtoupper($name);
+        foreach ($multiWordBrands as $mb) {
+            if (str_starts_with($upper, $mb.' ')) {
+                return [$mb, trim(mb_substr($name, mb_strlen($mb) + 1))];
+            }
+        }
+        $parts = explode(' ', $name, 2);
+        return [mb_strtoupper($parts[0] ?? ''), trim($parts[1] ?? '')];
     }
 
     /** Парсер текста импорта: возвращает массив ['brand','model','sizes'=>[]]. */
     private function parseImportText(string $raw): array
     {
-        $multiWordBrands = ['NEW BALANCE'];
         $lines = preg_split('/\r?\n/', $raw);
         $rows = [];
         foreach ($lines as $line) {
@@ -606,21 +717,7 @@ class WarehouseController extends Controller
             if (empty($sizes) || $name === '') {
                 continue;
             }
-            $upper = mb_strtoupper($name);
-            $brand = '';
-            $model = $name;
-            foreach ($multiWordBrands as $mb) {
-                if (str_starts_with($upper, $mb.' ')) {
-                    $brand = $mb;
-                    $model = trim(mb_substr($name, mb_strlen($mb) + 1));
-                    break;
-                }
-            }
-            if ($brand === '') {
-                $parts = explode(' ', $name, 2);
-                $brand = mb_strtoupper($parts[0] ?? '');
-                $model = trim($parts[1] ?? '');
-            }
+            [$brand, $model] = $this->splitBrandModel($name);
             $rows[] = ['brand' => $brand, 'model' => $model, 'sizes' => $sizes];
         }
         return $rows;

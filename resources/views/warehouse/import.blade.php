@@ -9,8 +9,44 @@
         <a class="btn btn-sm btn-outline-secondary" href="{{ route('warehouse.index') }}">← К складу</a>
     </div>
 
+    {{-- Импорт из Excel --}}
     <div class="card shadow-sm mb-3">
         <div class="card-body">
+            <h6 class="mb-2">📗 Импорт из Excel (.xlsx)</h6>
+            <div class="text-muted small mb-3">
+                Формат листа: <b>Название</b> (например «Nike Dunk low retro») · <b>Размер</b> · <b>Кол-во</b> · <b>Артикул</b> (например «DV0833 800», необязателен).
+                Первая строка-заголовок пропускается автоматически. Каждая расцветка (артикул) станет отдельной карточкой товара.
+            </div>
+            <form method="POST" action="{{ route('warehouse.import.run') }}" enctype="multipart/form-data" class="row g-2 align-items-end">
+                @csrf
+                <div class="col-lg-5">
+                    <input type="file" name="xlsx" accept=".xlsx" class="form-control" required>
+                </div>
+                <div class="col-lg-5">
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="mode" value="set" id="modeSet" checked>
+                        <label class="form-check-label small" for="modeSet">
+                            <b>Файл — полный срез остатков</b>: установить количества как в файле (повторная загрузка не задваивает)
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="mode" value="add" id="modeAdd">
+                        <label class="form-check-label small" for="modeAdd">
+                            <b>Прибавить</b> к текущим остаткам (новая поставка)
+                        </label>
+                    </div>
+                </div>
+                <div class="col-lg-2">
+                    <button type="submit" class="btn btn-success w-100">Импортировать</button>
+                </div>
+            </form>
+            <div class="form-text mt-1">Позиции, которых нет в файле, не трогаются (в том числе другие бренды).</div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-3">
+        <div class="card-body">
+            <h6 class="mb-2">📄 Импорт из текста</h6>
             <form method="POST" action="{{ route('warehouse.import.run') }}">
                 @csrf
                 <div class="row g-3">
