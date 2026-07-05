@@ -342,7 +342,7 @@
 
                 @if($isSneakerHead)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('sneaker.report') }}">Отчёты</a>
-                @elseif(!$isDocumentsOperator)
+                @elseif(!$isDocumentsOperator && !$isSneaker)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('reports.monthly') }}">Отчёты</a>
                 @endif
                 @if(!$isMeasurer && !$isConstructor)
