@@ -66,6 +66,7 @@
         border-radius:var(--wh-radius); padding:.9rem .95rem;
         box-shadow:var(--wh-shadow-sm);
         transition:box-shadow .15s ease, border-color .15s ease;
+        content-visibility:auto; contain-intrinsic-size: 300px; /* карточки за экраном не рендерятся */
     }
     .prod:hover{ box-shadow:var(--wh-shadow-md); }
     .prod.is-low{ border-color:color-mix(in srgb, var(--wh-amber) 55%, var(--crm-border)); }
@@ -278,11 +279,8 @@
     };
     $brandLetter = fn (string $brand) => mb_strtoupper(mb_substr(trim($brand) ?: '?', 0, 1));
 
-    $lowFilter = request('low') == '1';
-    $lowCount = $products->filter(fn ($p) => $p['low'])->count();
-    $availableSum = (int) $products->sum('available');
-    $productsView = $lowFilter ? $products->filter(fn ($p) => $p['low'])->values() : $products;
-    $isEmpty = $productsView->isEmpty();
+    $isEmpty = $productsPage->count() === 0;
+    $hasPages = $productsPage->hasPages();
     $hasMovements = $movements->isNotEmpty();
 
     $exportParams = array_filter([
@@ -303,7 +301,7 @@
 <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
     <div>
         <h4 class="mb-0" style="letter-spacing:-.02em">Склад</h4>
-        <div class="text-muted small">кроссовки · {{ $products->count() }} товаров</div>
+        <div class="text-muted small">кроссовки · {{ $productsCount }} товаров</div>
     </div>
     <div class="wh-actions mb-0">
         <a href="{{ route('warehouse.reorder') }}">🧠 Что заказать</a>
@@ -315,7 +313,7 @@
 
 {{-- HERO --}}
 <div class="wh-hero">
-    <div class="wh-stat"><div class="l">Товаров</div><div class="v">{{ $products->count() }}</div></div>
+    <div class="wh-stat"><div class="l">Товаров</div><div class="v">{{ $productsCount }}</div></div>
     <div class="wh-stat"><div class="l">Пар на складе</div><div class="v">{{ $totalUnits }}</div></div>
     <div class="wh-stat"><div class="l">Доступно</div><div class="v">{{ $availableSum }}</div></div>
     <div class="wh-stat"><div class="l">Стоимость</div><div class="v">{{ $money($stockValue) }} ₽</div></div>
@@ -379,7 +377,7 @@
     </div>
 @else
     <div class="wh-grid">
-        @foreach($productsView as $prod)
+        @foreach($productsPage as $prod)
             @php
                 $hasDanger = $prod['sizes']->contains(fn ($i) => (int) $i->available <= 0);
                 $prodClass = $prod['low'] ? ($hasDanger ? 'is-danger' : 'is-low') : '';
@@ -456,16 +454,11 @@
                                             <div style="font-size:.68rem;color:var(--crm-muted)">резерв: {{ $i->reserved }}</div>
                                         @endif
                                     </div>
-                                    <div class="d-flex gap-2">
-                                        <form method="POST" action="{{ route('warehouse.replenish', $i) }}">
-                                            @csrf<input type="hidden" name="delta" value="-1">
-                                            <button class="qbtn minus" title="−1 пара">−</button>
-                                        </form>
-                                        <form method="POST" action="{{ route('warehouse.replenish', $i) }}">
-                                            @csrf<input type="hidden" name="delta" value="1">
-                                            <button class="qbtn plus" title="+1 пара">+</button>
-                                        </form>
-                                    </div>
+                                    <form method="POST" action="{{ route('warehouse.replenish', $i) }}" class="d-flex gap-2">
+                                        @csrf
+                                        <button class="qbtn minus" name="delta" value="-1" title="−1 пара">−</button>
+                                        <button class="qbtn plus" name="delta" value="1" title="+1 пара">+</button>
+                                    </form>
                                 </div>
                                 <form method="POST" action="{{ route('warehouse.update', $i) }}">
                                     @csrf @method('PATCH')
@@ -564,7 +557,6 @@
                                 <input type="text" name="article" value="{{ $prod['article'] }}" maxlength="64">
                                 <button class="btn btn-outline-secondary btn-xxs">OK</button>
                             </form>
-                            <span class="bc">{!! $prod['barcode_svg'] !!}</span>
                             <a class="btn btn-outline-secondary btn-xxs" href="{{ route('warehouse.product.label', $prod['entity']) }}" target="_blank">🖨️ Этикетка</a>
                         </div>
                         <div class="ps-row">
@@ -595,6 +587,11 @@
             </article>
         @endforeach
     </div>
+    @if($hasPages)
+        <div class="d-flex justify-content-center mt-3">
+            {{ $productsPage->onEachSide(1)->links('pagination::bootstrap-5') }}
+        </div>
+    @endif
 @endif
 
 {{-- Плавающая панель массовых действий --}}

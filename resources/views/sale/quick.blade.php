@@ -16,6 +16,7 @@
         display:flex; align-items:center; gap:.8rem; padding:.55rem .8rem;
         background:var(--crm-surface-strong); border:1px solid var(--crm-border);
         border-radius:.9rem;
+        content-visibility:auto; contain-intrinsic-size: 80px; /* карточки за экраном не рендерятся */
     }
     .qs-photo{
         width:52px; height:52px; border-radius:10px; flex-shrink:0; overflow:hidden;

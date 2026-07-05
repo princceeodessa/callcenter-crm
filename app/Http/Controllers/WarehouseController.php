@@ -11,6 +11,7 @@ use App\Services\Warehouse\WarehouseService;
 use App\Support\Warehouse\Code128;
 use App\Support\Warehouse\ProductClassifier;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 
@@ -49,11 +50,20 @@ class WarehouseController extends Controller
         $filterGender = trim((string) $request->query('sex'));
         $filterSeason = trim((string) $request->query('sea'));
         $filterTag = trim((string) $request->query('tag'));
-        // Все уникальные теги для фильтра
+        $lowFilter = $request->query('low') == '1';
+
+        // Все продукты одним запросом (фото сразу) — без N+1 на каждую карточку.
+        $productRows = WarehouseProduct::with('photos')->where('account_id', $user->account_id)->get();
+        $prodMap = [];
         $allTags = collect();
-        WarehouseProduct::where('account_id', $user->account_id)->whereNotNull('tags')->pluck('tags')->each(function ($tags) use ($allTags) {
-            if (is_array($tags)) foreach ($tags as $t) $allTags->push($t);
-        });
+        foreach ($productRows as $p) {
+            $prodMap[mb_strtolower(trim(($p->brand ?? '').'|'.($p->model ?? '')))] = $p;
+            if (is_array($p->tags)) {
+                foreach ($p->tags as $t) {
+                    $allTags->push($t);
+                }
+            }
+        }
         $allTags = $allTags->unique()->sort()->values();
 
         // Группируем размеры под одним товаром (бренд + модель).
@@ -61,14 +71,17 @@ class WarehouseController extends Controller
         $accId = $user->account_id;
         $products = $items
             ->groupBy(fn ($i) => mb_strtolower(trim(($i->brand ?? '').'|'.($i->model ?? ''))))
-            ->map(function ($group) use ($accId) {
+            ->map(function ($group) use ($accId, &$prodMap) {
                 $first = $group->first();
                 $brand = (string) ($first->brand ?? '');
                 $model = (string) ($first->model ?? '');
-                $product = WarehouseProduct::with('photos')->firstOrCreate(
-                    ['account_id' => $accId, 'brand' => $brand, 'model' => $model],
-                    []
-                );
+                $key = mb_strtolower(trim($brand.'|'.$model));
+                $product = $prodMap[$key] ?? null;
+                if (! $product) {
+                    $product = WarehouseProduct::create(['account_id' => $accId, 'brand' => $brand, 'model' => $model]);
+                    $product->setRelation('photos', collect());
+                    $prodMap[$key] = $product;
+                }
                 $autoName = trim($brand.' '.$model) ?: 'Без названия';
                 $gallery = $product->gallery;
                 $article = (string) $product->article;
@@ -90,7 +103,6 @@ class WarehouseController extends Controller
                     'image_url' => $gallery[0]['url'] ?? null,
                     'gallery' => $gallery,
                     'article' => $article,
-                    'barcode_svg' => $article !== '' ? Code128::svg($article, 30, 1) : '',
                     'category' => $product->category,
                     'gender' => $product->gender,
                     'season' => $product->season,
@@ -112,8 +124,14 @@ class WarehouseController extends Controller
             ->sortBy('name')
             ->values();
 
+        // Сводка считается по всему складу (до фильтров)
+        $productsCount = $products->count();
+        $availableSum = (int) $products->sum('available');
+        $lowCount = $products->filter(fn ($p) => $p['low'])->count();
+
+        $filtered = $products;
         if ($filterCategory !== '' || $filterGender !== '' || $filterSeason !== '' || $filterTag !== '') {
-            $products = $products->filter(function ($p) use ($filterCategory, $filterGender, $filterSeason, $filterTag) {
+            $filtered = $filtered->filter(function ($p) use ($filterCategory, $filterGender, $filterSeason, $filterTag) {
                 if ($filterCategory !== '' && (string) $p['category'] !== $filterCategory) return false;
                 if ($filterGender !== '' && (string) $p['gender'] !== $filterGender) return false;
                 if ($filterSeason !== '' && (string) $p['season'] !== $filterSeason) return false;
@@ -121,9 +139,24 @@ class WarehouseController extends Controller
                 return true;
             })->values();
         }
+        if ($lowFilter) {
+            $filtered = $filtered->filter(fn ($p) => $p['low'])->values();
+        }
+
+        // Пагинация: браузер не тянет сотни карточек разом.
+        $perPage = 24;
+        $page = LengthAwarePaginator::resolveCurrentPage();
+        $productsPage = new LengthAwarePaginator(
+            $filtered->forPage($page, $perPage)->values(),
+            $filtered->count(),
+            $perPage,
+            $page,
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
 
         return view('warehouse.index', compact(
-            'products', 'movements', 'q', 'totalUnits', 'stockValue', 'isHead',
+            'productsPage', 'productsCount', 'availableSum', 'lowCount', 'lowFilter',
+            'movements', 'q', 'totalUnits', 'stockValue', 'isHead',
             'categoryOptions', 'genderOptions', 'seasonOptions',
             'filterCategory', 'filterGender', 'filterSeason', 'filterTag', 'allTags'
         ));
