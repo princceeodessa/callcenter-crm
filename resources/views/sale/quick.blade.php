@@ -84,6 +84,9 @@
                 <div>
                     <div class="fw-bold" style="font-size:1.1rem">✅ Продажа оформлена!</div>
                     <div class="small">{{ $done['name'] }} × {{ $done['qty'] }}@if($done['amount'] !== null) · {{ $money($done['amount']) }} ₽ @endif</div>
+                    @if(!empty($done['profit']) || (isset($done['profit']) && $done['profit'] !== null))
+                        <div class="small mt-1"><span class="text-muted">Чистая прибыль:</span> <b class="{{ $done['profit'] >= 0 ? 'text-success' : 'text-danger' }}">{{ $money($done['profit']) }} ₽</b>@if(!empty($done['margin'])) <span class="text-muted">· маржа {{ $done['margin'] }}%</span>@endif</div>
+                    @endif
                     @if(!empty($done['low']))
                         <div class="small text-danger fw-semibold mt-1">⚠ Этот размер закончился — сообщите руководителю.</div>
                     @endif

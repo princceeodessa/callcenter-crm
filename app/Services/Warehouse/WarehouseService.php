@@ -241,6 +241,11 @@ class WarehouseService
         }
         $amount = $deal->amount ? number_format((float) $deal->amount, 0, '', ' ') : '—';
         $body = 'Сделка #'.$deal->id.': '.$item->display_name.' × '.(int) $deal->sold_quantity.' — '.$amount.' ₽';
+        $profit = $deal->sale_profit;
+        if ($profit !== null) {
+            $margin = $deal->sale_margin_percent;
+            $body .= ' · прибыль '.number_format($profit, 0, '', ' ').' ₽'.($margin !== null ? ' ('.$margin.'%)' : '');
+        }
         foreach ($heads as $uid) {
             UserNotification::create([
                 'account_id' => $deal->account_id,

@@ -201,4 +201,38 @@
             </div>
         </div>
     </div>
+
+    {{-- Продажи за период — прибыль и маржа по каждому заказу --}}
+    <div class="card shadow-sm mt-3">
+        <div class="card-header fw-semibold d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <span>Продажи за период — прибыль по каждому заказу</span>
+            <span class="small text-muted fw-normal">маржа = прибыль ÷ сумма; «—» значит закупочная цена не указана</span>
+        </div>
+        <div class="table-responsive"><table class="table table-sm mb-0 align-middle">
+            <thead><tr>
+                <th>Дата</th><th>Товар</th><th>Источник</th>
+                <th class="text-end">Пар</th><th class="text-end">Сумма</th>
+                <th class="text-end">Себест.</th><th class="text-end">Прибыль</th><th class="text-end">Маржа</th>
+            </tr></thead>
+            <tbody>
+            @forelse($soldDeals as $d)
+                @php($dProfit = $d->sale_profit)
+                @php($dMargin = $d->sale_margin_percent)
+                @php($dCost = $d->unit_cost_basis)
+                <tr>
+                    <td class="small text-muted">{{ optional($d->stock_deducted_at)->format('d.m H:i') }}</td>
+                    <td>{{ $d->warehouseItem?->display_name ?? $d->title }}</td>
+                    <td class="small">{{ $d->manual_source ?: '—' }}</td>
+                    <td class="text-end">{{ (int) $d->sold_quantity }}</td>
+                    <td class="text-end">{{ $money($d->amount) }} ₽</td>
+                    <td class="text-end text-muted">{{ $dCost !== null ? $money($dCost).' ₽' : '—' }}</td>
+                    <td class="text-end fw-semibold {{ $dProfit === null ? 'text-muted' : ($dProfit >= 0 ? 'text-success' : 'text-danger') }}">{{ $dProfit !== null ? $money($dProfit).' ₽' : '—' }}</td>
+                    <td class="text-end {{ $dMargin === null ? 'text-muted' : ($dMargin >= 0 ? 'text-success' : 'text-danger') }}">{{ $dMargin !== null ? $dMargin.'%' : '—' }}</td>
+                </tr>
+            @empty
+                <tr><td colspan="8" class="text-muted small text-center py-3">Продаж за период нет.</td></tr>
+            @endforelse
+            </tbody>
+        </table></div>
+    </div>
 @endsection

@@ -35,7 +35,7 @@ class SneakerReportController extends Controller
             ->where('account_id', $accId)
             ->whereNotNull('stock_deducted_at')
             ->whereBetween('stock_deducted_at', [$s, $e])
-            ->with(['warehouseItem:id,brand,model', 'responsible:id,name'])
+            ->with(['warehouseItem:id,brand,model,avg_cost', 'responsible:id,name'])
             ->get();
 
         $metrics = function ($deals) {
@@ -197,12 +197,18 @@ class SneakerReportController extends Controller
 
         $sold = Deal::where('account_id', $user->account_id)
             ->whereNotNull('stock_deducted_at')->whereBetween('stock_deducted_at', [$start, $end])
-            ->with('warehouseItem:id,brand,model')->orderBy('stock_deducted_at')->get();
+            ->with('warehouseItem:id,brand,model,avg_cost')->orderBy('stock_deducted_at')->get();
 
-        $rows = [['Дата', 'Сделка', 'Товар', 'Источник', 'Пар', 'Сумма', 'Себест./пара', 'Прибыль']];
+        $rows = [['Дата', 'Сделка', 'Товар', 'Источник', 'Пар', 'Сумма', 'Себест./пара', 'Прибыль', 'Маржа %']];
         foreach ($sold as $d) {
-            $profit = (float) ($d->amount ?? 0) - (float) ($d->sold_unit_cost ?? 0) * (int) $d->sold_quantity;
-            $rows[] = [optional($d->stock_deducted_at)->format('Y-m-d H:i'), $d->title, $d->warehouseItem?->display_name, $d->manual_source, $d->sold_quantity, $d->amount, $d->sold_unit_cost, $profit];
+            $cost = $d->unit_cost_basis;
+            $profit = $d->sale_profit;
+            $margin = $d->sale_margin_percent;
+            $rows[] = [
+                optional($d->stock_deducted_at)->format('Y-m-d H:i'), $d->title, $d->warehouseItem?->display_name,
+                $d->manual_source, $d->sold_quantity, $d->amount,
+                $cost !== null ? $cost : '', $profit !== null ? $profit : '', $margin !== null ? $margin : '',
+            ];
         }
 
         return response()->streamDownload(function () use ($rows) {

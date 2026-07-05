@@ -147,12 +147,17 @@ class SneakerSaleController extends Controller
         // Списание со склада + уведомление руководителю
         $warehouse->syncDealStock($deal);
 
+        // Прибыль показываем только руководителю.
+        $showProfit = $user->role === 'sneaker_head';
+
         $request->session()->flash('quick_sale', [
             'deal_id' => $deal->id,
             'name' => $item->display_name,
             'qty' => $qty,
             'amount' => $amount,
             'low' => $item->fresh()->available <= 0,
+            'profit' => $showProfit ? $deal->sale_profit : null,
+            'margin' => $showProfit ? $deal->sale_margin_percent : null,
         ]);
 
         return redirect()->route('sale.quick');

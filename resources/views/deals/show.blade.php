@@ -514,6 +514,15 @@
             Резерв — на стадии «Бронь/Счёт», списание — на «Продано».
           @endif
         </div>
+        @if($deal->stock_deducted_at && ! $deal->returned_at && auth()->user()?->role === 'sneaker_head')
+          <div class="form-text mt-1">
+            @if($deal->sale_profit !== null)
+              Чистая прибыль: <b class="{{ $deal->sale_profit >= 0 ? 'text-success' : 'text-danger' }}">{{ number_format($deal->sale_profit, 0, ',', ' ') }} ₽</b>@if($deal->sale_margin_percent !== null) <span class="text-muted">· маржа {{ $deal->sale_margin_percent }}%</span>@endif
+            @else
+              <span class="text-muted">Прибыль не рассчитана — укажите закупочную цену товара на складе.</span>
+            @endif
+          </div>
+        @endif
         @if($deal->stock_deducted_at && ! $deal->returned_at)
           <div class="mt-2 d-flex gap-2 flex-wrap">
             <a class="btn btn-sm btn-outline-primary" href="{{ route('deals.receipt', $deal) }}" target="_blank">🖨️ Печать чека</a>

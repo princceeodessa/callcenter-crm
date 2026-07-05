@@ -205,6 +205,48 @@ SQL;
         return $this->belongsTo(WarehouseItem::class, 'warehouse_item_id');
     }
 
+    /**
+     * Себестоимость пары для расчёта прибыли: снимок на момент продажи
+     * (sold_unit_cost), иначе — текущая закупочная цена товара. null = закуп не указан.
+     */
+    public function getUnitCostBasisAttribute(): ?float
+    {
+        $snap = $this->sold_unit_cost !== null ? (float) $this->sold_unit_cost : 0.0;
+        if ($snap > 0) {
+            return $snap;
+        }
+        $avg = $this->warehouseItem?->avg_cost;
+
+        return ($avg !== null && (float) $avg > 0) ? (float) $avg : null;
+    }
+
+    /** Чистая прибыль по заказу в ₽ (выручка − себестоимость×кол-во). null если закуп не указан. */
+    public function getSaleProfitAttribute(): ?float
+    {
+        $qty = (int) $this->sold_quantity;
+        if ($qty <= 0 || $this->amount === null) {
+            return null;
+        }
+        $cost = $this->unit_cost_basis;
+        if ($cost === null) {
+            return null;
+        }
+
+        return round((float) $this->amount - $cost * $qty, 2);
+    }
+
+    /** Маржа в процентах (прибыль / выручка). null если прибыль не рассчитывается. */
+    public function getSaleMarginPercentAttribute(): ?float
+    {
+        $profit = $this->sale_profit;
+        $amount = (float) ($this->amount ?? 0);
+        if ($profit === null || $amount <= 0) {
+            return null;
+        }
+
+        return round($profit / $amount * 100, 1);
+    }
+
     public static function incomingPhoneSourceOptions(): array
     {
         $options = [];
