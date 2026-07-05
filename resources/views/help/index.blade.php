@@ -41,9 +41,13 @@
     <div class="help-toolbar">
         <div>
             <h4 class="mb-0" style="letter-spacing:-.02em">📖 Инструкция</h4>
-            <div class="text-muted small">полное руководство сотрудника кроссовочного отдела</div>
+            <div class="text-muted small">{{ $subtitle ?? '' }}</div>
         </div>
-        <a class="btn btn-sm btn-outline-primary" href="{{ route('help.download') }}">⬇️ Скачать MD</a>
+        <div class="d-flex gap-2 flex-wrap">
+            <a class="btn btn-sm {{ ($active ?? 'full') === 'simple' ? 'btn-primary' : 'btn-outline-primary' }}" href="{{ route('help.simple') }}">👟 Для продавца</a>
+            <a class="btn btn-sm {{ ($active ?? 'full') === 'full' ? 'btn-primary' : 'btn-outline-primary' }}" href="{{ route('help.index') }}">📚 Полная</a>
+            <a class="btn btn-sm btn-outline-secondary" href="{{ route('help.download', ['doc' => ($active ?? 'full') === 'simple' ? 'simple' : 'full']) }}">⬇️ Скачать</a>
+        </div>
     </div>
 
     <div class="help-content">

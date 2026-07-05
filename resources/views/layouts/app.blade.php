@@ -296,6 +296,7 @@
                     <a class="btn btn-sm btn-outline-light" href="{{ route('chats.index') }}">Чаты</a>
                 @endif
                 @if($isSneaker)
+                    <a class="btn btn-sm btn-success fw-semibold" href="{{ route('sale.quick') }}">💵 Продажа</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('purchases.kanban') }}">Закупки</a>
                     <a class="btn btn-sm btn-outline-light position-relative" href="{{ route('warehouse.index') }}">Склад
                         @if($lowStock > 0)<span class="position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-danger" title="Заканчивается позиций: {{ $lowStock }}">{{ $lowStock }}</span>@endif

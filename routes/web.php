@@ -5,6 +5,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DealController;
 use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\HelpController;
+use App\Http\Controllers\SneakerSaleController;
 use App\Http\Controllers\WarehouseAnalyticsController;
 use App\Http\Controllers\WarehouseController;
 use App\Http\Controllers\SneakerReportController;
@@ -148,7 +149,11 @@ Route::middleware('auth')->group(function () {
         Route::get('/warehouse/reorder', [WarehouseController::class, 'reorderSuggestions'])->name('warehouse.reorder');
         Route::post('/warehouse/bulk', [WarehouseController::class, 'bulkAction'])->name('warehouse.bulk');
         Route::get('/help', [HelpController::class, 'index'])->name('help.index');
+        Route::get('/help/simple', [HelpController::class, 'simple'])->name('help.simple');
         Route::get('/help/download', [HelpController::class, 'download'])->name('help.download');
+        // Быстрая продажа (один экран для продавца)
+        Route::get('/sale', [SneakerSaleController::class, 'form'])->name('sale.quick');
+        Route::post('/sale', [SneakerSaleController::class, 'store'])->name('sale.quick.store');
         Route::post('/warehouse/receiving', [WarehouseController::class, 'receivingScan'])->name('warehouse.receiving.scan');
         // Коды маркировки (Честный знак)
         Route::post('/warehouse/items/{item}/marks', [WarehouseController::class, 'addItemMarks'])->name('warehouse.item.marks.add');
