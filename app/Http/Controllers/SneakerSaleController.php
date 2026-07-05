@@ -61,7 +61,17 @@ class SneakerSaleController extends Controller
         }
         usort($products, fn ($a, $b) => strcmp(mb_strtoupper($a['name']), mb_strtoupper($b['name'])));
 
-        return view('sale.quick', compact('products'));
+        // Журнал последних продаж (для удобного отслеживания).
+        $isHead = $user->role === 'sneaker_head';
+        $recentSales = Deal::where('account_id', $accId)
+            ->whereNotNull('stock_deducted_at')
+            ->whereNull('returned_at')
+            ->with(['warehouseItem:id,brand,model,avg_cost', 'responsible:id,name'])
+            ->orderByDesc('stock_deducted_at')
+            ->limit(30)
+            ->get();
+
+        return view('sale.quick', compact('products', 'recentSales', 'isHead'));
     }
 
     public function store(Request $request, WarehouseService $warehouse)

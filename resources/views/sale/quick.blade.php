@@ -63,6 +63,32 @@
         border:1px solid rgba(16,185,129,.5); border-radius:1rem;
         padding:1rem 1.2rem; margin-bottom:1rem;
     }
+
+    /* журнал последних продаж */
+    .qs-log{ margin-bottom:1rem; }
+    .qs-log-toggle{
+        display:inline-flex; align-items:center; gap:.35rem; cursor:pointer;
+        padding:.4rem .9rem; border-radius:999px; font-size:.85rem; font-weight:600;
+        background:var(--crm-surface-strong); border:1px solid var(--crm-border); color:var(--crm-text);
+        font-family:inherit; line-height:1.3;
+    }
+    .qs-log-toggle:hover{ border-color:var(--crm-accent); color:var(--crm-accent); }
+    .qs-log-box{
+        margin-top:.5rem; background:var(--crm-surface-strong); border:1px solid var(--crm-border);
+        border-radius:.9rem; overflow:hidden; max-height:420px; overflow-y:auto;
+    }
+    .qs-log-row{
+        display:flex; align-items:center; gap:.5rem; padding:.4rem .8rem; font-size:.82rem;
+        border-bottom:1px solid var(--crm-border);
+    }
+    .qs-log-row:last-child{ border-bottom:0; }
+    .qs-log-row .t{ color:var(--crm-muted); font-size:.72rem; width:70px; flex-shrink:0; }
+    .qs-log-row .n{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .qs-log-row .q{ color:var(--crm-muted); flex-shrink:0; }
+    .qs-log-row .a{ font-weight:700; text-align:right; flex-shrink:0; }
+    .qs-log-row .p{ font-weight:700; text-align:right; flex-shrink:0; min-width:88px; }
+    .qs-log-row .r{ text-decoration:none; flex-shrink:0; opacity:.7; }
+    .qs-log-row .r:hover{ opacity:1; }
 </style>
 
 @php
@@ -98,6 +124,30 @@
             </div>
         </div>
     @endif
+
+    {{-- Журнал последних продаж --}}
+    <div class="qs-log">
+        <button type="button" class="qs-log-toggle" id="logToggle" aria-expanded="false">
+            🧾 Последние продажи <span class="text-muted">· {{ $recentSales->count() }}</span> <span style="font-size:.7rem" id="logCaret">▾</span>
+        </button>
+        <div class="qs-log-box" id="logBox" style="display:none">
+            @forelse($recentSales as $s)
+                <div class="qs-log-row">
+                    <span class="t">{{ optional($s->stock_deducted_at)->format('d.m H:i') }}</span>
+                    <span class="n">{{ $s->warehouseItem?->display_name ?? $s->title }}</span>
+                    <span class="q">×{{ (int) $s->sold_quantity }}</span>
+                    <span class="a">{{ $money($s->amount) }} ₽</span>
+                    @if($isHead)
+                        <span class="p {{ $s->sale_profit === null ? 'text-muted' : ($s->sale_profit >= 0 ? 'text-success' : 'text-danger') }}">{{ $s->sale_profit !== null ? '+'.$money($s->sale_profit).' ₽' : '—' }}</span>
+                    @endif
+                    <a class="r" href="{{ route('deals.receipt', $s->id) }}" target="_blank" title="Чек">🖨️</a>
+                    <a class="r" href="{{ route('deals.show', $s->id) }}" title="Открыть сделку">↗</a>
+                </div>
+            @empty
+                <div class="text-muted small p-3 text-center">Продаж пока нет.</div>
+            @endforelse
+        </div>
+    </div>
 
     <div class="qs-search">
         <span style="color:var(--crm-muted);font-size:1.1rem">🔎</span>
@@ -261,6 +311,19 @@
     panel.addEventListener('submit', (e) => {
         if (!fItem.value) { e.preventDefault(); alert('Сначала выберите товар и размер.'); }
     });
+
+    // Журнал последних продаж — надёжный toggle (без <details>).
+    const logBtn = document.getElementById('logToggle');
+    const logBox = document.getElementById('logBox');
+    const logCaret = document.getElementById('logCaret');
+    if (logBtn && logBox) {
+        logBtn.addEventListener('click', () => {
+            const show = logBox.style.display === 'none';
+            logBox.style.display = show ? '' : 'none';
+            logBtn.setAttribute('aria-expanded', show ? 'true' : 'false');
+            if (logCaret) logCaret.textContent = show ? '▴' : '▾';
+        });
+    }
 })();
 </script>
 @endsection

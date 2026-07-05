@@ -250,8 +250,10 @@
         display:inline-flex; align-items:center; gap:.4rem; cursor:pointer;
         padding:.35rem .85rem; border-radius:var(--wh-pill);
         background:var(--crm-surface); border:1px solid var(--crm-border);
-        font-size:.78rem; font-weight:600;
+        font-size:.78rem; font-weight:600; color:var(--crm-text);
+        font-family:inherit; line-height:1.3;
     }
+    .moves-title:hover{ border-color:var(--crm-accent); color:var(--crm-accent); }
     .moves-timeline{ margin-top:.8rem; position:relative; padding-left:1.1rem; }
     .moves-timeline::before{ content:""; position:absolute; left:.32rem; top:.4rem; bottom:.4rem; width:2px; background:var(--crm-border); }
     .move{ position:relative; padding:.3rem 0 .3rem .3rem; font-size:.78rem; }
@@ -691,9 +693,9 @@
 
 {{-- Движения --}}
 @if($hasMovements)
-    <details class="mt-4 wh-details">
-        <summary class="moves-title">📜 Последние движения · {{ $movements->count() }}</summary>
-        <div class="moves-timeline">
+    <div class="mt-4">
+        <button type="button" class="moves-title" id="movesToggle" aria-expanded="false">📜 Последние движения · {{ $movements->count() }}</button>
+        <div class="moves-timeline" id="movesBox" style="display:none">
             @foreach($movements as $m)
                 <div class="move {{ $m->type }}">
                     <span class="text-muted" style="font-size:.7rem">{{ optional($m->created_at)->format('d.m H:i') }}</span>
@@ -706,6 +708,18 @@
                 </div>
             @endforeach
         </div>
-    </details>
+    </div>
+    <script>
+        (() => {
+            const btn = document.getElementById('movesToggle');
+            const box = document.getElementById('movesBox');
+            if (!btn || !box) return;
+            btn.addEventListener('click', () => {
+                const show = box.style.display === 'none';
+                box.style.display = show ? '' : 'none';
+                btn.setAttribute('aria-expanded', show ? 'true' : 'false');
+            });
+        })();
+    </script>
 @endif
 @endsection
