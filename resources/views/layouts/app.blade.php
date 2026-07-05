@@ -284,7 +284,7 @@
         @php($isSneakerHead = $navUser?->role === 'sneaker_head')
         @php($lowStock = $isSneaker ? \App\Models\WarehouseItem::where('account_id', $navUser->account_id)->where('low_stock_threshold', '>', 0)->whereRaw('(quantity - reserved) <= low_stock_threshold')->count() : 0)
         @php($canUseProjecting = $isConstructor)
-        @php($homeRoute = $isMeasurer ? 'calendar.index' : ($isConstructor ? 'ceiling-projects.index' : ($isDocumentsOperator ? 'nonclosures.index' : ($isSneaker ? 'purchases.kanban' : 'deals.kanban'))))
+        @php($homeRoute = $isMeasurer ? 'calendar.index' : ($isConstructor ? 'ceiling-projects.index' : ($isDocumentsOperator ? 'nonclosures.index' : ($isSneaker ? 'sale.quick' : 'deals.kanban'))))
         <a class="navbar-brand fw-semibold" href="{{ route($homeRoute) }}">{{ config('app.name') }}</a>
         <div class="d-flex gap-2 flex-wrap align-items-center">
             @auth
@@ -297,16 +297,15 @@
                 @endif
                 @if($isSneaker)
                     <a class="btn btn-sm btn-success fw-semibold" href="{{ route('sale.quick') }}">💵 Продажа</a>
-                    <a class="btn btn-sm btn-outline-light" href="{{ route('purchases.kanban') }}">Закупки</a>
                     <a class="btn btn-sm btn-outline-light position-relative" href="{{ route('warehouse.index') }}">Склад
                         @if($lowStock > 0)<span class="position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-danger" title="Заканчивается позиций: {{ $lowStock }}">{{ $lowStock }}</span>@endif
                     </a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('warehouse.receiving') }}">Приёмка</a>
-                    <a class="btn btn-sm btn-outline-light" href="{{ route('help.index') }}" title="Инструкция">📖 Помощь</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('deals.kanban') }}">Продажи</a>
-                    <a class="btn btn-sm btn-outline-light" href="{{ route('deals.index') }}">Список</a>
-                    <a class="btn btn-sm btn-outline-light" href="{{ route('tasks.index') }}">Дела</a>
-                    <a class="btn btn-sm btn-outline-light" href="{{ route('deals.closed') }}">Завершённые</a>
+                    @if($isSneakerHead)
+                        <a class="btn btn-sm btn-outline-light" href="{{ route('purchases.kanban') }}">Закупки</a>
+                    @endif
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('help.index') }}" title="Инструкция">📖 Помощь</a>
                 @endif
                 @if($isDocumentsOperator)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('tasks.index') }}">Дела</a>
@@ -341,7 +340,7 @@
                     </div>
                 </div>
 
-                @if($isSneaker)
+                @if($isSneakerHead)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('sneaker.report') }}">Отчёты</a>
                 @elseif(!$isDocumentsOperator)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('reports.monthly') }}">Отчёты</a>
@@ -352,7 +351,7 @@
                         <span id="navNotifBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-danger d-none">0</span>
                     </a>
                     <button type="button" class="btn btn-sm btn-outline-info d-none" id="enableNotifBtn" title="Системные уведомления">🔊</button>
-                    @if(!$isDocumentsOperator)
+                    @if(!$isDocumentsOperator && !$isSneaker)
                         <a class="btn btn-sm btn-success" href="{{ route('deals.create') }}">+ Сделка</a>
                     @endif
                 @endif

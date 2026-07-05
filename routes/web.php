@@ -55,7 +55,7 @@ Route::get('/', function () {
         'measurer' => 'calendar.index',
         'constructor' => 'ceiling-projects.index',
         'documents_operator' => 'nonclosures.index',
-        'sneaker_head', 'sneaker_operator' => 'purchases.kanban',
+        'sneaker_head', 'sneaker_operator' => 'sale.quick',
         default => 'deals.kanban',
     });
 })->middleware('auth');
