@@ -25,6 +25,8 @@ class TaskController extends Controller
     {
         $user = Auth::user();
         $isDocumentsTaskView = (string) $user->role === 'documents_operator';
+        // Кроссовкам не нужна потолочная рассылка по чатам — скрываем панель и не строим адресатов.
+        $isSneaker = in_array((string) $user->role, ['sneaker_head', 'sneaker_operator'], true);
         $search = trim((string) $request->query('q', ''));
         $assignedUserId = (int) ($request->query('assigned_user_id') ?? 0);
         if ($isDocumentsTaskView) {
@@ -110,7 +112,7 @@ class TaskController extends Controller
         ];
         $broadcastPreviewError = null;
 
-        if (! $isDocumentsTaskView) {
+        if (! $isDocumentsTaskView && ! $isSneaker) {
         try {
             $broadcastTemplates = $this->broadcastTemplates();
             $broadcastRecipients = $this->broadcastRecipientsByCategory($user->account_id);
@@ -144,7 +146,7 @@ class TaskController extends Controller
             'broadcastPreviewError' => $broadcastPreviewError,
             'canAssignToAll' => AssignmentScope::canAssignToAll($user),
             'isDocumentsTaskView' => $isDocumentsTaskView,
-            'canUseBroadcastPanel' => ! $isDocumentsTaskView,
+            'canUseBroadcastPanel' => ! $isDocumentsTaskView && ! $isSneaker,
             'canCreatePageTask' => ! $isDocumentsTaskView,
             'assignAllLabel' => AssignmentScope::groupForAll($user) === AssignmentScope::GROUP_CALL_CENTER
                 ? 'Всем (колл-центр)'

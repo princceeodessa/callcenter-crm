@@ -302,6 +302,7 @@
                     </a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('warehouse.receiving') }}">Приёмка</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('deals.kanban') }}">Продажи</a>
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('tasks.index') }}">Дела</a>
                     @if($isSneakerHead)
                         <a class="btn btn-sm btn-outline-light" href="{{ route('purchases.kanban') }}">Закупки</a>
                     @endif
