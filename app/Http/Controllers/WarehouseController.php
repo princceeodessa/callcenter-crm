@@ -563,12 +563,7 @@ class WarehouseController extends Controller
                 return back()->withErrors(['raw' => 'Вставьте список или выберите файл .xlsx.']);
             }
             $qty = (int) ($data['quantity'] ?? 1);
-            $rows = [];
-            foreach ($this->parseImportText($raw) as $r) {
-                foreach ($r['sizes'] as $size) {
-                    $rows[] = ['brand' => $r['brand'], 'model' => $r['model'], 'size' => (string) $size, 'qty' => $qty, 'article' => ''];
-                }
-            }
+            $rows = $this->parseImportText($raw, $qty);
             $mode = 'add';
             $note = 'Импорт списка ('.date('Y-m-d H:i').')';
         }
@@ -592,7 +587,8 @@ class WarehouseController extends Controller
         $rows = [];
         foreach (\App\Support\Warehouse\SimpleXlsxReader::rows($path, 4) as $r) {
             [$name, $size, $qty, $article] = [$r[0] ?? null, $r[1] ?? null, $r[2] ?? null, $r[3] ?? null];
-            $name = preg_replace('/\s+/u', ' ', trim((string) $name));
+            $name = str_replace(['İ', 'ı'], ['I', 'i'], preg_replace('/\s+/u', ' ', trim((string) $name)));
+            $article = str_replace(['İ', 'ı'], ['I', 'i'], (string) $article);
             // Размер может быть текстом вида «40,5 RU» — вытаскиваем число.
             $sizeClean = str_replace(',', '.', trim((string) $size));
             $qtyClean = str_replace(',', '.', trim((string) $qty));
@@ -604,7 +600,7 @@ class WarehouseController extends Controller
             [$brand, $model] = $this->splitBrandModel($name);
             $sizeStr = rtrim(rtrim(number_format((float) $sm[0], 2, '.', ''), '0'), '.');
             $qty = $qm[0];
-            $articleNorm = preg_replace('/\s+/u', '-', trim((string) $article));
+            $articleNorm = $this->normalizeArticle((string) $article);
             $rows[] = [
                 'brand' => $brand,
                 'model' => $model,
@@ -683,6 +679,19 @@ class WarehouseController extends Controller
         return [$positionsCreated, $pairsTotal, $errors];
     }
 
+    /**
+     * Нормализация артикула: пробелы → дефис; Nike-коды (XX9999999 / XX9999 999)
+     * приводятся к каноничному виду XX9999-999, чтобы расцветка не двоилась.
+     */
+    private function normalizeArticle(string $article): string
+    {
+        $a = preg_replace('/\s+/u', '-', trim($article));
+        if (preg_match('/^([A-Za-z]{2}\d{4})-?(\d{3})$/', $a, $m)) {
+            return strtoupper($m[1]).'-'.$m[2];
+        }
+        return $a;
+    }
+
     /** Первое слово — бренд (NEW BALANCE — двусоставный), остальное — модель. */
     private function splitBrandModel(string $name): array
     {
@@ -697,30 +706,114 @@ class WarehouseController extends Controller
         return [mb_strtoupper($parts[0] ?? ''), trim($parts[1] ?? '')];
     }
 
-    /** Парсер текста импорта: возвращает массив ['brand','model','sizes'=>[]]. */
-    private function parseImportText(string $raw): array
+    /**
+     * Парсер текста импорта. Поддерживает два формата:
+     *
+     * 1) Строчный: «БРЕНД МОДЕЛЬ - 41,42.5,43» (кол-во каждой пары = $defaultQty).
+     * 2) Блочный (как шлют поставщики), блоки разделены пустой строкой:
+     *      Название модели
+     *      38,38.5(2),39      ← размер, в скобках кол-во пар (без скобок = 1)
+     *      DD1873112          ← артикул (расцветка)
+     *    Допускаются склейки без запятой: «38(2)37.5», «37(4)40.5,43(2)».
+     *
+     * @return array<int, array{brand:string,model:string,size:string,qty:int,article:string}>
+     */
+    private function parseImportText(string $raw, int $defaultQty = 1): array
     {
-        $lines = preg_split('/\r?\n/', $raw);
+        // Турецкие İ/ı в артикулах и названиях → латинские I/i.
+        $raw = str_replace(['İ', 'ı'], ['I', 'i'], $raw);
+
         $rows = [];
-        foreach ($lines as $line) {
-            $line = trim($line);
+        $block = [];
+
+        $flushBlock = function () use (&$block, &$rows, $defaultQty) {
+            if (empty($block)) {
+                return;
+            }
+            // Блочный формат: [название, строка размеров, артикул?]
+            if (count($block) >= 2 && count($block) <= 3 && $this->looksLikeSizesLine($block[1])) {
+                $sizes = $this->parseSizesWithQty($block[1]);
+                $name = $this->normalizeLeadingW($block[0]);
+                if (! empty($sizes) && $name !== '') {
+                    [$brand, $model] = $this->splitBrandModel($name);
+                    $article = isset($block[2]) ? $this->normalizeArticle($block[2]) : '';
+                    foreach ($sizes as [$size, $q]) {
+                        $rows[] = ['brand' => $brand, 'model' => $model, 'size' => $size, 'qty' => $q, 'article' => $article];
+                    }
+                    $block = [];
+                    return;
+                }
+            }
+            // Иначе — каждая строка блока в строчном формате «... - размеры».
+            foreach ($block as $line) {
+                if (! preg_match('/^(.*?)[\s]*[-—]\s*(?:рр\s*)?([\d.,\s]+)$/u', $line, $m)) {
+                    continue;
+                }
+                $name = trim($m[1]);
+                $sizes = array_values(array_filter(array_map('trim', preg_split('/[,\s]+/', trim($m[2])))));
+                if (empty($sizes) || $name === '') {
+                    continue;
+                }
+                [$brand, $model] = $this->splitBrandModel($name);
+                foreach ($sizes as $size) {
+                    $rows[] = ['brand' => $brand, 'model' => $model, 'size' => (string) $size, 'qty' => $defaultQty, 'article' => ''];
+                }
+            }
+            $block = [];
+        };
+
+        foreach (preg_split('/\r?\n/', $raw) as $line) {
+            $line = trim(preg_replace('/\s+/u', ' ', $line));
             if ($line === '') {
+                $flushBlock();
                 continue;
             }
-            // Разделитель "-" перед размерами (может быть с пробелами вокруг). Ищем последний "-" со стороны цифр.
-            if (! preg_match('/^(.*?)[\s]*[-—]\s*(?:рр\s*)?([\d.,\s]+)$/u', $line, $m)) {
-                continue;
-            }
-            $name = trim(preg_replace('/\s+/u', ' ', $m[1]));
-            $sizesRaw = trim($m[2]);
-            $sizes = array_values(array_filter(array_map('trim', preg_split('/[,\s]+/', $sizesRaw))));
-            if (empty($sizes) || $name === '') {
-                continue;
-            }
-            [$brand, $model] = $this->splitBrandModel($name);
-            $rows[] = ['brand' => $brand, 'model' => $model, 'sizes' => $sizes];
+            $block[] = $line;
         }
+        $flushBlock();
+
         return $rows;
+    }
+
+    /** Строка состоит только из цифр, точек, запятых, скобок и пробелов? */
+    private function looksLikeSizesLine(string $line): bool
+    {
+        return $line !== ''
+            && preg_match('/\d/', $line) === 1
+            && preg_match('/^[\d.,()\s]+$/', $line) === 1;
+    }
+
+    /**
+     * «38,38.5(2)39» → [['38',1], ['38.5',2], ['39',1]].
+     *
+     * @return array<int, array{0:string,1:int}>
+     */
+    private function parseSizesWithQty(string $line): array
+    {
+        $out = [];
+        // Запятая здесь — разделитель списка, десятичные только через точку.
+        if (! preg_match_all('/(\d+(?:\.\d+)?)(?:\s*\((\d+)\))?/', $line, $mm, PREG_SET_ORDER)) {
+            return $out;
+        }
+        foreach ($mm as $m) {
+            $size = rtrim(rtrim(number_format((float) $m[1], 2, '.', ''), '0'), '.');
+            $qty = isset($m[2]) && $m[2] !== '' ? (int) $m[2] : 1;
+            $out[] = [$size, max(1, $qty)];
+        }
+        return $out;
+    }
+
+    /** «W Nike dunk low» / «Wmns Nike …» → «Nike W dunk low» (бренд должен идти первым). */
+    private function normalizeLeadingW(string $name): string
+    {
+        if (! preg_match('/^(WMNS|W)\s+(\S+)\s*(.*)$/iu', $name, $m)) {
+            return $name;
+        }
+        $knownBrands = ['NIKE', 'ADIDAS', 'PUMA', 'VANS', 'LACOSTE', 'KAPPA', 'SAUCONY', 'GUESS', 'CALVIN', 'LI-NING', 'NEW'];
+        if (! in_array(mb_strtoupper($m[2]), $knownBrands, true)) {
+            return $name;
+        }
+        return trim($m[2].' '.$m[1].' '.$m[3]);
     }
 
     public function export(Request $request)
