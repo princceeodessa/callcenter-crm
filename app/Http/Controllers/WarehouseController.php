@@ -40,6 +40,7 @@ class WarehouseController extends Controller
 
         $totalUnits = (int) $items->sum('quantity');
         $stockValue = (float) $items->sum(fn ($i) => (int) $i->quantity * (float) ($i->sale_price ?? 0));
+        $stockCostValue = (float) $items->sum(fn ($i) => (int) $i->quantity * (float) ($i->avg_cost ?? 0));
         $isHead = $this->isHead();
 
         // Опции таксономии + текущие фильтры
@@ -156,7 +157,7 @@ class WarehouseController extends Controller
 
         return view('warehouse.index', compact(
             'productsPage', 'productsCount', 'availableSum', 'lowCount', 'lowFilter',
-            'movements', 'q', 'totalUnits', 'stockValue', 'isHead',
+            'movements', 'q', 'totalUnits', 'stockValue', 'stockCostValue', 'isHead',
             'categoryOptions', 'genderOptions', 'seasonOptions',
             'filterCategory', 'filterGender', 'filterSeason', 'filterTag', 'allTags'
         ));

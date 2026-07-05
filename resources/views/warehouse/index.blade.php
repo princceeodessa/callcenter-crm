@@ -316,7 +316,13 @@
     <div class="wh-stat"><div class="l">Товаров</div><div class="v">{{ $productsCount }}</div></div>
     <div class="wh-stat"><div class="l">Пар на складе</div><div class="v">{{ $totalUnits }}</div></div>
     <div class="wh-stat"><div class="l">Доступно</div><div class="v">{{ $availableSum }}</div></div>
-    <div class="wh-stat"><div class="l">Стоимость</div><div class="v">{{ $money($stockValue) }} ₽</div></div>
+    @if($isHead)
+        <div class="wh-stat"><div class="l">Вложено · по закупке</div><div class="v">{{ $money($stockCostValue) }} ₽</div></div>
+    @endif
+    <div class="wh-stat"><div class="l">Стоимость · по продаже</div><div class="v">{{ $money($stockValue) }} ₽</div></div>
+    @if($isHead && $stockCostValue > 0)
+        <div class="wh-stat"><div class="l">Потенц. прибыль</div><div class="v" style="color:var(--wh-green)">{{ $money($stockValue - $stockCostValue) }} ₽</div></div>
+    @endif
 </div>
 
 {{-- TOOLBAR: поиск + фильтры одной строкой --}}

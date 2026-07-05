@@ -865,6 +865,10 @@ class DealController extends Controller
 
         $warehouse->syncDealStock($deal);
 
+        if (! $reopened) {
+            $this->closeSneakerDealAtTerminalStage($deal, $to, $user);
+        }
+
         return back()->with('status', $reopened
             ? $this->dealReopenedStatusMessage()
             : null);
@@ -922,8 +926,11 @@ class DealController extends Controller
 
         $warehouse->syncDealStock($deal);
 
+        $closed = $this->closeSneakerDealAtTerminalStage($deal, $to, $user);
+
         return response()->json([
             'ok' => true,
+            'closed' => $closed,
             'last_moved_by_label' => $this->lastMovedByLabel($user->name),
         ]);
     }
@@ -1115,6 +1122,49 @@ class DealController extends Controller
     private function shouldReopenDealOnStageChange(bool $wasClosed, int $fromStageId, PipelineStage $to): bool
     {
         return $wasClosed && ! $to->is_final && $fromStageId !== (int) $to->id;
+    }
+
+    /**
+     * Кроссовки: перенос сделки в терминальную стадию («Продано» = is_final или «Отказ»)
+     * закрывает её, чтобы она ушла с доски в «Завершённые» и попала в отчёты.
+     * Потолочный аккаунт использует отдельную кнопку закрытия — его не трогаем.
+     */
+    private function closeSneakerDealAtTerminalStage(Deal $deal, PipelineStage $to, $user): bool
+    {
+        if (! in_array($user->role, ['sneaker_head', 'sneaker_operator'], true)) {
+            return false;
+        }
+        if ($deal->closed_at) {
+            return false;
+        }
+
+        $name = mb_strtolower(trim((string) $to->name));
+        $isLost = mb_strpos($name, "\u{043E}\u{0442}\u{043A}\u{0430}\u{0437}") !== false        // «отказ»
+            || mb_strpos($name, "\u{0432}\u{043E}\u{0437}\u{0432}\u{0440}\u{0430}\u{0442}") !== false; // «возврат»
+
+        if (! $to->is_final && ! $isLost) {
+            return false;
+        }
+
+        $deal->closed_at = now();
+        $deal->closed_result = $to->is_final ? 'won' : 'lost';
+        $deal->closed_reason = $isLost ? "\u{041E}\u{0442}\u{043A}\u{0430}\u{0437}" : null; // «Отказ»
+        $deal->closed_by_user_id = $user->id;
+        $deal->save();
+
+        DealActivity::create([
+            'account_id' => $deal->account_id,
+            'deal_id' => $deal->id,
+            'author_user_id' => $user->id,
+            'type' => 'deal_closed',
+            'body' => $this->dealClosedActivityBody($deal->closed_result, $deal->closed_reason),
+            'payload' => [
+                'closed_result' => $deal->closed_result,
+                'closed_reason' => $deal->closed_reason,
+            ],
+        ]);
+
+        return true;
     }
 
     private function stageChangedActivityBody(): string

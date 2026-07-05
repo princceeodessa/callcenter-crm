@@ -308,6 +308,15 @@
                             const payload = await res.json().catch(() => ({}));
                             if (!res.ok || payload.ok === false) throw new Error(payload.message || 'Move failed');
 
+                            // Кроссовки: попадание в «Продано»/«Отказ» закрывает сделку —
+                            // карточка уходит с доски (в «Завершённые»).
+                            if (payload.closed) {
+                                cardEl.remove();
+                                updateCount(fromStageId);
+                                updateCount(toStageId);
+                                return;
+                            }
+
                             const lastMovedEl = cardEl?.querySelector('.kanban-last-moved');
                             if (lastMovedEl && payload.last_moved_by_label) {
                                 lastMovedEl.textContent = payload.last_moved_by_label;
