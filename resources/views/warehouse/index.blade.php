@@ -202,6 +202,10 @@
         border-radius:.45rem; padding:.2rem .45rem; font-size:.76rem; outline:none;
         font-family:ui-monospace,"SFMono-Regular",Menlo,monospace;
     }
+    .ps-row input[type="number"]{
+        width:96px; border:1px solid var(--crm-border); background:var(--crm-surface); color:var(--crm-text);
+        border-radius:.45rem; padding:.2rem .45rem; font-size:.76rem; outline:none;
+    }
     .ps-row .bc{ height:24px; display:inline-flex; align-items:center; }
     .ps-row .bc svg{ height:100%; width:auto; max-width:130px; }
     .btn-xxs{ font-size:.72rem; padding:.18rem .55rem; border-radius:.45rem; }
@@ -467,7 +471,8 @@
                                     @csrf @method('PATCH')
                                     <div class="frow"><label>Остаток</label><input type="number" name="quantity" min="0" value="{{ $i->quantity }}"></div>
                                     @if($isHead)
-                                        <div class="frow"><label>Цена ₽</label><input type="number" step="0.01" min="0" name="sale_price" value="{{ $i->sale_price }}" placeholder="—"></div>
+                                        <div class="frow"><label>Закупка ₽</label><input type="number" step="0.01" min="0" name="avg_cost" value="{{ $i->avg_cost }}" placeholder="—"></div>
+                                        <div class="frow"><label>Продажа ₽</label><input type="number" step="0.01" min="0" name="sale_price" value="{{ $i->sale_price }}" placeholder="—"></div>
                                         <div class="frow"><label>Мин. остаток</label><input type="number" min="0" name="low_stock_threshold" value="{{ $i->low_stock_threshold }}"></div>
                                     @endif
                                     <div class="actions">
@@ -535,6 +540,23 @@
                                 </select>
                             </form>
                         </div>
+                        @if($isHead)
+                            <div class="ps-row">
+                                <span class="lbl">Цены</span>
+                                <form method="POST" action="{{ route('warehouse.product.prices', $prod['entity']) }}" class="d-flex align-items-center gap-1 flex-wrap">
+                                    @csrf @method('PATCH')
+                                    <input type="number" step="0.01" min="0" name="cost" value="{{ $prod['cost_common'] }}" placeholder="закуп ₽" title="За сколько закупаете (себестоимость пары)">
+                                    <input type="number" step="0.01" min="0" name="price" value="{{ $prod['price_common'] }}" placeholder="продажа ₽" title="За сколько обычно продаёте">
+                                    <button class="btn btn-primary btn-xxs">Применить ко всем размерам</button>
+                                    @if($prod['margin'] !== null)
+                                        <span class="small text-muted">наценка {{ $prod['margin'] }}%</span>
+                                    @endif
+                                    @if($prod['mixed_prices'])
+                                        <span class="small text-muted" title="У размеров этой модели сейчас разные цены">⚠ цены различаются по размерам</span>
+                                    @endif
+                                </form>
+                            </div>
+                        @endif
                         <div class="ps-row">
                             <span class="lbl">Артикул</span>
                             <form method="POST" action="{{ route('warehouse.product.update', $prod['entity']) }}" class="d-flex align-items-center gap-1">

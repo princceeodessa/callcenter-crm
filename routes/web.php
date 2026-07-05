@@ -137,6 +137,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/warehouse/{item}/replenish', [WarehouseController::class, 'replenish'])->name('warehouse.replenish');
         Route::delete('/warehouse/{item}', [WarehouseController::class, 'destroy'])->name('warehouse.destroy');
         Route::patch('/warehouse/products/{product}', [WarehouseController::class, 'updateProduct'])->name('warehouse.product.update');
+        Route::patch('/warehouse/products/{product}/prices', [WarehouseController::class, 'updateProductPrices'])->name('warehouse.product.prices');
         Route::post('/warehouse/products/{product}/photo', [WarehouseController::class, 'uploadProductPhoto'])->name('warehouse.product.photo.upload');
         Route::delete('/warehouse/products/{product}/photo', [WarehouseController::class, 'deleteProductPhoto'])->name('warehouse.product.photo.delete');
         Route::get('/warehouse/products/{product}/label', [WarehouseController::class, 'label'])->name('warehouse.product.label');

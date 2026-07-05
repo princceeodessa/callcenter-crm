@@ -73,6 +73,15 @@ class WarehouseController extends Controller
                 $gallery = $product->gallery;
                 $article = (string) $product->article;
 
+                // Общие цены по расцветке (если одинаковы у всех размеров)
+                $costVals = $group->pluck('avg_cost')->filter(fn ($v) => $v !== null)->map(fn ($v) => (float) $v)->unique()->values();
+                $priceVals = $group->pluck('sale_price')->filter(fn ($v) => $v !== null)->map(fn ($v) => (float) $v)->unique()->values();
+                $costCommon = $costVals->count() === 1 ? $costVals[0] : null;
+                $priceCommon = $priceVals->count() === 1 ? $priceVals[0] : null;
+                $margin = ($costCommon && $priceCommon && $costCommon > 0)
+                    ? (int) round(($priceCommon - $costCommon) / $costCommon * 100)
+                    : null;
+
                 return [
                     'entity' => $product,
                     'name' => $product->custom_name ?: $autoName,
@@ -86,6 +95,10 @@ class WarehouseController extends Controller
                     'gender' => $product->gender,
                     'season' => $product->season,
                     'tags' => is_array($product->tags) ? $product->tags : [],
+                    'cost_common' => $costCommon,
+                    'price_common' => $priceCommon,
+                    'margin' => $margin,
+                    'mixed_prices' => $costVals->count() > 1 || $priceVals->count() > 1,
                     'brand' => $brand,
                     'model' => $model,
                     'sizes' => $group->sortBy('size', SORT_NATURAL)->values(),
@@ -160,13 +173,17 @@ class WarehouseController extends Controller
         $data = $request->validate([
             'quantity' => ['required', 'integer', 'min:0', 'max:1000000'],
             'sale_price' => ['nullable', 'numeric', 'min:0'],
+            'avg_cost' => ['nullable', 'numeric', 'min:0'],
             'low_stock_threshold' => ['nullable', 'integer', 'min:0'],
             'notes' => ['nullable', 'string', 'max:255'],
         ]);
 
-        // Цену продажи и порог меняет только руководитель отдела.
+        // Цены (закуп/продажа) и порог меняет только руководитель отдела.
         if ($this->isHead()) {
             $item->sale_price = $data['sale_price'] ?? null;
+            if ($request->has('avg_cost')) {
+                $item->avg_cost = $data['avg_cost'] ?? null;
+            }
             $item->low_stock_threshold = (int) ($data['low_stock_threshold'] ?? 0);
         }
         $item->notes = $data['notes'] ?? null;
@@ -283,6 +300,37 @@ class WarehouseController extends Controller
         }
 
         return back()->with('status', 'Фото удалено.');
+    }
+
+    /** Задать закуп/продажу сразу для всех размеров расцветки (только руководитель). */
+    public function updateProductPrices(Request $request, WarehouseProduct $product)
+    {
+        $user = Auth::user();
+        abort_unless($product->account_id === $user->account_id, 403);
+        abort_unless($this->isHead(), 403);
+
+        $data = $request->validate([
+            'cost' => ['nullable', 'numeric', 'min:0'],
+            'price' => ['nullable', 'numeric', 'min:0'],
+        ]);
+
+        $upd = [];
+        if ($request->filled('cost')) {
+            $upd['avg_cost'] = (float) $data['cost'];
+        }
+        if ($request->filled('price')) {
+            $upd['sale_price'] = (float) $data['price'];
+        }
+        if (empty($upd)) {
+            return back()->withErrors(['cost' => 'Укажите закуп и/или цену продажи.']);
+        }
+
+        $n = WarehouseItem::where('account_id', $user->account_id)
+            ->where('brand', $product->brand)
+            ->where('model', $product->model)
+            ->update($upd);
+
+        return back()->with('status', 'Цены применены к '.$n.' размер(ам) «'.$product->display_name.'».');
     }
 
     /** Печатная этикетка (артикул + Code128). */
