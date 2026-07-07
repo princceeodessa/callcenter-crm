@@ -286,7 +286,7 @@ class WarehouseController extends Controller
         return back()->with('status', 'Товар обновлён.');
     }
 
-    /** Загрузить фото товара — добавляется в галерею (не заменяет). */
+    /** Загрузить фото товара — новое фото становится обложкой (главным), остальные уходят в галерею. */
     public function uploadProductPhoto(Request $request, WarehouseProduct $product)
     {
         $user = Auth::user();
@@ -297,16 +297,13 @@ class WarehouseController extends Controller
         ]);
 
         $path = $data['photo']->store('warehouse_products/'.$product->account_id, 'public');
-        $maxSort = (int) $product->photos()->max('sort');
-        $product->photos()->create(['path' => $path, 'sort' => $maxSort + 1]);
+        // Наименьший sort → фото становится первым в галерее (обложкой). Так «сменить фото» реально меняет главную картинку.
+        $minSort = (int) $product->photos()->min('sort');
+        $product->photos()->create(['path' => $path, 'sort' => $minSort - 1]);
+        $product->image_path = $path;
+        $product->save();
 
-        // Если legacy image_path пустой — заполним первым фото для обратной совместимости.
-        if (empty($product->image_path)) {
-            $product->image_path = $path;
-            $product->save();
-        }
-
-        return back()->with('status', 'Фото добавлено.');
+        return back()->with('status', 'Фото обновлено.');
     }
 
     /** Удалить одно фото из галереи (или legacy image_path, если id пустой). */
@@ -706,13 +703,34 @@ class WarehouseController extends Controller
     {
         $user = Auth::user();
 
+        // Артикул = идентичность товара: все размеры с одним артикулом должны попасть
+        // в один и тот же (бренд+модель), даже если в источнике модель написана по-разному.
+        $canonicalByArticle = [];
+        $articles = array_values(array_filter(array_unique(array_map(fn ($r) => $r['article'], $rows))));
+        if (! empty($articles)) {
+            foreach (WarehouseProduct::where('account_id', $user->account_id)->whereIn('article', $articles)->get() as $p) {
+                $canonicalByArticle[$p->article] = ['brand' => $p->brand, 'model' => $p->model];
+            }
+        }
+
         // Агрегируем дубликаты строк в файле (один и тот же размер несколько раз)
         $agg = [];
         foreach ($rows as $r) {
-            $modelDb = trim($r['model'].($r['article'] !== '' ? ' '.$r['article'] : ''));
-            $key = mb_strtolower($r['brand'].'|'.$modelDb.'|'.$r['size']);
+            $art = $r['article'];
+            if ($art !== '') {
+                if (! isset($canonicalByArticle[$art])) {
+                    // Первое вхождение артикула задаёт каноничные бренд+модель.
+                    $canonicalByArticle[$art] = ['brand' => $r['brand'], 'model' => trim($r['model'].' '.$art)];
+                }
+                $brand = $canonicalByArticle[$art]['brand'];
+                $model = $canonicalByArticle[$art]['model'];
+            } else {
+                $brand = $r['brand'];
+                $model = $r['model'];
+            }
+            $key = mb_strtolower($brand.'|'.$model.'|'.$r['size']);
             if (! isset($agg[$key])) {
-                $agg[$key] = ['brand' => $r['brand'], 'model' => $modelDb, 'size' => $r['size'], 'qty' => 0, 'article' => $r['article']];
+                $agg[$key] = ['brand' => $brand, 'model' => $model, 'size' => $r['size'], 'qty' => 0, 'article' => $art];
             }
             $agg[$key]['qty'] += $r['qty'];
         }

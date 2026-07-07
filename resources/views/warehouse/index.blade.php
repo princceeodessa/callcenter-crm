@@ -91,9 +91,10 @@
     .pphoto .hint{
         position:absolute; left:0; right:0; bottom:0; padding:.15rem 0;
         font-size:.6rem; text-align:center; color:#fff; background:rgba(0,0,0,.5);
-        opacity:0; transition:opacity .12s;
+        opacity:0; transition:opacity .12s; pointer-events:none; /* клик проходит к файловому input */
     }
     .pphoto:hover .hint{ opacity:1; }
+    .pphoto img{ pointer-events:none; }
 
     .pinfo{ min-width:0; flex:1; padding-right:1.2rem; }
     details.name-edit > summary{ list-style:none; cursor:pointer; }
