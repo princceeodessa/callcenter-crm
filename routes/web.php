@@ -5,6 +5,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DealController;
 use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\HelpController;
+use App\Http\Controllers\OwnerDashboardController;
 use App\Http\Controllers\SneakerSaleController;
 use App\Http\Controllers\WarehouseAnalyticsController;
 use App\Http\Controllers\WarehouseController;
@@ -55,6 +56,7 @@ Route::get('/', function () {
         'measurer' => 'calendar.index',
         'constructor' => 'ceiling-projects.index',
         'documents_operator' => 'nonclosures.index',
+        'sneaker_owner' => 'owner.dashboard',
         'sneaker_head', 'sneaker_operator' => 'sale.quick',
         default => 'deals.kanban',
     });
@@ -161,6 +163,10 @@ Route::middleware('auth')->group(function () {
         Route::delete('/warehouse/marks/{mark}', [WarehouseController::class, 'deleteMark'])->name('warehouse.mark.delete');
 
         // Отчёт по кроссовкам (продажи/прибыль/склад)
+        // Сводная панель владельца (роль sneaker_owner; head — для контроля)
+        Route::get('/owner', [OwnerDashboardController::class, 'index'])
+            ->withoutMiddleware('purchases')->middleware('owner')
+            ->name('owner.dashboard');
         Route::get('/sneaker/report', [SneakerReportController::class, 'index'])->name('sneaker.report');
         Route::get('/sneaker/report/export', [SneakerReportController::class, 'export'])->name('sneaker.report.export');
     });

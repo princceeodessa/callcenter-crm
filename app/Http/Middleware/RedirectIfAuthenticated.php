@@ -15,6 +15,7 @@ class RedirectIfAuthenticated
             return redirect()->route(match (Auth::user()?->role) {
                 'measurer' => 'calendar.index',
                 'constructor' => 'ceiling-projects.index',
+                'sneaker_owner' => 'owner.dashboard',
                 'sneaker_head', 'sneaker_operator' => 'sale.quick',
                 default => 'deals.kanban',
             });

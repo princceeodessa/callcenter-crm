@@ -282,13 +282,17 @@
         @php($isMeasurer = $navUser?->role === 'measurer')
         @php($isSneaker = in_array($navUser?->role, ['sneaker_head','sneaker_operator'], true))
         @php($isSneakerHead = $navUser?->role === 'sneaker_head')
+        @php($isSneakerOwner = $navUser?->role === 'sneaker_owner')
         @php($lowStock = $isSneaker ? \App\Models\WarehouseItem::where('account_id', $navUser->account_id)->where('low_stock_threshold', '>', 0)->whereRaw('(quantity - reserved) <= low_stock_threshold')->count() : 0)
         @php($canUseProjecting = $isConstructor)
-        @php($homeRoute = $isMeasurer ? 'calendar.index' : ($isConstructor ? 'ceiling-projects.index' : ($isDocumentsOperator ? 'nonclosures.index' : ($isSneaker ? 'sale.quick' : 'deals.kanban'))))
+        @php($homeRoute = $isSneakerOwner ? 'owner.dashboard' : ($isMeasurer ? 'calendar.index' : ($isConstructor ? 'ceiling-projects.index' : ($isDocumentsOperator ? 'nonclosures.index' : ($isSneaker ? 'sale.quick' : 'deals.kanban')))))
         <a class="navbar-brand fw-semibold" href="{{ route($homeRoute) }}">{{ config('app.name') }}</a>
         <div class="d-flex gap-2 flex-wrap align-items-center">
             @auth
-                @if(!$isMeasurer && !$isConstructor && !$isDocumentsOperator && !$isSneaker)
+                @if($isSneakerOwner)
+                    <a class="btn btn-sm btn-success fw-semibold" href="{{ route('owner.dashboard') }}">📊 Сводка</a>
+                @endif
+                @if(!$isMeasurer && !$isConstructor && !$isDocumentsOperator && !$isSneaker && !$isSneakerOwner)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('deals.kanban') }}">Канбан</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('deals.index') }}">Список</a>
                     <a class="btn btn-sm btn-outline-light" href="{{ route('tasks.index') }}">Дела</a>
@@ -305,13 +309,14 @@
                     <a class="btn btn-sm btn-outline-light" href="{{ route('tasks.index') }}">Дела</a>
                     @if($isSneakerHead)
                         <a class="btn btn-sm btn-outline-light" href="{{ route('purchases.kanban') }}">Закупки</a>
+                        <a class="btn btn-sm btn-outline-light" href="{{ route('owner.dashboard') }}" title="Сводка для владельца">📊 Сводка</a>
                     @endif
                     <a class="btn btn-sm btn-outline-light" href="{{ route('help.index') }}" title="Инструкция">📖 Помощь</a>
                 @endif
                 @if($isDocumentsOperator)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('tasks.index') }}">Дела</a>
                 @endif
-                @if(!$isDocumentsOperator && !$isSneaker)
+                @if(!$isDocumentsOperator && !$isSneaker && !$isSneakerOwner)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('calendar.index') }}">Календарь</a>
                 @endif
                 @if($isNc)
@@ -343,10 +348,10 @@
 
                 @if($isSneakerHead)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('sneaker.report') }}">Отчёты</a>
-                @elseif(!$isDocumentsOperator && !$isSneaker)
+                @elseif(!$isDocumentsOperator && !$isSneaker && !$isSneakerOwner)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('reports.monthly') }}">Отчёты</a>
                 @endif
-                @if(!$isMeasurer && !$isConstructor)
+                @if(!$isMeasurer && !$isConstructor && !$isSneakerOwner)
                     <a class="btn btn-sm btn-warning position-relative" href="{{ route('notifications.index') }}" title="Уведомления" aria-label="Уведомления">
                         <i class="bi bi-bell-fill"></i>
                         <span id="navNotifBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-danger d-none">0</span>

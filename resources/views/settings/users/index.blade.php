@@ -10,6 +10,7 @@
         'constructor' => 'constructor (проектировка)',
         'sneaker_head' => 'sneaker_head (рук. кроссовок)',
         'sneaker_operator' => 'sneaker_operator (кроссовки)',
+        'sneaker_owner' => 'sneaker_owner (владелец — только сводка)',
     ];
 @endphp
 
@@ -125,6 +126,7 @@
               @if(!empty($isSneakerSpace))
                 <option value="sneaker_operator" @selected(old('role', 'sneaker_operator') === 'sneaker_operator')>{{ $roleLabels['sneaker_operator'] }}</option>
                 <option value="sneaker_head" @selected(old('role') === 'sneaker_head')>{{ $roleLabels['sneaker_head'] }}</option>
+                <option value="sneaker_owner" @selected(old('role') === 'sneaker_owner')>{{ $roleLabels['sneaker_owner'] }}</option>
               @else
                 <option value="operator" @selected(old('role', 'operator') === 'operator')>{{ $roleLabels['operator'] }}</option>
                 <option value="main_operator" @selected(old('role') === 'main_operator')>{{ $roleLabels['main_operator'] }}</option>

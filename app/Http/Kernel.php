@@ -41,5 +41,6 @@ class Kernel extends HttpKernel
         'projecting' => \App\Http\Middleware\RequireProjectingAccess::class,
         'reports' => \App\Http\Middleware\RequireReportAccess::class,
         'purchases' => \App\Http\Middleware\RequirePurchasesAccess::class,
+        'owner' => \App\Http\Middleware\RequireOwnerAccess::class,
     ];
 }
