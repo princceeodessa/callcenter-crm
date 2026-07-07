@@ -51,17 +51,20 @@ class MegafonVatsDealSync
             return;
         }
 
-        $contact = self::resolveContactByPhone($accountId, $clientPhone);
-        $deal = self::findOpenDealByPhone($accountId, $clientPhone, $contact?->id);
+        // Блокировка по номеру: два одновременных события одного звонка не создадут дубль.
+        $deal = \App\Support\Leads\LeadDeduplicator::withPhoneLock($accountId, $clientPhone, function () use ($accountId, $clientPhone) {
+            $contact = self::resolveContactByPhone($accountId, $clientPhone);
+            $existing = self::findOpenDealByPhone($accountId, $clientPhone, $contact?->id);
+            if ($existing) {
+                return $existing;
+            }
 
-        if (!$deal) {
             $stage = PipelineStage::query()
                 ->where('account_id', $accountId)
                 ->orderBy('sort')
                 ->first();
 
             if (!$stage) {
-                // Pipelines not seeded? Try default pipeline.
                 $pipeline = Pipeline::query()->where('account_id', $accountId)->where('is_default', 1)->first();
                 $stage = $pipeline
                     ? PipelineStage::query()->where('pipeline_id', $pipeline->id)->orderBy('sort')->first()
@@ -69,7 +72,7 @@ class MegafonVatsDealSync
             }
 
             if (!$stage) {
-                return;
+                return null;
             }
 
             $responsible = User::query()
@@ -83,7 +86,7 @@ class MegafonVatsDealSync
                 $responsible = User::query()->where('account_id', $accountId)->where('is_active', 1)->orderBy('id')->first();
             }
 
-            $deal = Deal::create([
+            $created = Deal::create([
                 'account_id' => $accountId,
                 'pipeline_id' => $stage->pipeline_id,
                 'stage_id' => $stage->id,
@@ -96,11 +99,18 @@ class MegafonVatsDealSync
 
             DealActivity::create([
                 'account_id' => $accountId,
-                'deal_id' => $deal->id,
+                'deal_id' => $created->id,
                 'author_user_id' => null,
                 'type' => 'system',
                 'body' => 'Сделка создана автоматически из звонка (МегаФон ВАТС).',
             ]);
+
+            return $created;
+        });
+
+        if (!$deal) {
+            // Не удалось найти/создать сделку (нет стадий) — активность прикреплять некуда.
+            return;
         }
 
         $callId = self::firstString($p, ['callid', 'call_id', 'callId', 'uuid', 'id']) ?? $event->external_id;

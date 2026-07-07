@@ -10,6 +10,7 @@ use App\Models\IntegrationEvent;
 use App\Models\Pipeline;
 use App\Models\PipelineStage;
 use App\Models\User;
+use App\Support\Leads\LeadDeduplicator;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -21,8 +22,11 @@ class VkLeadFormSync
         $payload = $this->normalizePayload($rawPayload);
         $object = is_array($payload['object'] ?? null) ? $payload['object'] : $payload;
 
-        return DB::transaction(function () use ($connection, $event, $rawPayload, $payload, $object) {
-            $accountId = (int) $connection->account_id;
+        $accountId = (int) $connection->account_id;
+        $answers = $this->extractAnswers($object);
+        $phone = $this->normalizePhone($this->extractPhone($object, $answers));
+
+        return LeadDeduplicator::withPhoneLock($accountId, $phone, fn () => DB::transaction(function () use ($connection, $event, $rawPayload, $payload, $object, $accountId, $answers, $phone) {
             $externalId = $this->extractExternalId($object, $event);
             $existingDeal = $this->findExistingDeal($accountId, $externalId);
 
@@ -32,24 +36,29 @@ class VkLeadFormSync
 
             [$pipeline, $stage] = $this->getDefaultPipelineAndStage($accountId);
 
-            $answers = $this->extractAnswers($object);
             $leadName = $this->extractLeadName($object, $answers);
-            $phone = $this->normalizePhone($this->extractPhone($object, $answers));
             $email = $this->extractEmail($object, $answers);
             $contact = $this->resolveContact($accountId, $leadName, $phone, $email);
             $responsibleId = $this->getDefaultResponsibleUserId($accountId);
             $formatted = $this->formatSubmission($payload, $object, $answers);
 
-            $deal = Deal::create([
-                'account_id' => $accountId,
-                'pipeline_id' => $pipeline->id,
-                'stage_id' => $stage->id,
-                'title' => $this->makeDealTitle($leadName, $phone, $formatted['form_name']),
-                'title_is_custom' => 0,
-                'contact_id' => $contact?->id,
-                'responsible_user_id' => $responsibleId,
-                'is_unread' => true,
-            ]);
+            // Межисточниковый дедуп: если по номеру уже есть открытая сделка — используем её.
+            $deal = $phone ? LeadDeduplicator::findOpenDealByPhone($accountId, $phone, $contact?->id) : null;
+            if ($deal) {
+                $deal->is_unread = true;
+                $deal->save();
+            } else {
+                $deal = Deal::create([
+                    'account_id' => $accountId,
+                    'pipeline_id' => $pipeline->id,
+                    'stage_id' => $stage->id,
+                    'title' => $this->makeDealTitle($leadName, $phone, $formatted['form_name']),
+                    'title_is_custom' => 0,
+                    'contact_id' => $contact?->id,
+                    'responsible_user_id' => $responsibleId,
+                    'is_unread' => true,
+                ]);
+            }
 
             DealActivity::create([
                 'account_id' => $accountId,
@@ -69,7 +78,7 @@ class VkLeadFormSync
             ]);
 
             return $deal;
-        });
+        }));
     }
 
     private function extractExternalId(array $object, IntegrationEvent $event): ?string

@@ -10,6 +10,7 @@ use App\Models\IntegrationEvent;
 use App\Models\Pipeline;
 use App\Models\PipelineStage;
 use App\Models\User;
+use App\Support\Leads\LeadDeduplicator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -22,8 +23,10 @@ class TildaLeadSync
             return null;
         }
 
-        return DB::transaction(function () use ($connection, $event, $request, $payload) {
-            $accountId = $connection->account_id;
+        $accountId = (int) $connection->account_id;
+        $phone = $this->normalizePhone($this->extractPhone($payload));
+
+        return LeadDeduplicator::withPhoneLock($accountId, $phone, fn () => DB::transaction(function () use ($connection, $event, $request, $payload, $accountId, $phone) {
             $externalId = $this->extractExternalId($payload, $event);
             $existingDeal = $this->findExistingDeal($accountId, $externalId);
             if ($existingDeal) {
@@ -33,23 +36,29 @@ class TildaLeadSync
             [$pipeline, $stage] = $this->getDefaultPipelineAndStage($accountId);
 
             $leadName = $this->extractLeadName($payload);
-            $phone = $this->normalizePhone($this->extractPhone($payload));
             $email = $this->extractEmail($payload);
             $sourceUrl = $this->extractSourceUrl($payload, $request);
             $contact = $this->resolveContact($accountId, $leadName, $phone, $email);
             $responsibleId = $this->getDefaultResponsibleUserId($accountId);
             $formatted = $this->formatSubmission($payload, $request, $connection);
 
-            $deal = Deal::create([
-                'account_id' => $accountId,
-                'pipeline_id' => $pipeline->id,
-                'stage_id' => $stage->id,
-                'title' => $this->makeDealTitle($leadName, $phone),
-                'title_is_custom' => 0,
-                'contact_id' => $contact?->id,
-                'responsible_user_id' => $responsibleId,
-                'is_unread' => true,
-            ]);
+            // Межисточниковый дедуп: если по номеру уже есть открытая сделка — используем её.
+            $deal = $phone ? LeadDeduplicator::findOpenDealByPhone($accountId, $phone, $contact?->id) : null;
+            if ($deal) {
+                $deal->is_unread = true;
+                $deal->save();
+            } else {
+                $deal = Deal::create([
+                    'account_id' => $accountId,
+                    'pipeline_id' => $pipeline->id,
+                    'stage_id' => $stage->id,
+                    'title' => $this->makeDealTitle($leadName, $phone),
+                    'title_is_custom' => 0,
+                    'contact_id' => $contact?->id,
+                    'responsible_user_id' => $responsibleId,
+                    'is_unread' => true,
+                ]);
+            }
 
             DealActivity::create([
                 'account_id' => $accountId,
@@ -69,7 +78,7 @@ class TildaLeadSync
             ]);
 
             return $deal;
-        });
+        }));
     }
 
     private function isTestPing(array $payload): bool
