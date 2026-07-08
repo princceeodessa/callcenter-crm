@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Deal;
+use App\Models\Purchase;
 use App\Models\WarehouseItem;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -29,6 +30,14 @@ class OwnerDashboardController extends Controller
         $stockCostValue = (float) $items->sum(fn ($i) => (int) $i->quantity * (float) ($i->avg_cost ?? 0));
         $stockSaleValue = (float) $items->sum(fn ($i) => (int) $i->quantity * (float) ($i->sale_price ?? 0));
         $potentialProfit = $stockSaleValue - $stockCostValue;
+
+        // ---- В доставке (заказано/оплачено/в пути — деньги потрачены, на склад ещё не заведено) ----
+        $inDelivery = Purchase::where('account_id', $accId)
+            ->whereNull('closed_at')
+            ->whereNull('stocked_at')
+            ->get();
+        $inDeliveryUnits = (int) $inDelivery->sum('quantity');
+        $inDeliveryValue = (float) $inDelivery->sum(fn ($p) => (int) $p->quantity * (float) ($p->cost ?? 0));
 
         // ---- Период ----
         $monthStr = $request->string('month')->toString();
@@ -82,6 +91,7 @@ class OwnerDashboardController extends Controller
 
         return view('owner.dashboard', compact(
             'productsCount', 'totalUnits', 'availableSum', 'stockCostValue', 'stockSaleValue', 'potentialProfit',
+            'inDeliveryUnits', 'inDeliveryValue',
             'sold', 'revenue', 'profit', 'units', 'count', 'avg', 'margin', 'noCostCount',
             'topModels', 'bySource', 'monthValue'
         ));

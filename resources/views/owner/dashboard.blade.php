@@ -52,6 +52,8 @@
         <div class="own-stat"><div class="l">Вложено · по закупке</div><div class="v">{{ $money($stockCostValue) }} ₽</div></div>
         <div class="own-stat"><div class="l">Стоимость · по продаже</div><div class="v">{{ $money($stockSaleValue) }} ₽</div></div>
         <div class="own-stat green"><div class="l">Потенц. прибыль</div><div class="v">{{ $money($potentialProfit) }} ₽</div></div>
+        <div class="own-stat"><div class="l">Пар в доставке</div><div class="v">{{ $inDeliveryUnits }}</div></div>
+        <div class="own-stat"><div class="l">В доставке · по закупке</div><div class="v">{{ $money($inDeliveryValue) }} ₽</div></div>
     </div>
 
     {{-- KPI за месяц --}}
