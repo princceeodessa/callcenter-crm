@@ -4,7 +4,6 @@ namespace App\Support\Leads;
 
 use App\Models\Contact;
 use App\Models\Deal;
-use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -114,8 +113,14 @@ class LeadDeduplicator
 
     /**
      * Выполнить $callback под блокировкой по номеру телефона (сериализация создания
-     * сделки для одного номера). Если номера нет или блокировку не удалось взять за
-     * отведённое время — выполняем без блокировки (лучше без дедупа, чем потерять лид).
+     * сделки для одного номера). Если номера нет, блокировку не удалось взять за
+     * отведённое время, либо сам кэш-стор недоступен (диск/права и т.п.) — выполняем
+     * без блокировки (лучше без дедупа, чем потерять лид).
+     *
+     * Важно: колбэк вызывается ровно один раз. Ошибка при acquire() (до колбэка)
+     * ловится и уходит в fallback; ошибка при release() (после колбэка, в finally
+     * у Lock::block()) не должна приводить к повторному вызову — поэтому получение
+     * лока и вызов колбэка разнесены по разным try-блокам.
      *
      * @template T
      * @param  callable():T  $callback
@@ -130,9 +135,20 @@ class LeadDeduplicator
         $lock = Cache::lock('lead-phone:'.$accountId.':'.$phone, 15);
 
         try {
-            return $lock->block(8, $callback);
-        } catch (LockTimeoutException) {
+            $acquired = $lock->block(8);
+        } catch (\Throwable $e) {
+            report($e);
+            $acquired = false;
+        }
+
+        if (! $acquired) {
             return $callback();
+        }
+
+        try {
+            return $callback();
+        } finally {
+            $lock->release();
         }
     }
 }
