@@ -9,8 +9,6 @@
     @if($isSneakerSpace)
         <link rel="apple-touch-icon" href="{{ asset('icons/sneaker-touch-icon-180.png') }}">
         <link rel="icon" type="image/png" href="{{ asset('icons/sneaker-favicon-32.png') }}">
-        <meta name="apple-mobile-web-app-capable" content="yes">
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
         <meta name="apple-mobile-web-app-title" content="Кроссовки">
     @endif
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
