@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ config('app.name') }}</title>
+    @php($isSneakerSpace = in_array(auth()->user()?->role, ['sneaker_head','sneaker_operator','sneaker_owner'], true))
+    @if($isSneakerSpace)
+        <link rel="apple-touch-icon" href="{{ asset('icons/sneaker-touch-icon-180.png') }}">
+        <link rel="icon" type="image/png" href="{{ asset('icons/sneaker-favicon-32.png') }}">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+        <meta name="apple-mobile-web-app-title" content="Кроссовки">
+    @endif
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <style>
