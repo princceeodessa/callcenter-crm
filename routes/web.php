@@ -125,6 +125,9 @@ Route::middleware('auth')->group(function () {
     Route::middleware('purchases')->group(function () {
         Route::get('/purchases/kanban', [PurchaseController::class, 'kanban'])->name('purchases.kanban');
         Route::get('/purchases/create', [PurchaseController::class, 'create'])->name('purchases.create');
+        Route::get('/purchases/import', [PurchaseController::class, 'importForm'])->name('purchases.import.form');
+        Route::post('/purchases/import', [PurchaseController::class, 'importRun'])->name('purchases.import.run');
+        Route::post('/purchases/receive-batch', [PurchaseController::class, 'receiveBatch'])->name('purchases.receiveBatch');
         Route::post('/purchases', [PurchaseController::class, 'store'])->name('purchases.store');
         Route::get('/purchases/{purchase}', [PurchaseController::class, 'show'])->name('purchases.show');
         Route::patch('/purchases/{purchase}', [PurchaseController::class, 'update'])->name('purchases.update');

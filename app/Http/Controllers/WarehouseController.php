@@ -8,6 +8,7 @@ use App\Models\WarehouseItem;
 use App\Models\WarehouseProduct;
 use App\Models\WarehouseProductPhoto;
 use App\Services\Warehouse\WarehouseService;
+use App\Support\Warehouse\ArticleIdentity;
 use App\Support\Warehouse\Code128;
 use App\Support\Warehouse\ProductClassifier;
 use Illuminate\Http\Request;
@@ -677,10 +678,10 @@ class WarehouseController extends Controller
                 || ! preg_match('/\d+(?:\.\d+)?/', $qtyClean, $qm)) {
                 continue; // заголовок или пустая строка
             }
-            [$brand, $model] = $this->splitBrandModel($name);
+            [$brand, $model] = ArticleIdentity::splitBrandModel($name);
             $sizeStr = rtrim(rtrim(number_format((float) $sm[0], 2, '.', ''), '0'), '.');
             $qty = $qm[0];
-            $articleNorm = $this->normalizeArticle((string) $article);
+            $articleNorm = ArticleIdentity::normalizeArticle((string) $article);
             $rows[] = [
                 'brand' => $brand,
                 'model' => $model,
@@ -706,29 +707,13 @@ class WarehouseController extends Controller
 
         // Артикул = идентичность товара: все размеры с одним артикулом должны попасть
         // в один и тот же (бренд+модель), даже если в источнике модель написана по-разному.
-        $canonicalByArticle = [];
-        $articles = array_values(array_filter(array_unique(array_map(fn ($r) => $r['article'], $rows))));
-        if (! empty($articles)) {
-            foreach (WarehouseProduct::where('account_id', $user->account_id)->whereIn('article', $articles)->get() as $p) {
-                $canonicalByArticle[$p->article] = ['brand' => $p->brand, 'model' => $p->model];
-            }
-        }
+        $canonicalByArticle = ArticleIdentity::canonicalizeByArticle($user->account_id, $rows);
 
         // Агрегируем дубликаты строк в файле (один и тот же размер несколько раз)
         $agg = [];
         foreach ($rows as $r) {
+            [$brand, $model] = ArticleIdentity::resolve($canonicalByArticle, $r);
             $art = $r['article'];
-            if ($art !== '') {
-                if (! isset($canonicalByArticle[$art])) {
-                    // Первое вхождение артикула задаёт каноничные бренд+модель.
-                    $canonicalByArticle[$art] = ['brand' => $r['brand'], 'model' => trim($r['model'].' '.$art)];
-                }
-                $brand = $canonicalByArticle[$art]['brand'];
-                $model = $canonicalByArticle[$art]['model'];
-            } else {
-                $brand = $r['brand'];
-                $model = $r['model'];
-            }
             $key = mb_strtolower($brand.'|'.$model.'|'.$r['size']);
             if (! isset($agg[$key])) {
                 $agg[$key] = ['brand' => $brand, 'model' => $model, 'size' => $r['size'], 'qty' => 0, 'article' => $art];
@@ -761,50 +746,13 @@ class WarehouseController extends Controller
                 $pairsTotal += $r['qty'];
 
                 // Товар + вендорский артикул (если указан и свободен)
-                $product = WarehouseProduct::firstOrCreate(
-                    ['account_id' => $user->account_id, 'brand' => $r['brand'], 'model' => $r['model']], []
-                );
-                if ($r['article'] !== '' && $product->article !== $r['article']) {
-                    $taken = WarehouseProduct::where('account_id', $user->account_id)
-                        ->where('article', $r['article'])->where('id', '!=', $product->id)->exists();
-                    if (! $taken) {
-                        $product->article = $r['article'];
-                        $product->save();
-                    }
-                }
+                ArticleIdentity::ensureProduct($user->account_id, $r['brand'], $r['model'], $r['article']);
             } catch (\Throwable $e) {
                 $errors[] = $r['brand'].' | '.$r['model'].' | '.$r['size'].' — '.$e->getMessage();
             }
         }
 
         return [$positionsCreated, $pairsTotal, $errors];
-    }
-
-    /**
-     * Нормализация артикула: пробелы → дефис; Nike-коды (XX9999999 / XX9999 999)
-     * приводятся к каноничному виду XX9999-999, чтобы расцветка не двоилась.
-     */
-    private function normalizeArticle(string $article): string
-    {
-        $a = preg_replace('/\s+/u', '-', trim($article));
-        if (preg_match('/^([A-Za-z]{2}\d{4})-?(\d{3})$/', $a, $m)) {
-            return strtoupper($m[1]).'-'.$m[2];
-        }
-        return $a;
-    }
-
-    /** Первое слово — бренд (NEW BALANCE — двусоставный), остальное — модель. */
-    private function splitBrandModel(string $name): array
-    {
-        $multiWordBrands = ['NEW BALANCE'];
-        $upper = mb_strtoupper($name);
-        foreach ($multiWordBrands as $mb) {
-            if (str_starts_with($upper, $mb.' ')) {
-                return [$mb, trim(mb_substr($name, mb_strlen($mb) + 1))];
-            }
-        }
-        $parts = explode(' ', $name, 2);
-        return [mb_strtoupper($parts[0] ?? ''), trim($parts[1] ?? '')];
     }
 
     /**
@@ -836,8 +784,8 @@ class WarehouseController extends Controller
                 $sizes = $this->parseSizesWithQty($block[1]);
                 $name = $this->normalizeLeadingW($block[0]);
                 if (! empty($sizes) && $name !== '') {
-                    [$brand, $model] = $this->splitBrandModel($name);
-                    $article = isset($block[2]) ? $this->normalizeArticle($block[2]) : '';
+                    [$brand, $model] = ArticleIdentity::splitBrandModel($name);
+                    $article = isset($block[2]) ? ArticleIdentity::normalizeArticle($block[2]) : '';
                     foreach ($sizes as [$size, $q]) {
                         $rows[] = ['brand' => $brand, 'model' => $model, 'size' => $size, 'qty' => $q, 'article' => $article];
                     }
@@ -855,7 +803,7 @@ class WarehouseController extends Controller
                 if (empty($sizes) || $name === '') {
                     continue;
                 }
-                [$brand, $model] = $this->splitBrandModel($name);
+                [$brand, $model] = ArticleIdentity::splitBrandModel($name);
                 foreach ($sizes as $size) {
                     $rows[] = ['brand' => $brand, 'model' => $model, 'size' => (string) $size, 'qty' => $defaultQty, 'article' => ''];
                 }

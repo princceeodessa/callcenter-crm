@@ -32,6 +32,7 @@
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="kbModeRow">В один ряд</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="kbModeWrap">С переносом</button>
             </div>
+            <a class="btn btn-sm btn-outline-success" href="{{ route('purchases.import.form') }}">📦 Загрузить поставку</a>
             <a class="btn btn-sm btn-success" href="{{ route('purchases.create') }}">+ Закупка</a>
         </div>
     </div>
