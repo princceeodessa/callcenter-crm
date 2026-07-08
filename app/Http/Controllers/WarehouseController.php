@@ -298,8 +298,9 @@ class WarehouseController extends Controller
 
         $path = $data['photo']->store('warehouse_products/'.$product->account_id, 'public');
         // Наименьший sort → фото становится первым в галерее (обложкой). Так «сменить фото» реально меняет главную картинку.
-        $minSort = (int) $product->photos()->min('sort');
-        $product->photos()->create(['path' => $path, 'sort' => $minSort - 1]);
+        // sort — unsignedInteger, поэтому вместо min-1 (может уйти в минус) сдвигаем остальные фото вверх и ставим новое на 0.
+        $product->photos()->increment('sort');
+        $product->photos()->create(['path' => $path, 'sort' => 0]);
         $product->image_path = $path;
         $product->save();
 
