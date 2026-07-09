@@ -12,6 +12,7 @@ use App\Models\Pipeline;
 use App\Models\PipelineStage;
 use App\Models\User;
 use App\Services\Integrations\VkApiClient;
+use App\Support\Leads\LeadDeduplicator;
 use Carbon\Carbon;
 
 class ChatIngestService
@@ -324,6 +325,29 @@ class ChatIngestService
     ): ?Message {
         $leadName = $this->cleanLeadName($leadName ?? $author);
 
+        // Блокировка по диалогу: два одновременных события одного и того же чата
+        // (повторная доставка вебхука, пересечение поллинга) не создадут вторую
+        // сделку — гонка ровно та же, что чинили для звонков/форм, здесь она была
+        // не покрыта, т.к. это отдельный сервис приёма чатов (Avito/VK/Telegram).
+        return LeadDeduplicator::withLock(
+            'chat-conv:'.$accountId.':'.$provider.':'.$externalConversationId,
+            function () use ($accountId, $provider, $externalConversationId, $externalMessageId, $author, $body, $payload, $sentAt, $leadName) {
+                return $this->ingestGenericLocked($accountId, $provider, $externalConversationId, $externalMessageId, $author, $body, $payload, $sentAt, $leadName);
+            }
+        );
+    }
+
+    private function ingestGenericLocked(
+        int $accountId,
+        string $provider,
+        string $externalConversationId,
+        ?string $externalMessageId,
+        string $author,
+        string $body,
+        array $payload,
+        Carbon $sentAt,
+        ?string $leadName,
+    ): ?Message {
         $conversation = Conversation::query()
             ->where('account_id', $accountId)
             ->where('channel', $provider)
