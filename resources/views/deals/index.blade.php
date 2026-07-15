@@ -27,9 +27,17 @@
       @endforeach
     </select>
     <input class="form-control form-control-sm" name="q" value="{{ $q }}" placeholder="поиск: имя, телефон, заголовок" id="dealSearchInput">
+    <div class="form-check form-check-inline d-flex align-items-center mb-0">
+      <input class="form-check-input" type="checkbox" name="today" value="1" id="dealTodayFilter" @checked($today ?? false)>
+      <label class="form-check-label small ms-1" for="dealTodayFilter">Сегодня</label>
+    </div>
     <button class="btn btn-sm btn-outline-primary">Найти</button>
   </form>
 </div>
+
+@if($today ?? false)
+  <div class="text-muted small mb-3">Показаны сделки, появившиеся или изменённые сегодня.</div>
+@endif
 
 @if(($q ?? '') !== '' && ($status ?? 'open') === 'all')
   <div class="text-muted small mb-3">Поиск включает и завершённые сделки. Если нужен только открытый список, выберите статус вручную.</div>

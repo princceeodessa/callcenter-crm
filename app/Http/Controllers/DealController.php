@@ -38,6 +38,7 @@ class DealController extends Controller
         $autoExpandSearch = $request->boolean('auto_expand_search');
         $source = trim($request->string('source')->toString());
         $productCategory = trim($request->string('product_category')->toString());
+        $today = $request->boolean('today');
         $sourceOptions = Deal::sourceFilterOptions();
         $productCategoryOptions = Deal::productCategoryOptionsForUser($user);
 
@@ -94,6 +95,14 @@ class DealController extends Controller
         if ($productCategory !== '') {
             $dealsQuery->where('product_category', $productCategory);
         }
+        if ($today) {
+            $todayStart = now()->startOfDay();
+            $todayEnd = now()->endOfDay();
+            $dealsQuery->where(function ($qq) use ($todayStart, $todayEnd) {
+                $qq->whereBetween('created_at', [$todayStart, $todayEnd])
+                    ->orWhereBetween('updated_at', [$todayStart, $todayEnd]);
+            });
+        }
 
         $deals = $dealsQuery
             ->paginate(25)
@@ -107,6 +116,7 @@ class DealController extends Controller
             'sourceOptions',
             'productCategory',
             'productCategoryOptions',
+            'today',
         ));
     }
 
