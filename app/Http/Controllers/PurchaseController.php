@@ -84,6 +84,7 @@ class PurchaseController extends Controller
             'expected_sale_price' => $data['expected_sale_price'] ?? null,
             'responsible_user_id' => $responsibleId,
             'article' => $data['article'] ?? null,
+            'is_white' => $request->boolean('is_white'),
             'notes' => $data['notes'] ?? null,
         ]);
 
@@ -132,6 +133,7 @@ class PurchaseController extends Controller
             'expected_sale_price' => $data['expected_sale_price'] ?? null,
             'responsible_user_id' => $this->resolveResponsibleId($user, $data['responsible_user_id'] ?? null),
             'article' => $data['article'] ?? null,
+            'is_white' => $request->boolean('is_white'),
             'notes' => $data['notes'] ?? null,
         ]);
         $purchase->save();

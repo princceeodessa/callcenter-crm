@@ -107,6 +107,16 @@ class SneakerReportController extends Controller
             ->whereBetween('stocked_at', [$start, $end])
             ->get()->sum(fn ($p) => (float) ($p->cost ?? 0) * (int) ($p->stocked_quantity ?? $p->quantity));
 
+        // «Заказано в белую» — закупки за период по официальному каналу.
+        $whitePurchases = Purchase::query()
+            ->where('account_id', $accId)
+            ->where('is_white', true)
+            ->whereNotNull('stocked_at')
+            ->whereBetween('stocked_at', [$start, $end])
+            ->get();
+        $whiteSpend = (float) $whitePurchases->sum(fn ($p) => (float) ($p->cost ?? 0) * (int) ($p->stocked_quantity ?? $p->quantity));
+        $whiteCount = $whitePurchases->count();
+
         $items = WarehouseItem::where('account_id', $accId)->get();
         $stockUnits = (int) $items->sum('quantity');
         $reservedUnits = (int) $items->sum('reserved');
@@ -178,7 +188,7 @@ class SneakerReportController extends Controller
         return view('reports.sneaker', compact(
             'cur', 'prev', 'delta', 'dynamics', 'dynMax',
             'funnel', 'pipelineValue', 'pipelineCount', 'conversion', 'wonCount', 'lostCount',
-            'purchaseSpend', 'stockUnits', 'reservedUnits', 'stockCostValue', 'stockSaleValue', 'openPurchases',
+            'purchaseSpend', 'whiteSpend', 'whiteCount', 'stockUnits', 'reservedUnits', 'stockCostValue', 'stockSaleValue', 'openPurchases',
             'topModels', 'deadStock', 'reorder', 'byOperator', 'bySource', 'returnsCount', 'soldDeals', 'monthValue'
         ));
     }

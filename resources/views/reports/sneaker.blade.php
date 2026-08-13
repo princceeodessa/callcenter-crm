@@ -70,6 +70,7 @@
         <div class="col-6 col-lg-3"><div class="kpi"><div class="l">Склад по себестоимости</div><div class="v">{{ $money($stockCostValue) }} ₽</div><div class="s">{{ $stockUnits }} пар@if($reservedUnits) · резерв {{ $reservedUnits }}@endif</div></div></div>
         <div class="col-6 col-lg-3"><div class="kpi"><div class="l">Склад в ценах продажи</div><div class="v">{{ $money($stockSaleValue) }} ₽</div><div class="s">потенц. выручка склада</div></div></div>
         <div class="col-6 col-lg-3"><div class="kpi"><div class="l">В работе (воронка)</div><div class="v">{{ $money($pipelineValue) }} ₽</div><div class="s">{{ $pipelineCount }} активных сделок</div></div></div>
+        <div class="col-6 col-lg-3"><div class="kpi"><div class="l">Заказано в белую</div><div class="v">{{ $money($whiteSpend) }} ₽</div><div class="s">{{ $whiteCount }} закуп. за период</div></div></div>
     </div>
 
     <div class="row g-3 mb-3">

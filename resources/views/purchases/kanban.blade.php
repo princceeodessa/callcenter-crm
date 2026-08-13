@@ -66,9 +66,14 @@
                              data-search="{{ mb_strtolower(trim(implode(' ', $searchParts))) }}">
                             <div class="d-flex justify-content-between align-items-start gap-2">
                                 <a class="fw-semibold text-decoration-none" href="{{ route('purchases.show', $purchase) }}">{{ $purchase->title }}</a>
-                                @if($purchase->quantity > 1)
-                                    <span class="badge text-bg-secondary flex-shrink-0">{{ $purchase->quantity }} пар</span>
-                                @endif
+                                <span class="d-flex gap-1 flex-shrink-0">
+                                    @if($purchase->is_white)
+                                        <span class="badge text-bg-success" title="Заказано в белую">белая</span>
+                                    @endif
+                                    @if($purchase->quantity > 1)
+                                        <span class="badge text-bg-secondary">{{ $purchase->quantity }} пар</span>
+                                    @endif
+                                </span>
                             </div>
                             @if($subtitle !== '')
                                 <div class="small text-body-secondary mt-1">{{ $subtitle }}@if($purchase->size) · р. {{ $purchase->size }}@endif</div>

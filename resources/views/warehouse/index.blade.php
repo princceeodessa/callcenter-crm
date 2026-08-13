@@ -309,6 +309,7 @@
     <div class="wh-actions mb-0">
         <a href="{{ route('warehouse.reorder') }}">🧠 Что заказать</a>
         <a href="{{ route('warehouse.analytics') }}">📊 Аналитика</a>
+        <a href="{{ route('warehouse.consignments') }}">🤝 Реализация</a>
         <a href="{{ route('warehouse.import.form') }}">📦 Импорт пачкой</a>
         <a href="{{ route('warehouse.export', $exportParams) }}">📥 Экспорт CSV</a>
     </div>
@@ -436,7 +437,7 @@
                             @endif
                         </div>
                         <div class="pnums">
-                            <b>{{ $prod['total'] }}</b> пар · <b>{{ $prod['available'] }}</b> доступно{{ $prod['reserved'] > 0 ? ' · резерв '.$prod['reserved'] : '' }}{{ $prod['value'] > 0 ? ' · '.$money($prod['value']).' ₽' : '' }}
+                            <b>{{ $prod['total'] }}</b> пар · <b>{{ $prod['available'] }}</b> доступно{{ $prod['reserved'] > 0 ? ' · резерв '.$prod['reserved'] : '' }}{{ $prod['consigned'] > 0 ? ' · на реализации '.$prod['consigned'] : '' }}{{ $prod['value'] > 0 ? ' · '.$money($prod['value']).' ₽' : '' }}
                         </div>
                     </div>
                 </div>
@@ -461,6 +462,9 @@
                                         <div class="qbig">{{ (int) $i->quantity }} <span style="font-size:.65rem;color:var(--crm-muted);font-weight:500">пар</span></div>
                                         @if($i->reserved > 0)
                                             <div style="font-size:.68rem;color:var(--crm-muted)">резерв: {{ $i->reserved }}</div>
+                                        @endif
+                                        @if($i->consigned > 0)
+                                            <div style="font-size:.68rem;color:var(--crm-muted)">на реализации: {{ $i->consigned }}</div>
                                         @endif
                                     </div>
                                     <form method="POST" action="{{ route('warehouse.replenish', $i) }}" class="d-flex gap-2">
@@ -487,6 +491,41 @@
                                         <button type="submit" class="btn btn-outline-danger w-100 btn-xxs">Удалить размер</button>
                                     </form>
                                 @endif
+
+                                @if($i->consignments->isNotEmpty())
+                                    <div class="mt-2 pt-2" style="border-top:1px solid var(--crm-border)">
+                                        <div style="font-size:.68rem;color:var(--crm-muted);margin-bottom:4px">На реализации</div>
+                                        @foreach($i->consignments as $c)
+                                            <div class="d-flex align-items-center justify-content-between gap-1 mb-1" style="font-size:.72rem">
+                                                <span>{{ $c->consignee }} · {{ $c->quantity }} пар</span>
+                                                <span class="d-flex gap-1">
+                                                    <form method="POST" action="{{ route('warehouse.consignment.resolve', $c) }}">
+                                                        @csrf
+                                                        <input type="hidden" name="result" value="sold">
+                                                        <button type="submit" class="btn btn-outline-success btn-xxs" title="Посредник продал">✓ продано</button>
+                                                    </form>
+                                                    <form method="POST" action="{{ route('warehouse.consignment.resolve', $c) }}">
+                                                        @csrf
+                                                        <input type="hidden" name="result" value="returned">
+                                                        <button type="submit" class="btn btn-outline-secondary btn-xxs" title="Вернули на склад">↩ возврат</button>
+                                                    </form>
+                                                </span>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                @endif
+
+                                <details class="mt-2">
+                                    <summary style="font-size:.72rem;cursor:pointer;color:var(--crm-muted)">🤝 Передать под реализацию</summary>
+                                    <form method="POST" action="{{ route('warehouse.item.consign', $i) }}" class="mt-1">
+                                        @csrf
+                                        <div class="frow"><label>Кому (посредник)</label><input type="text" name="consignee" maxlength="255" required placeholder="Напр. ТЦ Юность, точка 12"></div>
+                                        <div class="frow"><label>Кол-во пар</label><input type="number" name="quantity" min="1" max="{{ (int) $i->available }}" value="{{ min(1, (int) $i->available) }}" required></div>
+                                        <div class="actions">
+                                            <button type="submit" class="btn btn-warning w-100" @disabled((int) $i->available <= 0)>Передать</button>
+                                        </div>
+                                    </form>
+                                </details>
                             </div>
                         </details>
                     @endforeach

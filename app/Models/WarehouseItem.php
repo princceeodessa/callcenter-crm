@@ -16,6 +16,7 @@ class WarehouseItem extends Model
         'size',
         'quantity',
         'reserved',
+        'consigned',
         'sale_price',
         'avg_cost',
         'low_stock_threshold',
@@ -25,6 +26,7 @@ class WarehouseItem extends Model
     protected $casts = [
         'quantity' => 'integer',
         'reserved' => 'integer',
+        'consigned' => 'integer',
         'sale_price' => 'decimal:2',
         'avg_cost' => 'decimal:2',
         'low_stock_threshold' => 'integer',
@@ -33,6 +35,11 @@ class WarehouseItem extends Model
     public function movements()
     {
         return $this->hasMany(StockMovement::class)->orderByDesc('id');
+    }
+
+    public function consignments()
+    {
+        return $this->hasMany(WarehouseConsignment::class)->orderByDesc('id');
     }
 
     public function getDisplayNameAttribute(): string
@@ -50,7 +57,7 @@ class WarehouseItem extends Model
 
     public function getAvailableAttribute(): int
     {
-        return (int) $this->quantity - (int) $this->reserved;
+        return (int) $this->quantity - (int) $this->reserved - (int) $this->consigned;
     }
 
     public function getIsLowAttribute(): bool

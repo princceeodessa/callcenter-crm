@@ -8,6 +8,7 @@ use App\Models\StockMark;
 use App\Models\StockMovement;
 use App\Models\User;
 use App\Models\UserNotification;
+use App\Models\WarehouseConsignment;
 use App\Models\WarehouseItem;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -186,6 +187,60 @@ class WarehouseService
         DB::transaction(fn () => $this->changeQty($item, $delta, 'adjust', $note ?? 'Ручная корректировка остатка', 'manual', null));
     }
 
+    // ===================== Реализация (посредники) =====================
+
+    /** Передать N пар посреднику под реализацию: снимает с доступного остатка, не трогая quantity. */
+    public function giveForConsignment(WarehouseItem $item, int $qty, string $consignee, ?string $note = null): WarehouseConsignment
+    {
+        return DB::transaction(function () use ($item, $qty, $consignee, $note) {
+            $consignment = WarehouseConsignment::create([
+                'account_id' => $item->account_id,
+                'warehouse_item_id' => $item->id,
+                'consignee' => $consignee,
+                'quantity' => $qty,
+                'unit_cost' => $item->avg_cost,
+                'status' => 'given',
+                'note' => $note,
+                'user_id' => Auth::id(),
+                'given_at' => now(),
+            ]);
+            $this->changeConsigned($item, $qty, 'consign_out', "Передано под реализацию ({$consignee}) · #{$consignment->id}", $consignment->id);
+
+            return $consignment;
+        });
+    }
+
+    /** Посредник продал пары — списываем со склада насовсем. */
+    public function resolveConsignmentSold(WarehouseConsignment $consignment): void
+    {
+        if ($consignment->status !== 'given') {
+            return;
+        }
+        DB::transaction(function () use ($consignment) {
+            $item = WarehouseItem::find($consignment->warehouse_item_id);
+            if ($item) {
+                $this->changeQty($item, -$consignment->quantity, 'consign_sold', "Продано посредником ({$consignment->consignee}) · #{$consignment->id}", 'consignment', $consignment->id);
+                $this->changeConsigned($item, -$consignment->quantity, 'consign_resolve', "Снятие с реализации (продано) · #{$consignment->id}", $consignment->id);
+            }
+            $consignment->forceFill(['status' => 'sold', 'resolved_at' => now()])->save();
+        });
+    }
+
+    /** Посредник вернул пары — они снова доступны на своём складе. */
+    public function resolveConsignmentReturned(WarehouseConsignment $consignment): void
+    {
+        if ($consignment->status !== 'given') {
+            return;
+        }
+        DB::transaction(function () use ($consignment) {
+            $item = WarehouseItem::find($consignment->warehouse_item_id);
+            if ($item) {
+                $this->changeConsigned($item, -$consignment->quantity, 'consign_resolve', "Возврат с реализации · #{$consignment->id}", $consignment->id);
+            }
+            $consignment->forceFill(['status' => 'returned', 'resolved_at' => now()])->save();
+        });
+    }
+
     // ===================== Низкоуровневое =====================
 
     /** Приход с обновлением средневзвешенной себестоимости. */
@@ -215,6 +270,13 @@ class WarehouseService
         $item->reserved = max(0, (int) $item->reserved + $delta);
         $item->save();
         $this->logMovement($item, $type, $delta, 'deal', $dealId, $note);
+    }
+
+    private function changeConsigned(WarehouseItem $item, int $delta, string $type, string $note, ?int $consignmentId): void
+    {
+        $item->consigned = max(0, (int) $item->consigned + $delta);
+        $item->save();
+        $this->logMovement($item, $type, $delta, 'consignment', $consignmentId, $note);
     }
 
     private function logMovement(WarehouseItem $item, string $type, int $delta, string $sourceType, ?int $sourceId, string $note): void

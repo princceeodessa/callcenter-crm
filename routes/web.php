@@ -164,6 +164,10 @@ Route::middleware('auth')->group(function () {
         // Коды маркировки (Честный знак)
         Route::post('/warehouse/items/{item}/marks', [WarehouseController::class, 'addItemMarks'])->name('warehouse.item.marks.add');
         Route::delete('/warehouse/marks/{mark}', [WarehouseController::class, 'deleteMark'])->name('warehouse.mark.delete');
+        // Реализация (посредники)
+        Route::get('/warehouse/consignments', [WarehouseController::class, 'consignmentsIndex'])->name('warehouse.consignments');
+        Route::post('/warehouse/items/{item}/consign', [WarehouseController::class, 'giveConsignment'])->name('warehouse.item.consign');
+        Route::post('/warehouse/consignments/{consignment}/resolve', [WarehouseController::class, 'resolveConsignment'])->name('warehouse.consignment.resolve');
 
         // Отчёт по кроссовкам (продажи/прибыль/склад)
         // Сводная панель владельца (роль sneaker_owner; head — для контроля)

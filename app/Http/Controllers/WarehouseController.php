@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\StockMark;
 use App\Models\StockMovement;
+use App\Models\WarehouseConsignment;
 use App\Models\WarehouseItem;
 use App\Models\WarehouseProduct;
 use App\Models\WarehouseProductPhoto;
@@ -24,6 +25,7 @@ class WarehouseController extends Controller
         $q = trim($request->string('q')->toString());
 
         $items = WarehouseItem::query()
+            ->with(['consignments' => fn ($cq) => $cq->where('status', 'given')])
             ->where('account_id', $user->account_id)
             ->when($q !== '', fn ($query) => $query->where(fn ($qq) => $qq
                 ->where('brand', 'like', "%{$q}%")
@@ -119,6 +121,7 @@ class WarehouseController extends Controller
                     'total' => (int) $group->sum('quantity'),
                     'available' => (int) $group->sum(fn ($i) => $i->available),
                     'reserved' => (int) $group->sum('reserved'),
+                    'consigned' => (int) $group->sum('consigned'),
                     'value' => (float) $group->sum(fn ($i) => (int) $i->quantity * (float) ($i->sale_price ?? 0)),
                     'low' => $group->contains(fn ($i) => $i->is_low),
                 ];
@@ -501,6 +504,85 @@ class WarehouseController extends Controller
         abort_unless($mark->account_id === $user->account_id, 403);
         $mark->delete();
         return back()->with('status', 'Код удалён.');
+    }
+
+    // ==================== РЕАЛИЗАЦИЯ (ПОСРЕДНИКИ) ====================
+
+    /** Передать N пар посреднику под реализацию — снимает их с доступного остатка. */
+    public function giveConsignment(Request $request, WarehouseItem $item, WarehouseService $warehouse)
+    {
+        $user = Auth::user();
+        abort_unless($item->account_id === $user->account_id, 403);
+
+        $data = $request->validate([
+            'quantity' => ['required', 'integer', 'min:1'],
+            'consignee' => ['required', 'string', 'max:255'],
+            'note' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        if ((int) $data['quantity'] > (int) $item->available) {
+            return back()->withErrors(['quantity' => 'Недостаточно доступного остатка (доступно: '.$item->available.').']);
+        }
+
+        $warehouse->giveForConsignment($item, (int) $data['quantity'], trim($data['consignee']), $data['note'] ?? null);
+
+        return back()->with('status', 'Передано под реализацию: '.$data['quantity'].' пар.');
+    }
+
+    /** Закрыть реализацию: посредник продал или вернул пары. */
+    public function resolveConsignment(Request $request, WarehouseConsignment $consignment, WarehouseService $warehouse)
+    {
+        $user = Auth::user();
+        abort_unless($consignment->account_id === $user->account_id, 403);
+
+        $data = $request->validate([
+            'result' => ['required', 'in:sold,returned'],
+        ]);
+
+        if ($data['result'] === 'sold') {
+            $warehouse->resolveConsignmentSold($consignment);
+            $status = 'Отмечено как продано у посредника.';
+        } else {
+            $warehouse->resolveConsignmentReturned($consignment);
+            $status = 'Пары возвращены на склад.';
+        }
+
+        return back()->with('status', $status);
+    }
+
+    /** Сводка по реализации: кто сколько держит сейчас + история закрытых. */
+    public function consignmentsIndex(Request $request)
+    {
+        $user = Auth::user();
+        $isHead = $this->isHead();
+
+        $active = WarehouseConsignment::with('item:id,brand,model,size,sale_price')
+            ->where('account_id', $user->account_id)
+            ->where('status', 'given')
+            ->orderByDesc('id')
+            ->get();
+
+        $byConsignee = $active->groupBy('consignee')->map(function ($group, $name) {
+            return [
+                'name' => $name,
+                'items' => $group,
+                'qty' => (int) $group->sum('quantity'),
+                'cost_value' => (float) $group->sum(fn ($c) => (float) ($c->unit_cost ?? 0) * (int) $c->quantity),
+                'sale_value' => (float) $group->sum(fn ($c) => (float) ($c->item->sale_price ?? 0) * (int) $c->quantity),
+            ];
+        })->sortByDesc('qty')->values();
+
+        $totalQty = (int) $active->sum('quantity');
+        $totalCostValue = (float) $active->sum(fn ($c) => (float) ($c->unit_cost ?? 0) * (int) $c->quantity);
+
+        $history = WarehouseConsignment::with('item:id,brand,model,size')
+            ->where('account_id', $user->account_id)
+            ->whereIn('status', ['sold', 'returned'])
+            ->orderByDesc('resolved_at')
+            ->limit(50)
+            ->get();
+
+        return view('warehouse.consignments', compact('byConsignee', 'totalQty', 'totalCostValue', 'history', 'isHead'));
     }
 
     // ==================== МАССОВЫЙ ИМПОРТ ====================

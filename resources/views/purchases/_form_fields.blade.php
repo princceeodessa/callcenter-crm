@@ -37,6 +37,12 @@
         <label class="form-label">Артикул / ссылка на заказ</label>
         <input type="text" name="article" class="form-control" maxlength="255" value="{{ old('article', $p->article ?? '') }}">
     </div>
+    <div class="col-12">
+        <div class="form-check">
+            <input type="checkbox" name="is_white" value="1" class="form-check-input" id="is_white" @checked(old('is_white', $p->is_white ?? false))>
+            <label class="form-check-label" for="is_white">Заказано в белую</label>
+        </div>
+    </div>
     <div class="col-md-4">
         <label class="form-label">Закупочная цена, ₽</label>
         <input type="number" step="0.01" min="0" name="cost" class="form-control" value="{{ old('cost', $p->cost ?? '') }}">
