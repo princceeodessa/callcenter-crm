@@ -6,7 +6,10 @@
             <h4 class="mb-0">Поставка — загрузка таблицы</h4>
             <div class="text-muted small">каждая строка станет карточкой закупки в стадии «В пути»; на склад заводится отдельной кнопкой</div>
         </div>
-        <a class="btn btn-sm btn-outline-secondary" href="{{ route('purchases.kanban') }}">← К закупкам</a>
+        <div class="d-flex gap-2 flex-wrap">
+            <a class="btn btn-sm btn-outline-primary" href="{{ route('purchases.inTransit') }}">🚚 Что в пути</a>
+            <a class="btn btn-sm btn-outline-secondary" href="{{ route('purchases.kanban') }}">← К закупкам</a>
+        </div>
     </div>
 
     @if ($errors->any())
@@ -17,69 +20,32 @@
         </div>
     @endif
 
-    @if ($imported === null)
-        <div class="card shadow-sm mb-3">
-            <div class="card-body">
-                <h6 class="mb-2">📗 Файл Excel (.xlsx)</h6>
-                <div class="text-muted small mb-3">
-                    Формат листа (5 столбцов): <b>Название</b> · <b>Размер</b> · <b>Кол-во</b> · <b>Артикул</b> · <b>Сумма</b>
-                    (стоимость строки — при кол-ве &gt; 1 делится на кол-во, в закупке хранится цена за пару).
-                    Первая строка-заголовок пропускается автоматически. Один и тот же артикул — один и тот же товар,
-                    даже если название в разных строках написано по-разному.
+    <div class="card shadow-sm mb-3">
+        <div class="card-body">
+            <h6 class="mb-2">📗 Файл Excel (.xlsx)</h6>
+            <div class="text-muted small mb-3">
+                Колонки распознаются <b>по заголовкам</b>, поэтому подойдёт и таблица поставщика со своей калькуляцией
+                (юани, курс, пошлина, НДС) — лишние столбцы просто игнорируются, порядок не важен.
+                <div class="mt-2">
+                    Нужны: <b>Название</b> и <b>Размер</b> (или «Размер (EU)»). Желательно: <b>Артикул</b>,
+                    <b>Количество</b> и цена — берётся <b>«Цена с НДС»</b>, иначе «Сумма (с НДС)» ÷ количество,
+                    иначе «Закупочная цена».
                 </div>
-                <form method="POST" action="{{ route('purchases.import.run') }}" enctype="multipart/form-data" class="row g-2 align-items-end">
-                    @csrf
-                    <div class="col-lg-8">
-                        <input type="file" name="xlsx" accept=".xlsx" class="form-control" required>
-                    </div>
-                    <div class="col-lg-4">
-                        <button type="submit" class="btn btn-success w-100">Загрузить</button>
-                    </div>
-                </form>
+                <div class="mt-2">
+                    Строки без названия или размера (итоги, примечания под таблицей) пропускаются.
+                    Один и тот же артикул — один и тот же товар, даже если название в строках написано по-разному.
+                    Размеры вида «44 1/2» и «44.5» считаются одним размером, «43 1/3» — отдельным от «43».
+                </div>
             </div>
+            <form method="POST" action="{{ route('purchases.import.run') }}" enctype="multipart/form-data" class="row g-2 align-items-end">
+                @csrf
+                <div class="col-lg-8">
+                    <input type="file" name="xlsx" accept=".xlsx" class="form-control" required>
+                </div>
+                <div class="col-lg-4">
+                    <button type="submit" class="btn btn-success w-100">Загрузить</button>
+                </div>
+            </form>
         </div>
-    @else
-        <div class="alert alert-success d-flex align-items-center justify-content-between flex-wrap gap-2">
-            <div>Загружено позиций: <b>{{ $imported->count() }}</b>. Карточки созданы в стадии «В пути».</div>
-            <a class="btn btn-sm btn-outline-success" href="{{ route('purchases.import.form') }}">Загрузить ещё файл</a>
-        </div>
-
-        <div class="card shadow-sm mb-3">
-            <div class="table-responsive">
-                <table class="table table-sm mb-0 align-middle">
-                    <thead class="table-light">
-                        <tr>
-                            <th>Бренд / модель</th>
-                            <th>Размер</th>
-                            <th>Кол-во</th>
-                            <th>Артикул</th>
-                            <th>Цена за пару</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach ($imported as $purchase)
-                            <tr>
-                                <td><a href="{{ route('purchases.show', $purchase) }}">{{ $purchase->brand }} {{ $purchase->model }}</a></td>
-                                <td>{{ $purchase->size }}</td>
-                                <td>{{ $purchase->quantity }}</td>
-                                <td class="text-muted">{{ $purchase->article ?: '—' }}</td>
-                                <td>{{ $purchase->cost !== null ? number_format((float) $purchase->cost, 0, ',', ' ').' ₽' : '—' }}</td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
-            <div class="card-body d-flex align-items-center justify-content-between flex-wrap gap-2">
-                <div class="text-muted small">Когда поставка физически пришла — примите её на склад одной кнопкой.</div>
-                <form method="POST" action="{{ route('purchases.receiveBatch') }}"
-                      onsubmit="return confirm('Принять {{ $imported->count() }} поз. на склад? Остатки на складе увеличатся.');">
-                    @csrf
-                    @foreach ($imported as $purchase)
-                        <input type="hidden" name="purchase_ids[]" value="{{ $purchase->id }}">
-                    @endforeach
-                    <button type="submit" class="btn btn-primary">📥 Принять всё на склад</button>
-                </form>
-            </div>
-        </div>
-    @endif
+    </div>
 @endsection

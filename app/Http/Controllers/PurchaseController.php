@@ -7,7 +7,7 @@ use App\Models\PurchaseStage;
 use App\Services\Warehouse\WarehouseService;
 use App\Support\Users\AssignmentScope;
 use App\Support\Warehouse\ArticleIdentity;
-use App\Support\Warehouse\SimpleXlsxReader;
+use App\Support\Warehouse\DeliverySheet;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -196,7 +196,7 @@ class PurchaseController extends Controller
     }
 
     /**
-     * Загрузить таблицу поставки: Название | Размер | Кол-во | Артикул | Сумма.
+     * Загрузить таблицу поставки. Колонки распознаются по заголовкам, см. DeliverySheet.
      * Каждая строка — отдельная карточка закупки в стадии «В пути» (ещё не на складе).
      * Артикул канонизирует бренд+модель так же, как обычный импорт склада — одна
      * расцветка не распадается на разные карточки товара при последующей приёмке.
@@ -208,9 +208,10 @@ class PurchaseController extends Controller
             'xlsx' => ['required', 'file', 'mimes:xlsx', 'max:10240'],
         ]);
 
-        $rows = $this->parseDeliveryXlsx($request->file('xlsx')->getRealPath());
+        $parsed = DeliverySheet::parse($request->file('xlsx')->getRealPath());
+        $rows = $parsed['rows'];
         if (empty($rows)) {
-            return back()->withErrors(['xlsx' => 'Не нашли ни одной строки с размером и количеством. Проверьте формат файла: Название | Размер | Кол-во | Артикул | Сумма.']);
+            return back()->withErrors(['xlsx' => 'Не нашли ни одной строки с названием и размером. Нужны колонки «Название», «Размер», и желательно «Артикул», «Количество», «Цена с НДС» (или «Сумма»).']);
         }
 
         $stage = PurchaseStage::where('account_id', $user->account_id)->where('name', 'В пути')->first()
@@ -223,7 +224,9 @@ class PurchaseController extends Controller
 
         $canonicalByArticle = ArticleIdentity::canonicalizeByArticle($user->account_id, $rows);
 
-        $imported = collect();
+        $batch = 'Импорт поставки из Excel ('.now()->format('d.m.Y H:i').')';
+        $imported = 0;
+        $pairs = 0;
         foreach ($rows as $r) {
             [$brand, $model] = ArticleIdentity::resolve($canonicalByArticle, $r);
             $purchase = Purchase::create([
@@ -237,24 +240,72 @@ class PurchaseController extends Controller
                 'cost' => $r['cost'],
                 'currency' => 'RUB',
                 'article' => $r['article'] !== '' ? $r['article'] : null,
-                'notes' => 'Импорт поставки из Excel ('.now()->format('d.m.Y H:i').')',
+                'notes' => $batch,
             ]);
             $warehouse->syncPurchaseStock($purchase);
             // Регистрируем расцветку сразу (не дожидаясь приёмки), чтобы будущие
             // импорты — этот же или обычный складской — узнали артикул и не задвоили карточку.
             ArticleIdentity::ensureProduct($user->account_id, $brand, $model, $r['article']);
-            $imported->push($purchase);
+            $imported++;
+            $pairs += (int) $r['qty'];
         }
 
-        return view('purchases.import', ['imported' => $imported]);
+        $columns = [];
+        foreach ($parsed['mapping'] as $label => $column) {
+            $columns[] = $label.' → '.$column;
+        }
+        $status = 'Загружено позиций: '.$imported.' ('.$pairs.' пар). Распознаны колонки: '.implode(', ', $columns).'.';
+        if ($parsed['skipped'] > 0) {
+            $status .= ' Пропущено строк без названия/размера (итоги, примечания): '.$parsed['skipped'].'.';
+        }
+
+        return redirect()->route('purchases.inTransit')->with('status', $status);
     }
 
-    /** Принять пачкой: перевести выбранные закупки в стадию «Получено / На складе» (остаток заводится автоматически). */
+    /**
+     * «В пути» — всё, что закуплено, но ещё не заведено на склад (stocked_at пуст).
+     * Отсюда позиции принимаются на склад: выбранные галочками или все сразу.
+     */
+    public function inTransit(Request $request)
+    {
+        $user = Auth::user();
+        $q = trim($request->string('q')->toString());
+
+        $purchases = Purchase::query()
+            ->with('stage')
+            ->where('account_id', $user->account_id)
+            ->whereNull('closed_at')
+            ->whereNull('stocked_at')
+            ->when($q !== '', function ($query) use ($q) {
+                $query->where(function ($qq) use ($q) {
+                    $qq->where('title', 'like', "%{$q}%")
+                        ->orWhere('brand', 'like', "%{$q}%")
+                        ->orWhere('model', 'like', "%{$q}%")
+                        ->orWhere('article', 'like', "%{$q}%")
+                        ->orWhere('size', 'like', "%{$q}%")
+                        ->orWhere('notes', 'like', "%{$q}%");
+                });
+            })
+            ->orderByDesc('id')
+            ->get();
+
+        $totalPairs = (int) $purchases->sum('quantity');
+        $totalCost = (float) $purchases->sum(fn (Purchase $p) => (int) $p->quantity * (float) ($p->cost ?? 0));
+
+        return view('purchases.in_transit', compact('purchases', 'q', 'totalPairs', 'totalCost'));
+    }
+
+    /**
+     * Принять на склад: выбранные позиции (purchase_ids) либо всё, что в пути (scope=all).
+     * Стадия «Получено / На складе» помечена is_stock_in, поэтому остаток заводит
+     * штатный WarehouseService::syncPurchaseStock — как при обычном перетаскивании карточки.
+     */
     public function receiveBatch(Request $request, WarehouseService $warehouse)
     {
         $user = Auth::user();
         $data = $request->validate([
-            'purchase_ids' => ['required', 'array', 'min:1'],
+            'scope' => ['nullable', 'in:all'],
+            'purchase_ids' => ['required_without:scope', 'array', 'min:1'],
             'purchase_ids.*' => ['integer'],
         ]);
 
@@ -266,58 +317,24 @@ class PurchaseController extends Controller
         }
 
         $purchases = Purchase::where('account_id', $user->account_id)
-            ->whereIn('id', $data['purchase_ids'])
             ->whereNull('closed_at')
+            // Уже заведённые на склад не трогаем: повторная приёмка задвоила бы остаток.
+            ->whereNull('stocked_at')
+            ->when(($data['scope'] ?? null) !== 'all', fn ($query) => $query->whereIn('id', $data['purchase_ids'] ?? []))
             ->get();
 
+        $pairs = 0;
         foreach ($purchases as $purchase) {
             if ((int) $purchase->purchase_stage_id !== (int) $stage->id) {
                 $purchase->purchase_stage_id = $stage->id;
                 $purchase->save();
-                $warehouse->syncPurchaseStock($purchase);
             }
+            $warehouse->syncPurchaseStock($purchase);
+            $pairs += (int) $purchase->quantity;
         }
 
-        return redirect()->route('purchases.kanban')->with('status', 'Принято на склад: '.$purchases->count().' поз.');
-    }
-
-    /**
-     * Разбор .xlsx поставки: Название | Размер | Кол-во | Артикул | Сумма.
-     * Сумма трактуется как стоимость всей строки — делится на «Кол-во», чтобы
-     * получить цену за пару (Purchase.cost везде в системе — цена за единицу).
-     *
-     * @return array<int, array{brand:string,model:string,size:string,qty:int,article:string,cost:?float}>
-     */
-    private function parseDeliveryXlsx(string $path): array
-    {
-        $rows = [];
-        foreach (SimpleXlsxReader::rows($path, 5) as $r) {
-            [$name, $size, $qty, $article, $sum] = [$r[0] ?? null, $r[1] ?? null, $r[2] ?? null, $r[3] ?? null, $r[4] ?? null];
-            $name = str_replace(['İ', 'ı'], ['I', 'i'], preg_replace('/\s+/u', ' ', trim((string) $name)));
-            $article = str_replace(['İ', 'ı'], ['I', 'i'], (string) $article);
-            $sizeClean = str_replace(',', '.', trim((string) $size));
-            $qtyClean = str_replace(',', '.', trim((string) $qty));
-            if ($name === ''
-                || ! preg_match('/\d+(?:\.\d+)?/', $sizeClean, $sm)
-                || ! preg_match('/\d+(?:\.\d+)?/', $qtyClean, $qm)) {
-                continue; // заголовок или пустая строка
-            }
-            $qty = max(1, (int) round((float) $qm[0]));
-            $sumClean = str_replace(',', '.', trim((string) $sum));
-            $cost = preg_match('/\d+(?:\.\d+)?/', $sumClean, $sumM) ? round((float) $sumM[0] / $qty, 2) : null;
-
-            [$brand, $model] = ArticleIdentity::splitBrandModel($name);
-            $rows[] = [
-                'brand' => $brand,
-                'model' => $model,
-                'size' => rtrim(rtrim(number_format((float) $sm[0], 2, '.', ''), '0'), '.'),
-                'qty' => $qty,
-                'article' => ArticleIdentity::normalizeArticle((string) $article),
-                'cost' => $cost,
-            ];
-        }
-
-        return $rows;
+        return redirect()->route('purchases.inTransit')
+            ->with('status', 'Принято на склад: '.$purchases->count().' поз. ('.$pairs.' пар).');
     }
 
     private function validateData(Request $request): array

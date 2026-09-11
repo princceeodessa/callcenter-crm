@@ -31,7 +31,7 @@ class PurchaseDeliveryImportTest extends TestCase
 
         $beforeMaxId = (int) Purchase::max('id');
         $response = $this->actingAs($user)->post(route('purchases.import.run'), ['xlsx' => $file]);
-        $response->assertOk();
+        $response->assertRedirect(route('purchases.inTransit'));
 
         // 3 строки в файле = 3 отдельные карточки закупки (без агрегации, в отличие от склада).
         // Scoped by id > snapshot (not just the notes text) so ambient data in the shared dev DB
@@ -62,7 +62,7 @@ class PurchaseDeliveryImportTest extends TestCase
         // Кнопка "Принять всё на склад".
         $ids = $purchases->pluck('id')->all();
         $receiveResponse = $this->actingAs($user)->post(route('purchases.receiveBatch'), ['purchase_ids' => $ids]);
-        $receiveResponse->assertRedirect(route('purchases.kanban'));
+        $receiveResponse->assertRedirect(route('purchases.inTransit'));
 
         foreach ($purchases as $purchase) {
             $purchase->refresh();
@@ -102,7 +102,8 @@ class PurchaseDeliveryImportTest extends TestCase
             true
         );
 
-        $this->actingAs($user)->post(route('purchases.import.run'), ['xlsx' => $file])->assertOk();
+        $this->actingAs($user)->post(route('purchases.import.run'), ['xlsx' => $file])
+            ->assertRedirect(route('purchases.inTransit'));
 
         $purchase = Purchase::where('account_id', $user->account_id)->where('article', 'EF9999-300')
             ->orderByDesc('id')->first();
