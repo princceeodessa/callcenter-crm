@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Purchase;
 use App\Models\StockMark;
 use App\Models\StockMovement;
 use App\Models\WarehouseConsignment;
@@ -159,11 +160,18 @@ class WarehouseController extends Controller
             ['path' => $request->url(), 'query' => $request->query()]
         );
 
+        // Сколько пар закуплено, но ещё не заведено на склад — счётчик на кнопке «В пути».
+        $inTransitPairs = (int) Purchase::where('account_id', $user->account_id)
+            ->whereNull('closed_at')
+            ->whereNull('stocked_at')
+            ->sum('quantity');
+
         return view('warehouse.index', compact(
             'productsPage', 'productsCount', 'availableSum', 'lowCount', 'lowFilter',
             'movements', 'q', 'totalUnits', 'stockValue', 'stockCostValue', 'isHead',
             'categoryOptions', 'genderOptions', 'seasonOptions',
-            'filterCategory', 'filterGender', 'filterSeason', 'filterTag', 'allTags'
+            'filterCategory', 'filterGender', 'filterSeason', 'filterTag', 'allTags',
+            'inTransitPairs'
         ));
     }
 

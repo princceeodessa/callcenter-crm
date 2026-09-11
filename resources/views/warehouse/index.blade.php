@@ -307,6 +307,7 @@
         <div class="text-muted small">кроссовки · {{ $productsCount }} товаров</div>
     </div>
     <div class="wh-actions mb-0">
+        <a href="{{ route('purchases.inTransit') }}">🚚 В пути@if(($inTransitPairs ?? 0) > 0) · {{ $inTransitPairs }}@endif</a>
         <a href="{{ route('warehouse.reorder') }}">🧠 Что заказать</a>
         <a href="{{ route('warehouse.analytics') }}">📊 Аналитика</a>
         <a href="{{ route('warehouse.consignments') }}">🤝 Реализация</a>
