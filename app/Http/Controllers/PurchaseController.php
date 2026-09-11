@@ -291,8 +291,18 @@ class PurchaseController extends Controller
 
         $totalPairs = (int) $purchases->sum('quantity');
         $totalCost = (float) $purchases->sum(fn (Purchase $p) => (int) $p->quantity * (float) ($p->cost ?? 0));
+        $avgPairCost = $totalPairs > 0 ? $totalCost / $totalPairs : 0.0;
+        $articlesCount = $purchases->pluck('article')->filter()->unique()->count();
+        $brandsCount = $purchases->pluck('brand')->filter()->unique()->count();
 
-        return view('purchases.in_transit', compact('purchases', 'q', 'totalPairs', 'totalCost'));
+        // Общий итог — чтобы при поиске было видно, что показана лишь часть поставки.
+        $grandTotalPairs = $q === '' ? $totalPairs : (int) Purchase::where('account_id', $user->account_id)
+            ->whereNull('closed_at')->whereNull('stocked_at')->sum('quantity');
+
+        return view('purchases.in_transit', compact(
+            'purchases', 'q', 'totalPairs', 'totalCost',
+            'avgPairCost', 'articlesCount', 'brandsCount', 'grandTotalPairs'
+        ));
     }
 
     /**
