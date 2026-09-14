@@ -129,6 +129,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/purchases/import', [PurchaseController::class, 'importRun'])->name('purchases.import.run');
         Route::get('/purchases/in-transit', [PurchaseController::class, 'inTransit'])->name('purchases.inTransit');
         Route::post('/purchases/receive-batch', [PurchaseController::class, 'receiveBatch'])->name('purchases.receiveBatch');
+        Route::post('/purchases/mark-white', [PurchaseController::class, 'markWhite'])->name('purchases.markWhite');
         Route::post('/purchases', [PurchaseController::class, 'store'])->name('purchases.store');
         Route::get('/purchases/{purchase}', [PurchaseController::class, 'show'])->name('purchases.show');
         Route::patch('/purchases/{purchase}', [PurchaseController::class, 'update'])->name('purchases.update');

@@ -49,6 +49,10 @@
     <div class="it-stat"><div class="l">Брендов</div><div class="v">{{ $brandsCount }}</div></div>
     <div class="it-stat"><div class="l">Сумма · по закупке</div><div class="v">{{ $money($totalCost) }} ₽</div></div>
     <div class="it-stat"><div class="l">Средняя пара</div><div class="v">{{ $money($avgPairCost) }} ₽</div></div>
+    <div class="it-stat">
+        <div class="l">Ввоз в белую</div>
+        <div class="v" @if($whitePairs > 0) style="color:#10b981" @endif>{{ $whitePairs }}<span class="text-muted" style="font-size:.9rem; font-weight:600"> / {{ $totalPairs }}</span></div>
+    </div>
 </div>
 
 @if ($q !== '')
@@ -67,7 +71,20 @@
 
         <div class="it-bar">
             <div class="small" id="selectionSummary">Отметьте пары галочками в списке ниже</div>
-            <div class="d-flex gap-2 flex-wrap">
+            <div class="d-flex gap-2 flex-wrap align-items-center">
+                {{-- Пометка «в белую» шлёт ту же форму (тот же выбор) другому маршруту через formaction. --}}
+                <span class="text-muted small d-none d-lg-inline">Ввоз в белую:</span>
+                <div class="btn-group btn-group-sm">
+                    <button type="submit" class="btn btn-outline-success it-white-btn" id="markWhiteOn"
+                            formaction="{{ route('purchases.markWhite') }}" name="white" value="1" disabled>
+                        🤍 Отметить
+                    </button>
+                    <button type="submit" class="btn btn-outline-secondary it-white-btn" id="markWhiteOff"
+                            formaction="{{ route('purchases.markWhite') }}" name="white" value="0" disabled>
+                        снять
+                    </button>
+                </div>
+                <span class="text-muted d-none d-lg-inline">·</span>
                 <button type="submit" class="btn btn-primary" id="receiveSelected" disabled
                         onclick="return confirm('Принять выбранные позиции на склад? Остатки увеличатся.');">
                     📥 Принять выбранные
@@ -112,6 +129,7 @@
                             <th class="text-end">Пар</th>
                             <th>Артикул</th>
                             <th class="text-end">Себестоимость пары</th>
+                            <th>Ввоз</th>
                             <th>Стадия</th>
                         </tr>
                     </thead>
@@ -129,6 +147,13 @@
                                 <td class="text-end">{{ (int) $purchase->quantity }}</td>
                                 <td class="text-muted small">{{ $purchase->article ?: '—' }}</td>
                                 <td class="text-end">{{ $purchase->cost !== null ? $money($purchase->cost).' ₽' : '—' }}</td>
+                                <td>
+                                    @if ($purchase->is_white)
+                                        <span class="badge text-bg-success" title="Заказано в белую">белая</span>
+                                    @else
+                                        <span class="text-muted small">—</span>
+                                    @endif
+                                </td>
                                 <td class="text-muted small">{{ $purchase->stage?->name }}</td>
                             </tr>
                         @endforeach
@@ -153,6 +178,8 @@
     const rows = Array.from(form.querySelectorAll('.row-check'));
     const summary = document.getElementById('selectionSummary');
     const receiveSelected = document.getElementById('receiveSelected');
+    const whiteButtons = Array.from(form.querySelectorAll('.it-white-btn'));
+    const isFiltered = @json($q !== '');
     const money = (v) => new Intl.NumberFormat('ru-RU').format(Math.round(v));
 
     const refresh = () => {
@@ -166,6 +193,7 @@
         summary.classList.toggle('text-muted', picked.length === 0);
         summary.classList.toggle('fw-semibold', picked.length > 0);
         receiveSelected.disabled = picked.length === 0;
+        whiteButtons.forEach((b) => { b.disabled = picked.length === 0; });
         if (checkAll) {
             checkAll.checked = picked.length > 0 && picked.length === rows.length;
             checkAll.indeterminate = picked.length > 0 && picked.length < rows.length;
@@ -185,6 +213,38 @@
             refresh();
         });
     }
+
+    // Пометка «в белую»: подтверждение с реальными числами выбранного.
+    whiteButtons.forEach((button) => {
+        button.addEventListener('click', (event) => {
+            const picked = rows.filter((r) => r.checked);
+            const pairs = picked.reduce((sum, r) => sum + Number(r.dataset.qty || 0), 0);
+            const text = button.value === '1'
+                ? `Отметить как ввоз в белую: ${picked.length} поз. (${pairs} пар)?`
+                : `Снять пометку «в белую» с ${picked.length} поз. (${pairs} пар)?`;
+            if (! window.confirm(text)) {
+                event.preventDefault();
+            }
+        });
+    });
+
+    // Когда выбрано вообще всё и поиск не активен — шлём scope=all вместо сотен id:
+    // PHP по умолчанию режет форму на max_input_vars (1000), и на крупной поставке
+    // часть строк молча не дошла бы до сервера.
+    form.addEventListener('submit', (event) => {
+        const allPicked = rows.length > 0 && rows.every((r) => r.checked);
+        // Кнопка «Принять всё» уже несёт scope сама — второй раз не добавляем.
+        const submitterHasScope = event.submitter && event.submitter.name === 'scope';
+        if (! allPicked || isFiltered || submitterHasScope) {
+            return;
+        }
+        rows.forEach((r) => { r.checked = false; });
+        const scope = document.createElement('input');
+        scope.type = 'hidden';
+        scope.name = 'scope';
+        scope.value = 'all';
+        form.appendChild(scope);
+    });
 
     rows.forEach((r) => r.addEventListener('change', refresh));
     if (checkAll) {

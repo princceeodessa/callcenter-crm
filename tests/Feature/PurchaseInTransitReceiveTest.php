@@ -87,6 +87,62 @@ class PurchaseInTransitReceiveTest extends TestCase
         $response->assertDontSee($stocked->article);
     }
 
+    public function test_marks_only_the_selected_purchases_as_white_import(): void
+    {
+        $user = User::where('role', 'sneaker_head')->firstOrFail();
+        [$a, $b, $c] = $this->makeInTransit($user->account_id, 3);
+
+        $this->actingAs($user)
+            ->post(route('purchases.markWhite'), ['white' => 1, 'purchase_ids' => [$a->id, $c->id]])
+            ->assertRedirect(route('purchases.inTransit'));
+
+        $this->assertTrue((bool) $a->fresh()->is_white);
+        $this->assertTrue((bool) $c->fresh()->is_white);
+        $this->assertFalse((bool) $b->fresh()->is_white, 'невыбранная позиция не должна получить пометку');
+    }
+
+    public function test_scope_all_marks_everything_in_transit_and_can_be_undone(): void
+    {
+        $user = User::where('role', 'sneaker_head')->firstOrFail();
+        $made = $this->makeInTransit($user->account_id, 3);
+
+        $this->actingAs($user)->post(route('purchases.markWhite'), ['white' => 1, 'scope' => 'all']);
+        foreach ($made as $purchase) {
+            $this->assertTrue((bool) $purchase->fresh()->is_white);
+        }
+
+        $this->actingAs($user)->post(route('purchases.markWhite'), ['white' => 0, 'scope' => 'all']);
+        foreach ($made as $purchase) {
+            $this->assertFalse((bool) $purchase->fresh()->is_white);
+        }
+    }
+
+    /** Пометка не должна трогать то, что уже принято на склад (scope=all = «то, что в пути»). */
+    public function test_scope_all_leaves_already_stocked_purchases_alone(): void
+    {
+        $user = User::where('role', 'sneaker_head')->firstOrFail();
+        [$stocked] = $this->makeInTransit($user->account_id, 1);
+        [$pending] = $this->makeInTransit($user->account_id, 1);
+        $this->actingAs($user)->post(route('purchases.receiveBatch'), ['purchase_ids' => [$stocked->id]]);
+
+        $this->actingAs($user)->post(route('purchases.markWhite'), ['white' => 1, 'scope' => 'all']);
+
+        $this->assertTrue((bool) $pending->fresh()->is_white);
+        $this->assertFalse((bool) $stocked->fresh()->is_white);
+    }
+
+    public function test_in_transit_page_shows_the_white_badge(): void
+    {
+        $user = User::where('role', 'sneaker_head')->firstOrFail();
+        [$purchase] = $this->makeInTransit($user->account_id, 1);
+        $this->actingAs($user)->post(route('purchases.markWhite'), ['white' => 1, 'purchase_ids' => [$purchase->id]]);
+
+        $this->actingAs($user)->get(route('purchases.inTransit'))
+            ->assertOk()
+            ->assertSee('Ввоз в белую')
+            ->assertSee('белая');
+    }
+
     /** @return array<int, Purchase> */
     private function makeInTransit(int $accountId, int $count): array
     {

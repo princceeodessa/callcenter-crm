@@ -294,6 +294,7 @@ class PurchaseController extends Controller
         $avgPairCost = $totalPairs > 0 ? $totalCost / $totalPairs : 0.0;
         $articlesCount = $purchases->pluck('article')->filter()->unique()->count();
         $brandsCount = $purchases->pluck('brand')->filter()->unique()->count();
+        $whitePairs = (int) $purchases->where('is_white', true)->sum('quantity');
 
         // Общий итог — чтобы при поиске было видно, что показана лишь часть поставки.
         $grandTotalPairs = $q === '' ? $totalPairs : (int) Purchase::where('account_id', $user->account_id)
@@ -301,7 +302,7 @@ class PurchaseController extends Controller
 
         return view('purchases.in_transit', compact(
             'purchases', 'q', 'totalPairs', 'totalCost',
-            'avgPairCost', 'articlesCount', 'brandsCount', 'grandTotalPairs'
+            'avgPairCost', 'articlesCount', 'brandsCount', 'grandTotalPairs', 'whitePairs'
         ));
     }
 
@@ -345,6 +346,50 @@ class PurchaseController extends Controller
 
         return redirect()->route('purchases.inTransit')
             ->with('status', 'Принято на склад: '.$purchases->count().' поз. ('.$pairs.' пар).');
+    }
+
+    /**
+     * Пометить закупки как ввезённые «в белую» (официальный канал) или снять пометку.
+     * Работает от выбора галочками либо по всему, что в пути (scope=all).
+     * Флаг `is_white` учитывается в отчёте по кроссовкам и даёт бейдж на канбане.
+     */
+    public function markWhite(Request $request)
+    {
+        $user = Auth::user();
+        $data = $request->validate([
+            'white' => ['required', 'boolean'],
+            'scope' => ['nullable', 'in:all'],
+            'purchase_ids' => ['required_without:scope', 'array', 'min:1'],
+            'purchase_ids.*' => ['integer'],
+        ]);
+
+        $white = (bool) $data['white'];
+
+        $query = Purchase::where('account_id', $user->account_id)->whereNull('closed_at');
+        if (($data['scope'] ?? null) === 'all') {
+            // «Всё» со страницы «В пути» — это именно то, что ещё не на складе.
+            $query->whereNull('stocked_at');
+        } else {
+            $query->whereIn('id', $data['purchase_ids'] ?? []);
+        }
+
+        $purchases = $query->get();
+        $changed = 0;
+        $pairs = 0;
+        foreach ($purchases as $purchase) {
+            $pairs += (int) $purchase->quantity;
+            if ((bool) $purchase->is_white !== $white) {
+                $purchase->is_white = $white;
+                $purchase->save();
+                $changed++;
+            }
+        }
+
+        $status = $white
+            ? 'Отмечено как ввоз в белую: '.$changed.' поз. из '.$purchases->count().' выбранных ('.$pairs.' пар).'
+            : 'Снята пометка «в белую»: '.$changed.' поз. из '.$purchases->count().' выбранных.';
+
+        return redirect()->route('purchases.inTransit', $request->only('q'))->with('status', $status);
     }
 
     private function validateData(Request $request): array
