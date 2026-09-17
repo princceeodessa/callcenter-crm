@@ -385,9 +385,9 @@ class PurchaseController extends Controller
             }
         }
 
-        $status = $white
-            ? 'Отмечено как ввоз в белую: '.$changed.' поз. из '.$purchases->count().' выбранных ('.$pairs.' пар).'
-            : 'Снята пометка «в белую»: '.$changed.' поз. из '.$purchases->count().' выбранных.';
+        $channel = $white ? 'в белую' : 'в серую';
+        $status = 'Отмечено как ввоз '.$channel.': '.$changed.' поз. из '.$purchases->count()
+            .' выбранных ('.$pairs.' пар).';
 
         return redirect()->route('purchases.inTransit', $request->only('q'))->with('status', $status);
     }

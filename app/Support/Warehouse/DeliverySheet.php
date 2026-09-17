@@ -53,6 +53,34 @@ class DeliverySheet
     ];
 
     /**
+     * Название начинается с модельной линейки → бренд берём отсюда.
+     * Ни один бренд не называется «air max» или «metcon», поэтому ложных срабатываний нет.
+     *
+     * @var array<string, string>
+     */
+    private const MODEL_BRANDS = [
+        'air jordan' => 'JORDAN',
+        'jordan' => 'JORDAN',
+        'air max' => 'NIKE',
+        'air force' => 'NIKE',
+        'airmax' => 'NIKE',
+        'metcon' => 'NIKE',
+        'dunk' => 'NIKE',
+        'blazer' => 'NIKE',
+        'pegasus' => 'NIKE',
+        'vomero' => 'NIKE',
+        'cortez' => 'NIKE',
+        'm2k' => 'NIKE',
+    ];
+
+    /** Опечатки и написания бренда → канон. @var array<string, string> */
+    private const BRAND_ALIASES = [
+        'solomon' => 'SALOMON',
+        'salomon' => 'SALOMON',
+        'newbalance' => 'NEW BALANCE',
+    ];
+
+    /**
      * @return array{rows: array<int, array{brand:string,model:string,size:string,qty:int,article:string,cost:?float}>, mapping: array<string,string>, skipped: int}
      */
     public static function parse(string $path): array
@@ -107,7 +135,7 @@ class DeliverySheet
                 ? ArticleIdentity::normalizeArticle(self::cleanText($r[$map['article']] ?? null))
                 : '';
 
-            [$brand, $model] = ArticleIdentity::splitBrandModel($name);
+            [$brand, $model] = self::resolveBrandModel($name);
 
             $rows[] = [
                 'brand' => $brand,
@@ -199,6 +227,43 @@ class DeliverySheet
         $text = preg_replace('~[^\p{L}\p{N}]+~u', ' ', $text) ?? '';
 
         return trim(preg_replace('~\s+~u', ' ', $text) ?? '');
+    }
+
+    /**
+     * Бренд + модель из названия.
+     *
+     * Поставщики пишут название по-разному: то с брендом («Nike Dunk Low»), то сразу
+     * с модели («air max DN Essential», «metcon 9 AMP»). Наивное «первое слово = бренд»
+     * заводит на складе бренды «AIR» и «METCON», поэтому:
+     *  - строку, начинающуюся с известной модельной линейки, относим к её бренду;
+     *  - опечатки бренда приводим к канону (SOLOMON → SALOMON);
+     *  - женский префикс (WMNS / его опечатка VMNS / W) не бренд — оставляем в модели.
+     *
+     * @return array{0:string,1:string}
+     */
+    public static function resolveBrandModel(string $name): array
+    {
+        $name = trim(preg_replace('~\s+~u', ' ', $name) ?? '');
+
+        // Женский маркер: отделяем, чтобы не мешал определять бренд, потом вернём в модель.
+        $womens = '';
+        if (preg_match('~^(wmns|vmns|w)\s+(.+)$~ui', $name, $m)) {
+            $womens = 'WMNS ';
+            $name = $m[2];
+        }
+
+        $lower = mb_strtolower($name);
+
+        foreach (self::MODEL_BRANDS as $prefix => $brand) {
+            if (str_starts_with($lower, $prefix.' ') || $lower === $prefix) {
+                return [$brand, trim($womens.$name)];
+            }
+        }
+
+        [$brand, $model] = ArticleIdentity::splitBrandModel($name);
+        $brand = self::BRAND_ALIASES[mb_strtolower($brand)] ?? $brand;
+
+        return [$brand, trim($womens.$model)];
     }
 
     /**

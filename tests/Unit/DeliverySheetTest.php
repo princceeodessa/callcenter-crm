@@ -61,6 +61,32 @@ class DeliverySheetTest extends TestCase
         $this->assertSame(6000.0, $qtyTwo[0]['cost'], 'сумма строки делится на количество');
     }
 
+    /**
+     * Поставщик пишет название то с брендом, то сразу с модели. Наивное
+     * «первое слово = бренд» заводило на складе бренды «AIR» и «METCON».
+     *
+     * @dataProvider brandNames
+     */
+    public function test_it_recovers_the_brand_from_the_model_line(string $name, string $brand, string $model): void
+    {
+        $this->assertSame([$brand, $model], DeliverySheet::resolveBrandModel($name));
+    }
+
+    /** @return array<string, array{0:string,1:string,2:string}> */
+    public static function brandNames(): array
+    {
+        return [
+            'модель без бренда' => ['air max DN Essential Black', 'NIKE', 'air max DN Essential Black'],
+            'модельная линейка' => ['metcon 9 AMP Black-Bronzine', 'NIKE', 'metcon 9 AMP Black-Bronzine'],
+            'джордан' => ['air Jordan Low Triple Black', 'JORDAN', 'air Jordan Low Triple Black'],
+            'опечатка бренда' => ['SOLOMON Ultra Glide 4', 'SALOMON', 'Ultra Glide 4'],
+            'женский префикс с опечаткой' => ['VMNS Air Max DN Dawn', 'NIKE', 'WMNS Air Max DN Dawn'],
+            'бренд на месте' => ['Nike Dunk Low GS Triple Pink', 'NIKE', 'Dunk Low GS Triple Pink'],
+            'двусоставный бренд' => ['New Balance 9060', 'NEW BALANCE', '9060'],
+            'незнакомый бренд не трогаем' => ['HOKA Bondi 8', 'HOKA', 'Bondi 8'],
+        ];
+    }
+
     private function fixture(string $name): string
     {
         return dirname(__DIR__).'/Fixtures/'.$name;

@@ -139,7 +139,7 @@ class PurchaseInTransitReceiveTest extends TestCase
 
         $this->actingAs($user)->get(route('purchases.inTransit'))
             ->assertOk()
-            ->assertSee('Ввоз в белую')
+            ->assertSee('Белая / серая')
             ->assertSee('белая');
     }
 

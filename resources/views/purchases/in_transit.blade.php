@@ -50,8 +50,10 @@
     <div class="it-stat"><div class="l">Сумма · по закупке</div><div class="v">{{ $money($totalCost) }} ₽</div></div>
     <div class="it-stat"><div class="l">Средняя пара</div><div class="v">{{ $money($avgPairCost) }} ₽</div></div>
     <div class="it-stat">
-        <div class="l">Ввоз в белую</div>
-        <div class="v" @if($whitePairs > 0) style="color:#10b981" @endif>{{ $whitePairs }}<span class="text-muted" style="font-size:.9rem; font-weight:600"> / {{ $totalPairs }}</span></div>
+        <div class="l">Белая / серая</div>
+        <div class="v">
+            <span @if($whitePairs > 0) style="color:#10b981" @endif>{{ $whitePairs }}</span><span class="text-muted" style="font-size:.9rem; font-weight:600"> / {{ $totalPairs - $whitePairs }}</span>
+        </div>
     </div>
 </div>
 
@@ -72,16 +74,16 @@
         <div class="it-bar">
             <div class="small" id="selectionSummary">Отметьте пары галочками в списке ниже</div>
             <div class="d-flex gap-2 flex-wrap align-items-center">
-                {{-- Пометка «в белую» шлёт ту же форму (тот же выбор) другому маршруту через formaction. --}}
-                <span class="text-muted small d-none d-lg-inline">Ввоз в белую:</span>
+                {{-- Пометка канала шлёт ту же форму (тот же выбор) другому маршруту через formaction. --}}
+                <span class="text-muted small d-none d-lg-inline">Ввоз:</span>
                 <div class="btn-group btn-group-sm">
                     <button type="submit" class="btn btn-outline-success it-white-btn" id="markWhiteOn"
                             formaction="{{ route('purchases.markWhite') }}" name="white" value="1" disabled>
-                        🤍 Отметить
+                        🤍 в белую
                     </button>
                     <button type="submit" class="btn btn-outline-secondary it-white-btn" id="markWhiteOff"
                             formaction="{{ route('purchases.markWhite') }}" name="white" value="0" disabled>
-                        снять
+                        🩶 в серую
                     </button>
                 </div>
                 <span class="text-muted d-none d-lg-inline">·</span>
@@ -151,7 +153,7 @@
                                     @if ($purchase->is_white)
                                         <span class="badge text-bg-success" title="Заказано в белую">белая</span>
                                     @else
-                                        <span class="text-muted small">—</span>
+                                        <span class="badge text-bg-secondary" title="Ввоз в серую">серая</span>
                                     @endif
                                 </td>
                                 <td class="text-muted small">{{ $purchase->stage?->name }}</td>
@@ -220,8 +222,8 @@
             const picked = rows.filter((r) => r.checked);
             const pairs = picked.reduce((sum, r) => sum + Number(r.dataset.qty || 0), 0);
             const text = button.value === '1'
-                ? `Отметить как ввоз в белую: ${picked.length} поз. (${pairs} пар)?`
-                : `Снять пометку «в белую» с ${picked.length} поз. (${pairs} пар)?`;
+                ? `Отметить как ввоз В БЕЛУЮ: ${picked.length} поз. (${pairs} пар)?`
+                : `Отметить как ввоз В СЕРУЮ: ${picked.length} поз. (${pairs} пар)?`;
             if (! window.confirm(text)) {
                 event.preventDefault();
             }
