@@ -94,7 +94,7 @@ class SneakerSaleController extends Controller
         }
 
         $qty = (int) $data['qty'];
-        $price = $data['price'] !== null && $data['price'] !== ''
+        $price = ($data['price'] ?? null) !== null && $data['price'] !== ''
             ? (float) $data['price']
             : ($item->sale_price !== null ? (float) $item->sale_price : null);
         $amount = $price !== null ? round($price * $qty, 2) : null;

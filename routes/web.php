@@ -6,6 +6,7 @@ use App\Http\Controllers\DealController;
 use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\HelpController;
 use App\Http\Controllers\OwnerDashboardController;
+use App\Http\Controllers\SneakerDailySalesController;
 use App\Http\Controllers\SneakerSaleController;
 use App\Http\Controllers\WarehouseAnalyticsController;
 use App\Http\Controllers\WarehouseController;
@@ -162,6 +163,7 @@ Route::middleware('auth')->group(function () {
         // Быстрая продажа (один экран для продавца)
         Route::get('/sale', [SneakerSaleController::class, 'form'])->name('sale.quick');
         Route::post('/sale', [SneakerSaleController::class, 'store'])->name('sale.quick.store');
+        Route::get('/sale/day', [SneakerDailySalesController::class, 'index'])->name('sale.day');
         Route::post('/warehouse/receiving', [WarehouseController::class, 'receivingScan'])->name('warehouse.receiving.scan');
         // Коды маркировки (Честный знак)
         Route::post('/warehouse/items/{item}/marks', [WarehouseController::class, 'addItemMarks'])->name('warehouse.item.marks.add');

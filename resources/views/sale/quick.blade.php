@@ -146,6 +146,7 @@
             @empty
                 <div class="text-muted small p-3 text-center">Продаж пока нет.</div>
             @endforelse
+            <div class="text-center small p-2"><a href="{{ route('sale.day') }}">🗓 Все продажи за сегодня →</a></div>
         </div>
     </div>
 
