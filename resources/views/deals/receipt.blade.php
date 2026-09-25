@@ -4,11 +4,12 @@
     <meta charset="utf-8">
     <title>Чек · Сделка #{{ $deal->id }}</title>
     <style>
+        @page{ margin:0; }
         body{ font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; padding:1rem; background:#f4f4f4; }
         .receipt{
-            background:#fff; max-width:78mm; margin:0 auto; padding:6mm 4mm;
+            background:#fff; width:{{ $printWidth }}mm; margin:0 auto; padding:4mm 0;
             border:1px solid #ddd; border-radius:6px;
-            font-size:10pt; line-height:1.35;
+            font-size:{{ $paper === 58 ? '8.5pt' : '10pt' }}; line-height:1.35;
         }
         .receipt h1{ font-size:12pt; text-align:center; margin:0 0 2mm; }
         .receipt .company{ text-align:center; font-size:9pt; margin-bottom:2mm; color:#333; }
@@ -21,12 +22,16 @@
         .receipt .footnote{ text-align:center; margin-top:3mm; font-size:8pt; color:#666; }
         .actions{ text-align:center; margin-bottom:8mm; }
         .actions button{ padding:.6rem 1.4rem; font-size:12pt; border-radius:6px; border:0; background:#4f46e5; color:#fff; cursor:pointer; }
-        @media print{ body{ padding:0; background:#fff; } .actions{ display:none; } .receipt{ border:0; border-radius:0; } }
+        @media print{ body{ padding:0; background:#fff; } .actions{ display:none; } .receipt{ border:0; border-radius:0; margin:0 auto; } }
     </style>
 </head>
 <body>
     <div class="actions">
         <button onclick="window.print()">🖨️ Распечатать</button>
+        <span style="margin-left:.6rem;">Лента:
+            <a href="{{ route('deals.receipt', ['deal' => $deal->id, 'w' => 80]) }}" style="{{ $paper === 80 ? 'font-weight:700' : '' }}">80 мм</a> ·
+            <a href="{{ route('deals.receipt', ['deal' => $deal->id, 'w' => 58]) }}" style="{{ $paper === 58 ? 'font-weight:700' : '' }}">58 мм</a>
+        </span>
         <a href="{{ route('deals.show', $deal) }}" style="margin-left:.6rem;">Закрыть</a>
     </div>
 

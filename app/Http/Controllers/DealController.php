@@ -16,6 +16,7 @@ use App\Services\Warehouse\WarehouseService;
 use App\Support\Users\AssignmentScope;
 use App\Support\Deals\InteractsWithDealBroadcasts;
 use Carbon\Carbon;
+use App\Support\Marking\MarkCode;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
@@ -998,7 +999,7 @@ class DealController extends Controller
         $data = $request->validate([
             'codes' => ['required', 'string', 'max:100000'],
         ]);
-        $codes = array_values(array_filter(array_map('trim', preg_split('/\r?\n/', $data['codes']))));
+        $codes = array_values(array_filter(array_map([MarkCode::class, 'normalize'], preg_split('/\r?\n/', $data['codes']))));
         $itemId = $deal->warehouse_item_id;
         $bound = 0; $created = 0; $dup = 0;
         foreach ($codes as $code) {
@@ -1031,8 +1032,13 @@ class DealController extends Controller
         abort_unless($deal->account_id === $user->account_id, 403);
         $deal->load('warehouseItem', 'responsible', 'contact');
 
+        // Ширина чековой ленты: 80 мм (печатная область ~72 мм) или 58 мм (~48 мм).
+        $paper = request()->query('w') === '58' ? 58 : 80;
+
         return view('deals.receipt', [
             'deal' => $deal,
+            'paper' => $paper,
+            'printWidth' => $paper === 58 ? 48 : 72,
             'company' => [
                 'name' => config('app.name'),
                 'inn' => '',            // подставьте реальный ИНН для боевого чека

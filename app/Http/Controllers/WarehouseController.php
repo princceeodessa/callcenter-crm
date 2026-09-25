@@ -11,8 +11,8 @@ use App\Models\WarehouseProduct;
 use App\Models\WarehouseProductPhoto;
 use App\Services\Warehouse\WarehouseService;
 use App\Support\Warehouse\ArticleIdentity;
-use App\Support\Warehouse\Code128;
 use App\Support\Warehouse\ProductClassifier;
+use App\Support\Marking\MarkCode;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
@@ -377,17 +377,14 @@ class WarehouseController extends Controller
         return back()->with('status', 'Цены применены к '.$n.' размер(ам) «'.$product->display_name.'».');
     }
 
-    /** Печатная этикетка (артикул + Code128). */
+    /** Старая ссылка «🖨️ Этикетка» — ведёт на общую страницу печати. */
     public function label(WarehouseProduct $product)
     {
         $user = Auth::user();
         abort_unless($product->account_id === $user->account_id, 403);
 
-        return view('warehouse.label', [
-            'product' => $product,
-            'barcode_svg' => Code128::svg($product->article ?: '', 60, 2),
-            'display_name' => $product->display_name,
-        ]);
+        // Печать переехала на общую страницу под термопринтер (размер наклейки, копии по размерам, ЧЗ).
+        return redirect()->route('print.labels', ['product' => $product->id, 'type' => 'product']);
     }
 
     // ==================== ПРИЁМКА (ТСД / сканер) ====================
@@ -415,9 +412,10 @@ class WarehouseController extends Controller
             'quantity' => ['nullable', 'integer', 'min:1', 'max:1000'],
             'mode' => ['nullable', 'in:article,mark'],
         ]);
-        $code = trim($data['code']);
-        $qty = (int) ($data['quantity'] ?? 1);
         $mode = $data['mode'] ?? 'article';
+        // Код ЧЗ: вернуть потерянные сканером GS и латиницу из русской раскладки.
+        $code = $mode === 'mark' ? MarkCode::normalize($data['code']) : trim($data['code']);
+        $qty = (int) ($data['quantity'] ?? 1);
         $result = '';
 
         if ($mode === 'mark') {
@@ -483,7 +481,7 @@ class WarehouseController extends Controller
         $data = $request->validate([
             'codes' => ['required', 'string', 'max:100000'],
         ]);
-        $codes = array_values(array_filter(array_map('trim', preg_split('/\r?\n/', $data['codes']))));
+        $codes = array_values(array_filter(array_map([MarkCode::class, 'normalize'], preg_split('/\r?\n/', $data['codes']))));
         $added = 0;
         $dup = 0;
         foreach ($codes as $code) {

@@ -6,6 +6,7 @@ use App\Http\Controllers\DealController;
 use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\HelpController;
 use App\Http\Controllers\OwnerDashboardController;
+use App\Http\Controllers\LabelPrintController;
 use App\Http\Controllers\SneakerDailySalesController;
 use App\Http\Controllers\SneakerSaleController;
 use App\Http\Controllers\WarehouseAnalyticsController;
@@ -164,6 +165,8 @@ Route::middleware('auth')->group(function () {
         Route::get('/sale', [SneakerSaleController::class, 'form'])->name('sale.quick');
         Route::post('/sale', [SneakerSaleController::class, 'store'])->name('sale.quick.store');
         Route::get('/sale/day', [SneakerDailySalesController::class, 'index'])->name('sale.day');
+        // Печать на термопринтер: ценники, этикетки, «Честный знак»
+        Route::match(['get', 'post'], '/print/labels', [LabelPrintController::class, 'index'])->name('print.labels');
         Route::post('/warehouse/receiving', [WarehouseController::class, 'receivingScan'])->name('warehouse.receiving.scan');
         // Коды маркировки (Честный знак)
         Route::post('/warehouse/items/{item}/marks', [WarehouseController::class, 'addItemMarks'])->name('warehouse.item.marks.add');

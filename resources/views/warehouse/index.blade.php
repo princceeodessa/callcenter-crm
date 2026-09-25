@@ -606,7 +606,7 @@
                                 <input type="text" name="article" value="{{ $prod['article'] }}" maxlength="64">
                                 <button class="btn btn-outline-secondary btn-xxs">OK</button>
                             </form>
-                            <a class="btn btn-outline-secondary btn-xxs" href="{{ route('warehouse.product.label', $prod['entity']) }}" target="_blank">🖨️ Этикетка</a>
+                            <a class="btn btn-outline-secondary btn-xxs" href="{{ route('print.labels', ['product' => $prod['entity']->id, 'type' => 'price']) }}" target="_blank" title="Ценники, этикетки со штрихкодом и коды «Честного знака» на термопринтер">🏷 Печать</a>
                         </div>
                         <div class="ps-row">
                             <span class="lbl">Доп. фото</span>
@@ -673,6 +673,7 @@
             <option value="tag_remove:">➖ Убрать тег…</option>
         </select>
         <button type="button" class="btn btn-primary btn-sm" id="bulk-apply">Применить</button>
+        <button type="button" class="btn btn-outline-primary btn-sm" id="bulk-print" title="Ценники / этикетки на все размеры выбранных моделей">🏷 Ценники / этикетки</button>
         <button type="button" class="btn btn-outline-secondary btn-sm" id="bulk-clear">×</button>
     </div>
 </div>
@@ -700,6 +701,11 @@
             const v = document.createElement('input'); v.type = 'hidden'; v.name = 'value'; v.value = realValue;
             form.appendChild(a); form.appendChild(v);
             form.submit();
+        });
+        document.getElementById('bulk-print').addEventListener('click', () => {
+            const ids = [...document.querySelectorAll('.bulk-check:checked')].map(c => c.value);
+            if (! ids.length) return;
+            window.open(@json(route('print.labels')) + '?type=price&products=' + ids.join(','), '_blank');
         });
         document.getElementById('bulk-clear').addEventListener('click', () => {
             document.querySelectorAll('.bulk-check:checked').forEach(c => c.checked = false);
