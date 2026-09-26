@@ -143,6 +143,13 @@
                 <button type="button" class="btn btn-primary" id="pdfBtn" @disabled($labelCount === 0) title="Надёжный способ для XP-365B: PDF ровно {{ $w }}×{{ $h }} мм, печать из Adobe Reader или SumatraPDF">📄 PDF для печати</button>
                 <button type="submit" class="btn">↻ Обновить</button>
                 <span class="muted">Рулон {{ $format['label'] }} · принтер XP-365B</span>
+                <label class="muted" title="Если из PDF ценник выходит боком — поверните страницу. Выбор запоминается на этом компьютере.">Поворот PDF
+                    <select id="pdfRotate">
+                        <option value="0">нет</option>
+                        <option value="cw">90° ↻</option>
+                        <option value="ccw">90° ↺</option>
+                    </select>
+                </label>
                 <span class="muted" id="pdfStatus"></span>
                 @if($truncated)
                     <span class="warn">Показаны первые {{ $maxLabels }} — печатайте частями.</span>
@@ -261,7 +268,7 @@
                     <li><b>Калибровка после заправки рулона</b> (и при смене размера наклеек): выключите принтер → зажмите <b>FEED</b> и <b>PAUSE</b> → включите → когда загорится Online, погаснет Error и прозвучит двойной сигнал — отпустите.</li>
                     <li><b>Размер бумаги в Windows.</b> Параметры → Принтеры и сканеры → XP-365B → Настройки печати → Page Setup → <i>New</i>: ширина и высота как у рулона (в магазине — <b>60 × 40 мм</b>), тип — <i>Labels with gaps</i> (этикетки с промежутками). Сделайте его размером по умолчанию.</li>
                     <li><b>Чёткость.</b> В тех же настройках (Options): темнота (Darkness) повыше, скорость пониже — DataMatrix «Честного знака» читается лучше. Если код бледный или «рваный» — +2 к темноте.</li>
-                    <li><b>Самый надёжный способ — «📄 PDF для печати».</b> Скачается файл, где каждая страница ровно {{ $w }} × {{ $h }} мм. Откройте его в <b>Adobe Acrobat Reader</b> или <b>SumatraPDF</b> (не в браузере) → Печать → Xprinter XP-365B → размер <b>«Фактический» / 100 %</b>, ориентация <b>«Авто»</b>. Так печатают этикетки Wildberries на этом же принтере.</li>
+                    <li><b>Самый надёжный способ — «📄 PDF для печати».</b> Скачается файл, где каждая страница ровно {{ $w }} × {{ $h }} мм. Откройте его в <b>Adobe Acrobat Reader</b> или <b>SumatraPDF</b> (не в браузере) → Печать → Xprinter XP-365B → размер <b>«Фактический» / 100 %</b>, ориентация <b>«Книжная»</b> (не «Авто»). Если всё равно выходит боком — выберите «Поворот PDF: 90°» рядом с кнопкой и скачайте PDF заново. Так печатают этикетки Wildberries на этом же принтере.</li>
                     <li><b>При печати из браузера:</b> принтер XP-365B, размер бумаги — тот же (USER {{ $w }} × {{ $h }}), <b>Макет: Книжная</b>, <b>Поля: нет</b>, <b>Масштаб: 100 %</b> (не «по размеру страницы»), колонтитулы выключены. Браузер запомнит — дальше просто «Печать».</li>
                     <li><b>Если ценник повёрнут или залез на две наклейки</b> — в драйвере не тот размер бумаги: Настройки печати → Page Setup → New → <b>Width 60</b> (поперёк ленты), <b>Height 40</b> (вдоль), Labels with gaps, ориентация Portrait (книжная); в окне печати браузера — этот размер и <b>Макет: Книжная</b>. Если всё равно боком — попробуйте «Альбомная».</li>
                     <li><b>Если внизу напечатался адрес сайта</b> — это колонтитулы браузера: в окне печати «Дополнительные настройки» → снимите «Верхние и нижние колонтитулы», поля «Нет».</li>
@@ -536,14 +543,37 @@
         return c;
     };
 
-    const buildPdf = async () => {
+    // Поворот страницы PDF: драйвер Seagull на альбомной ориентации поворачивает наклейку,
+    // а программы просмотра в режиме «Авто» выбирают её для «лежачей» страницы 60×40.
+    // Повёрнутая страница (40×60, «стоячая») печатается в книжной — выбор хранится на компьютере.
+    const rotateSel = document.getElementById('pdfRotate');
+    try { const saved = localStorage.getItem('labelPdfRotate'); if (saved && rotateSel) rotateSel.value = saved; } catch (e) {}
+    if (rotateSel) rotateSel.addEventListener('change', () => { try { localStorage.setItem('labelPdfRotate', rotateSel.value); } catch (e) {} });
+
+    const rotated = (src, dir) => {
+        const r = document.createElement('canvas');
+        r.width = src.height;
+        r.height = src.width;
+        const ctx = r.getContext('2d');
+        ctx.imageSmoothingEnabled = false;
+        if (dir === 'cw') { ctx.translate(r.width, 0); ctx.rotate(Math.PI / 2); }
+        else { ctx.translate(0, r.height); ctx.rotate(-Math.PI / 2); }
+        ctx.drawImage(src, 0, 0);
+        return r;
+    };
+
+    const buildPdf = async (dirArg) => {
         await load(BWIP, () => typeof window.bwipjs !== 'undefined');
         await load(JSPDF, () => typeof window.jspdf !== 'undefined');
-        const orientation = DATA.w > DATA.h ? 'landscape' : 'portrait';
-        const doc = new window.jspdf.jsPDF({ orientation: orientation, unit: 'mm', format: [DATA.w, DATA.h], compress: true });
+        const dir = dirArg !== undefined ? dirArg : (rotateSel ? rotateSel.value : '0');
+        const turn = dir === 'cw' || dir === 'ccw';
+        const pw = turn ? DATA.h : DATA.w, ph = turn ? DATA.w : DATA.h;
+        const orientation = pw > ph ? 'landscape' : 'portrait';
+        const doc = new window.jspdf.jsPDF({ orientation: orientation, unit: 'mm', format: [pw, ph], compress: true });
         DATA.labels.forEach((l, i) => {
-            if (i > 0) doc.addPage([DATA.w, DATA.h], orientation);
-            doc.addImage(render(l).toDataURL('image/png'), 'PNG', 0, 0, DATA.w, DATA.h, undefined, 'FAST');
+            if (i > 0) doc.addPage([pw, ph], orientation);
+            const c = turn ? rotated(render(l), dir) : render(l);
+            doc.addImage(c.toDataURL('image/png'), 'PNG', 0, 0, pw, ph, undefined, 'FAST');
         });
         return doc;
     };
