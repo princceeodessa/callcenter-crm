@@ -189,31 +189,33 @@ class LabelPrintTest extends TestCase
         $this->assertSame($big->id, StockMark::where('code', $other)->value('warehouse_item_id'), 'существующий код не перепривязывается');
     }
 
-    /** Этикетка в формате ЧЗ: описание из карточки или своё, копии, автопечать после фото. */
-    public function test_cz_label_text_copies_and_autoprint(): void
+    /** Этикетка в формате ЧЗ: описание из карточки (даже без выбранного размера) или своё; печать только по кнопке. */
+    public function test_cz_label_text_and_no_autoprint(): void
     {
         $head = User::where('role', 'sneaker_head')->firstOrFail();
         [$product, $small] = $this->makeProduct($head->account_id);
         $code = $this->code('CZLABEL000001');
 
-        $auto = $this->actingAs($head)->post(route('print.labels'), [
+        $withSize = $this->actingAs($head)->post(route('print.labels'), [
             'type' => 'mark', 'products' => (string) $product->id, 'marks_sent' => '1',
             'codes' => $code, 'attach_item' => $small->id,
         ]);
-        $this->assertStringStartsWith('Кроссовки NIKE', $auto->viewData('labels')[0]['desc']);
-        $this->assertStringContainsString('размер 42', $auto->viewData('labels')[0]['desc']);
+        $this->assertStringStartsWith('Кроссовки NIKE', $withSize->viewData('labels')[0]['desc']);
+        $this->assertStringContainsString('размер 42', $withSize->viewData('labels')[0]['desc']);
+
+        $noSize = $this->actingAs($head)->post(route('print.labels'), [
+            'type' => 'mark', 'products' => (string) $product->id, 'marks_sent' => '1', 'codes' => $code,
+        ]);
+        $this->assertStringStartsWith('Кроссовки NIKE', $noSize->viewData('labels')[0]['desc'], 'модель одна — описание из неё');
 
         $custom = $this->actingAs($head)->post(route('print.labels'), [
             'type' => 'mark', 'products' => (string) $product->id, 'marks_sent' => '1',
-            'codes' => $code, 'label_text' => 'Кроссовки женские Nike Cortez Textile, цвет жёлтый', 'mark_copies' => '3', 'autoprint' => '1',
+            'codes' => $code, 'label_text' => 'Кроссовки женские Nike Cortez Textile, цвет жёлтый', 'mark_copies' => '3',
         ]);
         $labels = $custom->viewData('labels');
-        $this->assertCount(3, $labels);
-        $this->assertSame('Кроссовки женские Nike Cortez Textile, цвет жёлтый', $labels[2]['desc']);
-        $custom->assertSee('"autoprint":true', false);
-
-        $this->actingAs($head)->get(route('print.labels', ['type' => 'mark', 'codes' => $code, 'autoprint' => '1']))
-            ->assertSee('"autoprint":false', false);   // GET-ссылка сама ничего не печатает
+        $this->assertCount(1, $labels, 'копии считаются в момент печати, не на сервере');
+        $this->assertSame('Кроссовки женские Nike Cortez Textile, цвет жёлтый', $labels[0]['desc']);
+        $custom->assertSee('id="markCopies"', false)->assertSee('value="3"', false)->assertDontSee('autoprint');
     }
 
     public function test_short_code_without_crypto_tail_is_flagged(): void

@@ -26,7 +26,7 @@
                 'price' => ($type === 'price' && $showPrice && $l['price'] !== null) ? $money($l['price']).' ₽' : null,
             ])->values();
         $pdfJson = json_encode([
-            'type' => $type, 'w' => $w, 'h' => $h, 'compact' => $compact, 'labels' => $pdfLabels, 'autoprint' => $autoprint,
+            'type' => $type, 'w' => $w, 'h' => $h, 'compact' => $compact, 'labels' => $pdfLabels,
         ], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
     @endphp
     <style>
@@ -261,7 +261,8 @@
                             📷 Код с фото
                             <input type="file" id="photoInput" accept="image/*" capture="environment" multiple hidden>
                         </label>
-                        <span class="muted">Сфотографируйте DataMatrix «Честного знака» (можно несколько фото) — код распознается и сразу уйдёт на принтер («⚡ Печать напрямую»).</span>
+                        <label>Копий каждого кода <input type="number" name="mark_copies" id="markCopies" min="1" max="50" value="{{ $markCopies }}" style="width:64px"></label>
+                        <span class="muted">Сфотографируйте DataMatrix (можно несколько фото) — код распознается и появится этикетка. Укажите копии и нажмите «⚡ Печать напрямую».</span>
                     </div>
                     <div class="muted" id="photoStatus" style="margin-top:6px"></div>
                     @if($itemsCount > 0)
@@ -279,14 +280,10 @@
                         <div class="saved" style="margin-top:8px">💾 Сохранено кодов к размеру: {{ $marksSaved }}.</div>
                     @endif
                     <div style="margin-top:8px">
-                        <label style="display:block">Текст на этикетке <span class="muted">(слева от кода; пусто — из карточки товара)</span></label>
-                        <textarea name="label_text" rows="2" style="width:100%" placeholder="Кроссовки женские Nike Cortez Textile, арт. DZ2795-702, размер 42, цвет жёлтый/зелёный">{{ $labelText }}</textarea>
+                        <label style="display:block">Текст на этикетке <span class="muted">— слева от кода. Пусто: «Кроссовки &lt;модель&gt;, арт., размер» из карточки</span></label>
+                        <textarea name="label_text" rows="2" style="width:100%" placeholder="впишите свой текст или оставьте пустым">{{ $labelText }}</textarea>
+                        <button type="submit" class="btn btn-sm" style="margin-top:4px">Применить текст</button>
                     </div>
-                    <div class="row" style="margin-top:6px">
-                        <label>Копий каждого кода <input type="number" name="mark_copies" min="1" max="50" value="{{ $markCopies }}" style="width:64px" onchange="this.form.submit()"></label>
-                        <button type="submit" class="btn btn-sm">Применить</button>
-                    </div>
-                    <input type="hidden" name="autoprint" value="0" id="autoprintFlag">
                 </div>
 
                 <div style="margin-top:10px">
@@ -543,65 +540,93 @@
         ctx.fillText(l.size || '—', padX + sw, y);
     };
 
-    // Логотип «Честный знак»: уголки-скобки с галочкой + «ЧЕСТНЫЙ / ЗНАК».
-    const drawCzLogo = (ctx, x, y, k) => {
-        const s = mm(5.4 * k), th = Math.max(2, Math.round(s * 0.13)), c = Math.round(s * 0.34);
-        ctx.fillRect(x, y, c, th); ctx.fillRect(x, y, th, c);
-        ctx.fillRect(x + s - c, y, c, th); ctx.fillRect(x + s - th, y, th, c);
-        ctx.fillRect(x, y + s - th, c, th); ctx.fillRect(x, y + s - c, th, c);
-        ctx.fillRect(x + s - c, y + s - th, c, th); ctx.fillRect(x + s - th, y + s - c, th, c);
-        ctx.lineWidth = th; ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
-        ctx.beginPath(); ctx.moveTo(x + s * 0.26, y + s * 0.50); ctx.lineTo(x + s * 0.45, y + s * 0.69); ctx.lineTo(x + s * 0.76, y + s * 0.32); ctx.stroke();
-        const tx = x + s + mm(1.3), small = pt(6.2 * k), big = pt(12 * k);
-        ctx.textBaseline = 'top';
-        ctx.font = 'bold ' + small + 'px Arial, sans-serif';
-        ctx.fillText('ЧЕСТНЫЙ', tx, y - mm(0.1));
-        ctx.font = 'bold ' + big + 'px Arial, sans-serif';
-        ctx.fillText('ЗНАК', tx, y + small * 0.95);
-        return y + Math.max(s, small * 0.95 + big);
+    // ---------- Этикетка «Честный знак» 1 в 1 с заводской ----------
+    // Размеры сняты с фото оригинальной этикетки 60×40 (в мм «оригинала»). Вся картинка ужата до 90 %
+    // и отцентрирована — поля ≥ 2 мм, чтобы сдвиг принтера ничего не срезал.
+    const CZ = {
+        icon: { x: 3.7, y: 3.2, s: 5.3, t: 0.85, arm: 2.1 },
+        top: { x: 9.7, y: 2.7, w: 16.6, h: 1.95 },      // «ЧЕСТНЫЙ»
+        big: { x: 9.7, y: 5.2, w: 17.2, h: 3.6 },       // «ЗНАК»
+        desc: { x: 3.7, y: 10.2, w: 23.2, pitch: 2.8, cap: 2.05, bottom: 36.5 },
+        div: { x: 29.3, y1: 1.6, y2: 26.8, w: 0.35 },
+        dm: { x: 30.4, y: 1.3, size: 25.5 },
+        box: { x1: 29.3, x2: 58.0, y: 30.6, lineW: 0.25, padX: 0.6, padY: 0.5, pitch: 2.6, cap: 2.0 },
     };
 
-    // Этикетка как у «Честного знака»: слева логотип и описание, справа DataMatrix, под ним (01)…(21)… в рамке.
+    // Шрифт такого размера, чтобы строка заняла ровно w мм и не была выше h мм (буквы заглавные).
+    const fitFont = (ctx, text, weight, wPx, hPx) => {
+        ctx.font = weight + ' 100px Arial, sans-serif';
+        const byW = 100 * wPx / Math.max(1, ctx.measureText(text).width);
+        const byH = hPx / 0.72;                           // высота заглавной ≈ 0,72 кегля у Arial
+        const px = Math.min(byW, byH);
+        ctx.font = weight + ' ' + px + 'px Arial, sans-serif';
+        return px;
+    };
+
+    const drawCzIcon = (ctx, X, Y, S, sc) => {
+        const s = S * sc, th = CZ.icon.t * sc, arm = CZ.icon.arm * sc, h = th / 2;
+        ctx.lineWidth = th; ctx.lineCap = 'butt'; ctx.lineJoin = 'round';
+        const corner = (x0, y0, dx, dy) => {
+            ctx.beginPath();
+            ctx.moveTo(x0 + h * dx, y0 + dy * arm);
+            ctx.lineTo(x0 + h * dx, y0 + h * dy);
+            ctx.lineTo(x0 + dx * arm, y0 + h * dy);
+            ctx.stroke();
+        };
+        corner(X, Y, 1, 1); corner(X + s, Y, -1, 1); corner(X, Y + s, 1, -1); corner(X + s, Y + s, -1, -1);
+        ctx.lineJoin = 'miter';
+        ctx.beginPath();
+        ctx.moveTo(X + s * 0.25, Y + s * 0.50); ctx.lineTo(X + s * 0.44, Y + s * 0.69); ctx.lineTo(X + s * 0.79, Y + s * 0.31);
+        ctx.stroke();
+    };
+
     const drawMark = (ctx, l, W, H) => {
-        const pad = mm(1.5), k = DATA.compact ? 0.8 : 1;
-        ctx.fillStyle = '#000'; ctx.strokeStyle = '#000'; ctx.textBaseline = 'top';
+        const sc = Math.min(W / 60, H / 40) * 0.9;       // точек на мм «оригинала»
+        const ox = (W - 60 * sc) / 2, oy = (H - 40 * sc) / 2;
+        const X = (v) => ox + v * sc, Y = (v) => oy + v * sc;
+        ctx.fillStyle = '#000'; ctx.strokeStyle = '#000'; ctx.textBaseline = 'alphabetic';
 
-        // bwip: 2 точки на модуль при scale 1 → scale 2 = модуль 0,5 мм; не влезает — 0,25 мм.
-        let dm = document.createElement('canvas');
-        bwipjs.toCanvas(dm, { bcid: 'datamatrix', text: l.dm, parsefnc: true, scale: 2 });
-        if (dm.height > H * 0.62) {
-            dm = document.createElement('canvas');
-            bwipjs.toCanvas(dm, { bcid: 'datamatrix', text: l.dm, parsefnc: true, scale: 1 });
-        }
-        const boxW = dm.width + mm(2);
-        const right = W - pad;
-        const dmX = right - Math.round((boxW + dm.width) / 2), dmY = pad + mm(0.5);
-        ctx.drawImage(dm, dmX, dmY);
+        // Логотип
+        drawCzIcon(ctx, X(CZ.icon.x), Y(CZ.icon.y), CZ.icon.s, sc);
+        fitFont(ctx, 'ЧЕСТНЫЙ', 'bold', CZ.top.w * sc, CZ.top.h * sc);
+        ctx.fillText('ЧЕСТНЫЙ', X(CZ.top.x), Y(CZ.top.y + CZ.top.h));
+        fitFont(ctx, 'ЗНАК', 'bold', CZ.big.w * sc, CZ.big.h * sc);
+        ctx.fillText('ЗНАК', X(CZ.big.x), Y(CZ.big.y + CZ.big.h));
 
-        // (01)GTIN(21)серийный — в рамке под кодом, перенос по символам
-        const hs = pt(6.4 * k), lh = hs * 1.12, boxX = right - boxW, boxY = dmY + dm.height + mm(1.2);
-        ctx.font = hs + 'px Arial, sans-serif';
-        const hri = chunk(ctx, '(01)' + l.gtin + '(21)' + l.serial, boxW - mm(1.2));
-        const boxH = Math.round(hri.length * lh + mm(0.9));
-        ctx.lineWidth = Math.max(1, Math.round(PX * 0.15));
-        ctx.strokeRect(boxX + 0.5, boxY + 0.5, boxW - 1, boxH);
-        hri.forEach((ln, i) => ctx.fillText(ln, boxX + mm(0.6), boxY + mm(0.45) + i * lh));
-
-        // Вертикальная линия-разделитель вдоль кода
-        const divX = boxX - mm(1.6);
-        ctx.fillRect(divX, dmY, Math.max(2, Math.round(PX * 0.25)), dm.height);
-
-        // Слева: логотип + описание товара
-        const leftX = pad + mm(0.5), leftW = divX - mm(1.6) - leftX;
-        let y = drawCzLogo(ctx, leftX, pad + mm(0.3), k) + mm(1.6);
-        const ds = pt(7.2 * k), dl = ds * 1.18;
-        ctx.font = 'bold ' + ds + 'px Arial, sans-serif';
+        // Описание — обычным шрифтом, как на оригинале
+        const dPx = CZ.desc.cap * sc / 0.72;
+        ctx.font = dPx + 'px Arial, sans-serif';
         const text = l.desc || [l.name, l.size ? 'размер ' + l.size : ''].filter(Boolean).join(', ');
-        const maxLines = Math.max(1, Math.floor((H - pad - y) / dl));
-        for (const line of wrap(ctx, text, leftW, maxLines)) {
-            ctx.fillText(line, leftX, y);
-            y += dl;
-        }
+        const maxLines = Math.max(1, Math.floor((CZ.desc.bottom - CZ.desc.y) / CZ.desc.pitch));
+        wrap(ctx, text, CZ.desc.w * sc, maxLines).forEach((line, i) => {
+            ctx.fillText(line, X(CZ.desc.x), Y(CZ.desc.y + CZ.desc.cap + i * CZ.desc.pitch));
+        });
+
+        // Разделитель
+        ctx.fillRect(Math.round(X(CZ.div.x)), Math.round(Y(CZ.div.y1)), Math.max(2, Math.round(CZ.div.w * sc)), Math.round((CZ.div.y2 - CZ.div.y1) * sc));
+
+        // DataMatrix: целое число точек на модуль (bwip рисует 2 px на модуль при scale 1,
+        // растягиваем «ближайшим соседом» — модули остаются ровными).
+        const dm1 = document.createElement('canvas');
+        bwipjs.toCanvas(dm1, { bcid: 'datamatrix', text: l.dm, parsefnc: true, scale: 1 });
+        const modules = dm1.width / 2;
+        const dpm = Math.max(2, Math.floor(CZ.dm.size * sc / modules));
+        const dmPx = modules * dpm;
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(dm1, Math.round(X(CZ.dm.x)), Math.round(Y(CZ.dm.y)), dmPx, dmPx);
+
+        // Рамка с (01)…(21)… — от разделителя до правого края, текст в 2 строки
+        const bx = X(CZ.box.x1), bw = (CZ.box.x2 - CZ.box.x1) * sc, by = Math.max(Y(CZ.box.y), Y(CZ.dm.y) + dmPx + 1.5 * sc);
+        const hri = '(01)' + l.gtin + '(21)' + l.serial;
+        const innerW = bw - 2 * CZ.box.padX * sc;
+        const perLine = Math.ceil(hri.length / 2);
+        fitFont(ctx, hri.slice(0, perLine), 'normal', innerW, CZ.box.cap * sc);
+        const lines = chunk(ctx, hri, innerW);
+        const bh = CZ.box.padY * 2 * sc + lines.length * CZ.box.pitch * sc;
+        ctx.lineWidth = Math.max(1, CZ.box.lineW * sc);
+        ctx.strokeRect(Math.round(bx) + 0.5, Math.round(by) + 0.5, Math.round(bw), Math.round(bh));
+        lines.forEach((ln, i) => ctx.fillText(ln, bx + CZ.box.padX * sc, by + CZ.box.padY * sc + CZ.box.cap * sc + i * CZ.box.pitch * sc + 0.3 * sc));
+        ctx.textBaseline = 'top';
     };
 
     // Одна этикетка -> canvas ровно W x H точек (выставлено для проверки в тестах/консоли).
@@ -637,6 +662,13 @@
         return r;
     };
 
+    // Копии этикеток ЧЗ: берём из поля прямо в момент печати (без перезагрузки страницы).
+    const copies = () => {
+        const el = document.getElementById('markCopies');
+        const n = el ? parseInt(el.value, 10) : 1;
+        return DATA.type === 'mark' && n > 1 ? Math.min(50, n) : 1;
+    };
+
     const buildPdf = async (dirArg) => {
         await load(BWIP, () => typeof window.bwipjs !== 'undefined');
         await load(JSPDF, () => typeof window.jspdf !== 'undefined');
@@ -645,10 +677,14 @@
         const pw = turn ? DATA.h : DATA.w, ph = turn ? DATA.w : DATA.h;
         const orientation = pw > ph ? 'landscape' : 'portrait';
         const doc = new window.jspdf.jsPDF({ orientation: orientation, unit: 'mm', format: [pw, ph], compress: true });
-        DATA.labels.forEach((l, i) => {
-            if (i > 0) doc.addPage([pw, ph], orientation);
+        let page = 0;
+        DATA.labels.forEach((l) => {
             const c = turn ? rotated(render(l), dir) : render(l);
-            doc.addImage(c.toDataURL('image/png'), 'PNG', 0, 0, pw, ph, undefined, 'FAST');
+            const png = c.toDataURL('image/png');
+            for (let n = 0; n < copies(); n++) {
+                if (page++ > 0) doc.addPage([pw, ph], orientation);
+                doc.addImage(png, 'PNG', 0, 0, pw, ph, undefined, 'FAST');
+            }
         });
         return doc;
     };
@@ -718,7 +754,7 @@
             parts.push(enc.encode('BITMAP 0,0,' + bm.wb + ',' + bm.h + ',0,'));
             parts.push(bm.bytes);
             parts.push(enc.encode('\r\n'));
-            cmd('PRINT 1,1');
+            cmd('PRINT 1,' + copies());
         });
         let len = 0; parts.forEach((p) => { len += p.length; });
         const all = new Uint8Array(len);
@@ -728,8 +764,6 @@
         return btoa(bin);
     };
     window.__labelRaw = { buildTspl: buildTspl, bitmap: tsplBitmap };
-    // После «📷 Код с фото» страница приходит с autoprint — сразу отправляем на принтер.
-    if (DATA.autoprint && DATA.labels.length && rawBtn) setTimeout(() => rawBtn.click(), 300);
 
     // Без QZ Tray попытка соединения может висеть бесконечно — ограничиваем по времени.
     const withTimeout = (p, ms, msg) => Promise.race([p, new Promise((_, reject) => setTimeout(() => reject(new Error(msg)), ms))]);
@@ -786,7 +820,7 @@
             rawEls.printer.value = name; readRaw();
             status.textContent = 'Печатаю на ' + name + '…';
             await withTimeout(qz.print(qz.configs.create(name), [{ type: 'raw', format: 'command', flavor: 'base64', data: buildTspl() }]), 30000, 'Принтер не ответил за 30 секунд — проверьте, что он включён.');
-            status.textContent = 'Отправлено на ' + name + ': ' + DATA.labels.length + ' шт.';
+            status.textContent = 'Отправлено на ' + name + ': ' + (DATA.labels.length * copies()) + ' шт.';
         } catch (e) {
             status.textContent = (e && e.message) ? e.message : String(e);
         } finally {
@@ -883,9 +917,7 @@
             const have = new Set(area.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean));
             found.map((c) => c.split('\x1D').join('<GS>')).forEach((c) => have.add(c));
             area.value = [...have].join('\n');
-            status.textContent = 'Распознано кодов: ' + found.length + (failed ? ' (на ' + failed + ' фото код не найден)' : '') + '. Отправляю на печать…';
-            const flag = document.getElementById('autoprintFlag');
-            if (flag) flag.value = '1';
+            status.textContent = 'Распознано кодов: ' + found.length + (failed ? ' (на ' + failed + ' фото код не найден)' : '') + '. Загружаю этикетку…';
             form.submit();
         } catch (e) {
             status.textContent = 'Не получилось распознать: ' + (e && e.message ? e.message : e);

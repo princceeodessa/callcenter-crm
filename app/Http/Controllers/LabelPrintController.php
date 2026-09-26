@@ -100,7 +100,6 @@ class LabelPrintController extends Controller
         // Текст слева на этикетке ЧЗ (пусто — собираем из карточки товара), копии, «сразу печатать» после фото.
         $labelText = trim((string) $request->input('label_text', ''));
         $markCopies = max(1, min(50, (int) $request->input('mark_copies', 1)));
-        $autoprint = $request->isMethod('post') && $request->boolean('autoprint');
 
         if ($type === 'mark') {
             // Коды со склада (по выбранным товарам) + вставленные вручную / из файла ЧЗ.
@@ -181,10 +180,6 @@ class LabelPrintController extends Controller
                 $printed[$code] = true;
             }
 
-            // Сколько копий каждого кода.
-            if ($markCopies > 1) {
-                $labels = $labels->flatMap(fn ($l) => array_fill(0, $markCopies, $l))->values();
-            }
         } else {
             foreach ($items as $item) {
                 $product = $this->productFor($item, $products);
@@ -238,7 +233,6 @@ class LabelPrintController extends Controller
             'attachItemId' => $attachItem?->id,
             'labelText' => $labelText,
             'markCopies' => $markCopies,
-            'autoprint' => $autoprint,
             'pastedInvalid' => $pastedInvalid,
             'productIdsCsv' => $products->pluck('id')->implode(','),
             'isHead' => $isHead,
@@ -334,12 +328,15 @@ class LabelPrintController extends Controller
         $parsed = MarkCode::parse($code);
 
         // «Кроссовки NIKE Cortez Textile, арт. DZ2795-702, размер 42» — как на этикетке «Честного знака».
+        if (! $item && ! $product && $products->count() === 1) {
+            $product = $products->first();   // страница открыта для одной модели — описание берём из неё
+        }
         $desc = $text;
-        if ($desc === '' && $item) {
+        if ($desc === '' && ($item || $product)) {
             $name = $product?->display_name ?: trim($item->brand.' '.$item->model);
             $desc = 'Кроссовки '.$name
                 .($product && $product->article ? ', арт. '.$product->article : '')
-                .((string) $item->size !== '' ? ', размер '.$item->size : '');
+                .($item && (string) $item->size !== '' ? ', размер '.$item->size : '');
         }
 
         return [
