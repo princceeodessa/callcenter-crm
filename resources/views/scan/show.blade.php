@@ -26,7 +26,7 @@
 <div class="sc-wrap">
     <form method="GET" action="{{ route('scan') }}" class="sc-scan">
         <span style="font-size:1.2rem">🔎</span>
-        <input type="search" name="code" id="scanInput" value="" placeholder="Сканируйте товар или введите артикул — откроется продажа" autofocus autocomplete="off">
+        <input type="search" name="code" id="scanInput" data-scan="own" value="" placeholder="Сканируйте товар или введите артикул — откроется продажа" autofocus autocomplete="off">
         <label class="small text-muted text-nowrap"><input type="checkbox" name="info" value="1" @checked(request()->boolean('info'))> только инфо</label>
         <button class="btn btn-sm btn-primary">Найти</button>
     </form>

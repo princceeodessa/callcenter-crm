@@ -152,7 +152,7 @@
 
     <div class="qs-search">
         <span style="color:var(--crm-muted);font-size:1.1rem">🔎</span>
-        <input type="search" id="qsSearch" placeholder="Название модели или артикул… (можно сканером)" autofocus autocomplete="off">
+        <input type="search" id="qsSearch" data-scan="own" placeholder="Название модели или артикул… (можно сканером)" autofocus autocomplete="off">
     </div>
 
     <div class="qs-grid" id="qsGrid">

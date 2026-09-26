@@ -282,14 +282,14 @@
                     @endif
                     <div style="margin-top:8px">
                         <label style="display:block">Текст на этикетке <span class="muted">— слева от кода. Пусто: «Кроссовки &lt;модель&gt;, арт., размер» из карточки</span></label>
-                        <textarea name="label_text" rows="2" style="width:100%" placeholder="впишите свой текст или оставьте пустым">{{ $labelText }}</textarea>
+                        <textarea name="label_text" data-scan="own" rows="2" style="width:100%" placeholder="впишите свой текст или оставьте пустым">{{ $labelText }}</textarea>
                         <button type="submit" class="btn btn-sm" style="margin-top:4px">Применить текст</button>
                     </div>
                 </div>
 
                 <div style="margin-top:10px">
                     <b>Вставить коды</b> <span class="muted">— по одному в строке: из файла «Честного знака» (CSV/TXT), от поставщика или сканером</span>
-                    <textarea name="codes" rows="4" style="width:100%;margin-top:6px" class="mono" placeholder="010460123456789021…">{{ $pastedCodes }}</textarea>
+                    <textarea name="codes" data-scan="own" rows="4" style="width:100%;margin-top:6px" class="mono" placeholder="010460123456789021…">{{ $pastedCodes }}</textarea>
                     @if($pastedInvalid > 0)
                         <div class="bad">Пропущено строк, не похожих на код маркировки: {{ $pastedInvalid }}.</div>
                     @endif

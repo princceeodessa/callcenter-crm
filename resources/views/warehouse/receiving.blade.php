@@ -36,7 +36,7 @@
         <div class="row g-2 align-items-end">
             <div class="col-md-9">
                 <label class="form-label small mb-1">Код со сканера</label>
-                <input type="text" name="code" class="form-control form-control-lg scan-input" autofocus autocomplete="off" placeholder="Отсканируйте штрих-код…">
+                <input type="text" name="code" data-scan="own" class="form-control form-control-lg scan-input" autofocus autocomplete="off" placeholder="Отсканируйте штрих-код…">
             </div>
             <div class="col-md-2">
                 <label class="form-label small mb-1">Кол-во</label>
