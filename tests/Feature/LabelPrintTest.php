@@ -44,6 +44,69 @@ class LabelPrintTest extends TestCase
             ->assertSee('width: 60mm', false);
     }
 
+    public function test_head_sets_price_on_the_print_page_and_it_is_saved_to_stock(): void
+    {
+        $head = User::where('role', 'sneaker_head')->firstOrFail();
+        [$product, $small, $big] = $this->makeProduct($head->account_id);
+
+        $response = $this->actingAs($head)->post(route('print.labels'), [
+            'type' => 'price', 'products' => (string) $product->id,
+            'p' => [$small->id => '14 990', $big->id => '12990'],   // 43-й не менялся
+        ]);
+
+        $response->assertOk()
+            ->assertSee('Цена сохранена для 1 размер(ов)')
+            ->assertSee('14 990 ₽');
+        $this->assertEquals(14990, (float) $small->fresh()->sale_price, 'цена записана в склад');
+        $this->assertEquals(12990, (float) $big->fresh()->sale_price);
+    }
+
+    public function test_one_price_for_all_sizes(): void
+    {
+        $head = User::where('role', 'sneaker_head')->firstOrFail();
+        [$product, $small, $big] = $this->makeProduct($head->account_id);
+
+        $this->actingAs($head)->post(route('print.labels'), [
+            'type' => 'price', 'products' => (string) $product->id, 'p_all' => '9999,50',
+            'p' => [$small->id => '1', $big->id => '1'],   // «на все» важнее строк
+        ])->assertOk()->assertSee('Цена сохранена для 2 размер(ов)');
+
+        $this->assertEquals(9999.5, (float) $small->fresh()->sale_price);
+        $this->assertEquals(9999.5, (float) $big->fresh()->sale_price);
+    }
+
+    public function test_operator_cannot_change_price_and_get_never_saves(): void
+    {
+        $head = User::where('role', 'sneaker_head')->firstOrFail();
+        $operator = User::where('role', 'sneaker_operator')->where('account_id', $head->account_id)->firstOrFail();
+        [$product, $small] = $this->makeProduct($head->account_id);
+
+        $this->actingAs($operator)->post(route('print.labels'), [
+            'type' => 'price', 'products' => (string) $product->id, 'p' => [$small->id => '1'],
+        ])->assertOk()->assertSee('Цену меняет руководитель')->assertDontSee('name="p_all"', false);
+
+        $this->actingAs($head)->get(route('print.labels', [
+            'type' => 'price', 'products' => (string) $product->id, 'p' => [$small->id => '1'],
+        ]))->assertOk();
+
+        $this->assertEquals(12990, (float) $small->fresh()->sale_price, 'ни продавец, ни GET цену не меняют');
+    }
+
+    public function test_bad_price_input_is_ignored(): void
+    {
+        $head = User::where('role', 'sneaker_head')->firstOrFail();
+        [$product, $small] = $this->makeProduct($head->account_id);
+
+        $this->actingAs($head)->post(route('print.labels'), [
+            'type' => 'price', 'products' => (string) $product->id, 'p' => [$small->id => 'дорого'],
+        ])->assertOk();
+        $this->actingAs($head)->post(route('print.labels'), [
+            'type' => 'price', 'products' => (string) $product->id, 'p' => [$small->id => '-5'],
+        ])->assertOk();
+
+        $this->assertEquals(12990, (float) $small->fresh()->sale_price);
+    }
+
     public function test_price_can_be_hidden_and_other_label_sizes_are_used(): void
     {
         $head = User::where('role', 'sneaker_head')->firstOrFail();

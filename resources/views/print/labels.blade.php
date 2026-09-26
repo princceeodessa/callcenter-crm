@@ -47,6 +47,8 @@
         table.pick { border-collapse: collapse; width: 100%; font-size: 13px; }
         table.pick td, table.pick th { padding: 4px 6px; border-bottom: 1px solid #eef1f5; text-align: left; }
         table.pick input[type=number] { width: 64px; }
+        .saved { background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; border-radius: 8px; padding: 6px 10px; margin-bottom: 8px; }
+        input.price-in.empty { border-color: #f59e0b; background: #fffbeb; }
         .mono { font-family: Consolas, "Courier New", monospace; font-size: 12px; word-break: break-all; }
         details.guide summary { cursor: pointer; font-weight: 700; }
         details.guide ol { margin: 8px 0 0; padding-left: 20px; line-height: 1.5; }
@@ -149,14 +151,36 @@
                         <button type="button" class="btn btn-sm" data-fill="0">обнулить</button>
                     </span>
                 </div>
+                @if($pricesSaved > 0)
+                    <div class="saved">💾 Цена сохранена для {{ $pricesSaved }} размер(ов) — она же теперь на складе и в «Быстрой продаже».</div>
+                @endif
+                @if($isHead)
+                    <div class="row" style="margin-bottom:8px">
+                        <span>Цена на все размеры:</span>
+                        <input type="text" inputmode="decimal" name="p_all" class="price-in" placeholder="например 12990" style="width:130px">
+                        <button type="submit" class="btn btn-sm">Применить</button>
+                        <span class="muted">или впишите цену у нужного размера — сохранится сразу</span>
+                    </div>
+                @else
+                    <div class="muted" style="margin-bottom:6px">Цену меняет руководитель.</div>
+                @endif
                 <table class="pick">
-                    <tr class="muted"><th>Модель</th><th>Размер</th><th>Остаток</th><th>Цена</th><th>Штук</th></tr>
+                    <tr class="muted"><th>Модель</th><th>Размер</th><th>Остаток</th><th>Цена, ₽</th><th>Штук</th></tr>
                     @foreach($items as $item)
+                        @php
+                            $priceValue = $item->sale_price !== null ? rtrim(rtrim(number_format((float) $item->sale_price, 2, '.', ''), '0'), '.') : '';
+                        @endphp
                         <tr>
                             <td>{{ trim($item->brand.' '.$item->model) }}</td>
                             <td><b>{{ $item->size }}</b></td>
                             <td>{{ (int) $item->quantity }}</td>
-                            <td>{{ $item->sale_price !== null ? $money($item->sale_price).' ₽' : '—' }}</td>
+                            <td>
+                                @if($isHead)
+                                    <input type="text" inputmode="decimal" name="p[{{ $item->id }}]" value="{{ $priceValue }}" class="price-in {{ $priceValue === '' ? 'empty' : '' }}" placeholder="нет цены" style="width:100px">
+                                @else
+                                    {{ $item->sale_price !== null ? $money($item->sale_price).' ₽' : '—' }}
+                                @endif
+                            </td>
                             <td><input type="number" min="0" max="99" name="c[{{ $item->id }}]" value="{{ $copies[$item->id] }}" data-stock="{{ max(0, (int) $item->quantity) }}" class="copies"></td>
                         </tr>
                     @endforeach
@@ -326,7 +350,7 @@
         document.querySelectorAll('.mark-check').forEach(c => { c.checked = btn.dataset.marks === 'all'; });
         document.getElementById('printForm').submit();
     }));
-    document.querySelectorAll('input.copies, .mark-check').forEach(el => el.addEventListener('change', () => document.getElementById('printForm').submit()));
+    document.querySelectorAll('input.copies, .mark-check, input.price-in[name^="p["]').forEach(el => el.addEventListener('change', () => document.getElementById('printForm').submit()));
 })();
 </script>
 </body>

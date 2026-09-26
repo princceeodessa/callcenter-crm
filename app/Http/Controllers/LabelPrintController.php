@@ -78,6 +78,11 @@ class LabelPrintController extends Controller
         $products = WarehouseProduct::where('account_id', $accId)->whereIn('id', $productIds->unique())->get();
         $items = $this->itemsOf($accId, $products);
 
+        // Цена продажи правится прямо здесь (как на складе — только руководитель) и сохраняется
+        // в позицию склада: ценник, «Быстрая продажа» и склад показывают одну и ту же цену.
+        $isHead = $user->role === 'sneaker_head';
+        $pricesSaved = $isHead && $request->isMethod('post') ? $this->savePrices($request, $items) : 0;
+
         // Сколько копий на каждый размер: из формы (c[id]=n), иначе 1.
         $copiesInput = (array) $request->input('c', []);
         $copies = $items->mapWithKeys(fn (WarehouseItem $i) => [
@@ -173,8 +178,47 @@ class LabelPrintController extends Controller
             'pastedCodes' => implode("\n", $pasted),
             'pastedInvalid' => $pastedInvalid,
             'productIdsCsv' => $products->pluck('id')->implode(','),
+            'isHead' => $isHead,
+            'pricesSaved' => $pricesSaved,
             'driverMb' => is_file(self::driverPath()) ? max(1, (int) round(filesize(self::driverPath()) / 1048576)) : null,
         ]);
+    }
+
+    /**
+     * «Цена на все размеры» (p_all) перекрывает цены по строкам (p[id]). Пустое поле — без изменений.
+     * Сохраняем только реально изменившиеся цены.
+     */
+    private function savePrices(Request $request, Collection $items): int
+    {
+        $all = $this->parsePrice($request->input('p_all'));
+        $perItem = (array) $request->input('p', []);
+        $saved = 0;
+
+        foreach ($items as $item) {
+            $new = $all ?? $this->parsePrice($perItem[$item->id] ?? null);
+            if ($new === null) {
+                continue;
+            }
+            if ($item->sale_price === null || round((float) $item->sale_price, 2) !== $new) {
+                $item->sale_price = $new;
+                $item->save();
+                $saved++;
+            }
+        }
+
+        return $saved;
+    }
+
+    /** «12 990», «12990,50», «12 990 ₽» → 12990.5; мусор и отрицательные — null. */
+    private function parsePrice(mixed $raw): ?float
+    {
+        $text = str_replace([' ', "\u{00A0}", '₽', ','], ['', '', '', '.'], trim((string) $raw));
+        if ($text === '' || ! is_numeric($text)) {
+            return null;
+        }
+        $value = round((float) $text, 2);
+
+        return $value >= 0 && $value <= 10_000_000 ? $value : null;
     }
 
     /** @return Collection<int, WarehouseItem> все размеры выбранных товаров */
