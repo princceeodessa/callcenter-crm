@@ -63,6 +63,8 @@
         table.pick { border-collapse: collapse; width: 100%; font-size: 13px; }
         table.pick td, table.pick th { padding: 4px 6px; border-bottom: 1px solid #eef1f5; text-align: left; }
         table.pick input[type=number] { width: 64px; }
+        .raw-set summary { cursor: pointer; }
+        .raw-set label { display: inline-flex; align-items: center; gap: 4px; }
         .saved { background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; border-radius: 8px; padding: 6px 10px; margin-bottom: 8px; }
         input.price-in.empty { border-color: #f59e0b; background: #fffbeb; }
         .mono { font-family: Consolas, "Courier New", monospace; font-size: 12px; word-break: break-all; }
@@ -140,9 +142,22 @@
 
             <div class="row">
                 <button type="button" class="btn btn-primary" id="printBtn" @disabled($labelCount === 0)>🖨️ Печать · {{ $labelCount }} шт.</button>
+                <button type="button" class="btn btn-primary" id="rawBtn" @disabled($labelCount === 0) title="Команды прямо в принтер (TSPL) через программу QZ Tray — без драйвера и без настроек бумаги в браузере">⚡ Печать напрямую</button>
                 <button type="button" class="btn btn-primary" id="pdfBtn" @disabled($labelCount === 0) title="Надёжный способ для XP-365B: PDF ровно {{ $w }}×{{ $h }} мм, печать из Adobe Reader или SumatraPDF">📄 PDF для печати</button>
                 <button type="submit" class="btn">↻ Обновить</button>
                 <span class="muted">Рулон {{ $format['label'] }} · принтер XP-365B</span>
+                <details class="raw-set" id="rawSet">
+                    <summary class="muted">⚙ прямая печать</summary>
+                    <div class="row" style="margin-top:6px">
+                        <label>Принтер <select id="rawPrinter"><option value="">— найти автоматически —</option></select></label>
+                        <label>Сдвиг → <input type="number" id="rawX" step="0.5" min="0" max="20" style="width:64px"> мм</label>
+                        <label>Сдвиг ↓ <input type="number" id="rawY" step="0.5" min="-10" max="10" style="width:64px"> мм</label>
+                        <label>Промежуток <input type="number" id="rawGap" step="0.5" min="0" max="10" style="width:64px"> мм</label>
+                        <label><input type="checkbox" id="rawFlip"> перевернуть 180°</label>
+                        <label>Темнота <input type="number" id="rawDensity" min="1" max="15" style="width:56px"></label>
+                    </div>
+                    <div class="muted" style="margin-top:4px">Нужна бесплатная программа <b>QZ Tray</b> на этом компьютере (<a href="https://qz.io/download/" target="_blank" rel="noopener">qz.io/download</a>) — она передаёт команды прямо в принтер. Настройки запоминаются на этом компьютере.</div>
+                </details>
                 <label class="muted" title="Если из PDF ценник выходит боком — поверните страницу. Выбор запоминается на этом компьютере.">Поворот PDF
                     <select id="pdfRotate">
                         <option value="0">нет</option>
@@ -268,7 +283,8 @@
                     <li><b>Калибровка после заправки рулона</b> (и при смене размера наклеек): выключите принтер → зажмите <b>FEED</b> и <b>PAUSE</b> → включите → когда загорится Online, погаснет Error и прозвучит двойной сигнал — отпустите.</li>
                     <li><b>Размер бумаги в Windows.</b> Параметры → Принтеры и сканеры → XP-365B → Настройки печати → Page Setup → <i>New</i>: ширина и высота как у рулона (в магазине — <b>60 × 40 мм</b>), тип — <i>Labels with gaps</i> (этикетки с промежутками). Сделайте его размером по умолчанию.</li>
                     <li><b>Чёткость.</b> В тех же настройках (Options): темнота (Darkness) повыше, скорость пониже — DataMatrix «Честного знака» читается лучше. Если код бледный или «рваный» — +2 к темноте.</li>
-                    <li><b>Самый надёжный способ — «📄 PDF для печати».</b> Скачается файл, где каждая страница ровно {{ $w }} × {{ $h }} мм. Откройте его в <b>Adobe Acrobat Reader</b> или <b>SumatraPDF</b> (не в браузере) → Печать → Xprinter XP-365B → размер <b>«Фактический» / 100 %</b>, ориентация <b>«Книжная»</b> (не «Авто»). Если всё равно выходит боком — выберите «Поворот PDF: 90°» рядом с кнопкой и скачайте PDF заново. Так печатают этикетки Wildberries на этом же принтере.</li>
+                    <li><b>Лучший способ — «⚡ Печать напрямую».</b> CRM отправляет принтеру его собственные команды (TSPL): размер наклейки, промежуток и картинку ровно под 203 dpi. Драйвер, размер бумаги и повороты браузера не участвуют. Один раз установите бесплатную программу <b>QZ Tray</b> (<a href="https://qz.io/download/" target="_blank" rel="noopener">qz.io/download</a>) и запустите её; при первой печати она спросит разрешение — нажмите <b>Allow</b>. Если ценник сдвинут или перевёрнут — «⚙ прямая печать»: сдвиг в мм и «перевернуть 180°».</li>
+                    <li><b>Запасной способ — «📄 PDF для печати».</b> Скачается файл, где каждая страница ровно {{ $w }} × {{ $h }} мм. Откройте его в <b>Adobe Acrobat Reader</b> или <b>SumatraPDF</b> (не в браузере) → Печать → Xprinter XP-365B → размер <b>«Фактический» / 100 %</b>, ориентация <b>«Книжная»</b> (не «Авто»). Если всё равно выходит боком — выберите «Поворот PDF: 90°» рядом с кнопкой и скачайте PDF заново. Так печатают этикетки Wildberries на этом же принтере.</li>
                     <li><b>При печати из браузера:</b> принтер XP-365B, размер бумаги — тот же (USER {{ $w }} × {{ $h }}), <b>Макет: Книжная</b>, <b>Поля: нет</b>, <b>Масштаб: 100 %</b> (не «по размеру страницы»), колонтитулы выключены. Браузер запомнит — дальше просто «Печать».</li>
                     <li><b>Если ценник повёрнут или залез на две наклейки</b> — в драйвере не тот размер бумаги: Настройки печати → Page Setup → New → <b>Width 60</b> (поперёк ленты), <b>Height 40</b> (вдоль), Labels with gaps, ориентация Portrait (книжная); в окне печати браузера — этот размер и <b>Макет: Книжная</b>. Если всё равно боком — попробуйте «Альбомная».</li>
                     <li><b>Если внизу напечатался адрес сайта</b> — это колонтитулы браузера: в окне печати «Дополнительные настройки» → снимите «Верхние и нижние колонтитулы», поля «Нет».</li>
@@ -578,6 +594,128 @@
         return doc;
     };
     window.__labelPdf = { render: render, buildPdf: buildPdf, data: DATA };
+
+    // ---------- Прямая печать TSPL через QZ Tray (мимо драйвера Windows) ----------
+    const QZ = 'https://cdn.jsdelivr.net/npm/qz-tray@2.2.6/qz-tray.js';
+    const rawBtn = document.getElementById('rawBtn');
+    const RAW_KEY = 'labelRawSettings';
+    const rawEls = {
+        printer: document.getElementById('rawPrinter'), x: document.getElementById('rawX'), y: document.getElementById('rawY'),
+        gap: document.getElementById('rawGap'), flip: document.getElementById('rawFlip'), density: document.getElementById('rawDensity'),
+    };
+    const rawDefaults = { printer: '', x: 0, y: 0, gap: 2, flip: false, density: 10 };
+    let rawCfg = Object.assign({}, rawDefaults);
+    try { Object.assign(rawCfg, JSON.parse(localStorage.getItem(RAW_KEY) || '{}')); } catch (e) {}
+    const showRaw = () => {
+        if (! rawEls.x) return;
+        rawEls.x.value = rawCfg.x; rawEls.y.value = rawCfg.y; rawEls.gap.value = rawCfg.gap;
+        rawEls.flip.checked = !! rawCfg.flip; rawEls.density.value = rawCfg.density;
+        if (rawCfg.printer && ! [...rawEls.printer.options].some((o) => o.value === rawCfg.printer)) {
+            rawEls.printer.add(new Option(rawCfg.printer, rawCfg.printer));
+        }
+        rawEls.printer.value = rawCfg.printer || '';
+    };
+    const readRaw = () => {
+        const num = (el, d, lo, hi) => { const v = parseFloat(String(el.value).replace(',', '.')); return isNaN(v) ? d : Math.min(hi, Math.max(lo, v)); };
+        rawCfg = {
+            printer: rawEls.printer.value, x: num(rawEls.x, 0, 0, 20), y: num(rawEls.y, 0, -10, 10),
+            gap: num(rawEls.gap, 2, 0, 10), flip: rawEls.flip.checked, density: Math.round(num(rawEls.density, 10, 1, 15)),
+        };
+        try { localStorage.setItem(RAW_KEY, JSON.stringify(rawCfg)); } catch (e) {}
+    };
+    showRaw();
+    Object.values(rawEls).forEach((el) => el && el.addEventListener('change', readRaw));
+
+    // canvas -> TSPL BITMAP: 1 бит на точку, 0 = печатать (чёрный), 1 = пусто
+    const tsplBitmap = (c) => {
+        const W = c.width, H = c.height, wb = Math.ceil(W / 8);
+        const px = c.getContext('2d').getImageData(0, 0, W, H).data;
+        const out = new Uint8Array(wb * H).fill(0xFF);
+        for (let y = 0; y < H; y++) {
+            for (let x = 0; x < W; x++) {
+                const i = (y * W + x) * 4;
+                const dark = (px[i] * 0.299 + px[i + 1] * 0.587 + px[i + 2] * 0.114) < 128 && px[i + 3] > 0;
+                if (dark) out[y * wb + (x >> 3)] &= ~(0x80 >> (x & 7));
+            }
+        }
+        return { wb: wb, h: H, bytes: out };
+    };
+
+    const buildTspl = () => {
+        const enc = new TextEncoder();
+        const parts = [];
+        const cmd = (s) => parts.push(enc.encode(s + '\r\n'));
+        cmd('SIZE ' + DATA.w + ' mm,' + DATA.h + ' mm');
+        cmd('GAP ' + rawCfg.gap + ' mm,0 mm');
+        cmd('DIRECTION ' + (rawCfg.flip ? 0 : 1) + ',0');
+        cmd('REFERENCE ' + Math.round(rawCfg.x * PX) + ',0');
+        cmd('SHIFT ' + Math.round(rawCfg.y * PX));
+        cmd('DENSITY ' + rawCfg.density);
+        cmd('SPEED 3');
+        cmd('SET TEAR ON');
+        DATA.labels.forEach((l) => {
+            const bm = tsplBitmap(render(l));
+            cmd('CLS');
+            parts.push(enc.encode('BITMAP 0,0,' + bm.wb + ',' + bm.h + ',0,'));
+            parts.push(bm.bytes);
+            parts.push(enc.encode('\r\n'));
+            cmd('PRINT 1,1');
+        });
+        let len = 0; parts.forEach((p) => { len += p.length; });
+        const all = new Uint8Array(len);
+        let off = 0; parts.forEach((p) => { all.set(p, off); off += p.length; });
+        let bin = '';
+        for (let i = 0; i < all.length; i += 0x8000) bin += String.fromCharCode.apply(null, all.subarray(i, i + 0x8000));
+        return btoa(bin);
+    };
+    window.__labelRaw = { buildTspl: buildTspl, bitmap: tsplBitmap };
+
+    // Без QZ Tray попытка соединения может висеть бесконечно — ограничиваем по времени.
+    const withTimeout = (p, ms, msg) => Promise.race([p, new Promise((_, reject) => setTimeout(() => reject(new Error(msg)), ms))]);
+    const QZ_DOWN = 'QZ Tray не отвечает. Установите его с qz.io/download, запустите (значок у часов) и нажмите ещё раз.';
+    let qzReady = false, qzConnecting = null;
+    const ensureQz = async () => {
+        if (qzReady && qz.websocket.isActive()) return;
+        if (! qzConnecting) {
+            qzConnecting = qz.websocket.connect({ retries: 1, delay: 1 })
+                .then(() => { qzReady = true; })
+                .finally(() => { qzConnecting = null; });
+        }
+        try { await withTimeout(qzConnecting, 12000, QZ_DOWN); }
+        catch (e) { qzReady = false; throw new Error(QZ_DOWN); }
+    };
+
+    const pickPrinter = (list) => {
+        if (rawCfg.printer && list.includes(rawCfg.printer)) return rawCfg.printer;
+        return list.find((n) => /365/.test(n)) || list.find((n) => /xprinter/i.test(n)) || null;
+    };
+
+    if (rawBtn) rawBtn.addEventListener('click', async () => {
+        rawBtn.disabled = true;
+        status.textContent = 'Подключаюсь к QZ Tray…';
+        try {
+            readRaw();
+            await load(BWIP, () => typeof window.bwipjs !== 'undefined');
+            await load(QZ, () => typeof window.qz !== 'undefined');
+            qz.security.setCertificatePromise((resolve) => resolve());
+            qz.security.setSignaturePromise(() => (resolve) => resolve());
+            await ensureQz();
+            const list = await withTimeout(qz.printers.find(), 15000, 'QZ Tray не вернул список принтеров — перезапустите QZ Tray.');
+            const names = Array.isArray(list) ? list : [list];
+            [...rawEls.printer.options].slice(1).forEach((o) => o.remove());
+            names.forEach((n) => rawEls.printer.add(new Option(n, n)));
+            const name = pickPrinter(names);
+            if (! name) { document.getElementById('rawSet').open = true; throw new Error('Не нашёл принтер XP-365B — выберите его в «⚙ прямая печать».'); }
+            rawEls.printer.value = name; readRaw();
+            status.textContent = 'Печатаю на ' + name + '…';
+            await withTimeout(qz.print(qz.configs.create(name), [{ type: 'raw', format: 'command', flavor: 'base64', data: buildTspl() }]), 30000, 'Принтер не ответил за 30 секунд — проверьте, что он включён.');
+            status.textContent = 'Отправлено на ' + name + ': ' + DATA.labels.length + ' шт.';
+        } catch (e) {
+            status.textContent = (e && e.message) ? e.message : String(e);
+        } finally {
+            rawBtn.disabled = false;
+        }
+    });
 
     btn.addEventListener('click', async () => {
         btn.disabled = true;
