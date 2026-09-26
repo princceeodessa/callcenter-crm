@@ -88,7 +88,12 @@
 <body>
 
 <div class="toolbar">
-    <h1>🖨️ Печать этикеток</h1>
+    <div class="row" style="justify-content:space-between;margin-bottom:12px">
+        <h1 style="margin:0">🖨️ Печать этикеток</h1>
+        @if($driverMb)
+            <a class="btn btn-sm" href="{{ route('print.driver') }}" title="Официальный установщик для Windows — ставится на компьютер, к которому подключён принтер">⬇ Драйвер принтера XP-365B</a>
+        @endif
+    </div>
 
     <form method="POST" action="{{ route('print.labels') }}" id="printForm">
         @csrf
@@ -200,7 +205,14 @@
             <details class="guide">
                 <summary>Как настроить Xprinter XP-365B (один раз)</summary>
                 <ol>
-                    <li><b>Драйвер.</b> С диска из коробки (BarTender / Seagull) или с сайта Seagull: раздел драйверов Xprinter → модель <b>XP-365B</b>, порт USB. Принтер при установке должен быть включён.</li>
+                    <li><b>Драйвер.</b>
+                        @if($driverMb)
+                            <a class="btn btn-sm btn-primary" href="{{ route('print.driver') }}">⬇ Скачать драйвер XP-365B ({{ $driverMb }} МБ)</a>
+                            — распакуйте архив и запустите <span class="mono">Xprinter_2022.1_M-3.exe</span> (официальный установщик Seagull для Xprinter).
+                        @else
+                            С диска из коробки или с сайта xprinters.ru → «Драйвер для XP-237B, XP-365B, XP-370B».
+                        @endif
+                        Принтер включён и подключён кабелем → в мастере <b>USB</b> → модель <b>XP-365B</b> → «Далее» → «Готово».</li>
                     <li><b>Режим «этикетки».</b> XP-365B умеет печатать и этикетки, и чеки; режим задаётся DIP-переключателями на задней панели. Если принтер тянет ленту «насквозь» и не останавливается на промежутке между наклейками — он в режиме чеков.</li>
                     <li><b>Калибровка после заправки рулона</b> (и при смене размера наклеек): выключите принтер → зажмите <b>FEED</b> и <b>PAUSE</b> → включите → когда загорится Online, погаснет Error и прозвучит двойной сигнал — отпустите.</li>
                     <li><b>Размер бумаги в Windows.</b> Параметры → Принтеры и сканеры → XP-365B → Настройки печати → Page Setup → <i>New</i>: ширина и высота как у рулона (например, 58 × 40 мм), тип — <i>Labels with gaps</i> (этикетки с промежутками). Сделайте его размером по умолчанию.</li>

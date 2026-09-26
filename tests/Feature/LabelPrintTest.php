@@ -114,6 +114,30 @@ class LabelPrintTest extends TestCase
             ->assertOk()->assertSee('width:48mm', false);
     }
 
+    public function test_driver_is_downloadable_by_sneaker_staff_only(): void
+    {
+        $path = \App\Http\Controllers\LabelPrintController::driverPath();
+        $existed = is_file($path);
+        if (! $existed) {
+            @mkdir(dirname($path), 0775, true);
+            file_put_contents($path, 'fake-zip');
+        }
+
+        try {
+            $head = User::where('role', 'sneaker_head')->firstOrFail();
+            $this->actingAs($head)->get(route('print.labels'))->assertSee('Скачать драйвер XP-365B');
+            $this->actingAs($head)->get(route('print.driver'))
+                ->assertOk()->assertDownload('Xprinter_XP-365B_driver.zip');
+
+            $this->actingAs(User::where('role', 'admin')->firstOrFail())
+                ->get(route('print.driver'))->assertForbidden();
+        } finally {
+            if (! $existed) {
+                @unlink($path);
+            }
+        }
+    }
+
     public function test_ceiling_users_cannot_open_label_printing(): void
     {
         $this->actingAs(User::where('role', 'admin')->firstOrFail())

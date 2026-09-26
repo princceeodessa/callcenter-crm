@@ -39,6 +39,24 @@ class LabelPrintController extends Controller
     /** Не даём одним кликом отправить на принтер рулон целиком. */
     private const MAX_LABELS = 500;
 
+    /**
+     * Драйвер XP-365B (официальный установщик Seagull с xprinters.ru, 40 МБ) — лежит на сервере
+     * вне git, отдаётся только сотрудникам кроссовок, чтобы поставить принтер на любой компьютер.
+     */
+    public const DRIVER_FILE = 'drivers/xprinter/For_365B_237B_370B.zip';
+
+    public static function driverPath(): string
+    {
+        return storage_path('app/'.self::DRIVER_FILE);
+    }
+
+    public function driver()
+    {
+        abort_unless(is_file(self::driverPath()), 404, 'Файл драйвера не загружен на сервер.');
+
+        return response()->download(self::driverPath(), 'Xprinter_XP-365B_driver.zip');
+    }
+
     public function index(Request $request)
     {
         $user = Auth::user();
@@ -154,6 +172,7 @@ class LabelPrintController extends Controller
             'pastedCodes' => implode("\n", $pasted),
             'pastedInvalid' => $pastedInvalid,
             'productIdsCsv' => $products->pluck('id')->implode(','),
+            'driverMb' => is_file(self::driverPath()) ? max(1, (int) round(filesize(self::driverPath()) / 1048576)) : null,
         ]);
     }
 

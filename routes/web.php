@@ -167,6 +167,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/sale/day', [SneakerDailySalesController::class, 'index'])->name('sale.day');
         // Печать на термопринтер: ценники, этикетки, «Честный знак»
         Route::match(['get', 'post'], '/print/labels', [LabelPrintController::class, 'index'])->name('print.labels');
+        Route::get('/print/driver', [LabelPrintController::class, 'driver'])->name('print.driver');
         Route::post('/warehouse/receiving', [WarehouseController::class, 'receivingScan'])->name('warehouse.receiving.scan');
         // Коды маркировки (Честный знак)
         Route::post('/warehouse/items/{item}/marks', [WarehouseController::class, 'addItemMarks'])->name('warehouse.item.marks.add');
