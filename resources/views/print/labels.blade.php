@@ -151,8 +151,9 @@
                     <summary class="muted">⚙ прямая печать</summary>
                     <div class="row" style="margin-top:6px">
                         <label>Принтер <select id="rawPrinter"><option value="">— найти автоматически —</option></select></label>
-                        <label>Сдвиг → <input type="number" id="rawX" step="0.5" min="0" max="20" style="width:64px"> мм</label>
-                        <label>Сдвиг ↓ <input type="number" id="rawY" step="0.5" min="-10" max="10" style="width:64px"> мм</label>
+                        <label title="плюс — вправо, минус — влево">Сдвиг → <input type="number" id="rawX" step="0.5" min="-10" max="10" style="width:64px"> мм</label>
+                        <label title="плюс — вниз, минус — вверх">Сдвиг ↓ <input type="number" id="rawY" step="0.5" min="-10" max="10" style="width:64px"> мм</label>
+                        <button type="button" class="btn btn-sm" id="rawTest" title="Печатает рамку по краю наклейки: сразу видно, куда и на сколько сдвигать">🧪 Тестовая этикетка</button>
                         <label>Промежуток <input type="number" id="rawGap" step="0.5" min="0" max="10" style="width:64px"> мм</label>
                         <label><input type="checkbox" id="rawFlip"> перевернуть 180°</label>
                         <label>Темнота <input type="number" id="rawDensity" min="1" max="15" style="width:56px"></label>
@@ -454,7 +455,9 @@
     });
 
     const wrap = (ctx, text, maxW, maxLines) => {
-        const words = String(text || '').split(/\s+/).filter(Boolean);
+        // слово длиннее строки («коричневый/розовый») переносим по буквам — как на заводской этикетке ЧЗ
+        const words = String(text || '').split(/\s+/).filter(Boolean)
+            .flatMap((w) => ctx.measureText(w).width > maxW ? chunk(ctx, w, maxW) : [w]);
         const lines = [];
         let cur = '';
         for (const word of words) {
@@ -541,16 +544,16 @@
     };
 
     // ---------- Этикетка «Честный знак» 1 в 1 с заводской ----------
-    // Размеры сняты с фото оригинальной этикетки 60×40 (в мм «оригинала»). Вся картинка ужата до 90 %
-    // и отцентрирована — поля ≥ 2 мм, чтобы сдвиг принтера ничего не срезал.
+    // Размеры сняты с фото оригинальной этикетки 60×40 (мм). Код — как на оригинале, крупный (~27 мм);
+    // сдвиг принтера поправляется в «⚙ прямая печать» (можно и в минус), а не ужатием картинки.
     const CZ = {
-        icon: { x: 3.7, y: 3.2, s: 5.3, t: 0.85, arm: 2.1 },
-        top: { x: 9.7, y: 2.7, w: 16.6, h: 1.95 },      // «ЧЕСТНЫЙ»
-        big: { x: 9.7, y: 5.2, w: 17.2, h: 3.6 },       // «ЗНАК»
-        desc: { x: 3.7, y: 10.2, w: 23.2, pitch: 2.8, cap: 2.05, bottom: 36.5 },
-        div: { x: 29.3, y1: 1.6, y2: 26.8, w: 0.35 },
-        dm: { x: 30.4, y: 1.3, size: 25.5 },
-        box: { x1: 29.3, x2: 58.0, y: 30.6, lineW: 0.25, padX: 0.6, padY: 0.5, pitch: 2.6, cap: 2.0 },
+        icon: { x: 2.8, y: 2.3, s: 6.0, t: 1.0, arm: 2.3 },
+        top: { x: 10.0, y: 2.5, w: 15.0, h: 2.1 },      // «ЧЕСТНЫЙ»
+        big: { x: 10.0, y: 5.5, w: 15.0, h: 3.4 },      // «ЗНАК»
+        desc: { x: 2.8, y: 10.6, pitch: 3.2, cap: 2.05, bottom: 38.2 },
+        dm: { size: 27, right: 58.2, y: 2.2 },          // модуль — целое число точек (≈0,75 мм)
+        div: { gap: 1.1, w: 0.35 },
+        box: { lineW: 0.25, padX: 0.6, padY: 0.5, pitch: 2.35, cap: 1.75, gapTop: 1.1 },
     };
 
     // Шрифт такого размера, чтобы строка заняла ровно w мм и не была выше h мм (буквы заглавные).
@@ -581,10 +584,34 @@
     };
 
     const drawMark = (ctx, l, W, H) => {
-        const sc = Math.min(W / 60, H / 40) * 0.9;       // точек на мм «оригинала»
+        const sc = Math.min(W / 60, H / 40);             // точек на мм «оригинала» (60×40 → 8)
         const ox = (W - 60 * sc) / 2, oy = (H - 40 * sc) / 2;
         const X = (v) => ox + v * sc, Y = (v) => oy + v * sc;
         ctx.fillStyle = '#000'; ctx.strokeStyle = '#000'; ctx.textBaseline = 'alphabetic';
+
+        // DataMatrix: целое число точек на модуль (bwip: 2 px на модуль при scale 1, растягиваем «ближайшим соседом»).
+        const dm1 = document.createElement('canvas');
+        bwipjs.toCanvas(dm1, { bcid: 'datamatrix', text: l.dm, parsefnc: true, scale: 1 });
+        const modules = dm1.width / 2;
+        const dpm = Math.max(2, Math.round(CZ.dm.size * sc / modules));
+        const dmPx = modules * dpm, dmMm = dmPx / sc;
+        const dmX = CZ.dm.right - dmMm, divX = dmX - CZ.div.gap;
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(dm1, Math.round(X(dmX)), Math.round(Y(CZ.dm.y)), dmPx, dmPx);
+
+        // Разделитель вдоль кода
+        ctx.fillRect(Math.round(X(divX)), Math.round(Y(CZ.dm.y)), Math.max(2, Math.round(CZ.div.w * sc)), dmPx);
+
+        // Рамка с (01)…(21)… — от разделителя до правого края кода, 2 строки
+        const bx = X(divX), bw = (CZ.dm.right - divX) * sc, by = Y(CZ.dm.y + dmMm + CZ.box.gapTop);
+        const hri = '(01)' + l.gtin + '(21)' + l.serial;
+        const innerW = bw - 2 * CZ.box.padX * sc;
+        fitFont(ctx, hri.slice(0, Math.ceil(hri.length / 2)), 'normal', innerW, CZ.box.cap * sc);
+        const lines = chunk(ctx, hri, innerW);
+        const bh = CZ.box.padY * 2 * sc + lines.length * CZ.box.pitch * sc;
+        ctx.lineWidth = Math.max(1, CZ.box.lineW * sc);
+        ctx.strokeRect(Math.round(bx) + 0.5, Math.round(by) + 0.5, Math.round(bw), Math.round(bh));
+        lines.forEach((ln, i) => ctx.fillText(ln, bx + CZ.box.padX * sc, by + CZ.box.padY * sc + CZ.box.cap * sc + i * CZ.box.pitch * sc + 0.2 * sc));
 
         // Логотип
         drawCzIcon(ctx, X(CZ.icon.x), Y(CZ.icon.y), CZ.icon.s, sc);
@@ -593,39 +620,13 @@
         fitFont(ctx, 'ЗНАК', 'bold', CZ.big.w * sc, CZ.big.h * sc);
         ctx.fillText('ЗНАК', X(CZ.big.x), Y(CZ.big.y + CZ.big.h));
 
-        // Описание — обычным шрифтом, как на оригинале
-        const dPx = CZ.desc.cap * sc / 0.72;
-        ctx.font = dPx + 'px Arial, sans-serif';
+        // Описание — обычным шрифтом, колонка до разделителя
+        ctx.font = (CZ.desc.cap * sc / 0.72) + 'px Arial, sans-serif';
         const text = l.desc || [l.name, l.size ? 'размер ' + l.size : ''].filter(Boolean).join(', ');
         const maxLines = Math.max(1, Math.floor((CZ.desc.bottom - CZ.desc.y) / CZ.desc.pitch));
-        wrap(ctx, text, CZ.desc.w * sc, maxLines).forEach((line, i) => {
+        wrap(ctx, text, (divX - 1.2 - CZ.desc.x) * sc, maxLines).forEach((line, i) => {
             ctx.fillText(line, X(CZ.desc.x), Y(CZ.desc.y + CZ.desc.cap + i * CZ.desc.pitch));
         });
-
-        // Разделитель
-        ctx.fillRect(Math.round(X(CZ.div.x)), Math.round(Y(CZ.div.y1)), Math.max(2, Math.round(CZ.div.w * sc)), Math.round((CZ.div.y2 - CZ.div.y1) * sc));
-
-        // DataMatrix: целое число точек на модуль (bwip рисует 2 px на модуль при scale 1,
-        // растягиваем «ближайшим соседом» — модули остаются ровными).
-        const dm1 = document.createElement('canvas');
-        bwipjs.toCanvas(dm1, { bcid: 'datamatrix', text: l.dm, parsefnc: true, scale: 1 });
-        const modules = dm1.width / 2;
-        const dpm = Math.max(2, Math.floor(CZ.dm.size * sc / modules));
-        const dmPx = modules * dpm;
-        ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(dm1, Math.round(X(CZ.dm.x)), Math.round(Y(CZ.dm.y)), dmPx, dmPx);
-
-        // Рамка с (01)…(21)… — от разделителя до правого края, текст в 2 строки
-        const bx = X(CZ.box.x1), bw = (CZ.box.x2 - CZ.box.x1) * sc, by = Math.max(Y(CZ.box.y), Y(CZ.dm.y) + dmPx + 1.5 * sc);
-        const hri = '(01)' + l.gtin + '(21)' + l.serial;
-        const innerW = bw - 2 * CZ.box.padX * sc;
-        const perLine = Math.ceil(hri.length / 2);
-        fitFont(ctx, hri.slice(0, perLine), 'normal', innerW, CZ.box.cap * sc);
-        const lines = chunk(ctx, hri, innerW);
-        const bh = CZ.box.padY * 2 * sc + lines.length * CZ.box.pitch * sc;
-        ctx.lineWidth = Math.max(1, CZ.box.lineW * sc);
-        ctx.strokeRect(Math.round(bx) + 0.5, Math.round(by) + 0.5, Math.round(bw), Math.round(bh));
-        lines.forEach((ln, i) => ctx.fillText(ln, bx + CZ.box.padX * sc, by + CZ.box.padY * sc + CZ.box.cap * sc + i * CZ.box.pitch * sc + 0.3 * sc));
         ctx.textBaseline = 'top';
     };
 
@@ -713,7 +714,7 @@
     const readRaw = () => {
         const num = (el, d, lo, hi) => { const v = parseFloat(String(el.value).replace(',', '.')); return isNaN(v) ? d : Math.min(hi, Math.max(lo, v)); };
         rawCfg = {
-            printer: rawEls.printer.value, x: num(rawEls.x, 0, 0, 20), y: num(rawEls.y, 0, -10, 10),
+            printer: rawEls.printer.value, x: num(rawEls.x, 0, -10, 10), y: num(rawEls.y, 0, -10, 10),
             gap: num(rawEls.gap, 2, 0, 10), flip: rawEls.flip.checked, density: Math.round(num(rawEls.density, 10, 1, 15)),
         };
         try { localStorage.setItem(RAW_KEY, JSON.stringify(rawCfg)); } catch (e) {}
@@ -736,25 +737,64 @@
         return { wb: wb, h: H, bytes: out };
     };
 
-    const buildTspl = () => {
+    // Сдвиг принтера (мм, можно в минус) — переносим саму картинку внутри наклейки.
+    const shifted = (src) => {
+        const dx = Math.round(rawCfg.x * PX), dy = Math.round(rawCfg.y * PX);
+        if (! dx && ! dy) return src;
+        const c = document.createElement('canvas');
+        c.width = src.width; c.height = src.height;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(src, dx, dy);
+        return c;
+    };
+
+    // Тестовая этикетка: рамка в 1 мм от края, риски через 1 мм, крест по центру.
+    const renderTest = () => {
+        const W = mm(DATA.w), H = mm(DATA.h), c = document.createElement('canvas');
+        c.width = W; c.height = H;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = '#000';
+        const p = mm(1), t = 2;
+        ctx.fillRect(p, p, W - 2 * p, t); ctx.fillRect(p, H - p - t, W - 2 * p, t);
+        ctx.fillRect(p, p, t, H - 2 * p); ctx.fillRect(W - p - t, p, t, H - 2 * p);
+        for (let i = 1; i <= 5; i++) {                       // риски у каждой стороны: 1…5 мм от края
+            ctx.fillRect(W / 2 - mm(3), mm(i), mm(6), 1); ctx.fillRect(W / 2 - mm(3), H - mm(i), mm(6), 1);
+            ctx.fillRect(mm(i), H / 2 - mm(3), 1, mm(6)); ctx.fillRect(W - mm(i), H / 2 - mm(3), 1, mm(6));
+        }
+        ctx.fillRect(W / 2 - mm(4), H / 2, mm(8), t); ctx.fillRect(W / 2, H / 2 - mm(4), t, mm(8));
+        ctx.textBaseline = 'top';
+        ctx.font = 'bold ' + pt(9) + 'px Arial, sans-serif';
+        ctx.fillText('ТЕСТ СДВИГА', mm(7), mm(7));
+        ctx.font = pt(7) + 'px Arial, sans-serif';
+        ctx.fillText('сейчас: → ' + rawCfg.x + ' мм, ↓ ' + rawCfg.y + ' мм', mm(7), mm(11));
+        ctx.fillText('рамка должна быть вся и ровно по краю', mm(7), H - mm(10));
+        return c;
+    };
+
+    const buildTspl = (canvases, perLabel) => {
         const enc = new TextEncoder();
         const parts = [];
         const cmd = (s) => parts.push(enc.encode(s + '\r\n'));
         cmd('SIZE ' + DATA.w + ' mm,' + DATA.h + ' mm');
         cmd('GAP ' + rawCfg.gap + ' mm,0 mm');
         cmd('DIRECTION ' + (rawCfg.flip ? 0 : 1) + ',0');
-        cmd('REFERENCE ' + Math.round(rawCfg.x * PX) + ',0');
-        cmd('SHIFT ' + Math.round(rawCfg.y * PX));
+        cmd('REFERENCE 0,0');
+        cmd('SHIFT 0');
         cmd('DENSITY ' + rawCfg.density);
         cmd('SPEED 3');
         cmd('SET TEAR ON');
-        DATA.labels.forEach((l) => {
-            const bm = tsplBitmap(render(l));
+        const list = canvases || DATA.labels.map((l) => render(l));
+        const n = perLabel || copies();
+        list.forEach((canvas) => {
+            const bm = tsplBitmap(shifted(canvas));
             cmd('CLS');
             parts.push(enc.encode('BITMAP 0,0,' + bm.wb + ',' + bm.h + ',0,'));
             parts.push(bm.bytes);
             parts.push(enc.encode('\r\n'));
-            cmd('PRINT 1,' + copies());
+            cmd('PRINT 1,' + n);
         });
         let len = 0; parts.forEach((p) => { len += p.length; });
         const all = new Uint8Array(len);
@@ -801,8 +841,8 @@
         }).catch(() => {});
     }
 
-    if (rawBtn) rawBtn.addEventListener('click', async () => {
-        rawBtn.disabled = true;
+    const sendRaw = async (button, makeData, doneText) => {
+        button.disabled = true;
         status.textContent = 'Подключаюсь к QZ Tray…';
         try {
             readRaw();
@@ -819,14 +859,19 @@
             if (! name) { document.getElementById('rawSet').open = true; throw new Error('Не нашёл принтер XP-365B — выберите его в «⚙ прямая печать».'); }
             rawEls.printer.value = name; readRaw();
             status.textContent = 'Печатаю на ' + name + '…';
-            await withTimeout(qz.print(qz.configs.create(name), [{ type: 'raw', format: 'command', flavor: 'base64', data: buildTspl() }]), 30000, 'Принтер не ответил за 30 секунд — проверьте, что он включён.');
-            status.textContent = 'Отправлено на ' + name + ': ' + (DATA.labels.length * copies()) + ' шт.';
+            await withTimeout(qz.print(qz.configs.create(name), [{ type: 'raw', format: 'command', flavor: 'base64', data: makeData() }]), 30000, 'Принтер не ответил за 30 секунд — проверьте, что он включён.');
+            status.textContent = 'Отправлено на ' + name + ': ' + doneText();
         } catch (e) {
             status.textContent = (e && e.message) ? e.message : String(e);
         } finally {
-            rawBtn.disabled = false;
+            button.disabled = false;
         }
-    });
+    };
+
+    if (rawBtn) rawBtn.addEventListener('click', () => sendRaw(rawBtn, () => buildTspl(), () => (DATA.labels.length * copies()) + ' шт.'));
+    const rawTest = document.getElementById('rawTest');
+    if (rawTest) rawTest.addEventListener('click', () => sendRaw(rawTest, () => buildTspl([renderTest()], 1),
+        () => 'тестовая этикетка. Не хватает верхней линии рамки — сдвиг ↓ в плюс; левой — сдвиг → в плюс; правой — в минус; нижней — ↓ в минус.'));
 
     btn.addEventListener('click', async () => {
         btn.disabled = true;
