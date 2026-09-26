@@ -32,6 +32,18 @@ class LabelPrintTest extends TestCase
         $this->assertCount(2, $response->viewData('labels'), '2 копии размера 42 и ни одной 43');
     }
 
+    /** В магазине стоят наклейки 60 × 40 — это размер по умолчанию. */
+    public function test_default_label_size_is_the_shop_roll_60x40(): void
+    {
+        $head = User::where('role', 'sneaker_head')->firstOrFail();
+        [$product] = $this->makeProduct($head->account_id);
+
+        $this->actingAs($head)->get(route('print.labels', ['product' => $product->id]))
+            ->assertOk()
+            ->assertSee('size: 60mm 40mm', false)
+            ->assertSee('width: 60mm', false);
+    }
+
     public function test_price_can_be_hidden_and_other_label_sizes_are_used(): void
     {
         $head = User::where('role', 'sneaker_head')->firstOrFail();
