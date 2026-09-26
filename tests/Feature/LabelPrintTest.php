@@ -26,7 +26,7 @@ class LabelPrintTest extends TestCase
         ]));
 
         $response->assertOk()
-            ->assertSee('size: 58mm 40mm', false)      // страница ровно под наклейку
+            ->assertSee('width: 58mm; height: 40mm', false)      // этикетка ровно под наклейку
             ->assertSee('12 990 ₽')
             ->assertSee($product->article);
         $this->assertCount(2, $response->viewData('labels'), '2 копии размера 42 и ни одной 43');
@@ -40,8 +40,8 @@ class LabelPrintTest extends TestCase
 
         $this->actingAs($head)->get(route('print.labels', ['product' => $product->id]))
             ->assertOk()
-            ->assertSee('size: 60mm 40mm', false)
-            ->assertSee('width: 60mm', false);
+            ->assertSee('width: 60mm; height: 40mm', false)
+            ->assertDontSee('size: 60mm', false);   // размер листа — из драйвера, иначе браузер печатает боком
     }
 
     public function test_head_sets_price_on_the_print_page_and_it_is_saved_to_stock(): void
@@ -115,7 +115,7 @@ class LabelPrintTest extends TestCase
         $this->actingAs($head)->get(route('print.labels', [
             'product' => $product->id, 'type' => 'price', 'format' => '43x25', 'show_price' => '0',
         ]))->assertOk()
-            ->assertSee('size: 43mm 25mm', false)
+            ->assertSee('width: 43mm; height: 25mm', false)
             ->assertDontSee('<div class="price">', false);   // на этикетке цены нет (в таблице размеров — есть)
     }
 
