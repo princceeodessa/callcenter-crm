@@ -60,9 +60,7 @@ final class MarkCode
         $code = str_replace(self::GS_ALIASES, self::GS, $code);
         $code = ltrim($code, self::GS);
 
-        if (preg_match('~\p{Cyrillic}~u', $code)) {
-            $code = strtr($code, self::RU_TO_EN);
-        }
+        $code = self::fromRussianLayout($code);
 
         if (! str_contains($code, self::GS)) {
             foreach (self::NO_GS_PATTERNS as $pattern) {
@@ -77,6 +75,12 @@ final class MarkCode
         }
 
         return $code;
+    }
+
+    /** Сканер «печатал» в русской раскладке («ША4229» вместо «IF4229») — вернуть латиницу. */
+    public static function fromRussianLayout(string $text): string
+    {
+        return preg_match('~\p{Cyrillic}~u', $text) ? strtr($text, self::RU_TO_EN) : $text;
     }
 
     /** Похоже ли на код маркировки (а не на штрихкод EAN или артикул). */

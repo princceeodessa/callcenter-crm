@@ -288,6 +288,13 @@
     });
 
     search.addEventListener('input', applyFilter);
+
+    // Пришли со скана: ?q=артикул — отфильтровать, ?item=id — сразу открыть продажу этого размера.
+    const params = new URLSearchParams(location.search);
+    if (params.get('q')) { search.value = params.get('q'); applyFilter(); }
+    const preItem = params.get('item');
+    const prePill = preItem ? document.querySelector('.qs-size:not(.off)[data-item="' + CSS.escape(preItem) + '"]') : null;
+    if (prePill) { prePill.scrollIntoView({ block: 'center' }); select(prePill); }
     search.addEventListener('keydown', (e) => {
         if (e.key !== 'Enter') return;
         e.preventDefault();

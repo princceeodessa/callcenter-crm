@@ -561,6 +561,31 @@
 @endauth
 
 @stack('scripts')
+@if(! empty($isSneaker))
+<script>
+// Сканер штрихкодов работает как клавиатура: очень быстро «печатает» код и жмёт Enter.
+// Если в этот момент курсор не в поле ввода — открываем карточку товара по коду.
+(() => {
+    const SCAN_URL = @json(route('scan'));
+    let buf = '', first = 0, last = 0;
+    document.addEventListener('keydown', (e) => {
+        const t = e.target;
+        if (t && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))) { buf = ''; return; }
+        if (e.ctrlKey || e.altKey || e.metaKey) return;
+        const now = performance.now();
+        if (now - last > 100) { buf = ''; first = now; }   // пауза между символами — это не сканер
+        last = now;
+        if (e.key === 'Enter') {
+            const fast = buf.length >= 4 && (now - first) / Math.max(1, buf.length) < 50;
+            if (fast) { e.preventDefault(); location.href = SCAN_URL + '?code=' + encodeURIComponent(buf); }
+            buf = '';
+            return;
+        }
+        if (e.key.length === 1) buf += e.key;
+    }, true);
+})();
+</script>
+@endif
 </body>
 </html>
 
