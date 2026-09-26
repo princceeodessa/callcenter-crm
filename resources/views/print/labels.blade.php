@@ -702,6 +702,20 @@
     const rawDefaults = { printer: '', x: 0, y: 0, gap: 2, flip: false, density: 10 };
     let rawCfg = Object.assign({}, rawDefaults);
     try { Object.assign(rawCfg, JSON.parse(localStorage.getItem(RAW_KEY) || '{}')); } catch (e) {}
+
+    // Разовая поправка сдвига по фото пробной этикетки (26.09): принтер в магазине печатает
+    // ~5 мм выше и ~2 мм правее. Применяется один раз к настройкам этого компьютера и видна в «⚙».
+    let shiftFixNote = '';
+    try {
+        if (! localStorage.getItem('labelRawShiftFix1')) {
+            const before = { x: Number(rawCfg.x) || 0, y: Number(rawCfg.y) || 0 };
+            rawCfg.x = Math.max(-10, Math.min(10, before.x - 2));
+            rawCfg.y = Math.max(-10, Math.min(10, before.y + 5));
+            localStorage.setItem(RAW_KEY, JSON.stringify(rawCfg));
+            localStorage.setItem('labelRawShiftFix1', '1');
+            shiftFixNote = 'Сдвиг печати поправлен: → ' + before.x + ' → ' + rawCfg.x + ' мм, ↓ ' + before.y + ' → ' + rawCfg.y + ' мм. Если нужно точнее — «⚙ прямая печать» → «🧪 Тестовая этикетка».';
+        }
+    } catch (e) {}
     const showRaw = () => {
         if (! rawEls.x) return;
         rawEls.x.value = rawCfg.x; rawEls.y.value = rawCfg.y; rawEls.gap.value = rawCfg.gap;
@@ -720,6 +734,7 @@
         try { localStorage.setItem(RAW_KEY, JSON.stringify(rawCfg)); } catch (e) {}
     };
     showRaw();
+    if (shiftFixNote && status) status.textContent = shiftFixNote;
     Object.values(rawEls).forEach((el) => el && el.addEventListener('change', readRaw));
 
     // canvas -> TSPL BITMAP: 1 бит на точку, 0 = печатать (чёрный), 1 = пусто
