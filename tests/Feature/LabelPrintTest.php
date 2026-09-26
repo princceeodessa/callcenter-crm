@@ -169,34 +169,51 @@ class LabelPrintTest extends TestCase
         $this->assertSame(1, StockMark::where('code', $full)->count());
     }
 
-    public function test_sold_code_is_not_printed_again(): void
-    {
-        $head = User::where('role', 'sneaker_head')->firstOrFail();
-        [$product, $small] = $this->makeProduct($head->account_id);
-        $sold = $this->code('SOLDPHOTO0001');
-        StockMark::create(['account_id' => $head->account_id, 'warehouse_item_id' => $small->id, 'code' => $sold, 'status' => 'sold']);
-
-        $response = $this->actingAs($head)->post(route('print.labels'), [
-            'type' => 'mark', 'products' => (string) $product->id, 'marks_sent' => '1', 'codes' => $sold,
-        ]);
-
-        $response->assertOk()->assertSee('уже ПРОДАН');
-        $this->assertCount(0, $response->viewData('labels'));
-    }
-
-    public function test_code_of_another_pair_is_flagged(): void
+    /** Владелец решает сам: любой вставленный/распознанный код печатается, без блокировок. */
+    public function test_any_pasted_code_is_printed_without_warnings(): void
     {
         $head = User::where('role', 'sneaker_head')->firstOrFail();
         [$product, $small, $big] = $this->makeProduct($head->account_id);
-        $code = $this->code('OTHERPAIR0001');
-        StockMark::create(['account_id' => $head->account_id, 'warehouse_item_id' => $big->id, 'code' => $code, 'status' => 'in_stock']);
+        $sold = $this->code('SOLDPHOTO0001');
+        $other = $this->code('OTHERPAIR0001');
+        StockMark::create(['account_id' => $head->account_id, 'warehouse_item_id' => $small->id, 'code' => $sold, 'status' => 'sold']);
+        StockMark::create(['account_id' => $head->account_id, 'warehouse_item_id' => $big->id, 'code' => $other, 'status' => 'in_stock']);
 
-        $this->actingAs($head)->post(route('print.labels'), [
+        $response = $this->actingAs($head)->post(route('print.labels'), [
             'type' => 'mark', 'products' => (string) $product->id, 'marks_sent' => '1',
-            'codes' => $code, 'attach_item' => $small->id, 'attach_save' => '1',
-        ])->assertOk()->assertSee('Один код — одна пара');
+            'codes' => $sold."\n".$other, 'attach_item' => $small->id, 'attach_save' => '1',
+        ]);
 
-        $this->assertSame($big->id, StockMark::where('code', $code)->value('warehouse_item_id'), 'чужой код не перепривязывается');
+        $response->assertOk()->assertDontSee('ПРОДАН')->assertDontSee('Один код — одна пара');
+        $this->assertCount(2, $response->viewData('labels'));
+        $this->assertSame($big->id, StockMark::where('code', $other)->value('warehouse_item_id'), 'существующий код не перепривязывается');
+    }
+
+    /** Этикетка в формате ЧЗ: описание из карточки или своё, копии, автопечать после фото. */
+    public function test_cz_label_text_copies_and_autoprint(): void
+    {
+        $head = User::where('role', 'sneaker_head')->firstOrFail();
+        [$product, $small] = $this->makeProduct($head->account_id);
+        $code = $this->code('CZLABEL000001');
+
+        $auto = $this->actingAs($head)->post(route('print.labels'), [
+            'type' => 'mark', 'products' => (string) $product->id, 'marks_sent' => '1',
+            'codes' => $code, 'attach_item' => $small->id,
+        ]);
+        $this->assertStringStartsWith('Кроссовки NIKE', $auto->viewData('labels')[0]['desc']);
+        $this->assertStringContainsString('размер 42', $auto->viewData('labels')[0]['desc']);
+
+        $custom = $this->actingAs($head)->post(route('print.labels'), [
+            'type' => 'mark', 'products' => (string) $product->id, 'marks_sent' => '1',
+            'codes' => $code, 'label_text' => 'Кроссовки женские Nike Cortez Textile, цвет жёлтый', 'mark_copies' => '3', 'autoprint' => '1',
+        ]);
+        $labels = $custom->viewData('labels');
+        $this->assertCount(3, $labels);
+        $this->assertSame('Кроссовки женские Nike Cortez Textile, цвет жёлтый', $labels[2]['desc']);
+        $custom->assertSee('"autoprint":true', false);
+
+        $this->actingAs($head)->get(route('print.labels', ['type' => 'mark', 'codes' => $code, 'autoprint' => '1']))
+            ->assertSee('"autoprint":false', false);   // GET-ссылка сама ничего не печатает
     }
 
     public function test_short_code_without_crypto_tail_is_flagged(): void

@@ -20,13 +20,13 @@
         $dmBox = $h - 3;
         // Данные для PDF (рисуется в браузере на canvas 8 точек/мм = 203 dpi, как у принтера).
         $pdfLabels = $labels->map(fn ($l) => $isMark
-            ? ['name' => $l['name'], 'size' => $l['size'], 'dm' => $l['dm'], 'gtin' => $l['gtin'], 'serial' => $l['serial']]
+            ? ['name' => $l['name'], 'size' => $l['size'], 'dm' => $l['dm'], 'gtin' => $l['gtin'], 'serial' => $l['serial'], 'desc' => $l['desc']]
             : [
                 'name' => $l['name'], 'brand' => $l['brand'], 'size' => $l['size'], 'article' => $l['article'],
                 'price' => ($type === 'price' && $showPrice && $l['price'] !== null) ? $money($l['price']).' ₽' : null,
             ])->values();
         $pdfJson = json_encode([
-            'type' => $type, 'w' => $w, 'h' => $h, 'compact' => $compact, 'labels' => $pdfLabels,
+            'type' => $type, 'w' => $w, 'h' => $h, 'compact' => $compact, 'labels' => $pdfLabels, 'autoprint' => $autoprint,
         ], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
     @endphp
     <style>
@@ -261,7 +261,7 @@
                             📷 Код с фото
                             <input type="file" id="photoInput" accept="image/*" capture="environment" multiple hidden>
                         </label>
-                        <span class="muted">Сфотографируйте DataMatrix «Честного знака» (можно несколько фото) — код распознается и сразу встанет в печать.</span>
+                        <span class="muted">Сфотографируйте DataMatrix «Честного знака» (можно несколько фото) — код распознается и сразу уйдёт на принтер («⚡ Печать напрямую»).</span>
                     </div>
                     <div class="muted" id="photoStatus" style="margin-top:6px"></div>
                     @if($itemsCount > 0)
@@ -278,10 +278,15 @@
                     @if($marksSaved > 0)
                         <div class="saved" style="margin-top:8px">💾 Сохранено кодов к размеру: {{ $marksSaved }}.</div>
                     @endif
-                    @foreach($markWarnings as $warning)
-                        <div class="bad" style="margin-top:6px">⚠ {{ $warning }}</div>
-                    @endforeach
-                    <div class="muted" style="margin-top:6px">Один код — одна пара: печатайте код только для той пары, которой он принадлежит (замена повреждённой этикетки, этикетка на коробку). Проданный код CRM повторно не печатает.</div>
+                    <div style="margin-top:8px">
+                        <label style="display:block">Текст на этикетке <span class="muted">(слева от кода; пусто — из карточки товара)</span></label>
+                        <textarea name="label_text" rows="2" style="width:100%" placeholder="Кроссовки женские Nike Cortez Textile, арт. DZ2795-702, размер 42, цвет жёлтый/зелёный">{{ $labelText }}</textarea>
+                    </div>
+                    <div class="row" style="margin-top:6px">
+                        <label>Копий каждого кода <input type="number" name="mark_copies" min="1" max="50" value="{{ $markCopies }}" style="width:64px" onchange="this.form.submit()"></label>
+                        <button type="submit" class="btn btn-sm">Применить</button>
+                    </div>
+                    <input type="hidden" name="autoprint" value="0" id="autoprintFlag">
                 </div>
 
                 <div style="margin-top:10px">
@@ -538,40 +543,64 @@
         ctx.fillText(l.size || '—', padX + sw, y);
     };
 
+    // Логотип «Честный знак»: уголки-скобки с галочкой + «ЧЕСТНЫЙ / ЗНАК».
+    const drawCzLogo = (ctx, x, y, k) => {
+        const s = mm(5.4 * k), th = Math.max(2, Math.round(s * 0.13)), c = Math.round(s * 0.34);
+        ctx.fillRect(x, y, c, th); ctx.fillRect(x, y, th, c);
+        ctx.fillRect(x + s - c, y, c, th); ctx.fillRect(x + s - th, y, th, c);
+        ctx.fillRect(x, y + s - th, c, th); ctx.fillRect(x, y + s - c, th, c);
+        ctx.fillRect(x + s - c, y + s - th, c, th); ctx.fillRect(x + s - th, y + s - c, th, c);
+        ctx.lineWidth = th; ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
+        ctx.beginPath(); ctx.moveTo(x + s * 0.26, y + s * 0.50); ctx.lineTo(x + s * 0.45, y + s * 0.69); ctx.lineTo(x + s * 0.76, y + s * 0.32); ctx.stroke();
+        const tx = x + s + mm(1.3), small = pt(6.2 * k), big = pt(12 * k);
+        ctx.textBaseline = 'top';
+        ctx.font = 'bold ' + small + 'px Arial, sans-serif';
+        ctx.fillText('ЧЕСТНЫЙ', tx, y - mm(0.1));
+        ctx.font = 'bold ' + big + 'px Arial, sans-serif';
+        ctx.fillText('ЗНАК', tx, y + small * 0.95);
+        return y + Math.max(s, small * 0.95 + big);
+    };
+
+    // Этикетка как у «Честного знака»: слева логотип и описание, справа DataMatrix, под ним (01)…(21)… в рамке.
     const drawMark = (ctx, l, W, H) => {
-        const pad = mm(1.5);
-        // bwip рисует DataMatrix по 2 точки на модуль при scale 1: scale 2 = 4 точки = модуль 0,5 мм.
-        // Не влезает по высоте (маленькая наклейка) — scale 1 = 0,25 мм. Дробный scale bwip не принимает.
+        const pad = mm(1.5), k = DATA.compact ? 0.8 : 1;
+        ctx.fillStyle = '#000'; ctx.strokeStyle = '#000'; ctx.textBaseline = 'top';
+
+        // bwip: 2 точки на модуль при scale 1 → scale 2 = модуль 0,5 мм; не влезает — 0,25 мм.
         let dm = document.createElement('canvas');
         bwipjs.toCanvas(dm, { bcid: 'datamatrix', text: l.dm, parsefnc: true, scale: 2 });
-        if (dm.height > H - 2 * pad) {
+        if (dm.height > H * 0.62) {
             dm = document.createElement('canvas');
             bwipjs.toCanvas(dm, { bcid: 'datamatrix', text: l.dm, parsefnc: true, scale: 1 });
         }
-        ctx.drawImage(dm, pad, Math.round((H - dm.height) / 2));
-        const x = pad + dm.width + mm(1.5), maxW = W - x - pad;
-        const k = DATA.compact ? 0.82 : 1;
-        let y = pad;
-        ctx.fillStyle = '#000';
-        ctx.textBaseline = 'top';
-        if (l.name) {
-            const ns = pt(8.5 * k);
-            ctx.font = 'bold ' + ns + 'px Arial, sans-serif';
-            for (const line of wrap(ctx, l.name, maxW, 3)) { ctx.fillText(line, x, y); y += ns * 1.15; }
-            y += mm(0.5);
-        }
-        if (l.size) {
-            ctx.font = pt(8.5 * k) + 'px Arial, sans-serif';
-            ctx.fillText('Размер ' + l.size, x, y);
-            y += pt(8.5 * k) * 1.3;
-        }
-        const hs = pt(DATA.compact ? 5 : 6);
-        ctx.font = hs + 'px Consolas, "Courier New", monospace';
-        const lines = chunk(ctx, '(01) ' + l.gtin, maxW).concat(chunk(ctx, '(21) ' + l.serial, maxW));
-        for (const line of lines) {
-            if (y + hs > H - pad) break;
-            ctx.fillText(line, x, y);
-            y += hs * 1.15;
+        const boxW = dm.width + mm(2);
+        const right = W - pad;
+        const dmX = right - Math.round((boxW + dm.width) / 2), dmY = pad + mm(0.5);
+        ctx.drawImage(dm, dmX, dmY);
+
+        // (01)GTIN(21)серийный — в рамке под кодом, перенос по символам
+        const hs = pt(6.4 * k), lh = hs * 1.12, boxX = right - boxW, boxY = dmY + dm.height + mm(1.2);
+        ctx.font = hs + 'px Arial, sans-serif';
+        const hri = chunk(ctx, '(01)' + l.gtin + '(21)' + l.serial, boxW - mm(1.2));
+        const boxH = Math.round(hri.length * lh + mm(0.9));
+        ctx.lineWidth = Math.max(1, Math.round(PX * 0.15));
+        ctx.strokeRect(boxX + 0.5, boxY + 0.5, boxW - 1, boxH);
+        hri.forEach((ln, i) => ctx.fillText(ln, boxX + mm(0.6), boxY + mm(0.45) + i * lh));
+
+        // Вертикальная линия-разделитель вдоль кода
+        const divX = boxX - mm(1.6);
+        ctx.fillRect(divX, dmY, Math.max(2, Math.round(PX * 0.25)), dm.height);
+
+        // Слева: логотип + описание товара
+        const leftX = pad + mm(0.5), leftW = divX - mm(1.6) - leftX;
+        let y = drawCzLogo(ctx, leftX, pad + mm(0.3), k) + mm(1.6);
+        const ds = pt(7.2 * k), dl = ds * 1.18;
+        ctx.font = 'bold ' + ds + 'px Arial, sans-serif';
+        const text = l.desc || [l.name, l.size ? 'размер ' + l.size : ''].filter(Boolean).join(', ');
+        const maxLines = Math.max(1, Math.floor((H - pad - y) / dl));
+        for (const line of wrap(ctx, text, leftW, maxLines)) {
+            ctx.fillText(line, leftX, y);
+            y += dl;
         }
     };
 
@@ -699,6 +728,8 @@
         return btoa(bin);
     };
     window.__labelRaw = { buildTspl: buildTspl, bitmap: tsplBitmap };
+    // После «📷 Код с фото» страница приходит с autoprint — сразу отправляем на принтер.
+    if (DATA.autoprint && DATA.labels.length && rawBtn) setTimeout(() => rawBtn.click(), 300);
 
     // Без QZ Tray попытка соединения может висеть бесконечно — ограничиваем по времени.
     const withTimeout = (p, ms, msg) => Promise.race([p, new Promise((_, reject) => setTimeout(() => reject(new Error(msg)), ms))]);
@@ -719,6 +750,22 @@
         if (rawCfg.printer && list.includes(rawCfg.printer)) return rawCfg.printer;
         return list.find((n) => /365/.test(n)) || list.find((n) => /xprinter/i.test(n)) || null;
     };
+
+    // Предпросмотр этикеток ЧЗ рисуем тем же кодом, что и печать: на экране — ровно то, что выйдет.
+    if (DATA.type === 'mark' && DATA.labels.length) {
+        load(BWIP, () => typeof window.bwipjs !== 'undefined').then(() => {
+            document.querySelectorAll('.sheet .lbl.mark').forEach((el, i) => {
+                const l = DATA.labels[i];
+                if (! l) return;
+                const img = new Image();
+                img.src = render(l).toDataURL('image/png');
+                img.style.cssText = 'width:100%;height:100%;display:block';
+                el.innerHTML = '';
+                el.style.padding = '0';
+                el.appendChild(img);
+            });
+        }).catch(() => {});
+    }
 
     if (rawBtn) rawBtn.addEventListener('click', async () => {
         rawBtn.disabled = true;
@@ -836,7 +883,9 @@
             const have = new Set(area.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean));
             found.map((c) => c.split('\x1D').join('<GS>')).forEach((c) => have.add(c));
             area.value = [...have].join('\n');
-            status.textContent = 'Распознано кодов: ' + found.length + (failed ? ' (на ' + failed + ' фото код не найден)' : '') + '. Обновляю печать…';
+            status.textContent = 'Распознано кодов: ' + found.length + (failed ? ' (на ' + failed + ' фото код не найден)' : '') + '. Отправляю на печать…';
+            const flag = document.getElementById('autoprintFlag');
+            if (flag) flag.value = '1';
             form.submit();
         } catch (e) {
             status.textContent = 'Не получилось распознать: ' + (e && e.message ? e.message : e);
