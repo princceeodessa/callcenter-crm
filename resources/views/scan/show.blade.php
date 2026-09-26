@@ -29,6 +29,23 @@
         <input type="search" name="code" id="scanInput" value="" placeholder="Сканируйте следующий товар или введите артикул…" autofocus autocomplete="off">
         <button class="btn btn-sm btn-primary">Найти</button>
     </form>
+    <script>
+    // Сканер без Enter в конце: отправляем сами после короткой паузы, если код «напечатан» быстро.
+    (() => {
+        const input = document.getElementById('scanInput');
+        let first = 0, last = 0, timer = null;
+        input.addEventListener('input', () => {
+            const now = performance.now();
+            if (now - last > 300) first = now;
+            last = now;
+            clearTimeout(timer);
+            timer = setTimeout(() => {
+                const v = input.value.trim(), avg = (last - first) / Math.max(1, v.length - 1);
+                if (v.length >= 6 && avg < 90) input.form.submit();
+            }, 250);
+        });
+    })();
+    </script>
 
     @if($raw !== '')
         <div class="text-muted small mb-2">Скан: <span class="sc-art">{{ $raw }}</span>@if($code !== $raw) → <span class="sc-art">{{ $code }}</span> <span title="Сканер печатал в русской раскладке — исправлено">(раскладка исправлена)</span>@endif</div>

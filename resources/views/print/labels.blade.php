@@ -988,5 +988,6 @@
     window.__photoDecode = { loadZx: loadZx, decode: decode };
 })();
 </script>
+@include('partials.scanner-listener')
 </body>
 </html>

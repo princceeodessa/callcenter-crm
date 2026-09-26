@@ -65,6 +65,7 @@ class ScanTest extends TestCase
     {
         $head = User::where('role', 'sneaker_head')->firstOrFail();
         $this->actingAs($head)->get(route('sale.day'))->assertSee('SCAN_URL', false);
+        $this->actingAs($head)->get(route('print.labels'))->assertSee('SCAN_URL', false);   // и на странице печати ценников
 
         $admin = User::where('role', 'admin')->firstOrFail();
         $this->actingAs($admin)->get(route('scan', ['code' => 'X']))->assertForbidden();
