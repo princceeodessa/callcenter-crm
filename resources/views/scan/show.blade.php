@@ -87,6 +87,17 @@
             $initial = mb_strtoupper(mb_substr((string) $p->brand, 0, 1)) ?: '?';
             $image = $p->exists ? $p->image_url : null;
             $saleQuery = $p->article ?: trim($p->brand.' '.$p->model);
+            $marks = $card['marks'];
+            $sales = $card['sales'];
+            $soldTotal = $card['soldTotal'];
+            $facts = array_values(array_filter([
+                $p->category ? ($categoryOptions[$p->category] ?? $p->category) : null,
+                $p->gender ? ($genderOptions[$p->gender] ?? $p->gender) : null,
+                $p->season ? ($seasonOptions[$p->season] ?? $p->season) : null,
+            ]));
+            $tags = is_array($p->tags) ? $p->tags : [];
+            $stockValue = (float) $items->sum(fn ($i) => max(0, (int) $i->quantity) * (float) ($i->sale_price ?? 0));
+            $marksTotal = (int) $marks->sum();
         @endphp
         <div class="sc-card">
             <div class="sc-head mb-3">
@@ -102,7 +113,20 @@
                     @if($p->article)
                         <div class="sc-art">{{ $p->article }}</div>
                     @endif
-                    <div class="mt-1">В наличии: <b>{{ $total }}</b> пар</div>
+                    <div class="mt-1">В наличии: <b>{{ $total }}</b> пар · продано всего: <b>{{ $soldTotal }}</b>@if($stockValue > 0) · склад в ценах продажи: <b>{{ $money($stockValue) }} ₽</b>@endif</div>
+                    @if(count($facts) || count($tags))
+                        <div class="mt-1 d-flex gap-1 flex-wrap">
+                            @foreach($facts as $fact)
+                                <span class="badge text-bg-light border">{{ $fact }}</span>
+                            @endforeach
+                            @foreach($tags as $tag)
+                                <span class="badge text-bg-secondary">#{{ $tag }}</span>
+                            @endforeach
+                        </div>
+                    @endif
+                    @if($marksTotal > 0)
+                        <div class="mt-1 small text-muted">Кодов «Честного знака» на складе: {{ $marksTotal }}</div>
+                    @endif
                     <div class="d-flex gap-2 flex-wrap mt-2">
                         <a class="btn btn-success" href="{{ route('sale.quick', ['q' => $saleQuery]) }}">💵 Продать</a>
                         @if($p->exists)
@@ -116,7 +140,7 @@
 
             <table class="table table-sm sc-sizes mb-0">
                 <thead>
-                    <tr class="small text-muted"><th>Размер</th><th class="text-end">Доступно</th><th class="text-end">Резерв</th><th class="text-end">Цена</th><th></th></tr>
+                    <tr class="small text-muted"><th>Размер</th><th class="text-end">Доступно</th><th class="text-end">Резерв</th><th class="text-end">Цена</th>@if($isHead)<th class="text-end">Закуп</th><th class="text-end">Наценка</th>@endif<th class="text-end">ЧЗ</th><th></th></tr>
                 </thead>
                 <tbody>
                     @foreach($items as $item)
@@ -129,6 +153,15 @@
                             <td class="text-end">{{ $avail }}</td>
                             <td class="text-end text-muted">{{ (int) $item->reserved ?: '' }}</td>
                             <td class="text-end text-nowrap">{{ $item->sale_price !== null ? $money($item->sale_price).' ₽' : '—' }}</td>
+                            @if($isHead)
+                                @php
+                                    $cost = $item->avg_cost !== null && (float) $item->avg_cost > 0 ? (float) $item->avg_cost : null;
+                                    $markup = $cost && $item->sale_price !== null ? round(((float) $item->sale_price - $cost) / $cost * 100) : null;
+                                @endphp
+                                <td class="text-end text-nowrap text-muted">{{ $cost !== null ? $money($cost).' ₽' : '—' }}</td>
+                                <td class="text-end text-nowrap {{ $markup !== null && $markup < 0 ? 'text-danger' : 'text-muted' }}">{{ $markup !== null ? $markup.'%' : '—' }}</td>
+                            @endif
+                            <td class="text-end text-muted">{{ (int) ($marks[$item->id] ?? 0) ?: '' }}</td>
                             <td class="text-end">
                                 @if($avail > 0)
                                     <a class="btn btn-sm btn-success" href="{{ route('sale.quick', ['q' => $saleQuery, 'item' => $item->id]) }}">Продать</a>
@@ -140,6 +173,21 @@
                     @endforeach
                 </tbody>
             </table>
+
+            @if($sales->count())
+                <div class="fw-semibold small mt-3 mb-1">Последние продажи</div>
+                <table class="table table-sm mb-0 small">
+                    @foreach($sales as $sale)
+                        <tr>
+                            <td class="text-muted text-nowrap">{{ $sale->stock_deducted_at->format('d.m.Y H:i') }}</td>
+                            <td>р. {{ optional($sale->warehouseItem)->size ?? '—' }} × {{ (int) $sale->sold_quantity }}</td>
+                            <td class="text-end text-nowrap">{{ $sale->amount !== null ? $money($sale->amount).' ₽' : '—' }}</td>
+                            <td class="text-muted">{{ optional($sale->responsible)->name }}</td>
+                            <td class="text-end"><a href="{{ route('deals.show', $sale->id) }}">↗</a></td>
+                        </tr>
+                    @endforeach
+                </table>
+            @endif
         </div>
     @endforeach
 </div>

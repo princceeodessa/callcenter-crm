@@ -150,6 +150,17 @@
         </div>
     </div>
 
+    @if(request()->filled('scan'))
+        @php
+            $scanned = (string) request('scan');
+            $scanInfoUrl = route('scan', ['code' => $scanned, 'info' => 1]);
+        @endphp
+        <div class="alert alert-info d-flex align-items-center justify-content-between flex-wrap gap-2 py-2">
+            <span>📷 Отсканировано: <b>{{ request('q') }}</b> — открыта продажа.</span>
+            <a class="btn btn-sm btn-outline-primary" href="{{ $scanInfoUrl }}">ℹ Карточка товара</a>
+        </div>
+    @endif
+
     <div class="qs-search">
         <span style="color:var(--crm-muted);font-size:1.1rem">🔎</span>
         <input type="search" id="qsSearch" data-scan="own" placeholder="Название модели или артикул… (можно сканером)" autofocus autocomplete="off">

@@ -22,7 +22,7 @@ class ScanTest extends TestCase
         [$product] = $this->makeProduct($head->account_id);
 
         $this->actingAs($head)->get(route('scan', ['code' => $product->article]))
-            ->assertRedirect(route('sale.quick', ['q' => $product->article]));
+            ->assertRedirect(route('sale.quick', ['q' => $product->article, 'scan' => $product->article]));
     }
 
     public function test_single_size_in_stock_is_preselected(): void
@@ -32,7 +32,7 @@ class ScanTest extends TestCase
         $big->update(['quantity' => 0]);
 
         $this->actingAs($head)->get(route('scan', ['code' => $product->article]))
-            ->assertRedirect(route('sale.quick', ['q' => $product->article, 'item' => $small->id]));
+            ->assertRedirect(route('sale.quick', ['q' => $product->article, 'item' => $small->id, 'scan' => $product->article]));
     }
 
     /** Сканер в русской раскладке печатает «ША…» вместо «IF…». */
@@ -43,7 +43,7 @@ class ScanTest extends TestCase
         $typed = strtr($product->article, ['I' => 'Ш', 'F' => 'А']);
 
         $this->actingAs($head)->get(route('scan', ['code' => $typed]))
-            ->assertRedirect(route('sale.quick', ['q' => $product->article]));
+            ->assertRedirect(route('sale.quick', ['q' => $product->article, 'scan' => $typed]));
     }
 
     /** Код ЧЗ без GS (сканер их теряет) — продажа сразу с размером этой пары. */
@@ -55,11 +55,30 @@ class ScanTest extends TestCase
         StockMark::create(['account_id' => $head->account_id, 'warehouse_item_id' => $big->id, 'code' => $code, 'status' => 'in_stock']);
 
         $this->actingAs($head)->get(route('scan', ['code' => str_replace(self::GS, '', $code)]))
-            ->assertRedirect(route('sale.quick', ['q' => $product->article, 'item' => $big->id]));
+            ->assertRedirect(route('sale.quick', ['q' => $product->article, 'item' => $big->id, 'scan' => str_replace(self::GS, '', $code)]));
 
         // «только инфо» — карточка с остатками и подсвеченной парой
         $info = $this->actingAs($head)->get(route('scan', ['code' => str_replace(self::GS, '', $code), 'info' => 1]));
         $info->assertOk()->assertSee($product->display_name)->assertSee('эта пара')->assertSee('на складе');
+    }
+
+    /** После скана в продаже есть «Карточка товара»; карточка показывает закуп (руководителю), ЧЗ и продажи. */
+    public function test_sale_after_scan_links_to_the_card_and_card_has_details(): void
+    {
+        $head = User::where('role', 'sneaker_head')->firstOrFail();
+        [$product, $small] = $this->makeProduct($head->account_id);
+        $small->update(['avg_cost' => 7000]);
+        StockMark::create(['account_id' => $head->account_id, 'warehouse_item_id' => $small->id, 'code' => '0104601234567890'.'21'.'CARDINFO00001', 'status' => 'in_stock']);
+
+        $this->actingAs($head)->get(route('sale.quick', ['q' => $product->article, 'scan' => $product->article]))
+            ->assertOk()->assertSee('Карточка товара')->assertSee('info=1', false);
+
+        $this->actingAs($head)->get(route('scan', ['code' => $product->article, 'info' => 1]))
+            ->assertOk()->assertSee('Закуп')->assertSee('7 000 ₽')->assertSee('86%')->assertSee('Кодов «Честного знака» на складе: 1');
+
+        $operator = User::where('role', 'sneaker_operator')->where('account_id', $head->account_id)->firstOrFail();
+        $this->actingAs($operator)->get(route('scan', ['code' => $product->article, 'info' => 1]))
+            ->assertOk()->assertDontSee('Закуп');
     }
 
     public function test_unknown_code_says_not_found(): void

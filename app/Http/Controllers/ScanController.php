@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Deal;
 use App\Models\StockMark;
 use App\Models\WarehouseItem;
 use App\Models\WarehouseProduct;
 use App\Support\Marking\MarkCode;
 use App\Support\Warehouse\ArticleIdentity;
+use App\Support\Warehouse\ProductClassifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -65,11 +67,26 @@ class ScanController extends Controller
             }
         }
 
-        $cards = $products->map(fn (WarehouseProduct $p) => [
-            'product' => $p,
-            'items' => WarehouseItem::where('account_id', $accId)->where('brand', $p->brand)->where('model', $p->model)->get()
-                ->sort(fn ($a, $b) => strnatcmp((string) $a->size, (string) $b->size))->values(),
-        ]);
+        $cards = $products->map(function (WarehouseProduct $p) use ($accId) {
+            $items = WarehouseItem::where('account_id', $accId)->where('brand', $p->brand)->where('model', $p->model)->get()
+                ->sort(fn ($a, $b) => strnatcmp((string) $a->size, (string) $b->size))->values();
+            $ids = $items->pluck('id');
+
+            return [
+                'product' => $p,
+                'items' => $items,
+                // коды «Честного знака» на складе по размерам
+                'marks' => $ids->isEmpty() ? collect() : StockMark::where('account_id', $accId)->whereIn('warehouse_item_id', $ids)
+                    ->where('status', 'in_stock')->selectRaw('warehouse_item_id, COUNT(*) c')->groupBy('warehouse_item_id')
+                    ->pluck('c', 'warehouse_item_id'),
+                // последние продажи этой модели
+                'sales' => $ids->isEmpty() ? collect() : Deal::where('account_id', $accId)->whereIn('warehouse_item_id', $ids)
+                    ->whereNotNull('stock_deducted_at')->with('warehouseItem:id,size', 'responsible:id,name')
+                    ->orderByDesc('stock_deducted_at')->limit(8)->get(),
+                'soldTotal' => $ids->isEmpty() ? 0 : (int) Deal::where('account_id', $accId)->whereIn('warehouse_item_id', $ids)
+                    ->whereNotNull('stock_deducted_at')->sum('sold_quantity'),
+            ];
+        });
 
         // Нашли одну модель — сразу в «Быструю продажу» этой модели (скан ценника = «продать эти кроссовки»).
         // Размер выбираем сами, если он однозначен: пара из кода ЧЗ или единственный размер в наличии.
@@ -85,6 +102,7 @@ class ScanController extends Controller
             return redirect()->route('sale.quick', array_filter([
                 'q' => $p->article ?: trim($p->brand.' '.$p->model),
                 'item' => $itemId,
+                'scan' => $raw,
             ]));
         }
 
@@ -95,6 +113,10 @@ class ScanController extends Controller
             'markHr' => $mark ? MarkCode::humanReadable(MarkCode::normalize($mark->code)) : (MarkCode::looksLike(MarkCode::normalize($raw)) ? MarkCode::humanReadable(MarkCode::normalize($raw)) : null),
             'cards' => $cards,
             'highlightItemId' => $highlightItemId,
+            'isHead' => Auth::user()->role === 'sneaker_head',
+            'categoryOptions' => ProductClassifier::categoryOptions(),
+            'genderOptions' => ProductClassifier::genderOptions(),
+            'seasonOptions' => ProductClassifier::seasonOptions(),
         ]);
     }
 
