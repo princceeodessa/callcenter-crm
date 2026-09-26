@@ -18,6 +18,16 @@
         $productsCount = $products->count();
         // Квадрат под DataMatrix: высота наклейки минус поля.
         $dmBox = $h - 3;
+        // Данные для PDF (рисуется в браузере на canvas 8 точек/мм = 203 dpi, как у принтера).
+        $pdfLabels = $labels->map(fn ($l) => $isMark
+            ? ['name' => $l['name'], 'size' => $l['size'], 'dm' => $l['dm'], 'gtin' => $l['gtin'], 'serial' => $l['serial']]
+            : [
+                'name' => $l['name'], 'brand' => $l['brand'], 'size' => $l['size'], 'article' => $l['article'],
+                'price' => ($type === 'price' && $showPrice && $l['price'] !== null) ? $money($l['price']).' ₽' : null,
+            ])->values();
+        $pdfJson = json_encode([
+            'type' => $type, 'w' => $w, 'h' => $h, 'compact' => $compact, 'labels' => $pdfLabels,
+        ], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
     @endphp
     <style>
         /*
@@ -130,8 +140,10 @@
 
             <div class="row">
                 <button type="button" class="btn btn-primary" id="printBtn" @disabled($labelCount === 0)>🖨️ Печать · {{ $labelCount }} шт.</button>
+                <button type="button" class="btn btn-primary" id="pdfBtn" @disabled($labelCount === 0) title="Надёжный способ для XP-365B: PDF ровно {{ $w }}×{{ $h }} мм, печать из Adobe Reader или SumatraPDF">📄 PDF для печати</button>
                 <button type="submit" class="btn">↻ Обновить</button>
                 <span class="muted">Рулон {{ $format['label'] }} · принтер XP-365B</span>
+                <span class="muted" id="pdfStatus"></span>
                 @if($truncated)
                     <span class="warn">Показаны первые {{ $maxLabels }} — печатайте частями.</span>
                 @endif
@@ -249,6 +261,7 @@
                     <li><b>Калибровка после заправки рулона</b> (и при смене размера наклеек): выключите принтер → зажмите <b>FEED</b> и <b>PAUSE</b> → включите → когда загорится Online, погаснет Error и прозвучит двойной сигнал — отпустите.</li>
                     <li><b>Размер бумаги в Windows.</b> Параметры → Принтеры и сканеры → XP-365B → Настройки печати → Page Setup → <i>New</i>: ширина и высота как у рулона (в магазине — <b>60 × 40 мм</b>), тип — <i>Labels with gaps</i> (этикетки с промежутками). Сделайте его размером по умолчанию.</li>
                     <li><b>Чёткость.</b> В тех же настройках (Options): темнота (Darkness) повыше, скорость пониже — DataMatrix «Честного знака» читается лучше. Если код бледный или «рваный» — +2 к темноте.</li>
+                    <li><b>Самый надёжный способ — «📄 PDF для печати».</b> Скачается файл, где каждая страница ровно {{ $w }} × {{ $h }} мм. Откройте его в <b>Adobe Acrobat Reader</b> или <b>SumatraPDF</b> (не в браузере) → Печать → Xprinter XP-365B → размер <b>«Фактический» / 100 %</b>, ориентация <b>«Авто»</b>. Так печатают этикетки Wildberries на этом же принтере.</li>
                     <li><b>При печати из браузера:</b> принтер XP-365B, размер бумаги — тот же (USER {{ $w }} × {{ $h }}), <b>Макет: Книжная</b>, <b>Поля: нет</b>, <b>Масштаб: 100 %</b> (не «по размеру страницы»), колонтитулы выключены. Браузер запомнит — дальше просто «Печать».</li>
                     <li><b>Если ценник повёрнут или залез на две наклейки</b> — в драйвере не тот размер бумаги: Настройки печати → Page Setup → New → <b>Width 60</b> (поперёк ленты), <b>Height 40</b> (вдоль), Labels with gaps, ориентация Portrait (книжная); в окне печати браузера — этот размер и <b>Макет: Книжная</b>. Если всё равно боком — попробуйте «Альбомная».</li>
                     <li><b>Если внизу напечатался адрес сайта</b> — это колонтитулы браузера: в окне печати «Дополнительные настройки» → снимите «Верхние и нижние колонтитулы», поля «Нет».</li>
@@ -362,6 +375,193 @@
         document.getElementById('printForm').submit();
     }));
     document.querySelectorAll('input.copies, .mark-check, input.price-in[name^="p["]').forEach(el => el.addEventListener('change', () => document.getElementById('printForm').submit()));
+})();
+</script>
+<script>
+(() => {
+    const btn = document.getElementById('pdfBtn');
+    const status = document.getElementById('pdfStatus');
+    if (! btn) return;
+    const DATA = {!! $pdfJson !!};
+    const PX = 8;                              // 8 точек на мм = 203 dpi, как у XP-365B
+    const mm = (v) => Math.round(v * PX);
+    const pt = (v) => v * 0.3528 * PX;         // пункт -> точки
+    const BWIP = 'https://cdn.jsdelivr.net/npm/bwip-js@4.11.4/dist/bwip-js-min.js';
+    const JSPDF = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js';
+
+    const load = (src, ready) => new Promise((resolve, reject) => {
+        if (ready()) return resolve();
+        const s = document.createElement('script');
+        s.src = src;
+        s.onload = resolve;
+        s.onerror = () => reject(new Error('не загрузилась библиотека ' + src));
+        document.head.appendChild(s);
+    });
+
+    const wrap = (ctx, text, maxW, maxLines) => {
+        const words = String(text || '').split(/\s+/).filter(Boolean);
+        const lines = [];
+        let cur = '';
+        for (const word of words) {
+            const t = cur ? cur + ' ' + word : word;
+            if (! cur || ctx.measureText(t).width <= maxW) { cur = t; } else { lines.push(cur); cur = word; }
+        }
+        if (cur) lines.push(cur);
+        if (maxLines > 0 && lines.length > maxLines) {
+            lines.length = maxLines;
+            let last = lines[maxLines - 1];
+            while (last.length > 1 && ctx.measureText(last + '…').width > maxW) last = last.slice(0, -1);
+            lines[maxLines - 1] = last + '…';
+        }
+        return lines;
+    };
+
+    // перенос по символам — для серийного номера без пробелов
+    const chunk = (ctx, text, maxW) => {
+        const out = [];
+        let cur = '';
+        for (const ch of String(text || '')) {
+            if (cur && ctx.measureText(cur + ch).width > maxW) { out.push(cur); cur = ch; } else { cur += ch; }
+        }
+        if (cur) out.push(cur);
+        return out;
+    };
+
+    const barcode = (text) => {
+        const c = document.createElement('canvas');
+        // 2 точки на штрих = 0,25 мм: ровные штрихи, без растягивания
+        bwipjs.toCanvas(c, { bcid: 'code128', text: text, scale: 2, height: 8, includetext: false });
+        return c;
+    };
+
+    const drawGoods = (ctx, l, W, H) => {
+        const k = DATA.compact ? 0.82 : 1;
+        const padX = mm(2), padT = mm(1.5), padB = mm(1.2), maxW = W - 2 * padX;
+        ctx.fillStyle = '#000';
+        ctx.textBaseline = 'top';
+
+        // Низ: артикул, штрихкод, цена — снизу вверх.
+        let bottom = H - padB;
+        if (l.article) {
+            const artSize = pt(7 * k);
+            ctx.font = artSize + 'px Consolas, "Courier New", monospace';
+            bottom -= artSize;
+            const aw = ctx.measureText(l.article).width;
+            ctx.fillText(l.article, (W - aw) / 2, bottom);
+            bottom -= mm(0.4);
+            const bc = barcode(l.article);
+            const bh = mm(DATA.type === 'price' ? (DATA.compact ? 4 : 5.5) : (DATA.compact ? 7 : 12));
+            const bw = Math.min(bc.width, maxW);
+            bottom -= bh;
+            ctx.drawImage(bc, Math.round((W - bw) / 2), Math.round(bottom), bw, bh);
+        }
+        if (l.price) {
+            const ps = pt(19 * k);
+            ctx.font = 'bold ' + ps + 'px Arial, sans-serif';
+            bottom -= ps + mm(0.8);
+            ctx.fillText(l.price, padX, bottom);
+        }
+
+        // Верх: бренд, название (сколько строк влезет), размер.
+        let y = padT;
+        if (l.brand && DATA.type === 'price') {
+            const bs = pt(6.5 * k);
+            ctx.font = bs + 'px Arial, sans-serif';
+            ctx.fillText(String(l.brand).toUpperCase(), padX, y);
+            y += bs * 1.25;
+        }
+        const ns = pt(8.5 * k), lh = ns * 1.15, sizeH = pt(11 * k) * 1.2 + mm(0.6);
+        const room = Math.max(1, Math.floor((bottom - mm(0.6) - y - sizeH) / lh));
+        ctx.font = 'bold ' + ns + 'px Arial, sans-serif';
+        for (const line of wrap(ctx, l.name, maxW, Math.min(room, DATA.compact ? 2 : 3))) {
+            ctx.fillText(line, padX, y);
+            y += lh;
+        }
+        y += mm(0.6);
+        ctx.font = ns + 'px Arial, sans-serif';
+        ctx.fillText('Размер ', padX, y + pt(1.5 * k));
+        const sw = ctx.measureText('Размер ').width;
+        ctx.font = 'bold ' + pt(11 * k) + 'px Arial, sans-serif';
+        ctx.fillText(l.size || '—', padX + sw, y);
+    };
+
+    const drawMark = (ctx, l, W, H) => {
+        const pad = mm(1.5);
+        // bwip рисует DataMatrix по 2 точки на модуль при scale 1: scale 2 = 4 точки = модуль 0,5 мм.
+        // Не влезает по высоте (маленькая наклейка) — scale 1 = 0,25 мм. Дробный scale bwip не принимает.
+        let dm = document.createElement('canvas');
+        bwipjs.toCanvas(dm, { bcid: 'datamatrix', text: l.dm, parsefnc: true, scale: 2 });
+        if (dm.height > H - 2 * pad) {
+            dm = document.createElement('canvas');
+            bwipjs.toCanvas(dm, { bcid: 'datamatrix', text: l.dm, parsefnc: true, scale: 1 });
+        }
+        ctx.drawImage(dm, pad, Math.round((H - dm.height) / 2));
+        const x = pad + dm.width + mm(1.5), maxW = W - x - pad;
+        const k = DATA.compact ? 0.82 : 1;
+        let y = pad;
+        ctx.fillStyle = '#000';
+        ctx.textBaseline = 'top';
+        if (l.name) {
+            const ns = pt(8.5 * k);
+            ctx.font = 'bold ' + ns + 'px Arial, sans-serif';
+            for (const line of wrap(ctx, l.name, maxW, 3)) { ctx.fillText(line, x, y); y += ns * 1.15; }
+            y += mm(0.5);
+        }
+        if (l.size) {
+            ctx.font = pt(8.5 * k) + 'px Arial, sans-serif';
+            ctx.fillText('Размер ' + l.size, x, y);
+            y += pt(8.5 * k) * 1.3;
+        }
+        const hs = pt(DATA.compact ? 5 : 6);
+        ctx.font = hs + 'px Consolas, "Courier New", monospace';
+        const lines = chunk(ctx, '(01) ' + l.gtin, maxW).concat(chunk(ctx, '(21) ' + l.serial, maxW));
+        for (const line of lines) {
+            if (y + hs > H - pad) break;
+            ctx.fillText(line, x, y);
+            y += hs * 1.15;
+        }
+    };
+
+    // Одна этикетка -> canvas ровно W x H точек (выставлено для проверки в тестах/консоли).
+    const render = (l) => {
+        const W = mm(DATA.w), H = mm(DATA.h);
+        const c = document.createElement('canvas');
+        c.width = W;
+        c.height = H;
+        const ctx = c.getContext('2d');
+        ctx.imageSmoothingEnabled = false;
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, W, H);
+        if (DATA.type === 'mark') drawMark(ctx, l, W, H); else drawGoods(ctx, l, W, H);
+        return c;
+    };
+
+    const buildPdf = async () => {
+        await load(BWIP, () => typeof window.bwipjs !== 'undefined');
+        await load(JSPDF, () => typeof window.jspdf !== 'undefined');
+        const orientation = DATA.w > DATA.h ? 'landscape' : 'portrait';
+        const doc = new window.jspdf.jsPDF({ orientation: orientation, unit: 'mm', format: [DATA.w, DATA.h], compress: true });
+        DATA.labels.forEach((l, i) => {
+            if (i > 0) doc.addPage([DATA.w, DATA.h], orientation);
+            doc.addImage(render(l).toDataURL('image/png'), 'PNG', 0, 0, DATA.w, DATA.h, undefined, 'FAST');
+        });
+        return doc;
+    };
+    window.__labelPdf = { render: render, buildPdf: buildPdf, data: DATA };
+
+    btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        status.textContent = 'Готовлю PDF…';
+        try {
+            const doc = await buildPdf();
+            doc.save('etiketki-' + DATA.w + 'x' + DATA.h + '.pdf');
+            status.textContent = 'PDF скачан: ' + DATA.labels.length + ' стр. Откройте в Adobe Reader / SumatraPDF → Печать → «Фактический размер».';
+        } catch (e) {
+            status.textContent = 'Не получилось собрать PDF: ' + e.message;
+        } finally {
+            btn.disabled = false;
+        }
+    });
 })();
 </script>
 </body>
