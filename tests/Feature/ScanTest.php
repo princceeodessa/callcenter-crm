@@ -15,17 +15,24 @@ class ScanTest extends TestCase
 
     private const GS = "\x1D";
 
-    public function test_scanning_the_price_tag_article_opens_the_product_with_sale_links(): void
+    /** Скан штрихкода с ценника = сразу продажа этих кроссовок. */
+    public function test_scanning_the_price_tag_opens_quick_sale_of_that_model(): void
     {
         $head = User::where('role', 'sneaker_head')->firstOrFail();
-        [$product, $small] = $this->makeProduct($head->account_id);
+        [$product] = $this->makeProduct($head->account_id);
 
         $this->actingAs($head)->get(route('scan', ['code' => $product->article]))
-            ->assertOk()
-            ->assertSee($product->display_name)
-            ->assertSee('12 990 ₽')
-            ->assertSee('item='.$small->id, false)
-            ->assertSee('q='.$product->article, false);
+            ->assertRedirect(route('sale.quick', ['q' => $product->article]));
+    }
+
+    public function test_single_size_in_stock_is_preselected(): void
+    {
+        $head = User::where('role', 'sneaker_head')->firstOrFail();
+        [$product, $small, $big] = $this->makeProduct($head->account_id);
+        $big->update(['quantity' => 0]);
+
+        $this->actingAs($head)->get(route('scan', ['code' => $product->article]))
+            ->assertRedirect(route('sale.quick', ['q' => $product->article, 'item' => $small->id]));
     }
 
     /** Сканер в русской раскладке печатает «ША…» вместо «IF…». */
@@ -36,21 +43,23 @@ class ScanTest extends TestCase
         $typed = strtr($product->article, ['I' => 'Ш', 'F' => 'А']);
 
         $this->actingAs($head)->get(route('scan', ['code' => $typed]))
-            ->assertOk()->assertSee($product->display_name)->assertSee('раскладка исправлена');
+            ->assertRedirect(route('sale.quick', ['q' => $product->article]));
     }
 
-    /** Код ЧЗ без GS (сканер их теряет) находит конкретную пару и подсвечивает её размер. */
-    public function test_marking_code_finds_the_exact_pair(): void
+    /** Код ЧЗ без GS (сканер их теряет) — продажа сразу с размером этой пары. */
+    public function test_marking_code_opens_sale_of_the_exact_pair(): void
     {
         $head = User::where('role', 'sneaker_head')->firstOrFail();
         [$product, , $big] = $this->makeProduct($head->account_id);
         $code = '0104601234567890'.'21'.'SCANPAIR00001'.self::GS.'91EE10'.self::GS.'92'.str_repeat('Q', 43).'=';
         StockMark::create(['account_id' => $head->account_id, 'warehouse_item_id' => $big->id, 'code' => $code, 'status' => 'in_stock']);
 
-        $response = $this->actingAs($head)->get(route('scan', ['code' => str_replace(self::GS, '', $code)]));
+        $this->actingAs($head)->get(route('scan', ['code' => str_replace(self::GS, '', $code)]))
+            ->assertRedirect(route('sale.quick', ['q' => $product->article, 'item' => $big->id]));
 
-        $response->assertOk()->assertSee($product->display_name)->assertSee('эта пара')->assertSee('на складе');
-        $this->assertSame($big->id, $response->viewData('highlightItemId'));
+        // «только инфо» — карточка с остатками и подсвеченной парой
+        $info = $this->actingAs($head)->get(route('scan', ['code' => str_replace(self::GS, '', $code), 'info' => 1]));
+        $info->assertOk()->assertSee($product->display_name)->assertSee('эта пара')->assertSee('на складе');
     }
 
     public function test_unknown_code_says_not_found(): void

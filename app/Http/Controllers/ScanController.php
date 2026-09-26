@@ -71,6 +71,23 @@ class ScanController extends Controller
                 ->sort(fn ($a, $b) => strnatcmp((string) $a->size, (string) $b->size))->values(),
         ]);
 
+        // Нашли одну модель — сразу в «Быструю продажу» этой модели (скан ценника = «продать эти кроссовки»).
+        // Размер выбираем сами, если он однозначен: пара из кода ЧЗ или единственный размер в наличии.
+        // ?info=1 — показать карточку с остатками вместо продажи.
+        if ($cards->count() === 1 && ! $request->boolean('info')) {
+            $card = $cards->first();
+            $inStock = $card['items']->filter(fn ($i) => (int) $i->available > 0)->values();
+            $itemId = $highlightItemId && $inStock->contains('id', $highlightItemId)
+                ? $highlightItemId
+                : ($inStock->count() === 1 ? $inStock->first()->id : null);
+            $p = $card['product'];
+
+            return redirect()->route('sale.quick', array_filter([
+                'q' => $p->article ?: trim($p->brand.' '.$p->model),
+                'item' => $itemId,
+            ]));
+        }
+
         return view('scan.show', [
             'raw' => $raw,
             'code' => $code,

@@ -300,6 +300,11 @@
         e.preventDefault();
         // сканер штрих-кода: если после фильтра видна одна карточка — выбрать её первый доступный размер
         const visible = cards.filter(c => c.style.display !== 'none');
+        // Ничего не нашлось (код ЧЗ, русская раскладка, GTIN) — пусть разберётся сервер.
+        if (visible.length === 0 && search.value.trim().length >= 4) {
+            location.href = @json(route('scan')) + '?code=' + encodeURIComponent(search.value.trim());
+            return;
+        }
         if (visible.length === 1) {
             const pill = visible[0].querySelector('.qs-size:not(.off)');
             if (pill) select(pill);
