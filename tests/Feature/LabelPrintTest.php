@@ -147,6 +147,58 @@ class LabelPrintTest extends TestCase
         $this->assertStringContainsString('^FNC191', $labels[1]['dm'], 'потерянный GS восстановлен');
     }
 
+    /** Код с фото (GS приходит как <GS>) сохраняется к размеру с настоящими разделителями и печатается один раз. */
+    public function test_photo_code_is_saved_to_the_size_once_and_printed_once(): void
+    {
+        $head = User::where('role', 'sneaker_head')->firstOrFail();
+        [$product, $small] = $this->makeProduct($head->account_id);
+        $full = $this->code('PHOTOPHOTO001');
+        $typed = str_replace(self::GS, '<GS>', $full);
+        $payload = [
+            'type' => 'mark', 'products' => (string) $product->id, 'marks_sent' => '1',
+            'codes' => $typed, 'attach_item' => $small->id, 'attach_save' => '1',
+        ];
+
+        $response = $this->actingAs($head)->post(route('print.labels'), $payload);
+        $response->assertOk()->assertSee('Сохранено кодов к размеру: 1');
+        $this->assertCount(1, $response->viewData('labels'), 'сохранённый код не должен напечататься дважды');
+        $this->assertTrue(StockMark::where('warehouse_item_id', $small->id)->where('code', $full)->exists(), 'в базе код с настоящими GS');
+
+        // Повторная отправка (обновили страницу) — без дублей.
+        $this->actingAs($head)->post(route('print.labels'), $payload)->assertOk();
+        $this->assertSame(1, StockMark::where('code', $full)->count());
+    }
+
+    public function test_sold_code_is_not_printed_again(): void
+    {
+        $head = User::where('role', 'sneaker_head')->firstOrFail();
+        [$product, $small] = $this->makeProduct($head->account_id);
+        $sold = $this->code('SOLDPHOTO0001');
+        StockMark::create(['account_id' => $head->account_id, 'warehouse_item_id' => $small->id, 'code' => $sold, 'status' => 'sold']);
+
+        $response = $this->actingAs($head)->post(route('print.labels'), [
+            'type' => 'mark', 'products' => (string) $product->id, 'marks_sent' => '1', 'codes' => $sold,
+        ]);
+
+        $response->assertOk()->assertSee('уже ПРОДАН');
+        $this->assertCount(0, $response->viewData('labels'));
+    }
+
+    public function test_code_of_another_pair_is_flagged(): void
+    {
+        $head = User::where('role', 'sneaker_head')->firstOrFail();
+        [$product, $small, $big] = $this->makeProduct($head->account_id);
+        $code = $this->code('OTHERPAIR0001');
+        StockMark::create(['account_id' => $head->account_id, 'warehouse_item_id' => $big->id, 'code' => $code, 'status' => 'in_stock']);
+
+        $this->actingAs($head)->post(route('print.labels'), [
+            'type' => 'mark', 'products' => (string) $product->id, 'marks_sent' => '1',
+            'codes' => $code, 'attach_item' => $small->id, 'attach_save' => '1',
+        ])->assertOk()->assertSee('Один код — одна пара');
+
+        $this->assertSame($big->id, StockMark::where('code', $code)->value('warehouse_item_id'), 'чужой код не перепривязывается');
+    }
+
     public function test_short_code_without_crypto_tail_is_flagged(): void
     {
         $head = User::where('role', 'sneaker_head')->firstOrFail();

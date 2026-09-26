@@ -63,6 +63,7 @@
         table.pick { border-collapse: collapse; width: 100%; font-size: 13px; }
         table.pick td, table.pick th { padding: 4px 6px; border-bottom: 1px solid #eef1f5; text-align: left; }
         table.pick input[type=number] { width: 64px; }
+        .photo-box { border: 1px dashed #93c5fd; background: #f8fbff; border-radius: 10px; padding: 10px 12px; margin-top: 10px; }
         .raw-set summary { cursor: pointer; }
         .raw-set label { display: inline-flex; align-items: center; gap: 4px; }
         .saved { background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; border-radius: 8px; padding: 6px 10px; margin-bottom: 8px; }
@@ -253,6 +254,35 @@
                 @elseif($productsCount > 0)
                     <div class="muted" style="margin-bottom:8px">У выбранных моделей нет кодов на складе. Коды добавляются при приёмке (режим «Код маркировки») или вставляются ниже.</div>
                 @endif
+
+                <div class="photo-box">
+                    <div class="row">
+                        <label class="btn btn-primary" style="margin:0">
+                            📷 Код с фото
+                            <input type="file" id="photoInput" accept="image/*" capture="environment" multiple hidden>
+                        </label>
+                        <span class="muted">Сфотографируйте DataMatrix «Честного знака» (можно несколько фото) — код распознается и сразу встанет в печать.</span>
+                    </div>
+                    <div class="muted" id="photoStatus" style="margin-top:6px"></div>
+                    @if($itemsCount > 0)
+                        <div class="row" style="margin-top:8px">
+                            <label>Это код пары: <select name="attach_item" onchange="this.form.submit()">
+                                <option value="">— не указывать —</option>
+                                @foreach($items as $item)
+                                    <option value="{{ $item->id }}" @selected($attachItemId === $item->id)>{{ trim($item->brand.' '.$item->model) }} · р. {{ $item->size }}</option>
+                                @endforeach
+                            </select></label>
+                            <label><input type="checkbox" name="attach_save" value="1" checked> сохранить код к этому размеру</label>
+                        </div>
+                    @endif
+                    @if($marksSaved > 0)
+                        <div class="saved" style="margin-top:8px">💾 Сохранено кодов к размеру: {{ $marksSaved }}.</div>
+                    @endif
+                    @foreach($markWarnings as $warning)
+                        <div class="bad" style="margin-top:6px">⚠ {{ $warning }}</div>
+                    @endforeach
+                    <div class="muted" style="margin-top:6px">Один код — одна пара: печатайте код только для той пары, которой он принадлежит (замена повреждённой этикетки, этикетка на коробку). Проданный код CRM повторно не печатает.</div>
+                </div>
 
                 <div style="margin-top:10px">
                     <b>Вставить коды</b> <span class="muted">— по одному в строке: из файла «Честного знака» (CSV/TXT), от поставщика или сканером</span>
@@ -730,6 +760,91 @@
             btn.disabled = false;
         }
     });
+})();
+</script>
+<script>
+(() => {
+    // Распознавание DataMatrix «Честного знака» с фото — прямо в браузере (zxing-wasm, ничего не уходит на сторонние серверы).
+    const input = document.getElementById('photoInput');
+    if (! input) return;
+    const status = document.getElementById('photoStatus');
+    const form = document.getElementById('printForm');
+    const area = form.querySelector('textarea[name="codes"]');
+    const ZX_VER = '3.1.4';
+    const ZX = 'https://cdn.jsdelivr.net/npm/zxing-wasm@' + ZX_VER + '/dist/iife/reader/index.js';
+    const WASM = 'https://cdn.jsdelivr.net/npm/zxing-wasm@' + ZX_VER + '/dist/reader/zxing_reader.wasm';
+    let ready = null;
+    const loadZx = () => ready || (ready = new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = ZX;
+        s.onload = () => {
+            try {
+                ZXingWASM.prepareZXingModule({
+                    overrides: { locateFile: (path, prefix) => path.endsWith('.wasm') ? WASM : prefix + path },
+                    fireImmediately: true,
+                });
+                resolve();
+            } catch (e) { reject(e); }
+        };
+        s.onerror = () => { ready = null; reject(new Error('не загрузился распознаватель')); };
+        document.head.appendChild(s);
+    }));
+
+    // Большие фото с телефона уменьшаем до ~2000 px — быстрее и надёжнее.
+    const toImageData = (file) => new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+            const k = Math.min(1, 2000 / Math.max(img.naturalWidth, img.naturalHeight));
+            const c = document.createElement('canvas');
+            c.width = Math.round(img.naturalWidth * k);
+            c.height = Math.round(img.naturalHeight * k);
+            c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+            URL.revokeObjectURL(url);
+            resolve(c.getContext('2d').getImageData(0, 0, c.width, c.height));
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('не открылось фото')); };
+        img.src = url;
+    });
+
+    const decode = async (file) => {
+        const opts = { formats: ['DataMatrix'], tryHarder: true, tryRotate: true, tryInvert: true, tryDownscale: true, textMode: 'Plain', maxNumberOfSymbols: 20 };
+        let res = await ZXingWASM.readBarcodes(await toImageData(file), opts);
+        if (! res.some((r) => r.isValid)) res = await ZXingWASM.readBarcodes(file, opts);   // вторая попытка — оригинал без уменьшения
+        return res.filter((r) => r.isValid).map((r) => r.text);
+    };
+
+    input.addEventListener('change', async () => {
+        const files = [...input.files];
+        if (! files.length) return;
+        status.textContent = 'Распознаю ' + files.length + ' фото…';
+        try {
+            await loadZx();
+            const found = [];
+            let failed = 0;
+            for (const f of files) {
+                const texts = await decode(f);
+                const codes = texts.map((t) => t.replace(/^\]d2/, '').replace(/^\x1D/, '')).filter((t) => /^01\d{14}21/.test(t));
+                if (! codes.length) failed++;
+                found.push(...codes);
+            }
+            if (! found.length) {
+                status.textContent = 'Код не найден. Сфотографируйте ближе и ровнее, без бликов, чтобы квадрат DataMatrix был целиком в кадре.';
+                return;
+            }
+            // GS показываем как <GS> — CRM превратит обратно в настоящий разделитель.
+            const have = new Set(area.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean));
+            found.map((c) => c.split('\x1D').join('<GS>')).forEach((c) => have.add(c));
+            area.value = [...have].join('\n');
+            status.textContent = 'Распознано кодов: ' + found.length + (failed ? ' (на ' + failed + ' фото код не найден)' : '') + '. Обновляю печать…';
+            form.submit();
+        } catch (e) {
+            status.textContent = 'Не получилось распознать: ' + (e && e.message ? e.message : e);
+        } finally {
+            input.value = '';
+        }
+    });
+    window.__photoDecode = { loadZx: loadZx, decode: decode };
 })();
 </script>
 </body>

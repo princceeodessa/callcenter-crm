@@ -95,6 +95,9 @@ class LabelPrintController extends Controller
         $selectedMarks = collect();
         $pasted = [];
         $pastedInvalid = 0;
+        $marksSaved = 0;
+        $warnings = [];
+        $attachItem = null;
 
         if ($type === 'mark') {
             // Коды со склада (по выбранным товарам) + вставленные вручную / из файла ЧЗ.
@@ -106,14 +109,12 @@ class LabelPrintController extends Controller
                 ->get();
             $useAllMarks = ! $request->has('marks_sent');
 
-            foreach ($marks as $mark) {
-                if (! $useAllMarks && ! $selectedMarks->contains($mark->id)) {
-                    continue;
-                }
-                $item = $items->firstWhere('id', $mark->warehouse_item_id);
-                $labels->push($this->markLabel(MarkCode::normalize($mark->code), $item, $products));
-            }
+            // Размер, к которому относятся вставленные / распознанные с фото коды.
+            $attachItem = $items->firstWhere('id', (int) $request->input('attach_item'));
 
+            // Коды со вставки/фото: разбираем, при желании сохраняем к размеру (до вывода списка склада,
+            // чтобы сохранённые сразу попали в него и не напечатались дважды).
+            $pastedCodes = [];
             foreach (preg_split('~\R~u', (string) $request->input('codes', '')) as $line) {
                 $line = trim($line);
                 if ($line === '') {
@@ -125,8 +126,65 @@ class LabelPrintController extends Controller
 
                     continue;
                 }
+                $pastedCodes[$code] = true;   // один и тот же код — одна этикетка
+            }
+            $pastedCodes = array_keys($pastedCodes);
+
+            // Что CRM уже знает об этих кодах: продан / числится за другой парой.
+            $known = $pastedCodes === [] ? collect() : StockMark::where('account_id', $accId)
+                ->whereIn('code', $pastedCodes)->with('item:id,brand,model,size')->get()->keyBy('code');
+
+            if ($attachItem && $request->isMethod('post') && $request->boolean('attach_save')) {
+                foreach ($pastedCodes as $code) {
+                    if ($known->has($code)) {
+                        continue;
+                    }
+                    $known[$code] = StockMark::create([
+                        'account_id' => $accId,
+                        'warehouse_item_id' => $attachItem->id,
+                        'code' => $code,
+                        'status' => 'in_stock',
+                    ]);
+                    $marksSaved++;
+                }
+                if ($marksSaved > 0) {
+                    $marks = StockMark::where('account_id', $accId)
+                        ->whereIn('warehouse_item_id', $items->pluck('id'))
+                        ->where('status', 'in_stock')
+                        ->orderBy('warehouse_item_id')->orderBy('id')
+                        ->get();
+                }
+            }
+
+            $printed = [];
+            foreach ($marks as $mark) {
+                if (! $useAllMarks && ! $selectedMarks->contains($mark->id) && ! in_array(MarkCode::normalize($mark->code), $pastedCodes, true)) {
+                    continue;
+                }
+                $code = MarkCode::normalize($mark->code);
+                $item = $items->firstWhere('id', $mark->warehouse_item_id);
+                $labels->push($this->markLabel($code, $item, $products));
+                $printed[$code] = true;
+            }
+
+            foreach ($pastedCodes as $code) {
                 $pasted[] = $code;
-                $labels->push($this->markLabel($code, null, $products));
+                $mark = $known->get($code);
+                if ($mark && $mark->status === 'sold') {
+                    $warnings[] = 'Код (21) '.(MarkCode::parse($code)['serial'] ?? '').' уже ПРОДАН — повторно наносить его нельзя, не печатаю.';
+
+                    continue;
+                }
+                if ($mark && $attachItem && $mark->warehouse_item_id && $mark->warehouse_item_id !== $attachItem->id) {
+                    $other = $mark->item ? trim($mark->item->brand.' '.$mark->item->model).' р. '.$mark->item->size : 'другой позиции';
+                    $warnings[] = 'Код (21) '.(MarkCode::parse($code)['serial'] ?? '').' уже числится за «'.$other.'». Один код — одна пара.';
+                }
+                if (isset($printed[$code])) {
+                    continue;
+                }
+                $item = $mark?->item ? $items->firstWhere('id', $mark->warehouse_item_id) ?? $mark->item : $attachItem;
+                $labels->push($this->markLabel($code, $item, $products));
+                $printed[$code] = true;
             }
         } else {
             foreach ($items as $item) {
@@ -175,7 +233,11 @@ class LabelPrintController extends Controller
             'labels' => $labels,
             'truncated' => $truncated,
             'maxLabels' => self::MAX_LABELS,
-            'pastedCodes' => implode("\n", $pasted),
+            // GS в поле показываем как <GS>: невидимый символ в textarea легко теряется при копировании.
+            'pastedCodes' => str_replace(MarkCode::GS, '<GS>', implode("\n", $pasted)),
+            'marksSaved' => $marksSaved,
+            'markWarnings' => $warnings,
+            'attachItemId' => $attachItem?->id,
             'pastedInvalid' => $pastedInvalid,
             'productIdsCsv' => $products->pluck('id')->implode(','),
             'isHead' => $isHead,
