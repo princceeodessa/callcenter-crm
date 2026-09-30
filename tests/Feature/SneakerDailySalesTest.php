@@ -92,6 +92,62 @@ class SneakerDailySalesTest extends TestCase
         }
     }
 
+    /** Владелец (он смотрит только отчёты) видит продажи за день с прибылью, но без кнопок продажи и сделок. */
+    public function test_owner_sees_day_sales_with_profit_but_no_actions(): void
+    {
+        $head = User::where('role', 'sneaker_head')->firstOrFail();
+        $owner = User::create([
+            'account_id' => $head->account_id,
+            'name' => 'Test Owner Day',
+            'email' => 'owner_day_test_'.uniqid(),
+            'password' => \Illuminate\Support\Facades\Hash::make('password'),
+            'role' => 'sneaker_owner',
+            'is_active' => true,
+        ]);
+        $item = $this->makeItem($head->account_id, cost: 6000, price: 10000);
+        $deal = $this->sell($head, $item, 1);
+
+        $this->actingAs($owner)->get(route('sale.day'))
+            ->assertOk()
+            ->assertSee($item->model)
+            ->assertSee('Прибыль')
+            ->assertSee('4 000 ₽')
+            ->assertSee('🗓 Продажи за день')                                   // кнопка в меню владельца
+            ->assertDontSee('href="'.route('sale.quick').'"', false)            // «Продать» — не для владельца
+            ->assertDontSee(route('deals.show', $deal->id), false);             // и ссылок на сделки нет
+
+        // Остальные рабочие страницы владельцу по-прежнему закрыты.
+        $this->actingAs($owner)->get(route('sale.quick'))->assertForbidden();
+        $this->actingAs($owner)->get(route('warehouse.index'))->assertForbidden();
+    }
+
+    /** Смотрим вчера — «сегодня» из полосы дней не пропадает. */
+    public function test_strip_keeps_today_when_looking_at_an_earlier_day(): void
+    {
+        $head = User::where('role', 'sneaker_head')->firstOrFail();
+
+        $strip = $this->actingAs($head)->get(route('sale.day', ['date' => now()->subDay()->toDateString()]))
+            ->assertOk()->viewData('strip');
+
+        $this->assertSame(now()->toDateString(), $strip->last()['date'], 'полоса заканчивается сегодня');
+        $this->assertSame(now()->subDay()->toDateString(), $strip->firstWhere('active', true)['date']);
+        $this->assertCount(14, $strip);
+    }
+
+    /** Старый день (месяц назад) тоже виден в полосе, с неделей после него. */
+    public function test_strip_moves_to_an_old_day(): void
+    {
+        $head = User::where('role', 'sneaker_head')->firstOrFail();
+        $old = now()->subDays(30)->toDateString();
+
+        $strip = $this->actingAs($head)->get(route('sale.day', ['date' => $old]))->assertOk()->viewData('strip');
+
+        $this->assertSame($old, $strip->firstWhere('active', true)['date']);
+        $this->assertSame(now()->subDays(24)->toDateString(), $strip->last()['date']);
+        $active = $strip->firstWhere('active', true);
+        $this->assertFalse($active['mobile_hidden'], 'на телефоне выбранный день виден');
+    }
+
     public function test_ceiling_users_cannot_open_the_page(): void
     {
         $ceiling = User::where('role', 'admin')->firstOrFail();

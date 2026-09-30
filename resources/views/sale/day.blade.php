@@ -15,6 +15,7 @@
     .sd-day.active{ color:var(--crm-text); font-weight:700; }
     .sd-day .t{ font-size:.66rem; line-height:1.1; margin-top:2px; text-align:center; white-space:nowrap; }
     .sd-day.weekend .t{ color:#f97316; }
+    .sd-day.today .t{ color:#059669; font-weight:700; }
     @media (max-width: 575.98px){ .sd-day.sd-old{ display:none; } }
     .sd-hours{ display:flex; gap:3px; align-items:flex-end; height:110px; }
     .sd-hour{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
@@ -49,7 +50,6 @@
     $returnsUnits = (int) $returns->sum(fn ($r) => (int) $r->sold_quantity);
     $salesCount = $sales->count();
     $returnsCount = $returns->count();
-    $stripOldBefore = $strip->count() - 7; // на телефоне показываем только последнюю неделю
     $profitKnown = $cur['count'] > $cur['no_cost'];
     $marginLabel = $cur['margin'] !== null ? ' · маржа '.$cur['margin'].'%' : '';
     $returnsNote = $returnsCount > 0 ? $returnsUnits.' пар · '.$money($returnsAmount).' ₽' : 'нет';
@@ -66,17 +66,19 @@
             </div>
         </div>
         <div class="d-flex gap-2 align-items-center flex-wrap">
-            <a class="btn btn-sm btn-outline-secondary" href="{{ route('sale.day', ['date' => $prevDate]) }}" title="Предыдущий день">← Вчера</a>
+            <a class="btn btn-sm btn-outline-secondary" href="{{ route('sale.day', ['date' => $prevDate]) }}" title="На день назад">← Пред. день</a>
             <form method="GET" action="{{ route('sale.day') }}" class="d-flex gap-2 align-items-center">
                 <input type="date" name="date" value="{{ $dateValue }}" max="{{ now()->toDateString() }}" class="form-control form-control-sm" onchange="this.form.submit()">
             </form>
             @if($nextDate)
-                <a class="btn btn-sm btn-outline-secondary" href="{{ route('sale.day', ['date' => $nextDate]) }}" title="Следующий день">Завтра →</a>
+                <a class="btn btn-sm btn-outline-secondary" href="{{ route('sale.day', ['date' => $nextDate]) }}" title="На день вперёд">След. день →</a>
             @endif
             @if(! $isToday)
                 <a class="btn btn-sm btn-primary" href="{{ route('sale.day') }}">Сегодня</a>
             @endif
-            <a class="btn btn-sm btn-success" href="{{ route('sale.quick') }}">💵 Продать</a>
+            @if(! $isOwner)
+                <a class="btn btn-sm btn-success" href="{{ route('sale.quick') }}">💵 Продать</a>
+            @endif
         </div>
     </div>
 
@@ -110,7 +112,7 @@
                 <div class="s">вчера {{ $vsYesterday['count'] ? $money($vsYesterday['avg']).' ₽' : '—' }}</div>
             </div>
         </div>
-        @if($isHead)
+        @if($showProfit)
             <div class="col-6 col-lg">
                 <div class="sd-kpi">
                     <div class="l">Прибыль{{ $marginLabel }}</div>
@@ -142,11 +144,11 @@
                 @php
                     $h = $s['revenue'] > 0 ? max(4, (int) round($s['revenue'] / $stripMax * 60)) : 2;
                     $tip = $s['label'].': '.$money($s['revenue']).' ₽, '.$s['units'].' пар';
-                    $cls = 'sd-day'.($s['active'] ? ' active' : '').($s['weekend'] ? ' weekend' : '').($idx < $stripOldBefore ? ' sd-old' : '');
+                    $cls = 'sd-day'.($s['active'] ? ' active' : '').($s['weekend'] ? ' weekend' : '').($s['today'] ? ' today' : '').($s['mobile_hidden'] ? ' sd-old' : '');
                 @endphp
                 <a class="{{ $cls }}" href="{{ route('sale.day', ['date' => $s['date']]) }}" title="{{ $tip }}">
                     <div class="b" style="height: {{ $h }}px"></div>
-                    <div class="t">{{ $s['label'] }}<br>{{ $s['weekday'] }}</div>
+                    <div class="t">{{ $s['today'] ? 'сегодня' : $s['label'] }}<br>{{ $s['weekday'] }}</div>
                 </a>
             @endforeach
         </div>
@@ -204,7 +206,7 @@
         @if($salesCount === 0)
             <div class="text-muted py-3 text-center">
                 За этот день продаж нет.
-                @if($isToday)<a href="{{ route('sale.quick') }}">Оформить продажу →</a>@endif
+                @if($isToday && ! $isOwner)<a href="{{ route('sale.quick') }}">Оформить продажу →</a>@endif
             </div>
         @else
             <div class="table-responsive">
@@ -216,7 +218,7 @@
                             <th class="text-center">Размер</th>
                             <th class="text-end">Пар</th>
                             <th class="text-end">Сумма</th>
-                            @if($isHead)
+                            @if($showProfit)
                                 <th class="text-end">Себест.</th>
                                 <th class="text-end">Прибыль</th>
                             @endif
@@ -242,7 +244,7 @@
                                 <td class="text-center">{{ $item->size ?? '—' }}</td>
                                 <td class="text-end">{{ (int) $deal->sold_quantity }}</td>
                                 <td class="text-end fw-semibold text-nowrap">{{ $deal->amount !== null ? $money($deal->amount).' ₽' : '—' }}</td>
-                                @if($isHead)
+                                @if($showProfit)
                                     <td class="text-end text-muted text-nowrap">{{ $unitCost !== null ? $money($unitCost * (int) $deal->sold_quantity).' ₽' : '—' }}</td>
                                     <td class="text-end text-nowrap {{ $profit === null ? 'text-muted' : ($profit >= 0 ? 'text-success' : 'text-danger') }}">{{ $profit !== null ? $money($profit).' ₽' : '—' }}</td>
                                 @endif
@@ -250,8 +252,10 @@
                                 <td class="small">{{ $deal->manual_source ?: '—' }}</td>
                                 <td class="small">{{ $clientLabel !== '' ? $clientLabel : '—' }}</td>
                                 <td class="text-end text-nowrap">
-                                    <a href="{{ route('deals.receipt', $deal->id) }}" target="_blank" title="Чек" class="text-decoration-none">🖨️</a>
-                                    <a href="{{ route('deals.show', $deal->id) }}" title="Открыть сделку" class="text-decoration-none ms-1">↗</a>
+                                    @if(! $isOwner)
+                                        <a href="{{ route('deals.receipt', $deal->id) }}" target="_blank" title="Чек" class="text-decoration-none">🖨️</a>
+                                        <a href="{{ route('deals.show', $deal->id) }}" title="Открыть сделку" class="text-decoration-none ms-1">↗</a>
+                                    @endif
                                 </td>
                             </tr>
                         @endforeach
@@ -261,7 +265,7 @@
                             <td colspan="3">Итого</td>
                             <td class="text-end">{{ $cur['units'] }}</td>
                             <td class="text-end text-nowrap">{{ $money($cur['revenue']) }} ₽</td>
-                            @if($isHead)
+                            @if($showProfit)
                                 <td></td>
                                 <td class="text-end text-nowrap {{ $cur['profit'] >= 0 ? 'text-success' : 'text-danger' }}">{{ $money($cur['profit']) }} ₽</td>
                             @endif
@@ -289,7 +293,7 @@
                             <td>{{ $rName.$rSize }}</td>
                             <td class="text-end">{{ (int) $r->sold_quantity }} пар</td>
                             <td class="text-end">{{ $r->amount !== null ? $money($r->amount).' ₽' : '—' }}</td>
-                            <td class="text-end"><a href="{{ route('deals.show', $r->id) }}">↗</a></td>
+                            <td class="text-end">@if(! $isOwner)<a href="{{ route('deals.show', $r->id) }}">↗</a>@endif</td>
                         </tr>
                     @endforeach
                 </tbody>

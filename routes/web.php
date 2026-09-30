@@ -165,7 +165,10 @@ Route::middleware('auth')->group(function () {
         // Быстрая продажа (один экран для продавца)
         Route::get('/sale', [SneakerSaleController::class, 'form'])->name('sale.quick');
         Route::post('/sale', [SneakerSaleController::class, 'store'])->name('sale.quick.store');
-        Route::get('/sale/day', [SneakerDailySalesController::class, 'index'])->name('sale.day');
+        // «Продажи за день» — и владельцу (он видит только отчёты), поэтому не 'purchases', а все роли кроссовок
+        Route::get('/sale/day', [SneakerDailySalesController::class, 'index'])
+            ->withoutMiddleware('purchases')->middleware(\App\Http\Middleware\RequireSneakerAccess::class)
+            ->name('sale.day');
         // Печать на термопринтер: ценники, этикетки, «Честный знак»
         Route::match(['get', 'post'], '/print/labels', [LabelPrintController::class, 'index'])->name('print.labels');
         Route::get('/print/driver', [LabelPrintController::class, 'driver'])->name('print.driver');

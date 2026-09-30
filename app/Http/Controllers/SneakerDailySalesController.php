@@ -25,7 +25,10 @@ class SneakerDailySalesController extends Controller
     {
         $user = Auth::user();
         $accId = $user->account_id;
-        $isHead = $user->role === 'sneaker_head';
+        // Прибыль и себестоимость — руководителю и владельцу; продавцу нет.
+        $showProfit = in_array($user->role, ['sneaker_head', 'sneaker_owner'], true);
+        // Владелец только смотрит: без «Продать», чеков и ссылок на сделки (туда у него нет доступа).
+        $isOwner = $user->role === 'sneaker_owner';
 
         $today = Carbon::today();
         try {
@@ -78,12 +81,18 @@ class SneakerDailySalesController extends Controller
             ->map(fn (Collection $g, string $name) => ['name' => $name] + $this->metrics($g))
             ->sortByDesc('revenue')->values();
 
-        // Полоса последних дней — одним запросом, для перехода по дням кликом.
-        $stripStart = $day->copy()->subDays(self::STRIP_DAYS - 1)->startOfDay();
+        // Полоса дней — одним запросом, для перехода по дням кликом.
+        // Всегда заканчивается СЕГОДНЯ, чтобы при просмотре прошлого дня «сегодня» и соседние дни не пропадали.
+        // Если выбран день старше двух недель — окно сдвигается к нему (с неделей после него).
+        $stripEnd = $today->copy();
+        if ($day->lt($today->copy()->subDays(self::STRIP_DAYS - 1))) {
+            $stripEnd = $day->copy()->addDays(6);
+        }
+        $stripStart = $stripEnd->copy()->subDays(self::STRIP_DAYS - 1)->startOfDay();
         $stripAgg = Deal::query()
             ->where('account_id', $accId)
             ->whereNotNull('stock_deducted_at')
-            ->whereBetween('stock_deducted_at', [$stripStart, $day->copy()->endOfDay()])
+            ->whereBetween('stock_deducted_at', [$stripStart, $stripEnd->copy()->endOfDay()])
             ->selectRaw('DATE(stock_deducted_at) d, COALESCE(SUM(sold_quantity),0) units, COALESCE(SUM(amount),0) revenue')
             ->groupBy('d')
             ->get()->keyBy('d');
@@ -99,8 +108,13 @@ class SneakerDailySalesController extends Controller
                 'revenue' => (float) ($row->revenue ?? 0),
                 'active' => $d->isSameDay($day),
                 'weekend' => $d->isWeekend(),
+                'today' => $d->isToday(),
             ];
         });
+        // На телефоне помещается неделя: показываем 7 дней вокруг выбранного.
+        $activeIdx = (int) $strip->search(fn ($s) => $s['active']);
+        $mobileFrom = max(0, min(self::STRIP_DAYS - 7, $activeIdx - 3));
+        $strip = $strip->map(fn ($s, $i) => $s + ['mobile_hidden' => $i < $mobileFrom || $i > $mobileFrom + 6]);
         $stripMax = max(1, (float) $strip->max('revenue'));
 
         return view('sale.day', [
@@ -119,7 +133,8 @@ class SneakerDailySalesController extends Controller
             'bySource' => $bySource,
             'strip' => $strip,
             'stripMax' => $stripMax,
-            'isHead' => $isHead,
+            'showProfit' => $showProfit,
+            'isOwner' => $isOwner,
         ]);
     }
 

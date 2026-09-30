@@ -297,6 +297,7 @@
             @auth
                 @if($isSneakerOwner)
                     <a class="btn btn-sm btn-success fw-semibold" href="{{ route('owner.dashboard') }}">📊 Сводка</a>
+                    <a class="btn btn-sm btn-outline-light" href="{{ route('sale.day') }}" title="Продажи за день">🗓 Продажи за день</a>
                 @endif
                 @if(!$isMeasurer && !$isConstructor && !$isDocumentsOperator && !$isSneaker && !$isSneakerOwner)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('deals.kanban') }}">Канбан</a>
