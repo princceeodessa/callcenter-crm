@@ -92,7 +92,7 @@ class Deal extends Model
         'product_category',
         'readiness_status','is_unread','has_script_deviation',
         'closed_at','closed_result','closed_reason','closed_by_user_id',
-        'warehouse_item_id','sold_quantity','stock_deducted_at','sold_unit_cost','stock_reserved_at',
+        'warehouse_item_id','sold_quantity','stock_deducted_at','sold_unit_cost','stock_reserved_at','stock_linked_at','stock_link_skipped_at',
         'returned_at','manual_source',
     ];
 
@@ -103,6 +103,8 @@ class Deal extends Model
         'title_is_custom' => 'boolean',
         'sold_quantity' => 'integer',
         'stock_deducted_at' => 'datetime',
+        'stock_linked_at' => 'datetime',
+        'stock_link_skipped_at' => 'datetime',
         'sold_unit_cost' => 'decimal:2',
         'stock_reserved_at' => 'datetime',
         'returned_at' => 'datetime',
@@ -112,6 +114,18 @@ class Deal extends Model
         'is_ready',
         'missing_fields',
     ];
+
+    /**
+     * Продажи, отмеченные «списано со склада», но без пары со склада (загрузка истории 07.07.2026):
+     * остаток по ним не уменьшился. Разбираются на складе → «Продажи без списания».
+     */
+    public function scopeSoldWithoutStock(Builder $query): Builder
+    {
+        return $query->whereNotNull('stock_deducted_at')
+            ->whereNull('warehouse_item_id')
+            ->whereNull('stock_link_skipped_at')
+            ->whereNull('returned_at');
+    }
 
     public function scopeWithClientAttentionMetrics(Builder $query): Builder
     {

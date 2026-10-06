@@ -122,6 +122,63 @@ class WarehouseService
         });
     }
 
+    /**
+     * Продажа уже отмечена «списано» (stock_deducted_at), но к складу не привязана — так была
+     * загружена история продаж 07.07.2026. Привязываем пару и списываем её по-настоящему.
+     * Себестоимость продажи (sold_unit_cost) из загрузки сохраняем: это цена именно проданной пары.
+     */
+    public function deductLegacySale(Deal $deal, WarehouseItem $item, ?int $qty = null): void
+    {
+        DB::transaction(function () use ($deal, $item, $qty) {
+            $deal = Deal::whereKey($deal->id)->lockForUpdate()->firstOrFail();
+            $item = WarehouseItem::whereKey($item->id)->lockForUpdate()->firstOrFail();
+            if ($deal->warehouse_item_id) {
+                return;   // уже привязана — повторный клик ничего не списывает
+            }
+            $qty = max(1, (int) ($qty ?? $deal->sold_quantity ?? 1));
+
+            $deal->forceFill([
+                'warehouse_item_id' => $item->id,
+                'sold_quantity' => $qty,
+                'sold_unit_cost' => $deal->sold_unit_cost ?? $item->avg_cost,
+                'stock_deducted_at' => $deal->stock_deducted_at ?? now(),
+                'stock_linked_at' => now(),
+                'stock_link_skipped_at' => null,
+            ])->save();
+
+            $this->changeQty($item, -$qty, 'out', "Списание продажи · сделка #{$deal->id} (продажа была внесена без склада)", 'deal', $deal->id);
+        });
+    }
+
+    /** Отменить привязку, сделанную при сверке: пара возвращается на склад, продажа снова «без списания». */
+    public function unlinkLegacySale(Deal $deal): void
+    {
+        DB::transaction(function () use ($deal) {
+            $deal = Deal::whereKey($deal->id)->lockForUpdate()->firstOrFail();
+            if (! $deal->warehouse_item_id || ! $deal->stock_linked_at) {
+                return;
+            }
+            $item = WarehouseItem::whereKey($deal->warehouse_item_id)->lockForUpdate()->first();
+            if ($item) {
+                $qty = max(1, (int) $deal->sold_quantity);
+                $this->changeQty($item, $qty, 'out_reversal', "Отмена списания при сверке · сделка #{$deal->id}", 'deal', $deal->id);
+            }
+            $deal->forceFill(['warehouse_item_id' => null, 'stock_linked_at' => null])->save();
+        });
+    }
+
+    /** Обнулить отрицательный остаток (ошибка учёта: пар меньше нуля не бывает). */
+    public function zeroNegative(WarehouseItem $item, string $note): void
+    {
+        DB::transaction(function () use ($item, $note) {
+            $item = WarehouseItem::whereKey($item->id)->lockForUpdate()->firstOrFail();
+            if ((int) $item->quantity >= 0) {
+                return;
+            }
+            $this->changeQty($item, -(int) $item->quantity, 'adjust', $note, 'manual', null);
+        });
+    }
+
     /** Полный откат резерва и списания сделки (для переназначения товара). */
     public function reverseDealDeduction(Deal $deal): void
     {
@@ -309,17 +366,18 @@ class WarehouseService
             $body .= ' · прибыль '.number_format($profit, 0, '', ' ').' ₽'.($margin !== null ? ' ('.$margin.'%)' : '');
         }
         foreach ($heads as $uid) {
-            UserNotification::create([
-                'account_id' => $deal->account_id,
-                'user_id' => $uid,
-                'type' => 'sneaker_sale',
-                'title' => 'Новая продажа кроссовок',
-                'body' => $body,
-                'source_type' => 'deal',
-                'source_id' => $deal->id,
-                'payload' => ['deal_id' => $deal->id],
-                'is_read' => false,
-            ]);
+            // По сделке одно уведомление (уникальный ключ user+type+source): при смене товара у проданной
+            // сделки — обновить его, а не создавать второе (create падал 500 посреди списания).
+            UserNotification::updateOrCreate(
+                ['user_id' => $uid, 'type' => 'sneaker_sale', 'source_type' => 'deal', 'source_id' => $deal->id],
+                [
+                    'account_id' => $deal->account_id,
+                    'title' => 'Новая продажа кроссовок',
+                    'body' => $body,
+                    'payload' => ['deal_id' => $deal->id],
+                    'is_read' => false,
+                ]
+            );
         }
     }
 

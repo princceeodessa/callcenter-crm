@@ -10,6 +10,7 @@ use App\Http\Controllers\LabelPrintController;
 use App\Http\Controllers\ScanController;
 use App\Http\Controllers\SneakerDailySalesController;
 use App\Http\Controllers\SneakerSaleController;
+use App\Http\Controllers\UnlinkedSalesController;
 use App\Http\Controllers\WarehouseAnalyticsController;
 use App\Http\Controllers\WarehouseController;
 use App\Http\Controllers\SneakerReportController;
@@ -182,6 +183,12 @@ Route::middleware('auth')->group(function () {
         Route::get('/warehouse/consignments', [WarehouseController::class, 'consignmentsIndex'])->name('warehouse.consignments');
         Route::post('/warehouse/items/{item}/consign', [WarehouseController::class, 'giveConsignment'])->name('warehouse.item.consign');
         Route::post('/warehouse/consignments/{consignment}/resolve', [WarehouseController::class, 'resolveConsignment'])->name('warehouse.consignment.resolve');
+        // Сверка: продажи, отмеченные «списано», но без пары со склада (загрузка истории 07.07) + отрицательные остатки
+        Route::get('/warehouse/unlinked-sales', [UnlinkedSalesController::class, 'index'])->name('warehouse.unlinked');
+        Route::post('/warehouse/unlinked-sales/{deal}/link', [UnlinkedSalesController::class, 'link'])->name('warehouse.unlinked.link');
+        Route::post('/warehouse/unlinked-sales/{deal}/skip', [UnlinkedSalesController::class, 'skip'])->name('warehouse.unlinked.skip');
+        Route::post('/warehouse/unlinked-sales/{deal}/undo', [UnlinkedSalesController::class, 'undo'])->name('warehouse.unlinked.undo');
+        Route::post('/warehouse/items/{item}/zero', [UnlinkedSalesController::class, 'zero'])->name('warehouse.item.zero');
 
         // Отчёт по кроссовкам (продажи/прибыль/склад)
         // Сводная панель владельца (роль sneaker_owner; head — для контроля)

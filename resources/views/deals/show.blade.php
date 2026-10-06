@@ -506,6 +506,12 @@
         <div class="form-text mt-1">
           @if($deal->returned_at)
             <span class="text-info-emphasis">Возврат оформлен {{ $deal->returned_at->format('d.m.Y H:i') }} — пары на складе.</span>
+          @elseif($deal->stock_deducted_at && ! $deal->warehouse_item_id && ! $deal->stock_link_skipped_at)
+            <span class="text-danger fw-semibold">⚠ Продано {{ $deal->stock_deducted_at->format('d.m.Y H:i') }}, но пара со склада НЕ списана — продажа внесена без размера.
+              Выберите товар и нажмите «Сохранить»: пара спишется, дата продажи не изменится.</span>
+            <a href="{{ route('warehouse.unlinked') }}#sale-{{ $deal->id }}">Все такие продажи →</a>
+          @elseif($deal->stock_deducted_at && ! $deal->warehouse_item_id)
+            <span class="text-muted">Продано {{ $deal->stock_deducted_at->format('d.m.Y H:i') }}. Со склада не списывали — при сверке отмечено «списывать не нужно».</span>
           @elseif($deal->stock_deducted_at)
             <span class="text-success">Списано со склада {{ $deal->stock_deducted_at->format('d.m.Y H:i') }}.</span>
           @elseif($deal->stock_reserved_at)
@@ -526,10 +532,12 @@
         @if($deal->stock_deducted_at && ! $deal->returned_at)
           <div class="mt-2 d-flex gap-2 flex-wrap">
             <a class="btn btn-sm btn-outline-primary" href="{{ route('deals.receipt', $deal) }}" target="_blank">🖨️ Печать чека</a>
+            @if($deal->warehouse_item_id)
             <form method="POST" action="{{ route('deals.return', $deal) }}" onsubmit="return confirm('Оформить возврат? Пары вернутся на склад, продажа отменится.')">
               @csrf
               <button class="btn btn-sm btn-outline-info">Оформить возврат</button>
             </form>
+            @endif
           </div>
         @endif
 

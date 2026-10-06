@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Deal;
 use App\Models\Purchase;
 use App\Models\StockMark;
 use App\Models\StockMovement;
@@ -166,12 +167,16 @@ class WarehouseController extends Controller
             ->whereNull('stocked_at')
             ->sum('quantity');
 
+        // Сверка: продажи без списания со склада и отрицательные остатки — кнопка «⚠» в шапке.
+        $unlinkedSalesCount = Deal::where('account_id', $user->account_id)->soldWithoutStock()->count();
+        $negativeCount = WarehouseItem::where('account_id', $user->account_id)->where('quantity', '<', 0)->count();
+
         return view('warehouse.index', compact(
             'productsPage', 'productsCount', 'availableSum', 'lowCount', 'lowFilter',
             'movements', 'q', 'totalUnits', 'stockValue', 'stockCostValue', 'isHead',
             'categoryOptions', 'genderOptions', 'seasonOptions',
             'filterCategory', 'filterGender', 'filterSeason', 'filterTag', 'allTags',
-            'inTransitPairs'
+            'inTransitPairs', 'unlinkedSalesCount', 'negativeCount'
         ));
     }
 

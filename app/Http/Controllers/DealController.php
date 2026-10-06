@@ -965,6 +965,32 @@ class DealController extends Controller
                 ->first();
         }
 
+        // Продажа из загрузки истории (отмечена «списано», но без пары или с парой, выбранной при сверке):
+        // выбор пары — это и есть списание. Дата продажи и закупочная цена из файла не меняются.
+        // Обычный путь тут не годится: reverseDealDeduction без товара ничего не откатит,
+        // а syncDealStock решит, что списание уже было.
+        if ($deal->stock_deducted_at && ! $deal->returned_at && (! $deal->warehouse_item_id || $deal->stock_linked_at)) {
+            $qty = (int) ($data['sold_quantity'] ?? 1);
+            $hadItem = (bool) $deal->warehouse_item_id;
+            $changed = (int) $deal->warehouse_item_id !== (int) $item?->id || (int) $deal->sold_quantity !== $qty;
+            if ($changed && $hadItem) {
+                $warehouse->unlinkLegacySale($deal);
+            }
+            if ($changed && $item) {
+                $warehouse->deductLegacySale($deal->refresh(), $item, $qty);
+            }
+            $deal->refresh()->forceFill(['manual_source' => $data['manual_source'] ?? null])->save();
+
+            $msg = match (true) {
+                $item && $changed => 'Пара привязана к продаже и списана со склада.',
+                $item !== null => 'Сохранено.',
+                $hadItem => 'Пара отвязана и возвращена на склад — продажа снова в списке «Продажи без списания».',
+                default => 'Сохранено. Пара со склада не выбрана — остаток по этой продаже не списан.',
+            };
+
+            return back()->with('status', $msg);
+        }
+
         // Если уже было резерв/списание — откатить прежнюю позицию перед переназначением.
         if ($deal->stock_deducted_at || $deal->stock_reserved_at) {
             $warehouse->reverseDealDeduction($deal);

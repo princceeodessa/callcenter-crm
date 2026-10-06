@@ -307,6 +307,11 @@
         <div class="text-muted small">кроссовки · {{ $productsCount }} товаров</div>
     </div>
     <div class="wh-actions mb-0">
+        @if(($unlinkedSalesCount ?? 0) > 0)
+            <a href="{{ route('warehouse.unlinked') }}" style="color:#dc2626; border-color:#dc2626; font-weight:600">⚠ Продажи без списания · {{ $unlinkedSalesCount }}</a>
+        @elseif(($negativeCount ?? 0) > 0)
+            <a href="{{ route('warehouse.unlinked') }}" style="color:#dc2626; border-color:#dc2626; font-weight:600">⚠ Отрицательный остаток · {{ $negativeCount }}</a>
+        @endif
         <a href="{{ route('purchases.inTransit') }}">🚚 В пути@if(($inTransitPairs ?? 0) > 0) · {{ $inTransitPairs }}@endif</a>
         <a href="{{ route('warehouse.reorder') }}">🧠 Что заказать</a>
         <a href="{{ route('warehouse.analytics') }}">📊 Аналитика</a>
