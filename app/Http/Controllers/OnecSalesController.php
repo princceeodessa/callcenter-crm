@@ -4,19 +4,19 @@ namespace App\Http\Controllers;
 
 use App\Models\Deal;
 use App\Models\DealActivity;
-use App\Models\OnecRetailDay;
+use App\Models\OnecSaleDoc;
 use App\Models\Purchase;
-use App\Services\Onec\RetailDayExport;
+use App\Services\Onec\SaleDocExport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 /**
- * «1С: продажи белых пар» — что ушло в 1С «Обувь», что ждёт, что надо уточнить.
- * Сама выгрузка идёт со станции (у CRM нет доступа к 1С), страница только показывает и даёт поправить сделки.
+ * «1С: продажи белых пар» — что ушло в 1С «Обувь» (по документу на каждую продажу и возврат), что ждёт,
+ * что надо уточнить. Сама выгрузка идёт со станции (у CRM нет доступа к 1С), страница показывает и даёт поправить.
  */
 class OnecSalesController extends Controller
 {
-    public function index(RetailDayExport $export)
+    public function index(SaleDocExport $export)
     {
         $user = Auth::user();
         abort_unless($user->role === 'sneaker_head', 403);
@@ -24,25 +24,31 @@ class OnecSalesController extends Controller
 
         $connection = $export->connection($accId);
         $start = $connection ? $export->startDay($connection) : null;
-        $today = now()->toDateString();
+        $since = ($start ?? now()->toDateString()).' 00:00:00';
 
-        $days = OnecRetailDay::where('account_id', $accId)->orderByDesc('day')->limit(60)->get();
-        $todayRows = $start && $start <= $today ? ($export->rowsByDay($accId, $today, $today)[$today] ?? []) : [];
-        $waiting = $start ? collect($export->pending($accId, $start)) : collect();
+        $docs = OnecSaleDoc::where('account_id', $accId)->with('deal.warehouseItem')
+            ->orderByRaw('COALESCE(onec_date, created_at) DESC')->orderByDesc('id')->limit(100)->get();
+        $queue = $start ? collect($export->pending($accId, $start)) : collect();
+        $queueDeals = $queue->isEmpty() ? collect() : Deal::where('account_id', $accId)->whereIn('id', $queue->pluck('deal_id'))
+            ->with('warehouseItem')->get()->keyBy('id');
+        $cancelled = $export->cancelledInCrm($accId);
+        // Продажа ещё в «окне» перед выгрузкой — продавец может поправить оплату или «белая / серая».
+        $cooling = Deal::where('account_id', $accId)->where('stock_white', true)->whereNotNull('stock_deducted_at')
+            ->where('stock_deducted_at', '>=', $since)->where('stock_deducted_at', '>', now()->subMinutes(SaleDocExport::COOLING_MINUTES))
+            ->count();
 
         $whiteItems = Purchase::where('account_id', $accId)->where('is_white', true)->whereNotNull('stocked_at')
             ->whereNotNull('warehouse_item_id')->distinct()->pluck('warehouse_item_id');
-        $since = $start ? $start.' 00:00:00' : $today.' 00:00:00';
         // Продано из позиции, где есть белые пары, а какая именно — не отмечено.
         $ambiguous = Deal::where('account_id', $accId)->whereNull('stock_white')->whereNotNull('stock_deducted_at')
             ->where('stock_deducted_at', '>=', $since)->whereIn('warehouse_item_id', $whiteItems)
             ->with('warehouseItem')->orderByDesc('stock_deducted_at')->get();
-        // Белая продажа без способа оплаты — в отчёт 1С уйдёт как наличные.
+        // Белая продажа без способа оплаты — в 1С уйдёт как наличные.
         $noPayment = Deal::where('account_id', $accId)->where('stock_white', true)->whereNull('payment_method')
             ->whereNotNull('stock_deducted_at')->where('stock_deducted_at', '>=', $since)
             ->with('warehouseItem')->orderByDesc('stock_deducted_at')->get();
 
-        return view('onec.index', compact('connection', 'start', 'days', 'todayRows', 'waiting', 'ambiguous', 'noPayment'));
+        return view('onec.index', compact('connection', 'start', 'docs', 'queue', 'queueDeals', 'cancelled', 'cooling', 'ambiguous', 'noPayment'));
     }
 
     /** Белая/серая и способ оплаты у проданной пары (из карточки сделки и со страницы 1С). */
@@ -74,12 +80,13 @@ class OnecSalesController extends Controller
             return back()->with('status', 'Ничего не изменилось.');
         }
         $deal->save();
+        $inOnec = OnecSaleDoc::where('deal_id', $deal->id)->where('status', 'done')->exists();
         DealActivity::create([
             'account_id' => $deal->account_id,
             'deal_id' => $deal->id,
             'author_user_id' => $user->id,
             'type' => 'system',
-            'body' => 'Для 1С: '.implode(', ', $changes).($deal->onec_sale_day ? ' — отчёт за '.$deal->onec_sale_day->format('d.m.Y').' обновится при следующей выгрузке' : ''),
+            'body' => 'Для 1С: '.implode(', ', $changes).($inOnec ? ' — документ в 1С обновится при следующей выгрузке' : ''),
         ]);
 
         return back()->with('status', 'Сохранено: '.implode(', ', $changes).'.');

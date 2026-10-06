@@ -551,9 +551,12 @@
               </select>
             </div>
             <button class="btn btn-sm btn-outline-primary">Сохранить</button>
-            @if($deal->onec_sale_day)
-              <span class="small text-success">в 1С: отчёт за {{ $deal->onec_sale_day->format('d.m.Y') }}</span>
-            @endif
+            @foreach($deal->onecDocs as $od)
+              <span class="small {{ $od->status === 'done' ? 'text-success' : ($od->status === 'error' ? 'text-danger' : 'text-warning-emphasis') }}">
+                1С, {{ \App\Models\OnecSaleDoc::KIND_LABELS[$od->kind] ?? $od->kind }}:
+                {{ $od->onec_number ? 'отчёт № '.$od->onec_number : (\App\Models\OnecSaleDoc::STATUS_LABELS[$od->status] ?? $od->status) }}
+              </span>
+            @endforeach
           </form>
         @endif
         @if($deal->stock_deducted_at && ! $deal->returned_at)

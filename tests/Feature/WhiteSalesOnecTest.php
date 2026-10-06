@@ -4,18 +4,18 @@ namespace Tests\Feature;
 
 use App\Models\Deal;
 use App\Models\IntegrationConnection;
-use App\Models\OnecRetailDay;
+use App\Models\OnecSaleDoc;
 use App\Models\Purchase;
 use App\Models\PurchaseStage;
 use App\Models\User;
 use App\Models\WarehouseItem;
-use App\Services\Onec\RetailDayExport;
+use App\Services\Onec\SaleDocExport;
 use App\Services\Warehouse\WarehouseService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
 
 /**
- * Белые пары → 1С «Обувь»: какая пара белая, оплата, дни для отчёта о розничных продажах и API станции.
+ * Белые пары → 1С «Обувь»: какая пара белая, оплата, документ на каждую продажу и возврат, API станции.
  */
 class WhiteSalesOnecTest extends TestCase
 {
@@ -32,10 +32,10 @@ class WhiteSalesOnecTest extends TestCase
         $this->marker = 'W'.strtoupper(substr(md5(uniqid('', true)), 0, 7));
         $this->token = str_repeat('t', 20).bin2hex(random_bytes(16));
         // Подключение станции: одно на пространство — тестовое заменяет имеющееся только внутри транзакции теста.
-        IntegrationConnection::withoutGlobalScopes()->where('provider', RetailDayExport::PROVIDER)->delete();
+        IntegrationConnection::withoutGlobalScopes()->where('provider', SaleDocExport::PROVIDER)->delete();
         IntegrationConnection::withoutGlobalScopes()->create([
             'account_id' => $this->head->account_id,
-            'provider' => RetailDayExport::PROVIDER,
+            'provider' => SaleDocExport::PROVIDER,
             'status' => 'active',
             'settings' => ['token' => $this->token, 'start_day' => now()->subDays(5)->toDateString()],
         ]);
@@ -103,71 +103,101 @@ class WhiteSalesOnecTest extends TestCase
         $this->assertStringContainsString('name="payment"', $html);
     }
 
-    public function test_station_gets_finished_days_and_reports_back(): void
+    public function test_station_gets_each_sale_after_the_cooling_window_and_reports_back(): void
     {
-        $item = $this->item('42', qty: 2);
-        $this->whitePurchase($item, 2, article: 'DV3337-010');
+        $item = $this->item('42', qty: 3);
+        $this->whitePurchase($item, 3, article: 'DV3337-010');
         $deal = $this->sell($item, ['payment' => 'card', 'price' => 13000]);
-        $deal->forceFill(['stock_deducted_at' => now()->subDay()->setTime(15, 0)])->save();
-        $yesterday = now()->subDay()->toDateString();
+        $deal->forceFill(['stock_deducted_at' => now()->subMinutes(30)])->save();
+        $fresh = $this->sell($item, ['payment' => 'cash']);   // только что — ещё можно поправить
 
         $this->getJson(route('api.onec.pending'))->assertUnauthorized();
         $this->getJson(route('api.onec.pending'), ['X-Onec-Token' => 'x'.$this->token])->assertUnauthorized();
 
-        $res = $this->getJson(route('api.onec.pending'), ['X-Onec-Token' => $this->token])->assertOk()->json();
-        $day = collect($res['days'])->firstWhere('day', $yesterday);
-        $this->assertNotNull($day, 'вчерашний день ждёт выгрузки');
-        $row = collect($day['rows'])->firstWhere('deal_id', $deal->id);
-        $this->assertSame('sale', $row['kind']);
-        $this->assertSame('DV3337-010', $row['article']);
-        $this->assertSame(13000, (int) $row['amount']);
-        $this->assertSame('card', $row['payment']);
+        $docs = collect($this->getJson(route('api.onec.pending'), ['X-Onec-Token' => $this->token])->assertOk()->json('docs'));
+        $doc = $docs->firstWhere('key', 'sale-'.$deal->id);
+        $this->assertNotNull($doc, 'продажа 30 минут назад ждёт выгрузки');
+        $this->assertNull($docs->firstWhere('key', 'sale-'.$fresh->id), 'свежая продажа ждёт '.SaleDocExport::COOLING_MINUTES.' минут');
+        $this->assertSame('sale', $doc['kind']);
+        $this->assertSame('DV3337-010', $doc['row']['article']);
+        $this->assertSame(13000, (int) $doc['row']['amount']);
+        $this->assertSame('card', $doc['row']['payment']);
+        $this->assertSame($deal->stock_deducted_at->format('Y-m-d\\TH:i:s'), $doc['date']);
 
-        // Сегодняшняя белая продажа пока не уходит — день не закончен.
-        $todayDeal = $this->sell($item, ['payment' => 'cash']);
-        $this->assertNull(collect($res['days'])->firstWhere('day', now()->toDateString()));
+        $this->postJson(route('api.onec.results'), ['results' => [[
+            'deal_id' => $deal->id, 'kind' => 'sale', 'status' => 'done', 'hash' => $doc['hash'],
+            'onec_uuid' => '11111111-2222-3333-4444-555555555555', 'onec_number' => 'ЗРНФ-000005',
+            'onec_date' => $doc['date'], 'card_code' => 'НФ-00012269', 'amount' => 13000,
+        ]]], ['X-Onec-Token' => $this->token])->assertOk()->assertJson(['ok' => true, 'saved' => 1]);
 
-        $this->postJson(route('api.onec.result', $yesterday), [
-            'status' => 'done', 'hash' => $day['hash'], 'onec_uuid' => '11111111-2222-3333-4444-555555555555', 'onec_number' => 'ЗРНФ-000001',
-            'pairs' => 1, 'amount' => 13000, 'mapped' => [['deal_id' => $deal->id, 'kind' => 'sale', 'card_code' => 'НФ-00012270']],
-        ], ['X-Onec-Token' => $this->token])->assertOk()->assertJson(['ok' => true, 'status' => 'done']);
+        $rec = OnecSaleDoc::withoutGlobalScopes()->where('deal_id', $deal->id)->where('kind', 'sale')->firstOrFail();
+        $this->assertSame('done', $rec->status);
+        $this->assertSame('ЗРНФ-000005', $rec->onec_number);
+        $docs = collect($this->getJson(route('api.onec.pending'), ['X-Onec-Token' => $this->token])->json('docs'));
+        $this->assertNull($docs->firstWhere('key', 'sale-'.$deal->id), 'выгруженная продажа больше не просится');
 
-        $deal->refresh();
-        $this->assertSame($yesterday, $deal->onec_sale_day->toDateString());
-        $this->assertSame('НФ-00012270', $deal->onec_card_code);
-        $this->assertSame('done', OnecRetailDay::withoutGlobalScopes()->where('day', $yesterday)->where('account_id', $this->head->account_id)->value('status'));
-        $res = $this->getJson(route('api.onec.pending'), ['X-Onec-Token' => $this->token])->json();
-        $this->assertNull(collect($res['days'])->firstWhere('day', $yesterday), 'выгруженный день больше не просится');
+        // Поправили оплату — документ в 1С надо пересобрать.
+        $this->actingAs($this->head)->post(route('deals.sale-flags', $deal), ['payment' => 'cash']);
+        $this->assertNotNull(collect($this->getJson(route('api.onec.pending'), ['X-Onec-Token' => $this->token])->json('docs'))->firstWhere('key', 'sale-'.$deal->id));
+        $rec->forceFill(['rows_hash' => collect($this->getJson(route('api.onec.pending'), ['X-Onec-Token' => $this->token])->json('docs'))->firstWhere('key', 'sale-'.$deal->id)['hash']])->save();
 
-        // Возврат вчерашней продажи (вчера же, после выгрузки): продажа остаётся в дне, добавляется строка возврата.
+        // Возврат: продажа остаётся как была (с той же датой), возврат — отдельным документом на ту же карточку.
         app(WarehouseService::class)->returnDealStock($deal->fresh());
-        $deal->refresh()->forceFill(['returned_at' => now()->subDay()->setTime(18, 0)])->save();
-        $res = $this->getJson(route('api.onec.pending'), ['X-Onec-Token' => $this->token])->json();
-        $day = collect($res['days'])->firstWhere('day', $yesterday);
-        $this->assertNotNull($day, 'день изменился — выгрузить заново');
-        $this->assertSame(['return', 'sale'], collect($day['rows'])->where('deal_id', $deal->id)->pluck('kind')->sort()->values()->all());
-        $ret = collect($day['rows'])->firstWhere('kind', 'return');
-        $this->assertSame('НФ-00012270', $ret['card_code'], 'возврат — на ту же карточку 1С');
-        $this->assertNotNull($todayDeal);
+        $docs = collect($this->getJson(route('api.onec.pending'), ['X-Onec-Token' => $this->token])->json('docs'));
+        $this->assertNull($docs->firstWhere('key', 'sale-'.$deal->id), 'продажа после возврата не меняется');
+        $ret = $docs->firstWhere('key', 'return-'.$deal->id);
+        $this->assertNotNull($ret, 'возврат ждёт выгрузки');
+        $this->assertSame('НФ-00012269', $ret['row']['card_code']);
+        $this->assertSame('return', $ret['kind']);
     }
 
-    public function test_partial_day_is_retried_later_and_error_keeps_day_pending(): void
+    public function test_sale_returned_before_export_never_goes_to_1c(): void
+    {
+        $item = $this->item('43', qty: 1);
+        $this->whitePurchase($item, 1);
+        $deal = $this->sell($item, ['payment' => 'cash']);
+        $deal->forceFill(['stock_deducted_at' => now()->subHour()])->save();
+        app(WarehouseService::class)->returnDealStock($deal->fresh());
+
+        $keys = collect(app(SaleDocExport::class)->pending($this->head->account_id, now()->subDays(5)->toDateString()))->pluck('key');
+        $this->assertNotContains('sale-'.$deal->id, $keys);
+        $this->assertNotContains('return-'.$deal->id, $keys);
+    }
+
+    public function test_waiting_or_failed_document_is_retried_later_or_when_it_changes(): void
     {
         $item = $this->item('40', qty: 1);
         $this->whitePurchase($item, 1, article: 'ZZ-NO-CARD');
         $deal = $this->sell($item, ['payment' => 'cash']);
-        $deal->forceFill(['stock_deducted_at' => now()->subDays(2)->setTime(12, 0)])->save();
-        $d2 = now()->subDays(2)->toDateString();
-        $export = app(RetailDayExport::class);
+        $deal->forceFill(['stock_deducted_at' => now()->subHours(2)])->save();
+        $export = app(SaleDocExport::class);
+        $start = now()->subDays(5)->toDateString();
+        $doc = collect($export->pending($this->head->account_id, $start))->firstWhere('key', 'sale-'.$deal->id);
 
-        $day = collect($export->pending($this->head->account_id, now()->subDays(5)->toDateString()))->firstWhere('day', $d2);
-        $export->applyResult($this->head->account_id, $d2, ['status' => 'error', 'error' => 'нет связи с 1С']);
-        $this->assertNotNull(collect($export->pending($this->head->account_id, now()->subDays(5)->toDateString()))->firstWhere('day', $d2), 'после ошибки день снова в очереди (хэш не записан)');
+        $export->applyResults($this->head->account_id, [['deal_id' => $deal->id, 'kind' => 'sale', 'status' => 'waiting', 'hash' => $doc['hash'], 'reason' => 'в 1С нет прихода артикула ZZ-NO-CARD']]);
+        $this->assertNull(collect($export->pending($this->head->account_id, $start))->firstWhere('key', 'sale-'.$deal->id), 'ждёт прихода — повтор не сразу');
+        OnecSaleDoc::withoutGlobalScopes()->where('deal_id', $deal->id)->update(['attempted_at' => now()->subHours(SaleDocExport::RETRY_HOURS + 1)]);
+        $this->assertNotNull(collect($export->pending($this->head->account_id, $start))->firstWhere('key', 'sale-'.$deal->id), 'через несколько часов — снова');
 
-        $export->applyResult($this->head->account_id, $d2, ['status' => 'partial', 'hash' => $day['hash'], 'unmapped' => [['deal_id' => $deal->id, 'reason' => 'в 1С нет прихода артикула ZZ-NO-CARD']]]);
-        $this->assertNull(collect($export->pending($this->head->account_id, now()->subDays(5)->toDateString()))->firstWhere('day', $d2), 'частичный — повтор не сразу');
-        OnecRetailDay::withoutGlobalScopes()->where('day', $d2)->update(['attempted_at' => now()->subHours(RetailDayExport::RETRY_HOURS + 1)]);
-        $this->assertNotNull(collect($export->pending($this->head->account_id, now()->subDays(5)->toDateString()))->firstWhere('day', $d2), 'через несколько часов — снова');
+        $export->applyResults($this->head->account_id, [['deal_id' => $deal->id, 'kind' => 'sale', 'status' => 'error', 'hash' => $doc['hash'], 'error' => 'нет связи']]);
+        $deal->forceFill(['amount' => 9999])->save();
+        $this->assertNotNull(collect($export->pending($this->head->account_id, $start))->firstWhere('key', 'sale-'.$deal->id), 'поменяли продажу — сразу');
+    }
+
+    public function test_exported_sale_made_grey_shows_up_for_manual_cleanup(): void
+    {
+        $item = $this->item('41', qty: 1);
+        $this->whitePurchase($item, 1);
+        $deal = $this->sell($item, ['payment' => 'cash']);
+        OnecSaleDoc::withoutGlobalScopes()->create([
+            'account_id' => $this->head->account_id, 'deal_id' => $deal->id, 'kind' => 'sale', 'status' => 'done',
+            'rows_hash' => 'x', 'onec_number' => 'ЗРНФ-000007', 'onec_date' => now()->subHour(),
+        ]);
+        $this->actingAs($this->head)->post(route('deals.sale-flags', $deal), ['white' => '0']);
+
+        $cancelled = app(SaleDocExport::class)->cancelledInCrm($this->head->account_id);
+        $this->assertTrue($cancelled->contains('deal_id', $deal->id));
+        $this->actingAs($this->head)->get(route('onec.index'))->assertOk()->assertSee('пометьте на удаление вручную')->assertSee('ЗРНФ-000007');
     }
 
     public function test_onec_page_and_flags(): void
@@ -179,7 +209,7 @@ class WhiteSalesOnecTest extends TestCase
         $deal = $this->sell($item, ['white' => '1', 'payment' => 'transfer']);
 
         $this->actingAs($this->head)->get(route('onec.index'))->assertOk()
-            ->assertSee('1С: продажи белых пар')->assertSee('Сегодня белых пар');
+            ->assertSee('1С: продажи белых пар')->assertSee('Документы в 1С')->assertSee('можно поправить');
 
         $operator = User::where('role', 'sneaker_operator')->where('account_id', $this->head->account_id)->firstOrFail();
         $this->actingAs($operator)->get(route('onec.index'))->assertForbidden();
