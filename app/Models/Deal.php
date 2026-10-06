@@ -16,6 +16,13 @@ class Deal extends Model
         'air_conditioner' => 'Кондиционер',
     ];
 
+    /** Как оплатили продажу кроссовок: в отчёте 1С наличные и безнал идут раздельно. */
+    public const PAYMENT_METHODS = [
+        'cash' => 'Наличные',
+        'card' => 'Карта',
+        'transfer' => 'Перевод',
+    ];
+
     // Категории пространства кроссовок (роли sneaker_head/sneaker_operator).
     private const SNEAKER_PRODUCT_CATEGORY_OPTIONS = [
         'sneakers' => 'Кроссовки',
@@ -94,6 +101,7 @@ class Deal extends Model
         'closed_at','closed_result','closed_reason','closed_by_user_id',
         'warehouse_item_id','sold_quantity','stock_deducted_at','sold_unit_cost','stock_reserved_at','stock_linked_at','stock_link_skipped_at',
         'returned_at','manual_source',
+        'stock_white','payment_method','onec_card_code','onec_sale_day',
     ];
 
     protected $casts = [
@@ -105,6 +113,8 @@ class Deal extends Model
         'stock_deducted_at' => 'datetime',
         'stock_linked_at' => 'datetime',
         'stock_link_skipped_at' => 'datetime',
+        'stock_white' => 'boolean',
+        'onec_sale_day' => 'date',
         'sold_unit_cost' => 'decimal:2',
         'stock_reserved_at' => 'datetime',
         'returned_at' => 'datetime',

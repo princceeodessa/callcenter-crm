@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\Auth;
  */
 class SneakerSaleController extends Controller
 {
-    public function form()
+    public function form(WarehouseService $warehouse)
     {
         $user = Auth::user();
         $accId = $user->account_id;
@@ -29,6 +29,8 @@ class SneakerSaleController extends Controller
         $items = WarehouseItem::where('account_id', $accId)
             ->orderBy('brand')->orderBy('model')->orderBy('size')
             ->get();
+        // Белые пары (закупки «в белую») уходят в 1С; если в размере есть и белые, и серые — продавец уточняет.
+        $splits = $warehouse->whiteSplits($items);
 
         $productRows = WarehouseProduct::with('photos')->where('account_id', $accId)->get();
         $productMap = [];
@@ -48,6 +50,8 @@ class SneakerSaleController extends Controller
                     'size' => (string) $i->size,
                     'available' => (int) $i->available,
                     'price' => $i->sale_price !== null ? (float) $i->sale_price : null,
+                    'white' => $splits[$i->id]['white'] ?? 0,
+                    'other' => $splits[$i->id]['other'] ?? 0,
                 ];
             }
             $products[] = [
@@ -84,6 +88,8 @@ class SneakerSaleController extends Controller
             'source' => ['nullable', 'string', 'max:50'],
             'client_name' => ['nullable', 'string', 'max:255'],
             'client_phone' => ['nullable', 'string', 'max:32'],
+            'white' => ['nullable', 'in:0,1'],
+            'payment' => ['nullable', 'in:'.implode(',', array_keys(Deal::PAYMENT_METHODS))],
         ]);
 
         $item = WarehouseItem::where('account_id', $user->account_id)
@@ -94,6 +100,24 @@ class SneakerSaleController extends Controller
         }
 
         $qty = (int) $data['qty'];
+
+        // Белая пара или серая. Если в размере только белые или только серые — решаем сами, иначе спрашиваем продавца.
+        $white = $warehouse->guessWhite($item, $qty);
+        if ($white === null) {
+            if (! isset($data['white'])) {
+                return redirect()->route('sale.quick', ['item' => $item->id])->withInput()->withErrors(['white' => 'В этом размере есть и белые, и серые пары — отметьте, какую продаёте.']);
+            }
+            $split = $warehouse->whiteSplit($item);
+            $white = $data['white'] === '1';
+            if (($white ? $split['white'] : $split['other']) < $qty) {
+                return redirect()->route('sale.quick', ['item' => $item->id])->withInput()->withErrors(['white' => ($white ? 'Белых' : 'Серых').' пар этого размера на складе меньше, чем продаёте.']);
+            }
+        }
+        // Белые пары уходят в отчёт 1С, там наличные и безнал раздельно — способ оплаты обязателен.
+        if ($white && empty($data['payment'])) {
+            return redirect()->route('sale.quick', ['item' => $item->id])->withInput()->withErrors(['payment' => 'Белая пара уходит в 1С — укажите оплату: наличные, карта или перевод.']);
+        }
+
         $price = ($data['price'] ?? null) !== null && $data['price'] !== ''
             ? (float) $data['price']
             : ($item->sale_price !== null ? (float) $item->sale_price : null);
@@ -135,6 +159,8 @@ class SneakerSaleController extends Controller
             'warehouse_item_id' => $item->id,
             'sold_quantity' => $qty,
             'manual_source' => trim((string) ($data['source'] ?? '')) ?: null,
+            'stock_white' => $white,
+            'payment_method' => $data['payment'] ?? null,
         ]);
 
         DealStageHistory::create([
@@ -151,7 +177,9 @@ class SneakerSaleController extends Controller
             'deal_id' => $deal->id,
             'author_user_id' => $user->id,
             'type' => 'system',
-            'body' => 'Быстрая продажа: '.$item->display_name.' × '.$qty.($amount !== null ? ' на '.number_format($amount, 0, ',', ' ').' ₽' : ''),
+            'body' => 'Быстрая продажа: '.$item->display_name.' × '.$qty.($amount !== null ? ' на '.number_format($amount, 0, ',', ' ').' ₽' : '')
+                .($white ? ' · белая пара (уйдёт в 1С)' : '')
+                .(! empty($data['payment']) ? ' · '.mb_strtolower(Deal::PAYMENT_METHODS[$data['payment']]) : ''),
         ]);
 
         // Списание со склада + уведомление руководителю

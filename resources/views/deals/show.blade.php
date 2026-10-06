@@ -529,6 +529,33 @@
             @endif
           </div>
         @endif
+        @if($deal->warehouse_item_id && ($deal->stock_deducted_at || $deal->returned_at))
+          {{-- Для 1С «Обувь»: белые пары уходят в отчёт о розничных продажах, наличные и безнал раздельно --}}
+          <form method="POST" action="{{ route('deals.sale-flags', $deal) }}" class="d-flex flex-wrap align-items-end gap-2 mt-2">
+            @csrf
+            <div>
+              <label class="form-label small mb-1">Пара</label>
+              <select name="white" class="form-select form-select-sm">
+                <option value="" @selected($deal->stock_white === null)>— не отмечено —</option>
+                <option value="1" @selected($deal->stock_white === true)>🤍 белая (в 1С)</option>
+                <option value="0" @selected($deal->stock_white === false)>серая</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label small mb-1">Оплата</label>
+              <select name="payment" class="form-select form-select-sm">
+                <option value="">— не указана —</option>
+                @foreach(\App\Models\Deal::PAYMENT_METHODS as $pv => $pl)
+                  <option value="{{ $pv }}" @selected($deal->payment_method === $pv)>{{ $pl }}</option>
+                @endforeach
+              </select>
+            </div>
+            <button class="btn btn-sm btn-outline-primary">Сохранить</button>
+            @if($deal->onec_sale_day)
+              <span class="small text-success">в 1С: отчёт за {{ $deal->onec_sale_day->format('d.m.Y') }}</span>
+            @endif
+          </form>
+        @endif
         @if($deal->stock_deducted_at && ! $deal->returned_at)
           <div class="mt-2 d-flex gap-2 flex-wrap">
             <a class="btn btn-sm btn-outline-primary" href="{{ route('deals.receipt', $deal) }}" target="_blank">🖨️ Печать чека</a>

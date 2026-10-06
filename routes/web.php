@@ -6,6 +6,7 @@ use App\Http\Controllers\DealController;
 use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\HelpController;
 use App\Http\Controllers\OwnerDashboardController;
+use App\Http\Controllers\OnecSalesController;
 use App\Http\Controllers\LabelPrintController;
 use App\Http\Controllers\ScanController;
 use App\Http\Controllers\SneakerDailySalesController;
@@ -189,6 +190,9 @@ Route::middleware('auth')->group(function () {
         Route::post('/warehouse/unlinked-sales/{deal}/skip', [UnlinkedSalesController::class, 'skip'])->name('warehouse.unlinked.skip');
         Route::post('/warehouse/unlinked-sales/{deal}/undo', [UnlinkedSalesController::class, 'undo'])->name('warehouse.unlinked.undo');
         Route::post('/warehouse/items/{item}/zero', [UnlinkedSalesController::class, 'zero'])->name('warehouse.item.zero');
+        // 1С «Обувь»: продажи белых пар (отчёт о розничных продажах по дням; выгружает станция)
+        Route::get('/onec', [OnecSalesController::class, 'index'])->name('onec.index');
+        Route::post('/deals/{deal}/sale-flags', [OnecSalesController::class, 'setFlags'])->name('deals.sale-flags');
 
         // Отчёт по кроссовкам (продажи/прибыль/склад)
         // Сводная панель владельца (роль sneaker_owner; head — для контроля)

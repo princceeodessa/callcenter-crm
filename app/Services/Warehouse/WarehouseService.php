@@ -85,6 +85,10 @@ class WarehouseService
 
             // --- Списание ---
             if ($desiredDeducted && ! $deal->stock_deducted_at) {
+                // Белая ли пара (в 1С уходят только белые). Продавец мог указать сам — тогда не трогаем.
+                if ($deal->stock_white === null) {
+                    $deal->forceFill(['stock_white' => $this->guessWhite($item, $qty)])->save();
+                }
                 if ($deal->stock_reserved_at) {
                     $this->changeReserved($item, -$qty, 'reserve_release', "Резерв снят (продажа) · сделка #{$deal->id}", $deal->id);
                     $deal->forceFill(['stock_reserved_at' => null])->save();
@@ -177,6 +181,54 @@ class WarehouseService
             }
             $this->changeQty($item, -(int) $item->quantity, 'adjust', $note, 'manual', null);
         });
+    }
+
+    // ===================== Белые / серые пары =====================
+
+    /**
+     * Сколько пар позиции белые (пришли закупками «в белую») и сколько остальные.
+     * Белые = принятые белые закупки − проданные белые пары (возврат снимает списание — пара снова белая на складе).
+     *
+     * @param  iterable<WarehouseItem>  $items
+     * @return array<int, array{white:int, other:int}>
+     */
+    public function whiteSplits(iterable $items): array
+    {
+        $items = collect($items);
+        if ($items->isEmpty()) {
+            return [];
+        }
+        $ids = $items->pluck('id')->all();
+        $in = Purchase::whereIn('warehouse_item_id', $ids)->where('is_white', true)->whereNotNull('stocked_at')
+            ->groupBy('warehouse_item_id')->selectRaw('warehouse_item_id, SUM(stocked_quantity) q')->pluck('q', 'warehouse_item_id');
+        $out = Deal::whereIn('warehouse_item_id', $ids)->where('stock_white', true)->whereNotNull('stock_deducted_at')
+            ->groupBy('warehouse_item_id')->selectRaw('warehouse_item_id, SUM(sold_quantity) q')->pluck('q', 'warehouse_item_id');
+
+        $res = [];
+        foreach ($items as $item) {
+            $qty = max(0, (int) $item->quantity);
+            $white = max(0, min($qty, (int) ($in[$item->id] ?? 0) - (int) ($out[$item->id] ?? 0)));
+            $res[$item->id] = ['white' => $white, 'other' => $qty - $white];
+        }
+
+        return $res;
+    }
+
+    /** @return array{white:int, other:int} */
+    public function whiteSplit(WarehouseItem $item): array
+    {
+        return $this->whiteSplits([$item])[$item->id];
+    }
+
+    /** true — только белые, false — белых нет, null — есть и те и другие (решает продавец). */
+    public function guessWhite(WarehouseItem $item, int $qty = 1): ?bool
+    {
+        $s = $this->whiteSplit($item);
+        if ($s['white'] <= 0) {
+            return false;
+        }
+
+        return $s['other'] <= 0 && $s['white'] >= $qty ? true : null;
     }
 
     /** Полный откат резерва и списания сделки (для переназначения товара). */

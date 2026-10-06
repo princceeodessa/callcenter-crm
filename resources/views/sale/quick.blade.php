@@ -39,6 +39,18 @@
     .qs-size.sel{ background:var(--crm-accent); color:#fff; border-color:transparent; }
     .qs-size.sel small{ color:rgba(255,255,255,.8); }
     .qs-size.off{ opacity:.35; cursor:not-allowed; }
+    /* белые пары (закупки «в белую») — уходят в 1С */
+    .qs-size.w{ box-shadow:inset 0 0 0 2px #93c5fd; }
+    .qs-size.wm{ box-shadow:inset 0 0 0 2px #93c5fd; border-style:dashed; }
+    .qs-seg{ display:flex; gap:.3rem; flex-wrap:wrap; }
+    .qs-seg label{
+        display:inline-flex; align-items:center; gap:.3rem; margin:0; cursor:pointer;
+        border:1px solid var(--crm-border); background:var(--crm-surface); color:var(--crm-text);
+        border-radius:.5rem; padding:.35rem .6rem; font-size:.85rem; font-weight:600; white-space:nowrap;
+    }
+    .qs-seg input{ width:auto !important; margin:0; accent-color:var(--crm-accent); }
+    .qs-seg label:has(input:checked){ border-color:var(--crm-accent); color:var(--crm-accent); }
+    .qs-seg.need label{ border-color:#f59e0b; }
 
     /* нижняя панель оформления */
     .qs-panel{
@@ -187,12 +199,18 @@
                 <div class="qs-sizes">
                     @foreach($prod['sizes'] as $s)
                         @if($s['available'] > 0)
-                            <span class="qs-size"
+                            @php
+                                $wCls = $s['white'] > 0 ? ($s['other'] > 0 ? 'wm' : 'w') : '';
+                                $wTip = $s['white'] > 0 ? ($s['other'] > 0 ? 'Белых '.$s['white'].', серых '.$s['other'].' — при продаже отметьте, какую' : 'Белая пара — уйдёт в 1С') : '';
+                            @endphp
+                            <span class="qs-size {{ $wCls }}" @if($wTip) title="{{ $wTip }}" @endif
                                   data-item="{{ $s['id'] }}"
                                   data-size="{{ $s['size'] }}"
                                   data-price="{{ $s['price'] !== null ? $s['price'] : '' }}"
                                   data-name="{{ $prod['name'] }}"
-                                  data-avail="{{ $s['available'] }}">
+                                  data-avail="{{ $s['available'] }}"
+                                  data-white="{{ $s['white'] }}"
+                                  data-other="{{ $s['other'] }}">
                                 {{ $s['size'] }}
                                 <small>{{ $s['available'] }} шт</small>
                             </span>
@@ -239,6 +257,21 @@
             <label>Телефон (не обязательно)</label>
             <input type="text" name="client_phone" maxlength="32">
         </div>
+        <div class="col-12 col-lg-5 fld" id="wBox" style="display:none">
+            <label>Какую пару продаёте? <span class="text-muted">в размере есть белые и серые</span></label>
+            <div class="qs-seg" id="wSeg">
+                <label><input type="radio" name="white" value="1"> 🤍 Белая (в 1С)</label>
+                <label><input type="radio" name="white" value="0"> Серая</label>
+            </div>
+        </div>
+        <div class="col-12 col-lg-5 fld">
+            <label>Оплата <span class="text-muted" id="payHint"></span></label>
+            <div class="qs-seg" id="paySeg">
+                @foreach(\App\Models\Deal::PAYMENT_METHODS as $pv => $pl)
+                    <label><input type="radio" name="payment" value="{{ $pv }}" @checked(old('payment') === $pv)> {{ $pl }}</label>
+                @endforeach
+            </div>
+        </div>
         <div class="col-6 col-lg-12 d-flex align-items-center justify-content-between gap-2 mt-2">
             <div class="qs-total">Итого: <span id="pTotal">—</span></div>
             <div class="d-flex gap-2">
@@ -261,7 +294,33 @@
     const pSize = document.getElementById('pSize');
     const pAvail = document.getElementById('pAvail');
     const pTotal = document.getElementById('pTotal');
+    const wBox = document.getElementById('wBox');
+    const wSeg = document.getElementById('wSeg');
+    const paySeg = document.getElementById('paySeg');
+    const payHint = document.getElementById('payHint');
     let selected = null;
+
+    // Белая / серая: только белые → белая, только серые → серая, есть и те и другие → спросить продавца.
+    const whiteMode = () => {
+        if (!selected) return 'none';
+        const w = parseInt(selected.dataset.white || '0', 10), o = parseInt(selected.dataset.other || '0', 10);
+        return w > 0 && o > 0 ? 'ask' : (w > 0 ? 'white' : 'grey');
+    };
+    const chosenWhite = () => {
+        const m = whiteMode();
+        if (m === 'ask') { const r = wSeg.querySelector('input:checked'); return r ? r.value === '1' : null; }
+        return m === 'white';
+    };
+    const refreshWhite = () => {
+        const m = whiteMode();
+        wBox.style.display = m === 'ask' ? '' : 'none';
+        if (m !== 'ask') wSeg.querySelectorAll('input').forEach(r => { r.checked = false; });
+        const isWhite = chosenWhite();
+        payHint.textContent = isWhite ? '— обязательно: белая пара уходит в 1С' : '';
+        paySeg.classList.toggle('need', isWhite === true && !paySeg.querySelector('input:checked'));
+    };
+    wSeg.addEventListener('change', refreshWhite);
+    paySeg.addEventListener('change', refreshWhite);
 
     const fmt = (n) => new Intl.NumberFormat('ru-RU').format(Math.round(n)) + ' ₽';
 
@@ -290,6 +349,7 @@
         fQty.max = pill.dataset.avail;
         fPrice.value = pill.dataset.price || '';
         panel.classList.add('on');
+        refreshWhite();
         updateTotal();
         fPrice.focus();
     };
@@ -333,7 +393,9 @@
     });
 
     panel.addEventListener('submit', (e) => {
-        if (!fItem.value) { e.preventDefault(); alert('Сначала выберите товар и размер.'); }
+        if (!fItem.value) { e.preventDefault(); alert('Сначала выберите товар и размер.'); return; }
+        if (whiteMode() === 'ask' && chosenWhite() === null) { e.preventDefault(); alert('В этом размере есть белые и серые пары — отметьте, какую продаёте.'); return; }
+        if (chosenWhite() === true && !paySeg.querySelector('input:checked')) { e.preventDefault(); alert('Белая пара уходит в 1С — укажите оплату.'); }
     });
 
     // Журнал последних продаж — надёжный toggle (без <details>).
