@@ -82,7 +82,8 @@ class MarketingStats
             'by_source' => $bySource,
             'days' => count($byDay),
             'period_days' => $periodDays,
-            'prev_total' => $prevRows->isNotEmpty() ? $prevTotal : null,
+            // сравнение честно только если прошлый период в таблице есть целиком (листа за месяц может не быть)
+            'prev_total' => $prevRows->count() >= (int) $prevFrom->diffInDays($from) ? $prevTotal : null,
         ];
     }
 

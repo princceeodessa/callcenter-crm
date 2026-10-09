@@ -24,6 +24,9 @@ class OwnerMarketingTest extends TestCase
     {
         parent::setUp();
         Carbon::setTestNow('2026-10-09 12:00:00');
+        // в транзакции теста: чужие строки сбора (например, ручной прогон на этой базе) не мешают подсчётам
+        DB::table('owner_marketing_daily')->delete();
+        DB::table('owner_marketing_sources')->delete();
         Cache::forget('owner_marketing.vk_ads_token');
         Cache::forget('owner_marketing.avito_token');
         config(['owner.marketing' => [
@@ -43,10 +46,10 @@ class OwnerMarketingTest extends TestCase
         parent::tearDown();
     }
 
-    private const SHEET_CSV = "\"Дата\",\"Тип\",\"Сумма\",\"Директ\",\"Директ затраты\",\"Директ цена лида\",\"Авито\",\"Авито затраты\",\"ВК\",\"ВК затраты\",\"Офис\"\n"
-        ."\"08.10.26\",\"Замер\",\"9\",\"4\",\"4 000\",\"1000\",\"3\",\"1 500,5\",\"1\",\"700\",\"1\"\n"
-        ."\"09.10.26\",\"Замер\",\"5\",\"2\",\"2000\",\"1000\",\"2\",\"900\",\"0\",\"0\",\"1\"\n"
-        ."\"\",\"Итого\",\"14\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"\n";
+    private const SHEET_CSV = "\"Дата\",\"Тип\",\"Сумма\",\"Директ\",\"Директ затраты\",\"Директ цена лида\",\"Авито\",\"Авито затраты\",\"ВК\",\"ВК затраты\",\"Офис\",\"Радио\"\n"
+        ."\"08.10.26\",\"Замер\",\"9\",\"4\",\"4 000\",\"1000\",\"3\",\"1 500,5\",\"1\",\"700\",\"1\",\"0\"\n"
+        ."\"09.10.26\",\"Замер\",\"5\",\"2\",\"2000\",\"1000\",\"2\",\"900\",\"0\",\"0\",\"1\",\"0\"\n"
+        ."\"\",\"Итого\",\"14\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"\n";
 
     private function fakeAll(bool $avitoFails = false): void
     {
@@ -103,7 +106,7 @@ class OwnerMarketingTest extends TestCase
         $sheet = LeadsSheetSource::parse(array_map('str_getcsv', explode("\n", trim(self::SHEET_CSV))));
         $this->assertSame(['2026-10-08', '2026-10-09'], array_keys($sheet));
         $this->assertSame(9.0, $sheet['2026-10-08']['total']);
-        $this->assertSame(['Директ' => 4.0, 'Авито' => 3.0, 'ВК' => 1.0, 'Офис' => 1.0], $sheet['2026-10-08']['sources']);
+        $this->assertSame(['Директ' => 4.0, 'Авито' => 3.0, 'ВК' => 1.0, 'Офис' => 1.0, 'Радио' => 0.0], $sheet['2026-10-08']['sources']);
         $this->assertSame(['Директ' => 4000.0, 'Авито' => 1500.5, 'ВК' => 700.0], $sheet['2026-10-08']['spend']);
 
         $direct = DirectSource::parseTsv("Date\tImpressions\tClicks\tCost\n2026-10-08\t3000\t60\t4100.40\n");
@@ -175,6 +178,11 @@ class OwnerMarketingTest extends TestCase
         $this->assertSame(['Офис' => 2], $m['by_source']['other']);
         $res->assertSee('по таблице замеров');
         $res->assertDontSee('заяв');
+        $res->assertDontSee('онверси');                         // конверсию не показываем
+        $html = $res->getContent();
+        $this->assertSame(4, substr_count($html, 'class="src '));   // карточки: Директ, Авито, Офис, ВК — без «Радио» (0 замеров)
+        $this->assertStringNotContainsString('<div class="name">Радио</div>', $html);
+        $this->assertStringContainsString('<div class="name">Офис</div>', $html);
         $res->assertSee('Расход на рекламу');
         $res->assertSee('Реклама по площадкам');
     }
