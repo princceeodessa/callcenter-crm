@@ -64,7 +64,46 @@
     $calls = $kpi['calls'];
     $days = (int) round(($kpi['to']->getTimestamp() - $kpi['from']->getTimestamp()) / 86400);
     $series = $kpi['series'];
-    $maxBar = max(1, collect($series['rows'])->max('leads') ?? 0, collect($series['rows'])->max('bookings') ?? 0);
+    // Замеры — по таблице замеров (решение владельца 09.10.2026); если за период в таблице пусто — по этапам CRM
+    $ms = $measures;
+    $useSheet = $ms['available'];
+    $mTotal = $useSheet ? $ms['total'] : $kpi['bookings'];
+    $mPrev = $useSheet ? $ms['prev_total'] : $prev['bookings'];
+    $mConv = $kpi['leads'] > 0 ? $mTotal / $kpi['leads'] * 100 : null;
+    $targeted = $kpi['leads'] - $kpi['non_target'];
+    $mConvT = $targeted > 0 ? $mTotal / $targeted * 100 : null;
+    $mConvPrev = ($mPrev !== null && $prev['leads'] > 0) ? $mPrev / $prev['leads'] * 100 : null;
+    $mSourceNote = $useSheet ? 'по таблице замеров' : 'по CRM — в таблице замеров за период пусто';
+    $mCoverage = ($useSheet && $ms['days'] < $ms['period_days']) ? 'в таблице замеров есть '.$ms['days'].' из '.$ms['period_days'].' дн. периода' : null;
+    $chartRows = [];
+    foreach ($series['rows'] as $r) {
+        $m = 0;
+        if ($useSheet) {
+            foreach ($ms['by_day'] as $d => $v) {
+                if ($series['by'] === 'month' ? str_starts_with($d, $r['key']) : $d === $r['key']) {
+                    $m += $v;
+                }
+            }
+        } else {
+            $m = $r['bookings'];
+        }
+        $chartRows[] = $r + ['m' => $m];
+    }
+    $maxBar = max(1, collect($chartRows)->max('leads') ?? 0, collect($chartRows)->max('m') ?? 0);
+    $channelRows = [];
+    foreach ($kpi['channels'] as $g) {
+        $gm = $useSheet ? (int) ($ms['by_group'][$g['key']] ?? 0) : (int) $g['booked'];
+        if ($g['leads'] === 0 && $gm === 0 && ! in_array($g['key'], ['direct', 'avito', 'vk'], true)) {
+            continue;
+        }
+        $sheetList = $useSheet ? ($ms['by_source'][$g['key']] ?? []) : [];
+        $sheetLine = '';
+        if (count($sheetList) > 1 || (count($sheetList) === 1 && array_key_first($sheetList) !== $g['label'])) {
+            $sheetLine = collect($sheetList)->map(fn ($c, $name) => $name.' '.$c)->implode(' · ');
+        }
+        $crmSources = array_values(array_filter($g['sources'], fn ($s) => ! (count($g['sources']) === 1 && $s['label'] === $g['label'])));
+        $channelRows[] = $g + ['m' => $gm, 'spend' => $ads['spend'][$g['key']] ?? null, 'sheet_line' => $sheetLine, 'crm_sources' => $crmSources];
+    }
     $money = fn ($v) => $v === null ? '—' : number_format((float) $v, 0, ',', ' ').' ₽';
     $per = fn ($spend, $cnt) => ($spend !== null && $cnt > 0) ? number_format($spend / $cnt, 0, ',', ' ').' ₽' : '—';
     $spendTotal = (float) $ads['spend_total'];
@@ -112,14 +151,17 @@
             <div class="s">{!! $delta($kpi['leads'], $prev['leads']) !!} к прошлым {{ $days }} дн. ({{ $n($prev['leads']) }})</div>
         </div>
         <div class="own-stat green">
-            <div class="l">Замеров назначено</div>
-            <div class="v">{{ $n($kpi['bookings']) }}</div>
-            <div class="s">{!! $delta($kpi['bookings'], $prev['bookings']) !!} к прошлым {{ $days }} дн. ({{ $n($prev['bookings']) }})</div>
+            <div class="l">Замеры</div>
+            <div class="v">{{ $n($mTotal) }}</div>
+            <div class="s">{!! $delta($mTotal, $mPrev) !!} к прошлым {{ $days }} дн.@if($mPrev !== null) ({{ $n($mPrev) }})@endif · {{ $mSourceNote }}</div>
+            @if($mCoverage)
+                <div class="s text-danger">{{ $mCoverage }}</div>
+            @endif
         </div>
         <div class="own-stat">
             <div class="l">Конверсия лид → замер</div>
-            <div class="v">{{ $pct($kpi['conversion']) }}</div>
-            <div class="s">{!! $delta($kpi['conversion'], $prev['conversion'], true) !!} · из целевых {{ $pct($kpi['conversion_targeted']) }}</div>
+            <div class="v">{{ $pct($mConv) }}</div>
+            <div class="s">{!! $delta($mConv, $mConvPrev, true) !!} · из целевых {{ $pct($mConvT) }}</div>
         </div>
         <div class="own-stat">
             <div class="l">Входящие звонки</div>
@@ -130,13 +172,12 @@
             <div class="own-stat">
                 <div class="l">Расход на рекламу</div>
                 <div class="v">{{ $money($spendTotal) }}</div>
-                <div class="s">цена лида {{ $per($spendTotal, $kpi['leads']) }} · цена замера {{ $per($spendTotal, $kpi['bookings']) }}</div>
+                <div class="s">цена лида {{ $per($spendTotal, $kpi['leads']) }} · цена замера {{ $per($spendTotal, $mTotal) }}</div>
             </div>
         @endif
     </div>
 
     <div class="own-kpi">
-        <div class="k"><div class="l">Дошли до замера</div><div class="v">{{ $n($kpi['booked_cohort']) }}</div></div>
         <div class="k"><div class="l">Нецелевые</div><div class="v">{{ $n($kpi['non_target']) }}</div></div>
         <div class="k"><div class="l">Отказ</div><div class="v">{{ $n($kpi['lost']) }}</div></div>
         <div class="k"><div class="l">Ещё в работе</div><div class="v">{{ $n($kpi['open']) }}</div></div>
@@ -147,14 +188,14 @@
     <div class="own-card">
         <div class="hd">
             <span>{{ $series['by'] === 'month' ? 'По месяцам' : 'По дням' }}</span>
-            <span class="legend"><span><i style="background:#93c5fd"></i>лиды</span><span><i style="background:#10b981"></i>замеры назначены</span></span>
+            <span class="legend"><span><i style="background:#93c5fd"></i>лиды</span><span><i style="background:#10b981"></i>замеры{{ $useSheet ? ' (по таблице)' : '' }}</span></span>
         </div>
         <div class="bd">
             <div class="bars">
-                @foreach($series['rows'] as $r)
-                    <div class="col" title="{{ $r['key'] }}: лидов {{ $r['leads'] }}, замеров {{ $r['bookings'] }}, входящих звонков {{ $r['calls'] }}">
+                @foreach($chartRows as $r)
+                    <div class="col" title="{{ $r['key'] }}: лидов {{ $r['leads'] }}, замеров {{ $r['m'] }}, входящих звонков {{ $r['calls'] }}">
                         <div class="b leads" style="height:{{ round($r['leads'] / $maxBar * 100, 2) }}%"></div>
-                        <div class="b book" style="height:{{ round($r['bookings'] / $maxBar * 100, 2) }}%; position:absolute; bottom:0; left:25%; right:25%"></div>
+                        <div class="b book" style="height:{{ round($r['m'] / $maxBar * 100, 2) }}%; position:absolute; bottom:0; left:25%; right:25%"></div>
                     </div>
                 @endforeach
             </div>
@@ -167,38 +208,34 @@
     </div>
 
     <div class="own-card">
-        <div class="hd"><span>Каналы — откуда лиды</span><span class="note">цена лида и замера — расход канала на лиды и замеры CRM</span></div>
+        <div class="hd"><span>Каналы — откуда лиды</span><span class="note">лиды — по CRM, замеры — {{ $useSheet ? 'по таблице замеров' : 'по CRM' }}; цена — расход канала на них</span></div>
         <div class="tbl-scroll">
             <table>
-                <thead><tr><th>Канал</th><th class="num">Лиды</th><th class="num">Дошли до замера</th><th class="num">Конверсия</th><th class="num">Нецелевые</th><th class="num">Расход</th><th class="num">Цена лида</th><th class="num">Цена замера</th></tr></thead>
+                <thead><tr><th>Канал</th><th class="num">Лиды</th><th class="num">Замеры</th><th class="num">Конверсия</th><th class="num">Нецелевые</th><th class="num">Расход</th><th class="num">Цена лида</th><th class="num">Цена замера</th></tr></thead>
                 <tbody>
-                @foreach($kpi['channels'] as $g)
-                    @php
-                        $sp = $ads['spend'][$g['key']] ?? null;
-                    @endphp
+                @foreach($channelRows as $g)
                     <tr class="grp">
                         <td>{{ $g['label'] }}</td>
                         <td class="num">{{ $n($g['leads']) }}</td>
-                        <td class="num">{{ $n($g['booked']) }}</td>
-                        <td class="num">{{ $pct($g['conversion']) }}</td>
+                        <td class="num">{{ $n($g['m']) }}</td>
+                        <td class="num">{{ $g['leads'] > 0 ? $pct($g['m'] / $g['leads'] * 100) : '—' }}</td>
                         <td class="num">{{ $n($g['non_target']) }}</td>
-                        <td class="num" title="{{ $sp ? 'по данным: '.$sp['from'] : '' }}">{{ $sp ? $money($sp['value']) : '' }}</td>
-                        <td class="num">{{ $sp ? $per($sp['value'], $g['leads']) : '' }}</td>
-                        <td class="num">{{ $sp ? $per($sp['value'], $g['booked']) : '' }}</td>
+                        <td class="num" title="{{ $g['spend'] ? 'по данным: '.$g['spend']['from'] : '' }}">{{ $g['spend'] ? $money($g['spend']['value']) : '' }}</td>
+                        <td class="num">{{ $g['spend'] ? $per($g['spend']['value'], $g['leads']) : '' }}</td>
+                        <td class="num">{{ $g['spend'] ? $per($g['spend']['value'], $g['m']) : '' }}</td>
                     </tr>
-                    @if(count($g['sources']) > 1)
-                        @foreach($g['sources'] as $s)
-                            <tr class="sub">
-                                <td>{{ $s['label'] }}</td>
-                                <td class="num">{{ $n($s['leads']) }}</td>
-                                <td class="num">{{ $n($s['booked']) }}</td>
-                                <td class="num">{{ $pct($s['conversion']) }}</td>
-                                <td class="num">{{ $n($s['non_target']) }}</td>
-                                <td colspan="3"></td>
-                            </tr>
-                        @endforeach
-                    @elseif(count($g['sources']) === 1 && $g['sources'][0]['label'] !== $g['label'])
-                        <tr class="sub"><td colspan="8">{{ $g['sources'][0]['label'] }}</td></tr>
+                    @foreach($g['crm_sources'] as $s)
+                        <tr class="sub">
+                            <td>{{ $s['label'] }}</td>
+                            <td class="num">{{ $n($s['leads']) }}</td>
+                            <td></td>
+                            <td></td>
+                            <td class="num">{{ $n($s['non_target']) }}</td>
+                            <td colspan="3"></td>
+                        </tr>
+                    @endforeach
+                    @if($g['sheet_line'] !== '')
+                        <tr class="sub"><td colspan="8">замеры по таблице: {{ $g['sheet_line'] }}</td></tr>
                     @endif
                 @endforeach
                 </tbody>
@@ -231,8 +268,8 @@
                         в контакт {{ ($av['views'] ?? 0) > 0 ? $pct(($av['contacts'] ?? 0) / $av['views'] * 100) : '—' }} @if($ads['spend']['avito']) · расход {{ $money($ads['spend']['avito']['value']) }} @endif</div>
                 </div>
                 <div class="k">
-                    <div class="l">Таблица заявок</div>
-                    <div class="v">{{ $n($sh['total']) }} <span style="font-size:.8rem;font-weight:600">заявок</span></div>
+                    <div class="l">Таблица замеров</div>
+                    <div class="v">{{ $n($sh['total']) }} <span style="font-size:.8rem;font-weight:600">замеров</span></div>
                     <div class="note">
                         @foreach($sheetTop as $name => $cnt)
                             {{ $name }} {{ $n($cnt) }}@if(isset($sh['spend'][$name]) && $sh['spend'][$name] > 0) ({{ $per($sh['spend'][$name], $cnt) }}) @endif
@@ -293,7 +330,7 @@
         <div class="hd"><span>Операторы</span><span class="note">по действиям за период: кто двигал и закрывал сделки</span></div>
         <div class="tbl-scroll">
             <table>
-                <thead><tr><th>Сотрудник</th><th class="num">Обработано сделок</th><th class="num">Замеров назначено</th><th class="num">Замеров из обработанных</th><th class="num">Нецелевые</th><th class="num">Отказы</th></tr></thead>
+                <thead><tr><th>Сотрудник</th><th class="num">Обработано сделок</th><th class="num">Перевели на замер</th><th class="num">Доля от обработанных</th><th class="num">Нецелевые</th><th class="num">Отказы</th></tr></thead>
                 <tbody>
                 @forelse($kpi['operators'] as $o)
                     <tr>
@@ -313,16 +350,18 @@
     </div>
 
     <p class="note">
-        Как считается. <b>Лид</b> — новая сделка в колл-центре потолков за период. <b>Замер назначен</b> — сделка впервые
-        попала на этап «Замер назначен» или закрыта «Успешно»; «замеров назначено» — такие события за период, по сделкам любого
-        возраста. <b>Конверсия</b> — доля лидов периода, которые уже дошли до замера (у свежих лидов она ещё растёт).
-        <b>Канал</b> — самый ранний сигнал по сделке: чат, заявка с сайта, импорт или звонок на рекламный номер.
+        Как считается. <b>Замеры</b> — по Google-таблице замеров колл-центра (столбец «Сумма» и источники по дням), сводка
+        перечитывает её каждые 15 минут; если за период в таблице пусто — по CRM (сделка впервые попала на этап «Замер назначен»
+        или закрыта «Успешно»). <b>Лид</b> — новая сделка в колл-центре потолков за период. <b>Конверсия</b> — замеры
+        периода, делённые на его лиды; «из целевых» — без нецелевых.
+        <b>Канал лида</b> — самый ранний сигнал по сделке: чат, форма на сайте, импорт или звонок на рекламный номер; замеры
+        канала — по источникам таблицы (Директ, Авито и Авито Частник, ВК, Радио, ТВ; остальные — «Прочее»).
         <b>Звонки</b> — по событиям Мегафона: пропущенный — входящий, который никто не принял.
-        <b>Операторы</b> — по действиям: замер засчитан тому, кто перевёл сделку на «Замер назначен» (или закрыл «Успешно»)
-        первым; «обработано» — сделки, которые сотрудник двигал по этапам или закрывал за период.
-        <b>Реклама</b> собирается сама каждые 2 часа: расход Директа и VK — из их кабинетов, расход Авито — из таблицы
-        заявок (API Авито расходов не отдаёт). Все расходы — без НДС, как в таблице заявок. Цена лида и замера — расход канала, делённый на лиды и замеры CRM этого канала.
-        «Таблица заявок» — цифры колл-центра из Google-таблицы, в скобках — цена заявки по её затратам.
+        <b>Операторы</b> — по действиям в CRM: «перевели на замер» — кто первым перевёл сделку на «Замер назначен» (или закрыл
+        «Успешно»); «обработано» — сделки, которые сотрудник двигал по этапам или закрывал за период.
+        <b>Реклама</b> собирается сама каждые 2 часа: расход Директа и VK — из их кабинетов, расход Авито — из таблицы замеров
+        (API Авито расходов не отдаёт). Все расходы — без НДС, как в таблице. Цена лида и замера — расход канала, делённый на
+        его лиды и замеры. В карточке «Таблица замеров» в скобках — цена замера по затратам из таблицы.
     </p>
 </div>
 @endsection

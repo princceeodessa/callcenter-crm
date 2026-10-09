@@ -231,7 +231,7 @@ class CeilingsKpi
             $key === 'chat_avito' => 'Авито · чат',
             $key === 'chat_vk' => 'ВК · сообщения',
             $key === 'chat_telegram' => 'Telegram',
-            $key === 'form_tilda' || $key === 'chat_tilda' => 'Сайт · заявка (Tilda)',
+            $key === 'form_tilda' || $key === 'chat_tilda' => 'Сайт · форма (Tilda)',
             $key === 'form_vk' => 'ВК · лид-форма',
             $key === 'import_bitrix' => 'Импорт из Битрикса',
             str_starts_with($key, 'chat_') => 'Чат · '.substr($key, 5),
@@ -289,8 +289,8 @@ class CeilingsKpi
         }
         unset($g);
 
-        // пустые группы прячем, кроме платных каналов — под ними будут расходы на рекламу
-        return array_values(array_filter($groups, fn ($g) => $g['leads'] > 0 || in_array($g['key'], ['direct', 'avito', 'vk'], true)));
+        // все группы: какие показывать, решает страница (у группы могут быть замеры по таблице без лидов в CRM)
+        return array_values($groups);
     }
 
     /**

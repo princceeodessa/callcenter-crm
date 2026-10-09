@@ -168,6 +168,13 @@ class OwnerMarketingTest extends TestCase
         $this->assertEqualsWithDelta(2400.5, $ads['spend']['avito']['value'], 0.001);    // таблица заявок
         $this->assertEqualsWithDelta(9501.4, $ads['spend_total'], 0.001);
         $this->assertSame(14.0, $ads['sheet']['total']);
+        $m = $res->viewData('measures');
+        $this->assertTrue($m['available']);
+        $this->assertSame(14, $m['total']);                       // замеры — по таблице: «Сумма» за 08 и 09.10
+        $this->assertEquals(['direct' => 6, 'avito' => 5, 'vk' => 1, 'other' => 2], $m['by_group']);
+        $this->assertSame(['Офис' => 2], $m['by_source']['other']);
+        $res->assertSee('по таблице замеров');
+        $res->assertDontSee('заяв');
         $res->assertSee('Расход на рекламу');
         $res->assertSee('Реклама по площадкам');
     }

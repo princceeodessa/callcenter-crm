@@ -7,11 +7,85 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * Реклама потолков за период [from, to) из owner_marketing_daily — для сводки владельца.
- * Расход по группам каналов CRM: Директ и VK — из их API (если источник собирается), иначе из таблицы заявок;
- * Авито — только из таблицы заявок (API статистики Авито расходов не даёт).
+ * Расход по группам каналов CRM: Директ и VK — из их API (если источник собирается), иначе из таблицы замеров;
+ * Авито — только из таблицы замеров (API статистики Авито расходов не даёт).
+ * Число замеров в сводке — по таблице замеров (решение владельца 09.10.2026), а не по этапам CRM.
  */
 class MarketingStats
 {
+    /** Источник из таблицы замеров → группа каналов CRM (CeilingsKpi::GROUPS). */
+    public static function sheetGroup(string $name): string
+    {
+        return match (mb_strtolower(self::cleanName($name))) {
+            'директ' => 'direct',
+            'авито', 'авито частник' => 'avito',
+            'вк' => 'vk',
+            'радио' => 'radio',
+            'тв' => 'tv',
+            default => 'other',
+        };
+    }
+
+    public static function cleanName(string $name): string
+    {
+        return trim(preg_replace('/\s+/u', ' ', $name));
+    }
+
+    /**
+     * Замеры по таблице за период [from, to): всего, по дням, по группам и источникам, прошлый период той же длины
+     * и сколько дней периода в таблице есть (листа за месяц может не быть).
+     */
+    public static function measurements(Carbon $from, Carbon $to): array
+    {
+        $read = function (Carbon $a, Carbon $b) {
+            return DB::table('owner_marketing_daily')->where('source', 'sheet')
+                ->where('day', '>=', $a->toDateString())->where('day', '<', $b->toDateString())
+                ->orderBy('day')->get(['day', 'metrics']);
+        };
+        $total = 0;
+        $byDay = [];
+        $byGroup = [];
+        $bySource = [];
+        foreach ($read($from, $to) as $r) {
+            $m = json_decode((string) $r->metrics, true) ?: [];
+            $day = substr((string) $r->day, 0, 10);
+            $byDay[$day] = (int) round((float) ($m['total'] ?? 0));
+            $total += $byDay[$day];
+            foreach ((array) ($m['sources'] ?? []) as $name => $v) {
+                $v = (int) round((float) $v);
+                if ($v <= 0) {
+                    continue;
+                }
+                $clean = self::cleanName((string) $name);
+                $g = self::sheetGroup($clean);
+                $byGroup[$g] = ($byGroup[$g] ?? 0) + $v;
+                $bySource[$g][$clean] = ($bySource[$g][$clean] ?? 0) + $v;
+            }
+        }
+        foreach ($bySource as &$list) {
+            arsort($list);
+        }
+        unset($list);
+
+        $prevFrom = $from->copy()->subSeconds($to->getTimestamp() - $from->getTimestamp());
+        $prevRows = $read($prevFrom, $from);
+        $prevTotal = (int) round($prevRows->sum(fn ($r) => (float) ((json_decode((string) $r->metrics, true) ?: [])['total'] ?? 0)));
+
+        $lastDay = Carbon::today()->lt($to) ? Carbon::today()->addDay() : $to;
+        $periodDays = max(0, (int) $from->diffInDays($lastDay));
+
+        return [
+            'available' => count($byDay) > 0,
+            'total' => $total,
+            'by_day' => $byDay,
+            'by_group' => $byGroup,
+            'by_source' => $bySource,
+            'days' => count($byDay),
+            'period_days' => $periodDays,
+            'prev_total' => $prevRows->isNotEmpty() ? $prevTotal : null,
+        ];
+    }
+
     public static function forPeriod(Carbon $from, Carbon $to): array
     {
         $rows = DB::table('owner_marketing_daily')
@@ -59,10 +133,10 @@ class MarketingStats
 
         $spend = [
             'direct' => $live('direct') ? ['value' => (float) ($sum['direct']['cost'] ?? 0), 'from' => 'API Директа']
-                : (isset($sheetSpend['Директ']) ? ['value' => (float) $sheetSpend['Директ'], 'from' => 'таблица заявок'] : null),
+                : (isset($sheetSpend['Директ']) ? ['value' => (float) $sheetSpend['Директ'], 'from' => 'таблица замеров'] : null),
             'vk' => $live('vk') ? ['value' => (float) ($sum['vk']['spent'] ?? 0), 'from' => 'API VK Рекламы']
-                : (isset($sheetSpend['ВК']) ? ['value' => (float) $sheetSpend['ВК'], 'from' => 'таблица заявок'] : null),
-            'avito' => isset($sheetSpend['Авито']) ? ['value' => (float) $sheetSpend['Авито'], 'from' => 'таблица заявок'] : null,
+                : (isset($sheetSpend['ВК']) ? ['value' => (float) $sheetSpend['ВК'], 'from' => 'таблица замеров'] : null),
+            'avito' => isset($sheetSpend['Авито']) ? ['value' => (float) $sheetSpend['Авито'], 'from' => 'таблица замеров'] : null,
         ];
 
         return [

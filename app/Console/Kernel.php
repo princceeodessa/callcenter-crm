@@ -26,6 +26,11 @@ class Kernel extends ConsoleKernel
         $schedule->command('owner:marketing-collect')
             ->cron('20 */2 * * *')
             ->withoutOverlapping(30);
+
+        // Таблица замеров — чаще: число замеров в сводке владельца берётся из неё.
+        $schedule->command('owner:marketing-collect --source=sheet --days=40')
+            ->everyFifteenMinutes()
+            ->withoutOverlapping(10);
     }
 
     protected function commands(): void

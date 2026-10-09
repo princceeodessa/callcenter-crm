@@ -34,6 +34,8 @@ class OwnerCeilingsController extends Controller
         return view('owner.ceilings', [
             'kpi' => $kpi,
             'ads' => MarketingStats::forPeriod($from, $to),
+            // число замеров — по таблице замеров (решение владельца 09.10.2026)
+            'measures' => MarketingStats::measurements($from, $to),
             'nonclosures' => NonClosureSummary::forPeriod($from, $to),
             'period' => $period,
             'periods' => self::PERIODS,

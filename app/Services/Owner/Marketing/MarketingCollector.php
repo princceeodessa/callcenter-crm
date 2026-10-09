@@ -16,7 +16,7 @@ class MarketingCollector
         'direct' => 'Яндекс Директ',
         'vk' => 'VK Реклама',
         'avito' => 'Авито',
-        'sheet' => 'Таблица заявок',
+        'sheet' => 'Таблица замеров',
     ];
 
     /** @return array<string, VkAdsSource|DirectSource|AvitoSource|LeadsSheetSource> */
@@ -52,7 +52,7 @@ class MarketingCollector
                 $daily = $source->daily($from, $to);
                 DB::transaction(function () use ($key, $daily, $from, $to) {
                     // API отдают окно целиком — дни без активности просто не приходят, поэтому окно заменяется.
-                    // Таблицу заявок заменяем только по прочитанным дням: недоступный лист не должен стирать месяц.
+                    // Таблицу замеров заменяем только по прочитанным дням: недоступный лист не должен стирать месяц.
                     if ($key !== 'sheet') {
                         DB::table('owner_marketing_daily')->where('source', $key)
                             ->whereBetween('day', [$from->toDateString(), $to->toDateString()])->delete();
