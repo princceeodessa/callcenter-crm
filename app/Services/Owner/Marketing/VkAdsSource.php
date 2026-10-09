@@ -3,7 +3,6 @@
 namespace App\Services\Owner\Marketing;
 
 use Carbon\Carbon;
-use Illuminate\Support\Facades\Cache;
 use RuntimeException;
 
 /**
@@ -12,12 +11,16 @@ use RuntimeException;
  * БлагоДар (vkads.py, clips_manager.py). Ещё — те же цифры по каждой группе объявлений (в кампании «Клипы» группа =
  * клип): в цифрах дня ключ `groups` {id группы: цифры}, названия групп, кампаний и ссылки на клипы — в meta().
  * Заявки считаются только у кампаний на лид-формы: у охватных VK кладёт в base.vk.result показы.
- * У кабинета лимит 5 активных токенов: токен хранится в кэше и обновляется refresh-токеном, новый без нужды не берётся.
+ * У кабинета лимит 5 активных токенов: токен хранится в файле storage/app/owner-marketing/vk_ads_token.json и
+ * обновляется refresh-токеном, новый без нужды не берётся. Не в кэше Laravel: `optimize:clear` при каждой выкладке
+ * стирал его, и 09.10.2026 за день выкладок пять токенов кончились («токен не выдан, HTTP 403»).
  */
 class VkAdsSource
 {
     private const BASE = 'https://ads.vk.com';
-    private const TOKEN_KEY = 'owner_marketing.vk_ads_token';
+
+    /** Файл токена; в тестах — свой временный. */
+    public static ?string $tokenFile = null;
 
     private array $meta = [];
 
@@ -168,7 +171,7 @@ class VkAdsSource
     {
         [$status, $text] = Http::withRetry('GET', self::BASE.$path.'?'.http_build_query($query), ['Authorization' => 'Bearer '.$this->token()]);
         if ($status === 401) {
-            Cache::forget(self::TOKEN_KEY);
+            $this->forgetToken();
         }
         if ($status !== 200) {
             throw Http::fail('VK Реклама '.$path, $status, $text);
@@ -179,7 +182,7 @@ class VkAdsSource
 
     private function token(): string
     {
-        $saved = Cache::get(self::TOKEN_KEY);
+        $saved = $this->savedToken();
         $agency = (string) ($this->cfg['agency_client_name'] ?? '');
         if (is_array($saved) && ($saved['client_id'] ?? null) === $this->cfg['client_id'] && ($saved['agency'] ?? '') === $agency) {
             if (($saved['expires_at'] ?? 0) > time() + 300) {
@@ -206,7 +209,7 @@ class VkAdsSource
             $resp = $this->tokenRequest($form, true);
         }
 
-        Cache::forever(self::TOKEN_KEY, [
+        $this->saveToken([
             'client_id' => $this->cfg['client_id'],
             'agency' => $agency,
             'access_token' => $resp['access_token'],
@@ -215,6 +218,40 @@ class VkAdsSource
         ]);
 
         return $resp['access_token'];
+    }
+
+    private static function tokenPath(): string
+    {
+        return self::$tokenFile ?? storage_path('app/owner-marketing/vk_ads_token.json');
+    }
+
+    private function savedToken(): ?array
+    {
+        $path = self::tokenPath();
+        $data = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
+
+        return is_array($data) ? $data : null;
+    }
+
+    private function saveToken(array $data): void
+    {
+        $path = self::tokenPath();
+        if (! is_dir(dirname($path))) {
+            mkdir(dirname($path), 0700, true);
+        }
+        $tmp = $path.'.'.getmypid().'.tmp';
+        file_put_contents($tmp, json_encode($data));
+        chmod($tmp, 0600);
+        rename($tmp, $path);
+    }
+
+    private function forgetToken(): void
+    {
+        $saved = $this->savedToken();
+        if ($saved !== null) {
+            // access-токен отозван или протух — refresh-токен ещё годится, новый токен из лимита не тратится
+            $this->saveToken(['expires_at' => 0] + $saved);
+        }
     }
 
     private function tokenRequest(array $form, bool $mustSucceed): ?array

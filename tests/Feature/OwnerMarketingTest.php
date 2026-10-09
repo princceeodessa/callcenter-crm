@@ -26,10 +26,11 @@ class OwnerMarketingTest extends TestCase
         parent::setUp();
         Carbon::setTestNow('2026-10-09 12:00:00');
         AvitoSource::$paceSeconds = 0;
+        VkAdsSource::$tokenFile = sys_get_temp_dir().'/owner-test-vk-token-'.getmypid().'.json';
+        @unlink(VkAdsSource::$tokenFile);
         // в транзакции теста: чужие строки сбора (например, ручной прогон на этой базе) не мешают подсчётам
         DB::table('owner_marketing_daily')->delete();
         DB::table('owner_marketing_sources')->delete();
-        Cache::forget('owner_marketing.vk_ads_token');
         Cache::forget('owner_marketing.avito_token');
         config(['owner.marketing' => [
             'vk_ads' => ['client_id' => 'vk-id', 'client_secret' => 'vk-secret', 'agency_client_name' => null],
@@ -43,7 +44,8 @@ class OwnerMarketingTest extends TestCase
     {
         Http::$fake = null;
         AvitoSource::$paceSeconds = 61;
-        Cache::forget('owner_marketing.vk_ads_token');
+        @unlink((string) VkAdsSource::$tokenFile);
+        VkAdsSource::$tokenFile = null;
         Cache::forget('owner_marketing.avito_token');
         Carbon::setTestNow();
         parent::tearDown();
@@ -230,6 +232,12 @@ class OwnerMarketingTest extends TestCase
         };
         (new MarketingCollector())->run(14);
         $this->assertSame(0, $tokenCalls);
+
+        // чистка кэша Laravel при выкладке токен VK не стирает — новый из лимита в 5 токенов не берётся
+        Cache::flush();
+        (new MarketingCollector())->run(14, ['vk']);
+        $this->assertSame(0, $tokenCalls);
+        $this->assertNull(DB::table('owner_marketing_sources')->where('source', 'vk')->value('last_error'));
         $this->assertNull(DB::table('owner_marketing_sources')->where('source', 'avito')->value('last_error'));
         $av = json_decode(DB::table('owner_marketing_daily')->where('source', 'avito')->where('day', '2026-10-08')->value('metrics'), true);
         $this->assertEquals([
