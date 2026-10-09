@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\DB;
 /**
  * Реклама потолков за период [from, to) из owner_marketing_daily — для сводки владельца.
  * Расход по группам каналов CRM: Директ, VK и Авито — из их API (если источник собирается), иначе из таблицы замеров.
- * Авито в таблицу вносят до конца дня — списания за день по API обычно больше на несколько сотен рублей.
+ * Авито — только объявления потолков (в кабинете ещё кондиционеры и ремонт, их и тариф сводка показывает отдельно).
  * Число замеров в сводке — по таблице замеров (решение владельца 09.10.2026), а не по этапам CRM.
  */
 class MarketingStats
@@ -95,6 +95,7 @@ class MarketingStats
             ->get(['source', 'day', 'metrics']);
 
         $sum = ['direct' => [], 'vk' => [], 'avito' => [], 'sheet' => ['total' => 0, 'sources' => [], 'spend' => []]];
+        $vkGroups = [];
         $days = ['direct' => 0, 'vk' => 0, 'avito' => 0, 'sheet' => 0];
         foreach ($rows as $r) {
             $m = json_decode((string) $r->metrics, true) ?: [];
@@ -112,6 +113,15 @@ class MarketingStats
             foreach ($m as $k => $v) {
                 if (is_numeric($v)) {
                     $sum[$r->source][$k] = ($sum[$r->source][$k] ?? 0) + $v;
+                }
+            }
+            if ($r->source === 'vk') {
+                foreach ((array) ($m['groups'] ?? []) as $gid => $g) {
+                    foreach ((array) $g as $k => $v) {
+                        if (is_numeric($v)) {
+                            $vkGroups[$gid][$k] = ($vkGroups[$gid][$k] ?? 0) + $v;
+                        }
+                    }
                 }
             }
         }
@@ -137,9 +147,35 @@ class MarketingStats
                 : (isset($sheetSpend['Директ']) ? ['value' => (float) $sheetSpend['Директ'], 'from' => 'таблица замеров'] : null),
             'vk' => $live('vk') ? ['value' => (float) ($sum['vk']['spent'] ?? 0), 'from' => 'API VK Рекламы']
                 : (isset($sheetSpend['ВК']) ? ['value' => (float) $sheetSpend['ВК'], 'from' => 'таблица замеров'] : null),
-            'avito' => $live('avito') && isset($sum['avito']['spend']) ? ['value' => (float) $sum['avito']['spend'], 'from' => 'API Авито']
+            'avito' => $live('avito') && isset($sum['avito']['ceilings_spend']) ? ['value' => (float) $sum['avito']['ceilings_spend'], 'from' => 'API Авито, объявления потолков']
                 : (isset($sheetSpend['Авито']) ? ['value' => (float) $sheetSpend['Авито'], 'from' => 'таблица замеров'] : null),
         ];
+
+        // кабинет Авито по направлениям: потолки, кондиционеры, ремонт и общие списания (тариф и прочее)
+        $avitoDirs = [];
+        foreach (AvitoSource::DIRS as $key => $d) {
+            $avitoDirs[$key] = [
+                'label' => $d['label'],
+                'spend' => (float) ($sum['avito'][$key.'_spend'] ?? 0),
+                'contacts' => (int) ($sum['avito'][$key.'_contacts'] ?? 0),
+                'views' => (int) ($sum['avito'][$key.'_views'] ?? 0),
+            ];
+        }
+
+        $vkMeta = json_decode((string) ($status['vk']->meta ?? ''), true) ?: [];
+        $groups = [];
+        foreach ($vkGroups as $gid => $g) {
+            $info = (array) ($vkMeta['groups'][$gid] ?? []);
+            $groups[] = $g + [
+                'id' => (int) $gid,
+                'name' => (string) ($info['name'] ?? ('группа '.$gid)),
+                'plan' => (string) ($info['plan'] ?? ''),
+                'active' => ($info['status'] ?? '') === 'active' && ($info['plan_status'] ?? '') === 'active',
+                'leadads' => (bool) ($info['leadads'] ?? false),
+                'clip' => is_string($info['clip'] ?? null) && str_starts_with($info['clip'], 'https://vk.com/') ? $info['clip'] : null,
+            ];
+        }
+        usort($groups, fn ($a, $b) => [$b['active'], $b['spent'] ?? 0] <=> [$a['active'], $a['spent'] ?? 0]);
 
         return [
             'direct' => $sum['direct'],
@@ -147,6 +183,9 @@ class MarketingStats
             'avito' => $sum['avito'],
             'sheet' => $sum['sheet'],
             'spend' => $spend,
+            'avito_dirs' => $avitoDirs,
+            'avito_shared' => (float) ($sum['avito']['shared_spend'] ?? 0),
+            'vk_groups' => $groups,
             'spend_total' => array_sum(array_map(fn ($s) => $s['value'] ?? 0, array_filter($spend))),
             'sources' => $sources,
             'any' => $rows->isNotEmpty(),

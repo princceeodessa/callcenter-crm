@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Account;
 use App\Models\User;
+use App\Services\Owner\Marketing\AvitoSource;
 use App\Services\Owner\Marketing\DirectSource;
 use App\Services\Owner\Marketing\Http;
 use App\Services\Owner\Marketing\LeadsSheetSource;
@@ -24,6 +25,7 @@ class OwnerMarketingTest extends TestCase
     {
         parent::setUp();
         Carbon::setTestNow('2026-10-09 12:00:00');
+        AvitoSource::$paceSeconds = 0;
         // в транзакции теста: чужие строки сбора (например, ручной прогон на этой базе) не мешают подсчётам
         DB::table('owner_marketing_daily')->delete();
         DB::table('owner_marketing_sources')->delete();
@@ -40,6 +42,7 @@ class OwnerMarketingTest extends TestCase
     protected function tearDown(): void
     {
         Http::$fake = null;
+        AvitoSource::$paceSeconds = 61;
         Cache::forget('owner_marketing.vk_ads_token');
         Cache::forget('owner_marketing.avito_token');
         Carbon::setTestNow();
@@ -58,14 +61,55 @@ class OwnerMarketingTest extends TestCase
                 return [200, json_encode(['access_token' => 'vk-token', 'refresh_token' => 'vk-refresh', 'expires_in' => 86400])];
             }
             if (str_contains($url, 'ads.vk.com/api/v2/ad_plans.json')) {
-                return [200, json_encode(['count' => 2, 'items' => [['id' => 1, 'status' => 'active'], ['id' => 2, 'status' => 'deleted']]])];
+                return [200, json_encode(['count' => 3, 'items' => [
+                    ['id' => 1, 'name' => 'Клипы БлагоДар', 'status' => 'active', 'objective' => 'branding_socialengagement'],
+                    ['id' => 2, 'name' => 'Старая', 'status' => 'deleted', 'objective' => 'leadads'],
+                    ['id' => 3, 'name' => 'Потолки 2+3 (лид-форма)', 'status' => 'blocked', 'objective' => 'leadads'],
+                ]])];
             }
             if (str_contains($url, 'ads.vk.com/api/v2/statistics/ad_plans/day.json')) {
-                $this->assertStringContainsString('id=1&', $url);   // удалённая кампания не запрашивается
-                return [200, json_encode(['items' => [['id' => 1, 'rows' => [
-                    ['date' => '2026-10-08', 'base' => ['spent' => '1200.50', 'shows' => 5000, 'clicks' => 40, 'vk' => ['result' => 3]], 'video' => ['viewed_3_seconds' => 900], 'social_network' => ['result_join' => 7]],
-                    ['date' => '2026-10-09', 'base' => ['spent' => '300', 'shows' => 1000, 'clicks' => 10, 'goals' => 1], 'video' => [], 'social_network' => []],
-                ]]]])];
+                $this->assertStringContainsString('id=1%2C3&', $url);   // удалённая кампания не запрашивается
+                return [200, json_encode(['items' => [
+                    // охватная кампания: base.vk.result — это показы, не заявки
+                    ['id' => 1, 'rows' => [
+                        ['date' => '2026-10-08', 'base' => ['spent' => '1200.50', 'shows' => 5000, 'clicks' => 40, 'vk' => ['result' => 5000]], 'video' => ['viewed_3_seconds' => 900, 'viewed_100_percent' => 300], 'social_network' => ['result_join' => 7]],
+                        ['date' => '2026-10-09', 'base' => ['spent' => '300', 'shows' => 1000, 'clicks' => 10, 'goals' => 1], 'video' => [], 'social_network' => []],
+                    ]],
+                    ['id' => 3, 'rows' => [
+                        ['date' => '2026-10-08', 'base' => ['spent' => '100', 'shows' => 200, 'clicks' => 5, 'vk' => ['result' => 2]], 'video' => [], 'social_network' => []],
+                    ]],
+                ]])];
+            }
+            if (str_contains($url, 'ads.vk.com/api/v2/ad_groups.json')) {
+                return [200, json_encode(['count' => 5, 'items' => [
+                    ['id' => 10, 'name' => 'Клип 111', 'status' => 'active', 'ad_plan_id' => 1],
+                    ['id' => 11, 'name' => 'Клип 222', 'status' => 'blocked', 'ad_plan_id' => 1],
+                    ['id' => 12, 'name' => 'Удалённая', 'status' => 'deleted', 'ad_plan_id' => 1],
+                    ['id' => 30, 'name' => 'Потолки 2+3 — Ижевск', 'status' => 'active', 'ad_plan_id' => 3],
+                    ['id' => 99, 'name' => 'Из удалённой кампании', 'status' => 'active', 'ad_plan_id' => 2],
+                ]])];
+            }
+            if (str_contains($url, 'ads.vk.com/api/v2/banners.json')) {
+                return [200, json_encode(['count' => 2, 'items' => [
+                    ['id' => 1, 'ad_group_id' => 10, 'urls' => ['vk_clip' => ['url' => 'https://vk.com/clip-1_111']]],
+                    ['id' => 3, 'ad_group_id' => 30, 'urls' => ['primary' => ['url' => 'leadads://1/']]],
+                ]])];
+            }
+            if (str_contains($url, 'ads.vk.com/api/v2/statistics/ad_groups/day.json')) {
+                $this->assertStringContainsString('id=10%2C11%2C30&', $url);   // без удалённых групп и групп удалённых кампаний
+                return [200, json_encode(['items' => [
+                    ['id' => 10, 'rows' => [
+                        ['date' => '2026-10-08', 'base' => ['spent' => '1000', 'shows' => 4000, 'clicks' => 30, 'vk' => ['result' => 4000]], 'video' => ['viewed_3_seconds' => 800, 'viewed_100_percent' => 250], 'social_network' => ['result_join' => 6]],
+                        ['date' => '2026-10-09', 'base' => ['spent' => '300', 'shows' => 1000, 'clicks' => 10], 'video' => [], 'social_network' => []],
+                    ]],
+                    ['id' => 11, 'rows' => [
+                        ['date' => '2026-10-08', 'base' => ['spent' => '200.5', 'shows' => 1000, 'clicks' => 10], 'video' => ['viewed_3_seconds' => 100, 'viewed_100_percent' => 50], 'social_network' => ['result_join' => 1]],
+                        ['date' => '2026-10-09', 'base' => ['spent' => '0', 'shows' => 0], 'video' => [], 'social_network' => []],
+                    ]],
+                    ['id' => 30, 'rows' => [
+                        ['date' => '2026-10-08', 'base' => ['spent' => '100', 'shows' => 200, 'clicks' => 5, 'vk' => ['result' => 2]], 'video' => [], 'social_network' => []],
+                    ]],
+                ]])];
             }
             if (str_contains($url, 'api.avito.ru')) {
                 if ($avitoFails) {
@@ -78,9 +122,22 @@ class OwnerMarketingTest extends TestCase
                     return [200, json_encode(['id' => 777, 'name' => 'БлагоДар'])];
                 }
                 if (str_contains($url, '/core/v1/items')) {
-                    return [200, json_encode(['resources' => [['id' => 11], ['id' => 12]]])];
+                    // потолки и кондиционеры — активные, ремонт и вакансия — в архиве (у архивных тоже бывают расходы)
+                    $svc = ['id' => 114, 'name' => 'Предложение услуг'];
+                    return [200, json_encode(['resources' => match (true) {
+                        str_contains($url, 'status=active') => [
+                            ['id' => 11, 'title' => 'Натяжные потолки. Замер в день обращения', 'category' => $svc],
+                            ['id' => 12, 'title' => 'Установка кондиционера под ключ', 'category' => $svc],
+                        ],
+                        str_contains($url, 'status=old') => [
+                            ['id' => 13, 'title' => 'Ремонт под ключ', 'category' => $svc],
+                            ['id' => 14, 'title' => 'Монтажник натяжных потолков', 'category' => ['id' => 111, 'name' => 'Вакансии']],
+                        ],
+                        default => [],
+                    }])];
                 }
                 if (str_contains($url, '/stats/v1/accounts/777/items')) {
+                    $this->assertSame([11, 12, 13, 14], json_decode((string) $body, true)['itemIds']);
                     return [200, json_encode(['result' => ['items' => [
                         ['itemId' => 11, 'stats' => [['date' => '2026-10-08', 'uniqViews' => 100, 'uniqContacts' => 5, 'uniqFavorites' => 2]]],
                         ['itemId' => 12, 'stats' => [['date' => '2026-10-08', 'uniqViews' => 50, 'uniqContacts' => 1, 'uniqFavorites' => 0]]],
@@ -90,13 +147,18 @@ class OwnerMarketingTest extends TestCase
                     $req = json_decode((string) $body, true);
                     $this->assertSame(['all'], $req['spendingTypes']);
                     $this->assertSame('day', $req['grouping']);
-                    return [200, json_encode(['result' => ['groupings' => [
-                        ['date' => '2026-10-08', 'type' => 'day', 'spendings' => [
-                            ['slug' => 'presence', 'value' => 1600.4, 'services' => [['slug' => 'cpa_click_package', 'value' => 1600.4]]],
-                            ['slug' => 'rest', 'value' => 200, 'services' => [['slug' => 'tariff_ext', 'value' => 200]]],
-                        ]],
-                        ['date' => '2026-10-09', 'type' => 'day', 'spendings' => [['slug' => 'presence', 'value' => 500, 'services' => []]]],
-                    ]]])];
+                    $day = fn (string $d, array $s) => ['date' => $d, 'type' => 'day', 'spendings' => $s];
+                    $presence = fn (float $v) => ['slug' => 'presence', 'value' => $v, 'services' => [['slug' => 'cpa_click_package', 'value' => $v]]];
+                    $groupings = match ($req['filter']['itemIDs'] ?? null) {
+                        null => [   // весь кабинет: объявления + тариф
+                            $day('2026-10-08', [$presence(1600.4), ['slug' => 'rest', 'value' => 200, 'services' => [['slug' => 'tariff_ext', 'value' => 200]]]]),
+                            $day('2026-10-09', [$presence(500)]),
+                        ],
+                        [11] => [$day('2026-10-08', [$presence(1500.4)]), $day('2026-10-09', [$presence(450)])],
+                        [12] => [$day('2026-10-08', [$presence(60)]), $day('2026-10-09', [$presence(50)])],
+                        [13] => [$day('2026-10-08', [$presence(40)])],
+                    };
+                    return [200, json_encode(['result' => ['groupings' => $groupings]])];
                 }
             }
             if (str_contains($url, 'api.direct.yandex.com/json/v5/reports')) {
@@ -125,7 +187,7 @@ class OwnerMarketingTest extends TestCase
         $this->assertSame(['2026-10-08' => ['impr' => 3000, 'clicks' => 60, 'cost' => 4100.4]], $direct);
 
         $vk = VkAdsSource::parse(['base' => ['spent' => '10.5', 'shows' => 3, 'clicks' => 1, 'vk' => ['result' => 2]], 'video' => ['viewed_3_seconds' => 4], 'social_network' => ['result_join' => 1]]);
-        $this->assertSame(['spent' => 10.5, 'shows' => 3, 'clicks' => 1, 'views3' => 4, 'joins' => 1, 'goals' => 2], $vk);
+        $this->assertSame(['spent' => 10.5, 'shows' => 3, 'clicks' => 1, 'views3' => 4, 'views100' => 0, 'joins' => 1, 'goals' => 2], $vk);
     }
 
     public function test_collector_stores_days_and_keeps_going_when_one_source_fails(): void
@@ -139,7 +201,17 @@ class OwnerMarketingTest extends TestCase
         $this->assertStringStartsWith('ошибка', $result['avito']);
 
         $vk = json_decode(DB::table('owner_marketing_daily')->where('source', 'vk')->where('day', '2026-10-08')->value('metrics'), true);
-        $this->assertEquals(['spent' => 1200.5, 'shows' => 5000, 'clicks' => 40, 'views3' => 900, 'joins' => 7, 'goals' => 3], $vk);
+        $groups = $vk['groups'];
+        unset($vk['groups']);
+        // лиды — только у кампании на лид-формы; у охватной base.vk.result — показы
+        $this->assertEquals(['spent' => 1300.5, 'shows' => 5200, 'clicks' => 45, 'views3' => 900, 'views100' => 300, 'joins' => 7, 'goals' => 2], $vk);
+        $this->assertEquals(['spent' => 1000, 'shows' => 4000, 'clicks' => 30, 'views3' => 800, 'views100' => 250, 'joins' => 6, 'goals' => 0], $groups[10]);
+        $this->assertSame(2, $groups[30]['goals']);
+        $vk9 = json_decode(DB::table('owner_marketing_daily')->where('source', 'vk')->where('day', '2026-10-09')->value('metrics'), true);
+        $this->assertSame([10], array_keys($vk9['groups']));     // группа без показов и расхода в день не пишется
+        $meta = json_decode(DB::table('owner_marketing_sources')->where('source', 'vk')->value('meta'), true);
+        $this->assertSame('https://vk.com/clip-1_111', $meta['groups'][10]['clip']);
+        $this->assertTrue($meta['groups'][30]['leadads']);
         $this->assertSame(2, DB::table('owner_marketing_daily')->where('source', 'direct')->count());
         $this->assertSame(2, DB::table('owner_marketing_daily')->where('source', 'sheet')->count());
         $this->assertNotNull(DB::table('owner_marketing_sources')->where('source', 'avito')->value('last_error'));
@@ -160,10 +232,18 @@ class OwnerMarketingTest extends TestCase
         $this->assertSame(0, $tokenCalls);
         $this->assertNull(DB::table('owner_marketing_sources')->where('source', 'avito')->value('last_error'));
         $av = json_decode(DB::table('owner_marketing_daily')->where('source', 'avito')->where('day', '2026-10-08')->value('metrics'), true);
-        $this->assertEquals(['views' => 150, 'contacts' => 6, 'favorites' => 2, 'spend' => 1800.4, 'spend_presence' => 1600.4, 'spend_promotion' => 0, 'spend_other' => 200], $av);
+        $this->assertEquals([
+            'views' => 150, 'contacts' => 6, 'favorites' => 2,
+            'ceilings_views' => 100, 'ceilings_contacts' => 5, 'ceilings_favorites' => 2,
+            'cond_views' => 50, 'cond_contacts' => 1, 'cond_favorites' => 0,
+            'spend' => 1800.4, 'spend_presence' => 1600.4, 'spend_promotion' => 0, 'spend_other' => 200,
+            'ceilings_spend' => 1500.4, 'cond_spend' => 60, 'repair_spend' => 40, 'shared_spend' => 200,
+        ], $av);
         // день, где были только списания, тоже есть
         $av9 = json_decode(DB::table('owner_marketing_daily')->where('source', 'avito')->where('day', '2026-10-09')->value('metrics'), true);
         $this->assertEquals(500, $av9['spend']);
+        $this->assertEquals(450, $av9['ceilings_spend']);
+        $this->assertEquals(0, $av9['shared_spend']);
     }
 
     public function test_owner_page_shows_spend_and_cost_per_lead(): void
@@ -182,10 +262,16 @@ class OwnerMarketingTest extends TestCase
         $ads = $res->viewData('ads');
         $this->assertEqualsWithDelta(5600.4, $ads['spend']['direct']['value'], 0.001);   // API Директа
         $this->assertSame('API Директа', $ads['spend']['direct']['from']);
-        $this->assertEqualsWithDelta(1500.5, $ads['spend']['vk']['value'], 0.001);       // API VK
-        $this->assertEqualsWithDelta(2300.4, $ads['spend']['avito']['value'], 0.001);    // API Авито: списания за день, а не 2400,5 из таблицы
-        $this->assertSame('API Авито', $ads['spend']['avito']['from']);
-        $this->assertEqualsWithDelta(9401.3, $ads['spend_total'], 0.001);
+        $this->assertEqualsWithDelta(1600.5, $ads['spend']['vk']['value'], 0.001);       // API VK
+        $this->assertEqualsWithDelta(1950.4, $ads['spend']['avito']['value'], 0.001);    // API Авито: только объявления потолков
+        $this->assertStringStartsWith('API Авито', $ads['spend']['avito']['from']);
+        $this->assertEqualsWithDelta(9151.3, $ads['spend_total'], 0.001);
+        $this->assertEqualsWithDelta(110.0, $ads['avito_dirs']['cond']['spend'], 0.001);
+        $this->assertEqualsWithDelta(40.0, $ads['avito_dirs']['repair']['spend'], 0.001);
+        $this->assertEqualsWithDelta(200.0, $ads['avito_shared'], 0.001);
+        // группы VK за период: сначала работающие, по расходу
+        $this->assertSame([10, 11, 30], array_column($ads['vk_groups'], 'id'));   // 30 — в остановленной кампании
+        $this->assertEqualsWithDelta(1300.0, $ads['vk_groups'][0]['spent'], 0.001);
         $this->assertSame(14.0, $ads['sheet']['total']);
         $m = $res->viewData('measures');
         $this->assertTrue($m['available']);
@@ -201,7 +287,11 @@ class OwnerMarketingTest extends TestCase
         $this->assertStringContainsString('<div class="name">Офис</div>', $html);
         $res->assertSee('Расход на рекламу');
         $res->assertSee('Реклама по площадкам');
-        $res->assertSee('в т.ч. тариф и прочее 200 ₽');
+        $res->assertSee('весь кабинет 2 300 ₽, кроме потолков: кондиционеры 110 ₽ · ремонт и шумоизоляция 40 ₽ · тариф и прочее 200 ₽');
+        $res->assertSee('Авито · потолки');
+        $res->assertSee('VK Реклама — группы объявлений');
+        $res->assertSee('<a href="https://vk.com/clip-1_111" target="_blank" rel="noopener">Клип 111</a>', false);
+        $res->assertSee('Лиды с формы');
         $res->assertDontSee('Новые лиды');                      // плитки лидов на сводке нет (решение владельца 09.10)
         $res->assertSee('По дням');                             // два дня — график есть
 
@@ -217,6 +307,18 @@ class OwnerMarketingTest extends TestCase
         $ads = \App\Services\Owner\Marketing\MarketingStats::forPeriod(Carbon::parse('2026-10-08'), Carbon::parse('2026-10-10'));
         $this->assertEqualsWithDelta(2400.5, $ads['spend']['avito']['value'], 0.001);
         $this->assertSame('таблица замеров', $ads['spend']['avito']['from']);
+    }
+
+    public function test_avito_direction_by_title(): void
+    {
+        $this->assertSame('ceilings', AvitoSource::direction('Натяжные потолки. 2-й и 3-й потолок в подарок'));
+        $this->assertSame('ceilings', AvitoSource::direction('Потолки натяжные. Быстрый монтаж'));
+        $this->assertSame('cond', AvitoSource::direction('Обслуживание кондиционеров и сплит систем'));
+        $this->assertSame('repair', AvitoSource::direction('Надёжный ремонт под ключ — договор и гарантия'));
+        $this->assertSame('repair', AvitoSource::direction('Шумоизоляция и звукоизоляция любых помещений'));
+        $this->assertSame('repair', AvitoSource::direction('Тихие стены - Ваш надежный уют'));
+        $this->assertSame('other', AvitoSource::direction('Монтажник натяжных потолков', 111));   // вакансия
+        $this->assertSame('other', AvitoSource::direction('Установка пвх окон под ключ'));
     }
 
     public function test_the_same_collect_error_is_logged_once(): void

@@ -1,0 +1,11 @@
+[Unit]
+Description=Collect Avito stats for the owner summary every hour
+
+[Timer]
+# Not in the scheduler: schedule:run would wait these minutes and hold back the Avito chat poll.
+OnCalendar=*-*-* *:40:00
+AccuracySec=1s
+Unit=callcenter-crm-avito-stats.service
+
+[Install]
+WantedBy=timers.target

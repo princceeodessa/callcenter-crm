@@ -1,0 +1,12 @@
+[Unit]
+Description=Callcenter CRM: Avito spend and contacts by direction for the owner summary
+After=network.target
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/callcenter-crm
+# Avito allows one stats request a minute; a run makes four with pauses (3-4 minutes).
+ExecStart=/usr/bin/php artisan owner:marketing-collect --source=avito --days=3 --quiet --no-interaction
+TimeoutStartSec=900

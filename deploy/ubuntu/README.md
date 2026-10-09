@@ -62,14 +62,19 @@ sudo cp deploy/ubuntu/callcenter-crm-scheduler.service /etc/systemd/system/
 sudo cp deploy/ubuntu/callcenter-crm-scheduler.timer /etc/systemd/system/
 sudo cp deploy/ubuntu/callcenter-crm-measurements.service /etc/systemd/system/
 sudo cp deploy/ubuntu/callcenter-crm-measurements.timer /etc/systemd/system/
+sudo cp deploy/ubuntu/callcenter-crm-avito-stats.service /etc/systemd/system/
+sudo cp deploy/ubuntu/callcenter-crm-avito-stats.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now callcenter-crm-queue.service
 sudo systemctl enable --now callcenter-crm-scheduler.timer
 sudo systemctl enable --now callcenter-crm-measurements.timer
+sudo systemctl enable --now callcenter-crm-avito-stats.timer
 ```
 
 `callcenter-crm-measurements.timer` re-reads the measurements Google sheet for the owner summary every 30 seconds
 (the scheduler cannot do it that often: `schedule:run` waits for the Avito poll).
+`callcenter-crm-avito-stats.timer` collects Avito spend and contacts by direction every hour: Avito allows one stats
+request a minute, so a run takes 3–4 minutes and stays out of the scheduler.
 
 Useful checks:
 

@@ -158,8 +158,21 @@
     }
     unset($c);
 
+    // Авито: в сводке потолков — только объявления потолков; остальной кабинет (кондиционеры, ремонт, тариф) — строкой ниже
     $avSpend = $ads['spend']['avito'] ?? null;
-    $avOther = ($avSpend['from'] ?? null) === 'API Авито' ? (float) ($av['spend_other'] ?? 0) : 0.0;
+    $avByDir = isset($av['ceilings_spend']) || isset($av['ceilings_contacts']);
+    $avContacts = (int) ($avByDir ? ($av['ceilings_contacts'] ?? 0) : ($av['contacts'] ?? 0));
+    $avViews = (int) ($avByDir ? ($av['ceilings_views'] ?? 0) : ($av['views'] ?? 0));
+    $avRest = [];
+    foreach ($ads['avito_dirs'] as $dk => $dd) {
+        if ($dk !== 'ceilings' && $dd['spend'] > 0) $avRest[] = mb_strtolower($dd['label']).' '.$money($dd['spend']);
+    }
+    if ($ads['avito_shared'] > 0) $avRest[] = 'тариф и прочее '.$money($ads['avito_shared']);
+    $avCabinet = (float) ($av['spend'] ?? 0);
+
+    // VK: подписки = вступления в сообщество; группы объявлений (в кампании «Клипы» группа — это клип)
+    $vkGroups = $ads['vk_groups'];
+    $vkHasLeads = collect($vkGroups)->contains(fn ($g) => $g['leadads']);
 
     $ncState = $nonclosures['state'];
     $ncData = $nonclosures['data'] ?? null;
@@ -288,16 +301,46 @@
                 <div class="k">
                     <div class="l">VK Реклама</div>
                     <div class="v">{{ $money($vk['spent'] ?? null) }}</div>
-                    <div class="note">показы {{ $n($vk['shows'] ?? 0) }} · клики {{ $n($vk['clicks'] ?? 0) }} · просмотры 3с {{ $n($vk['views3'] ?? 0) }} · вступления {{ $n($vk['joins'] ?? 0) }}</div>
+                    <div class="note">показы {{ $n($vk['shows'] ?? 0) }} · просмотры 3с {{ $n($vk['views3'] ?? 0) }} (просмотр {{ $per($vk['spent'] ?? null, (int) ($vk['views3'] ?? 0)) }}) · досмотры {{ $n($vk['views100'] ?? 0) }} · подписки {{ $n($vk['joins'] ?? 0) }} (подписка {{ $per($vk['spent'] ?? null, (int) ($vk['joins'] ?? 0)) }}) · клики {{ $n($vk['clicks'] ?? 0) }}</div>
                 </div>
                 <div class="k">
-                    <div class="l">Авито</div>
+                    <div class="l">Авито · потолки</div>
                     <div class="v" title="{{ $avSpend ? 'по данным: '.$avSpend['from'] : 'расхода нет ни в API, ни в таблице' }}">{{ $money($avSpend['value'] ?? null) }}</div>
-                    <div class="note">контакты {{ $n($av['contacts'] ?? 0) }} · просмотры {{ $n($av['views'] ?? 0) }} · контакт {{ $per($avSpend['value'] ?? null, (int) ($av['contacts'] ?? 0)) }}@if($avOther > 0) · в т.ч. тариф и прочее {{ $money($avOther) }}@endif</div>
+                    <div class="note">контакты {{ $n($avContacts) }} · просмотры {{ $n($avViews) }} · контакт {{ $per($avSpend['value'] ?? null, $avContacts) }}</div>
+                    @if($avCabinet > 0 && count($avRest) > 0)
+                        <div class="note">весь кабинет {{ $money($avCabinet) }}, кроме потолков: {{ implode(' · ', $avRest) }}</div>
+                    @endif
                 </div>
             </div>
         </div>
     </div>
+
+    @if(count($vkGroups) > 0)
+    <div class="own-card">
+        <div class="hd"><span>VK Реклама — группы объявлений</span><span class="note">в кампании «Клипы» группа — это клип; подписки — вступления в сообщество</span></div>
+        <table class="stack">
+            <thead><tr><th>Группа</th><th class="num">Расход</th><th class="num">Показы</th><th class="num">Просмотры 3с</th><th class="num">Цена просмотра</th><th class="num">Досмотры</th><th class="num">Подписки</th><th class="num">Цена подписки</th>@if($vkHasLeads)<th class="num">Лиды с формы</th>@endif</tr></thead>
+            <tbody>
+            @foreach($vkGroups as $g)
+                <tr>
+                    <td>
+                        @if($g['clip'])<a href="{{ $g['clip'] }}" target="_blank" rel="noopener">{{ $g['name'] }}</a>@else{{ $g['name'] }}@endif
+                        <div class="note">{{ $g['plan'] }} · {{ $g['active'] ? 'в работе' : 'остановлена' }}</div>
+                    </td>
+                    <td class="num" data-l="расход">{{ $money($g['spent'] ?? 0) }}</td>
+                    <td class="num" data-l="показы">{{ $n($g['shows'] ?? 0) }}</td>
+                    <td class="num" data-l="просмотры 3с">{{ $n($g['views3'] ?? 0) }}</td>
+                    <td class="num" data-l="просмотр">{{ $per($g['spent'] ?? null, (int) ($g['views3'] ?? 0)) }}</td>
+                    <td class="num" data-l="досмотры">{{ $n($g['views100'] ?? 0) }}</td>
+                    <td class="num" data-l="подписки">{{ $n($g['joins'] ?? 0) }}</td>
+                    <td class="num" data-l="подписка">{{ $per($g['spent'] ?? null, (int) ($g['joins'] ?? 0)) }}</td>
+                    @if($vkHasLeads)<td class="num" data-l="лиды с формы">{{ $g['leadads'] ? $n($g['goals'] ?? 0) : '—' }}</td>@endif
+                </tr>
+            @endforeach
+            </tbody>
+        </table>
+    </div>
+    @endif
 
     <div class="own-card">
         <div class="hd">
@@ -367,9 +410,11 @@
         <b>Лид</b> — новая сделка в колл-центре потолков за период. <b>Звонки</b> — по событиям Мегафона: пропущенный —
         входящий, который никто не принял. <b>Операторы</b> — по действиям в CRM: «перевели на замер» — кто первым перевёл сделку
         на «Замер назначен» (или закрыл «Успешно»); «обработано» — сделки, которые сотрудник двигал по этапам или закрывал.
-        <b>Реклама</b> собирается сама каждые 2 часа: расход Директа, VK и Авито — из их кабинетов (Директ и VK — без НДС,
-        как в таблице; Авито — все списания дня, вместе с тарифом). В таблицу расход Авито вносят до конца дня, поэтому там
-        он обычно на несколько сотен рублей меньше.
+        <b>Реклама</b> собирается сама: Директ и VK — каждые 2 часа, Авито — каждый час; расход — из их кабинетов (Директ и
+        VK — без НДС, как в таблице). <b>Авито</b> — только объявления потолков (по названию): кондиционеры, ремонт с
+        шумоизоляцией и общий тариф кабинета в цену лида и замера потолков не входят и показаны отдельной строкой. В таблицу
+        расход Авито вносят до конца дня, поэтому там он обычно меньше. <b>VK</b> — подписки это вступления в сообщество,
+        досмотры — просмотры клипа до конца.
     </p>
 </div>
 @endsection
