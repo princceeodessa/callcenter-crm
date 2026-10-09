@@ -6,7 +6,8 @@ use Carbon\Carbon;
 use RuntimeException;
 
 /**
- * Яндекс Директ (API v5, сервис Reports) — дневные показы, клики и расход по всему кабинету, с НДС, в рублях.
+ * Яндекс Директ (API v5, сервис Reports) — дневные показы, клики и расход по всему кабинету, в рублях БЕЗ НДС: так же
+ * считает таблица заявок и VK Реклама, иначе цена лида по каналам несравнима (с НДС Директ дороже в 1,22 раза).
  * Перенесено из дашборда БлагоДар (direct.py). Отчёт строится асинхронно: на 201/202 ждём и повторяем тот же запрос.
  */
 class DirectSource
@@ -45,7 +46,7 @@ class DirectSource
             'ReportType' => 'ACCOUNT_PERFORMANCE_REPORT',
             'DateRangeType' => 'CUSTOM_DATE',
             'Format' => 'TSV',
-            'IncludeVAT' => 'YES',
+            'IncludeVAT' => 'NO',
         ]], JSON_UNESCAPED_UNICODE);
         $url = (! empty($this->cfg['sandbox']) ? self::SANDBOX : self::PROD).'reports';
 
