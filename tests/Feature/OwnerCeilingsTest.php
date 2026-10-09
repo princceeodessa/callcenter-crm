@@ -105,6 +105,44 @@ class OwnerCeilingsTest extends TestCase
         $res->assertSee('Потолки');
     }
 
+    public function test_nonclosures_from_blagodar_summary(): void
+    {
+        config(['owner.nonclosures' => ['url' => null, 'token' => null]]);
+        $owner = $this->owner();
+        $this->actingAs($owner)->get(route('owner.ceilings', ['period' => 'custom', 'from' => '2026-09-01', 'to' => '2026-09-30']))
+            ->assertOk()->assertSee('появится здесь');
+
+        config(['owner.nonclosures' => ['url' => 'https://blagodar.test', 'token' => 'tkn']]);
+        \Illuminate\Support\Facades\Cache::forget('owner.nonclosures.2026-09-01.2026-09-30');
+        \App\Services\Owner\Marketing\Http::$fake = function (string $method, string $url, array $headers) {
+            $this->assertSame('https://blagodar.test/api/reports/nonclosures/summary?from=2026-09-01&to=2026-09-30', $url);
+            $this->assertSame('Bearer tkn', $headers['Authorization']);
+
+            return [200, json_encode([
+                'updated' => ['kc_sheet' => '2026-10-09T10:20:00+00:00', 'onec' => '2026-10-09T10:05:00+00:00'],
+                'stale' => [],
+                'blocks' => [
+                    ['key' => 'ceilings', 'title' => 'Потолки', 'rows' => [['measurer' => 'Иванов', 'measurements' => 40, 'not_concluded' => 10], ['measurer' => 'Петров', 'measurements' => 20, 'not_concluded' => 8]], 'total' => ['measurements' => 60, 'not_concluded' => 18]],
+                    ['key' => 'conditioners', 'title' => 'Кондиционеры', 'rows' => [], 'total' => ['measurements' => 0, 'not_concluded' => 0]],
+                ],
+                'discrepancies' => 3,
+                'url' => 'https://blagodar.test/reports/nonclosures',
+            ])];
+        };
+        try {
+            $res = $this->actingAs($owner)->get(route('owner.ceilings', ['period' => 'custom', 'from' => '2026-09-01', 'to' => '2026-09-30']));
+        } finally {
+            \App\Services\Owner\Marketing\Http::$fake = null;
+            \Illuminate\Support\Facades\Cache::forget('owner.nonclosures.2026-09-01.2026-09-30');
+        }
+        $res->assertOk();
+        $nc = $res->viewData('nonclosures');
+        $this->assertSame('ok', $nc['state']);
+        $this->assertSame(25.0, $nc['data']['blocks'][0]['rows'][0]['percent']);
+        $this->assertSame(30.0, $nc['data']['blocks'][0]['total']['percent']);
+        $res->assertSee('Иванов')->assertSee('полный отчёт');
+    }
+
     public function test_switch_only_for_owner_of_all_businesses(): void
     {
         $this->actingAs($this->owner(false))->get(route('owner.ceilings'))->assertForbidden();

@@ -244,6 +244,51 @@
         </div>
     </div>
 
+    @php
+        $ncState = $nonclosures['state'];
+        $ncData = $nonclosures['data'] ?? null;
+        $ncUpdated = $ncData ? collect($ncData['updated'])->map(fn ($t, $k) => ($k === 'kc_sheet' ? 'таблица КЦ' : ($k === 'onec' ? '1С' : $k)).' — '.$t->format($t->isToday() ? 'H:i' : 'd.m H:i'))->implode(', ') : '';
+    @endphp
+    <div class="own-card">
+        <div class="hd">
+            <span>Незаключённые договоры по замерщикам</span>
+            <span class="note">
+                @if($ncState === 'ok')
+                    сверка таблицы КЦ с 1С, CRM БлагоДар@if($ncUpdated !== '') · обновлено: {{ $ncUpdated }}@endif
+                    @if($ncData['url']) · <a href="{{ $ncData['url'] }}" target="_blank" rel="noopener">полный отчёт →</a>@endif
+                @endif
+            </span>
+        </div>
+        <div class="bd">
+            @if($ncState !== 'ok')
+                <div class="{{ $ncState === 'error' ? 'text-danger' : 'note' }}">{{ $nonclosures['message'] }}</div>
+            @else
+                @foreach($ncData['stale'] as $warn)
+                    <div class="text-danger small mb-1">⚠ {{ $warn }}</div>
+                @endforeach
+                <div class="row g-3">
+                    @foreach($ncData['blocks'] as $blk)
+                        <div class="col-lg-4 col-md-6">
+                            <div class="fw-bold mb-1">{{ $blk['title'] }}</div>
+                            <table>
+                                <thead><tr><th>Замерщик</th><th class="num">Замеров</th><th class="num">Незаключ.</th><th class="num">%</th></tr></thead>
+                                <tbody>
+                                @foreach($blk['rows'] as $r)
+                                    <tr><td>{{ $r['measurer'] }}</td><td class="num">{{ $n($r['measurements']) }}</td><td class="num">{{ $n($r['not_concluded']) }}</td><td class="num">{{ $pct($r['percent']) }}</td></tr>
+                                @endforeach
+                                <tr class="grp"><td>Итого</td><td class="num">{{ $n($blk['total']['measurements']) }}</td><td class="num">{{ $n($blk['total']['not_concluded']) }}</td><td class="num">{{ $pct($blk['total']['percent']) }}</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    @endforeach
+                </div>
+                @if($ncData['discrepancies'])
+                    <div class="note mt-2">Строк, где таблица КЦ спорит с 1С: {{ $n($ncData['discrepancies']) }} — подробно в полном отчёте.</div>
+                @endif
+            @endif
+        </div>
+    </div>
+
     <div class="own-card">
         <div class="hd"><span>Операторы</span><span class="note">по действиям за период: кто двигал и закрывал сделки</span></div>
         <div class="tbl-scroll">

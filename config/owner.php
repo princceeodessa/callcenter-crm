@@ -26,4 +26,10 @@ return [
             'id' => env('OWNER_LEADS_SHEET_ID'),
         ],
     ],
+
+    // Незаключённые договоры по замерщикам — готовая сводка CRM БлагоДар (служебный токен на чтение отчёта).
+    'nonclosures' => [
+        'url' => env('OWNER_NONCLOSURES_URL'),
+        'token' => env('OWNER_NONCLOSURES_TOKEN'),
+    ],
 ];
