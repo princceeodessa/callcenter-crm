@@ -96,11 +96,11 @@
                 <a href="{{ route('owner.ceilings', ['period' => $key]) }}" class="{{ $period === $key ? 'on' : '' }}">{{ $label }}</a>
             @endforeach
         </div>
-        <form method="GET" action="{{ route('owner.ceilings') }}" class="d-flex gap-2 align-items-center">
+        <form method="GET" action="{{ route('owner.ceilings') }}" class="d-flex gap-2 align-items-center flex-wrap">
             <input type="hidden" name="period" value="custom">
-            <input type="date" name="from" value="{{ $fromValue }}" class="form-control form-control-sm" style="width:auto">
+            <input type="date" name="from" value="{{ $fromValue }}" class="form-control form-control-sm" style="width:auto; max-width:150px">
             <span class="text-muted">—</span>
-            <input type="date" name="to" value="{{ $toValue }}" class="form-control form-control-sm" style="width:auto">
+            <input type="date" name="to" value="{{ $toValue }}" class="form-control form-control-sm" style="width:auto; max-width:150px">
             <button class="btn btn-sm btn-outline-primary">Показать</button>
         </form>
     </div>
