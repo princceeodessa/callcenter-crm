@@ -21,6 +21,11 @@ class Kernel extends ConsoleKernel
         $schedule->command('warehouse:low-stock-digest')
             ->dailyAt('09:00')
             ->withoutOverlapping();
+
+        // Сводка владельца: реклама потолков (VK Реклама, Яндекс Директ, Авито, таблица заявок) — каждые 2 часа.
+        $schedule->command('owner:marketing-collect')
+            ->cron('20 */2 * * *')
+            ->withoutOverlapping(30);
     }
 
     protected function commands(): void

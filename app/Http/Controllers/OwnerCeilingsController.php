@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\Owner\CeilingsKpi;
+use App\Services\Owner\Marketing\MarketingStats;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
@@ -31,6 +32,7 @@ class OwnerCeilingsController extends Controller
 
         return view('owner.ceilings', [
             'kpi' => $kpi,
+            'ads' => MarketingStats::forPeriod($from, $to),
             'period' => $period,
             'periods' => self::PERIODS,
             'fromValue' => $from->format('Y-m-d'),
