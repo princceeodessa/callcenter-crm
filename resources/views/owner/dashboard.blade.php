@@ -38,6 +38,7 @@
             <h4 class="mb-0" style="letter-spacing:-.02em">📊 Сводка бизнеса</h4>
             <div class="text-muted small">склад в деньгах · продажи и прибыль по каждому заказу</div>
         </div>
+        @include('owner._switch', ['active' => 'sneakers'])
         <form method="GET" action="{{ route('owner.dashboard') }}" class="d-flex gap-2 align-items-center">
             <label class="small text-muted mb-0">Месяц</label>
             <input type="month" name="month" value="{{ $monthValue }}" class="form-control form-control-sm" style="width:auto" onchange="this.form.submit()">

@@ -199,6 +199,10 @@ Route::middleware('auth')->group(function () {
         Route::get('/owner', [OwnerDashboardController::class, 'index'])
             ->withoutMiddleware('purchases')->middleware('owner')
             ->name('owner.dashboard');
+        // Та же сводка — вкладка «Потолки»: только владелец всех бизнесов (users.all_businesses)
+        Route::get('/owner/ceilings', [\App\Http\Controllers\OwnerCeilingsController::class, 'index'])
+            ->withoutMiddleware('purchases')->middleware('owner')
+            ->name('owner.ceilings');
         Route::get('/sneaker/report', [SneakerReportController::class, 'index'])->name('sneaker.report');
         Route::get('/sneaker/report/export', [SneakerReportController::class, 'export'])->name('sneaker.report.export');
     });
