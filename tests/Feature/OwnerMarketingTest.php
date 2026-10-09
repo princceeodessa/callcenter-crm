@@ -300,6 +300,7 @@ class OwnerMarketingTest extends TestCase
         $res->assertSee('VK Реклама — группы объявлений');
         $res->assertSee('<a href="https://vk.com/clip-1_111" target="_blank" rel="noopener">Клип 111</a>', false);
         $res->assertSee('Лиды с формы');
+        $res->assertSee('1,63 ₽');                              // просмотр клипа 1300 ₽ / 800 — с копейками, не «2 ₽»
         $res->assertDontSee('Новые лиды');                      // плитки лидов на сводке нет (решение владельца 09.10)
         $res->assertSee('По дням');                             // два дня — график есть
 

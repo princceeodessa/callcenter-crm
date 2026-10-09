@@ -81,7 +81,8 @@
         return ($m10 === 1 && $m100 !== 11) ? $one : (($m10 >= 2 && $m10 <= 4 && ($m100 < 12 || $m100 > 14)) ? $few : $many);
     };
     $money = fn ($v) => $v === null ? '—' : number_format((float) $v, 0, ',', ' ').' ₽';
-    $per = fn ($spend, $cnt) => ($spend !== null && $cnt > 0) ? number_format($spend / $cnt, 0, ',', ' ').' ₽' : '—';
+    // цена за штуку; дешевле 10 ₽ (просмотр клипа VK — ~0,3 ₽) — с копейками, иначе было бы «0 ₽»
+    $per = fn ($spend, $cnt) => ($spend !== null && $cnt > 0) ? number_format($spend / $cnt, $spend / $cnt < 10 ? 2 : 0, ',', ' ').' ₽' : '—';
     $delta = function ($cur, $prev) {
         if ($prev === null || $cur === null) return '';
         if ((float) $prev == 0.0) return $cur > 0 ? '<span class="delta up">новое</span>' : '';
