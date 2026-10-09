@@ -7,8 +7,8 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * Реклама потолков за период [from, to) из owner_marketing_daily — для сводки владельца.
- * Расход по группам каналов CRM: Директ и VK — из их API (если источник собирается), иначе из таблицы замеров;
- * Авито — только из таблицы замеров (API статистики Авито расходов не даёт).
+ * Расход по группам каналов CRM: Директ, VK и Авито — из их API (если источник собирается), иначе из таблицы замеров.
+ * Авито в таблицу вносят до конца дня — списания за день по API обычно больше на несколько сотен рублей.
  * Число замеров в сводке — по таблице замеров (решение владельца 09.10.2026), а не по этапам CRM.
  */
 class MarketingStats
@@ -137,7 +137,8 @@ class MarketingStats
                 : (isset($sheetSpend['Директ']) ? ['value' => (float) $sheetSpend['Директ'], 'from' => 'таблица замеров'] : null),
             'vk' => $live('vk') ? ['value' => (float) ($sum['vk']['spent'] ?? 0), 'from' => 'API VK Рекламы']
                 : (isset($sheetSpend['ВК']) ? ['value' => (float) $sheetSpend['ВК'], 'from' => 'таблица замеров'] : null),
-            'avito' => isset($sheetSpend['Авито']) ? ['value' => (float) $sheetSpend['Авито'], 'from' => 'таблица замеров'] : null,
+            'avito' => $live('avito') && isset($sum['avito']['spend']) ? ['value' => (float) $sum['avito']['spend'], 'from' => 'API Авито']
+                : (isset($sheetSpend['Авито']) ? ['value' => (float) $sheetSpend['Авито'], 'from' => 'таблица замеров'] : null),
         ];
 
         return [

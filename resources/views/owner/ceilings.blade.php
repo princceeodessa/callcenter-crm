@@ -44,13 +44,13 @@
     .range{ display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
     .range input{ width:auto; max-width:150px; }
 
-    .bars{ display:flex; align-items:flex-end; gap:3px; height:170px; padding-top:.5rem; }
-    .bars .col{ flex:1 1 0; min-width:3px; display:flex; flex-direction:column; justify-content:flex-end; align-items:stretch; height:100%; position:relative; }
+    .bars{ display:flex; align-items:flex-end; justify-content:center; gap:3px; height:170px; padding-top:.5rem; }
+    .bars .col{ flex:1 1 0; min-width:3px; max-width:56px; display:flex; flex-direction:column; justify-content:flex-end; align-items:stretch; height:100%; position:relative; }
     .bars .b{ border-radius:3px 3px 0 0; }
     .bars .b.leads{ background:#93c5fd; }
     .bars .b.book{ background:#10b981; position:absolute; bottom:0; left:25%; right:25%; }
-    .bars-x{ display:flex; gap:3px; font-size:.65rem; color:var(--crm-muted); margin-top:.25rem; }
-    .bars-x span{ flex:1 1 0; min-width:3px; text-align:center; overflow:hidden; white-space:nowrap; }
+    .bars-x{ display:flex; justify-content:center; gap:3px; font-size:.65rem; color:var(--crm-muted); margin-top:.25rem; }
+    .bars-x span{ flex:1 1 0; min-width:3px; max-width:56px; text-align:center; overflow:hidden; white-space:nowrap; }
     .legend{ display:flex; gap:1rem; font-size:.8rem; color:var(--crm-muted); flex-wrap:wrap; }
     .legend i{ display:inline-block; width:.7rem; height:.7rem; border-radius:3px; margin-right:.3rem; vertical-align:-1px; }
     .note{ font-size:.8rem; color:var(--crm-muted); }
@@ -128,6 +128,7 @@
         $chartRows[] = $r + ['m' => $m];
     }
     $maxBar = max(1, collect($chartRows)->max('leads') ?? 0, collect($chartRows)->max('m') ?? 0);
+    $showChart = count($chartRows) >= 2;   // за один день столбик ничего не добавляет к цифрам наверху
     $labelEvery = count($chartRows) <= 16 ? 1 : (count($chartRows) <= 40 ? 3 : 7);
 
     // Карточки источников — только те, где за период есть замеры. У платных (Директ, Авито, ВК) — лиды CRM этого
@@ -156,6 +157,9 @@
         $c['spend'] = $c['paid'] ? ($ads['spend'][$c['paid']] ?? null) : null;
     }
     unset($c);
+
+    $avSpend = $ads['spend']['avito'] ?? null;
+    $avOther = ($avSpend['from'] ?? null) === 'API Авито' ? (float) ($av['spend_other'] ?? 0) : 0.0;
 
     $ncState = $nonclosures['state'];
     $ncData = $nonclosures['data'] ?? null;
@@ -187,11 +191,6 @@
     </div>
 
     <div class="own-hero">
-        <div class="own-stat">
-            <div class="l">Новые лиды</div>
-            <div class="v">{{ $n($kpi['leads']) }}</div>
-            <div class="s">{!! $delta($kpi['leads'], $prev['leads']) !!} к прошлым {{ $days }} дн. ({{ $n($prev['leads']) }})</div>
-        </div>
         <div class="own-stat green">
             <div class="l">Замеры</div>
             <div class="v">{{ $n($mTotal) }}</div>
@@ -251,6 +250,7 @@
         </div>
     </div>
 
+    @if($showChart)
     <div class="own-card">
         <div class="hd">
             <span>{{ $series['by'] === 'month' ? 'По месяцам' : 'По дням' }}</span>
@@ -272,6 +272,7 @@
             </div>
         </div>
     </div>
+    @endif
 
     <div class="own-card">
         <div class="hd"><span>Реклама по площадкам</span><span class="note">
@@ -291,8 +292,8 @@
                 </div>
                 <div class="k">
                     <div class="l">Авито</div>
-                    <div class="v">{{ $n($av['contacts'] ?? 0) }} <span style="font-size:.8rem;font-weight:600">контактов</span></div>
-                    <div class="note">просмотры {{ $n($av['views'] ?? 0) }} · избранное {{ $n($av['favorites'] ?? 0) }} @if($ads['spend']['avito']) · расход {{ $money($ads['spend']['avito']['value']) }} @endif</div>
+                    <div class="v" title="{{ $avSpend ? 'по данным: '.$avSpend['from'] : 'расхода нет ни в API, ни в таблице' }}">{{ $money($avSpend['value'] ?? null) }}</div>
+                    <div class="note">контакты {{ $n($av['contacts'] ?? 0) }} · просмотры {{ $n($av['views'] ?? 0) }} · контакт {{ $per($avSpend['value'] ?? null, (int) ($av['contacts'] ?? 0)) }}@if($avOther > 0) · в т.ч. тариф и прочее {{ $money($avOther) }}@endif</div>
                 </div>
             </div>
         </div>
@@ -360,14 +361,15 @@
 
     <p class="note">
         Как считается. <b>Замеры</b> — по Google-таблице замеров колл-центра (столбец «Сумма» и источники по дням), сводка
-        перечитывает её каждые 15 минут; если за период в таблице пусто — по CRM (сделка впервые попала на этап «Замер назначен»
+        перечитывает её каждые 30 секунд; если за период в таблице пусто — по CRM (сделка впервые попала на этап «Замер назначен»
         или закрыта «Успешно»). <b>Источники</b> — только те, где за период есть замеры. У Директа, Авито и ВК — лиды CRM этого
         канала (по самому раннему сигналу сделки: звонок на рекламный номер, чат, форма на сайте), расход и цены.
         <b>Лид</b> — новая сделка в колл-центре потолков за период. <b>Звонки</b> — по событиям Мегафона: пропущенный —
         входящий, который никто не принял. <b>Операторы</b> — по действиям в CRM: «перевели на замер» — кто первым перевёл сделку
         на «Замер назначен» (или закрыл «Успешно»); «обработано» — сделки, которые сотрудник двигал по этапам или закрывал.
-        <b>Реклама</b> собирается сама каждые 2 часа: расход Директа и VK — из их кабинетов, расход Авито — из таблицы замеров
-        (API Авито расходов не отдаёт). Все расходы — без НДС, как в таблице.
+        <b>Реклама</b> собирается сама каждые 2 часа: расход Директа, VK и Авито — из их кабинетов (Директ и VK — без НДС,
+        как в таблице; Авито — все списания дня, вместе с тарифом). В таблицу расход Авито вносят до конца дня, поэтому там
+        он обычно на несколько сотен рублей меньше.
     </p>
 </div>
 @endsection

@@ -86,6 +86,18 @@ class OwnerMarketingTest extends TestCase
                         ['itemId' => 12, 'stats' => [['date' => '2026-10-08', 'uniqViews' => 50, 'uniqContacts' => 1, 'uniqFavorites' => 0]]],
                     ]]])];
                 }
+                if (str_contains($url, '/stats/v2/accounts/777/spendings')) {
+                    $req = json_decode((string) $body, true);
+                    $this->assertSame(['all'], $req['spendingTypes']);
+                    $this->assertSame('day', $req['grouping']);
+                    return [200, json_encode(['result' => ['groupings' => [
+                        ['date' => '2026-10-08', 'type' => 'day', 'spendings' => [
+                            ['slug' => 'presence', 'value' => 1600.4, 'services' => [['slug' => 'cpa_click_package', 'value' => 1600.4]]],
+                            ['slug' => 'rest', 'value' => 200, 'services' => [['slug' => 'tariff_ext', 'value' => 200]]],
+                        ]],
+                        ['date' => '2026-10-09', 'type' => 'day', 'spendings' => [['slug' => 'presence', 'value' => 500, 'services' => []]]],
+                    ]]])];
+                }
             }
             if (str_contains($url, 'api.direct.yandex.com/json/v5/reports')) {
                 $this->assertSame('Bearer di-token', $headers['Authorization']);
@@ -148,7 +160,10 @@ class OwnerMarketingTest extends TestCase
         $this->assertSame(0, $tokenCalls);
         $this->assertNull(DB::table('owner_marketing_sources')->where('source', 'avito')->value('last_error'));
         $av = json_decode(DB::table('owner_marketing_daily')->where('source', 'avito')->where('day', '2026-10-08')->value('metrics'), true);
-        $this->assertEquals(['views' => 150, 'contacts' => 6, 'favorites' => 2], $av);
+        $this->assertEquals(['views' => 150, 'contacts' => 6, 'favorites' => 2, 'spend' => 1800.4, 'spend_presence' => 1600.4, 'spend_promotion' => 0, 'spend_other' => 200], $av);
+        // день, где были только списания, тоже есть
+        $av9 = json_decode(DB::table('owner_marketing_daily')->where('source', 'avito')->where('day', '2026-10-09')->value('metrics'), true);
+        $this->assertEquals(500, $av9['spend']);
     }
 
     public function test_owner_page_shows_spend_and_cost_per_lead(): void
@@ -168,8 +183,9 @@ class OwnerMarketingTest extends TestCase
         $this->assertEqualsWithDelta(5600.4, $ads['spend']['direct']['value'], 0.001);   // API Директа
         $this->assertSame('API Директа', $ads['spend']['direct']['from']);
         $this->assertEqualsWithDelta(1500.5, $ads['spend']['vk']['value'], 0.001);       // API VK
-        $this->assertEqualsWithDelta(2400.5, $ads['spend']['avito']['value'], 0.001);    // таблица заявок
-        $this->assertEqualsWithDelta(9501.4, $ads['spend_total'], 0.001);
+        $this->assertEqualsWithDelta(2300.4, $ads['spend']['avito']['value'], 0.001);    // API Авито: списания за день, а не 2400,5 из таблицы
+        $this->assertSame('API Авито', $ads['spend']['avito']['from']);
+        $this->assertEqualsWithDelta(9401.3, $ads['spend_total'], 0.001);
         $this->assertSame(14.0, $ads['sheet']['total']);
         $m = $res->viewData('measures');
         $this->assertTrue($m['available']);
@@ -185,5 +201,30 @@ class OwnerMarketingTest extends TestCase
         $this->assertStringContainsString('<div class="name">Офис</div>', $html);
         $res->assertSee('Расход на рекламу');
         $res->assertSee('Реклама по площадкам');
+        $res->assertSee('в т.ч. тариф и прочее 200 ₽');
+        $res->assertDontSee('Новые лиды');                      // плитки лидов на сводке нет (решение владельца 09.10)
+        $res->assertSee('По дням');                             // два дня — график есть
+
+        // один день: график не рисуется — один столбик растягивался на всю ширину
+        $one = $this->actingAs($owner)->get(route('owner.ceilings', ['period' => 'custom', 'from' => '2026-10-08', 'to' => '2026-10-08']));
+        $one->assertOk()->assertDontSee('По дням');
+    }
+
+    public function test_avito_spend_falls_back_to_the_sheet_when_api_is_not_collected(): void
+    {
+        $this->fakeAll(avitoFails: true);
+        (new MarketingCollector())->run(14);
+        $ads = \App\Services\Owner\Marketing\MarketingStats::forPeriod(Carbon::parse('2026-10-08'), Carbon::parse('2026-10-10'));
+        $this->assertEqualsWithDelta(2400.5, $ads['spend']['avito']['value'], 0.001);
+        $this->assertSame('таблица замеров', $ads['spend']['avito']['from']);
+    }
+
+    public function test_the_same_collect_error_is_logged_once(): void
+    {
+        \Illuminate\Support\Facades\Log::spy();
+        Http::$fake = fn () => [500, 'down', 'text/html'];
+        (new MarketingCollector())->run(7, ['sheet']);
+        (new MarketingCollector())->run(7, ['sheet']);
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->once();
     }
 }

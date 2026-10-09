@@ -1,0 +1,12 @@
+[Unit]
+Description=Callcenter CRM: re-read the measurements sheet for the owner summary
+After=network.target
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/callcenter-crm
+# Current month (and the previous one in the first days of a month); older days are re-read every 15 min by the scheduler.
+ExecStart=/usr/bin/php artisan owner:marketing-collect --source=sheet --days=7 --quiet --no-interaction
+TimeoutStartSec=120

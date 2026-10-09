@@ -1,0 +1,12 @@
+[Unit]
+Description=Re-read the measurements sheet every 30 seconds
+
+[Timer]
+# A separate timer, not the scheduler: schedule:run waits for the Avito poll (up to a minute), so a 30-second task there would run once a minute at best.
+# A run that is still going when the next tick comes is not started twice (oneshot).
+OnCalendar=*-*-* *:*:00/30
+AccuracySec=1s
+Unit=callcenter-crm-measurements.service
+
+[Install]
+WantedBy=timers.target

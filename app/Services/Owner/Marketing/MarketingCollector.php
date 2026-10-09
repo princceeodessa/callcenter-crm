@@ -74,8 +74,11 @@ class MarketingCollector
                 $result[$key] = 'ok, дней с данными: '.count($daily);
             } catch (\Throwable $e) {
                 $msg = mb_substr($e->getMessage(), 0, 500);
+                // таблица перечитывается каждые 30 с — одна и та же ошибка пишется в журнал один раз, а не 2880 раз в сутки
+                if (DB::table('owner_marketing_sources')->where('source', $key)->value('last_error') !== $msg) {
+                    Log::warning('owner marketing '.$key.': '.$msg);
+                }
                 $this->status($key, ['last_error' => $msg]);
-                Log::warning('owner marketing '.$key.': '.$msg);
                 $result[$key] = 'ошибка: '.$msg;
             }
         }

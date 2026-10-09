@@ -8,8 +8,10 @@ use RuntimeException;
 
 /**
  * Авито (api.avito.ru, client_credentials) — дневные просмотры, контакты и избранное по активным объявлениям
- * кабинета потолков. Перенесено из дашборда БлагоДар (avito.py). Расходов API статистики не даёт — их берём из таблицы
- * замеров («Авито затраты»).
+ * кабинета потолков (перенесено из дашборда БлагоДар, avito.py) и расходы профиля по дням
+ * (POST /stats/v2/accounts/{id}/spendings, не чаще раза в минуту, глубина до 270 дней): spend — все списания дня,
+ * spend_presence — размещение и целевые действия, spend_promotion — продвижение, spend_other — тариф, комиссия и прочее.
+ * В таблицу замеров расход Авито вносят руками до конца дня, поэтому там он обычно меньше списаний за день.
  */
 class AvitoSource
 {
@@ -73,7 +75,39 @@ class AvitoSource
                 }
             }
         }
+        foreach ($this->spendings($userId, $from, $to) as $day => $s) {
+            $out[$day] = ($out[$day] ?? []) + $s;
+        }
         ksort($out);
+
+        return $out;
+    }
+
+    /** @return array<string, array<string, float>> день => spend, spend_presence, spend_promotion, spend_other */
+    private function spendings(int|string $userId, Carbon $from, Carbon $to): array
+    {
+        $resp = $this->call('POST', '/stats/v2/accounts/'.$userId.'/spendings', [
+            'dateFrom' => $from->toDateString(),
+            'dateTo' => $to->toDateString(),
+            'grouping' => 'day',
+            'spendingTypes' => ['all'],
+        ]);
+        $out = [];
+        foreach ($resp['result']['groupings'] ?? [] as $g) {
+            $day = substr((string) ($g['date'] ?? ''), 0, 10);
+            if ($day === '') {
+                continue;
+            }
+            $rec = ['spend' => 0.0, 'spend_presence' => 0.0, 'spend_promotion' => 0.0, 'spend_other' => 0.0];
+            foreach ($g['spendings'] ?? [] as $s) {
+                $v = (float) ($s['value'] ?? 0);
+                $slug = (string) ($s['slug'] ?? '');
+                $key = in_array($slug, ['presence', 'promotion'], true) ? 'spend_'.$slug : 'spend_other';
+                $rec[$key] += $v;
+                $rec['spend'] += $v;
+            }
+            $out[$day] = array_map(fn ($v) => round($v, 2), $rec);
+        }
 
         return $out;
     }
