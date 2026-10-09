@@ -296,8 +296,12 @@
         <div class="d-flex gap-2 flex-wrap align-items-center">
             @auth
                 @if($isSneakerOwner)
-                    <a class="btn btn-sm btn-success fw-semibold" href="{{ route('owner.dashboard') }}">📊 Сводка</a>
-                    <a class="btn btn-sm btn-outline-light" href="{{ route('sale.day') }}" title="Продажи за день">🗓 Продажи за день</a>
+                    {{-- на сводке потолков «Продажи за день» (кроссовки) не показываем — там другой бизнес --}}
+                    @php($onCeilings = request()->routeIs('owner.ceilings'))
+                    <a class="btn btn-sm btn-success fw-semibold" href="{{ route($onCeilings ? 'owner.ceilings' : 'owner.dashboard') }}">📊 Сводка</a>
+                    @if(! $onCeilings)
+                        <a class="btn btn-sm btn-outline-light" href="{{ route('sale.day') }}" title="Продажи кроссовок за день">🗓 Продажи за день</a>
+                    @endif
                 @endif
                 @if(!$isMeasurer && !$isConstructor && !$isDocumentsOperator && !$isSneaker && !$isSneakerOwner)
                     <a class="btn btn-sm btn-outline-light" href="{{ route('deals.kanban') }}">Канбан</a>

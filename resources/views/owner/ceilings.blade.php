@@ -37,6 +37,8 @@
     .src dl{ display:grid; grid-template-columns:auto 1fr; gap:.1rem .6rem; margin:.35rem 0 0; font-size:.8rem; }
     .src dt{ color:var(--crm-muted); font-weight:400; }
     .src dd{ margin:0; text-align:right; font-weight:600; white-space:nowrap; }
+    .src .split{ margin-top:.45rem; padding-top:.4rem; border-top:1px dashed var(--crm-border); font-size:.76rem; color:var(--crm-muted); }
+    .src .split b{ color:var(--crm-text, inherit); font-weight:600; }
 
     .chips{ display:flex; gap:.35rem; flex-wrap:wrap; align-items:center; }
     .chips a{ padding:.25rem .7rem; border-radius:999px; border:1px solid var(--crm-border); font-size:.82rem; text-decoration:none; color:inherit; }
@@ -152,10 +154,20 @@
         }
     }
     usort($sourceCards, fn ($a, $b) => $b['cnt'] <=> $a['cnt']);
+    $avDirs = $ads['avito_dirs'];
+    $avApi = str_starts_with((string) ($ads['spend']['avito']['from'] ?? ''), 'API Авито');
     foreach ($sourceCards as &$c) {
         $c['leads'] = $c['paid'] ? (int) ($groups[$c['paid']]['leads'] ?? 0) : null;
         $c['non_target'] = $c['paid'] ? (int) ($groups[$c['paid']]['non_target'] ?? 0) : null;
         $c['spend'] = $c['paid'] ? ($ads['spend'][$c['paid']] ?? null) : null;
+        // «Ремонт (Авито)», «Кондиционеры (Авито)» — замеры с объявлений другого направления того же кабинета
+        $c['dir'] = null;
+        if (! $c['paid'] && $avApi && mb_stripos($c['name'], 'авито') !== false) {
+            $dk = \App\Services\Owner\Marketing\AvitoSource::direction($c['name']);
+            if (isset($avDirs[$dk]) && $dk !== 'ceilings' && $avDirs[$dk]['spend'] > 0) {
+                $c['dir'] = $avDirs[$dk];
+            }
+        }
     }
     unset($c);
 
@@ -184,7 +196,7 @@
     <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
         <div>
             <h4 class="own-title">📊 Сводка бизнеса · Потолки</h4>
-            <div class="text-muted small">колл-центр: лиды, замеры, звонки, источники и операторы</div>
+            <div class="text-muted small">колл-центр: лиды, замеры, звонки, источники и операторы · данные на {{ now()->format('H:i:s') }}, страница обновляется сама каждые 30 с</div>
         </div>
         @include('owner._switch', ['active' => 'ceilings'])
     </div>
@@ -251,10 +263,18 @@
                                     <dt>лиды в CRM</dt><dd>{{ $n($c['leads']) }}</dd>
                                     <dt>нецелевые</dt><dd>{{ $n($c['non_target']) }}</dd>
                                     @if($c['spend'])
-                                        <dt>расход</dt><dd title="по данным: {{ $c['spend']['from'] }}">{{ $money($c['spend']['value']) }}</dd>
+                                        <dt>{{ $c['paid'] === 'avito' && $avApi ? 'расход на потолки' : 'расход' }}</dt><dd title="по данным: {{ $c['spend']['from'] }}">{{ $money($c['spend']['value']) }}</dd>
                                         <dt>цена лида</dt><dd>{{ $per($c['spend']['value'], $c['leads']) }}</dd>
                                         <dt>цена замера</dt><dd>{{ $per($c['spend']['value'], $c['cnt']) }}</dd>
                                     @endif
+                                </dl>
+                                @if($c['paid'] === 'avito' && $avCabinet > 0 && count($avRest) > 0)
+                                    <div class="split">весь кабинет Авито <b>{{ $money($avCabinet) }}</b>: потолки {{ $money($avDirs['ceilings']['spend']) }} · {{ implode(' · ', $avRest) }}</div>
+                                @endif
+                            @elseif($c['dir'])
+                                <dl>
+                                    <dt>расход ({{ mb_strtolower($c['dir']['label']) }} на Авито)</dt><dd>{{ $money($c['dir']['spend']) }}</dd>
+                                    <dt>цена замера</dt><dd>{{ $per($c['dir']['spend'], $c['cnt']) }}</dd>
                                 </dl>
                             @endif
                         </div>
@@ -415,7 +435,33 @@
         VK — без НДС, как в таблице). <b>Авито</b> — только объявления потолков (по названию): кондиционеры, ремонт с
         шумоизоляцией и общий тариф кабинета в цену лида и замера потолков не входят и показаны отдельной строкой. В таблицу
         расход Авито вносят до конца дня, поэтому там он обычно меньше. <b>VK</b> — подписки это вступления в сообщество,
-        досмотры — просмотры клипа до конца.
+        досмотры — просмотры клипа до конца. Страница обновляется сама каждые 30 секунд, пока открыта (свернутая вкладка
+        не обновляется и догоняет при возврате).
     </p>
 </div>
+<script>
+// Автообновление сводки: раз в 30 с та же страница запрашивается заново и подменяет содержимое — без перезагрузки,
+// мигания и прыжка прокрутки. Свернутая вкладка не опрашивает, при возврате обновляется сразу; пока вводят даты — ждёт.
+(function () {
+    var busy = false;
+    function refresh() {
+        if (busy || document.hidden) return;
+        var a = document.activeElement;
+        if (a && a.closest && a.closest('.own-wrap form')) return;
+        busy = true;
+        fetch(location.href, { credentials: 'same-origin', cache: 'no-store', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.ok && !r.redirected ? r.text() : null; })
+            .then(function (html) {
+                if (!html) return;
+                var fresh = new DOMParser().parseFromString(html, 'text/html').querySelector('.own-wrap');
+                var cur = document.querySelector('.own-wrap');
+                if (fresh && cur) cur.replaceWith(fresh);
+            })
+            .catch(function () {})
+            .then(function () { busy = false; });
+    }
+    setInterval(refresh, 30000);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) refresh(); });
+})();
+</script>
 @endsection

@@ -149,6 +149,7 @@ class OwnerCeilingsTest extends TestCase
         $this->actingAs($this->owner(true, 'sneaker_head'))->get(route('owner.ceilings'))->assertForbidden();
 
         $this->actingAs($this->owner(false))->get(route('owner.dashboard'))->assertOk()->assertDontSee(route('owner.ceilings'));
-        $this->actingAs($this->owner(true))->get(route('owner.dashboard'))->assertOk()->assertSee(route('owner.ceilings'));
+        $this->actingAs($this->owner(true))->get(route('owner.dashboard'))->assertOk()->assertSee(route('owner.ceilings'))
+            ->assertSee('Продажи за день');                    // у кроссовок кнопка есть, на потолках — нет (тест сводки рекламы)
     }
 }
