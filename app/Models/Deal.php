@@ -23,6 +23,9 @@ class Deal extends Model
         'transfer' => 'Перевод',
     ];
 
+    /** Откуда пришёл клиент кроссовок (быстрая продажа и карточка сделки — один список). */
+    public const SNEAKER_SOURCES = ['Avito', 'ВК', 'Instagram', 'Telegram', 'Сайт', 'Сарафан', 'Магазин', 'Другое'];
+
     // Категории пространства кроссовок (роли sneaker_head/sneaker_operator).
     private const SNEAKER_PRODUCT_CATEGORY_OPTIONS = [
         'sneakers' => 'Кроссовки',

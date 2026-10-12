@@ -92,6 +92,23 @@ class WhiteSalesOnecTest extends TestCase
         $this->assertSame(['white' => 1, 'other' => 0], app(WarehouseService::class)->whiteSplit($item->fresh()));
     }
 
+    public function test_quick_sale_client_without_phone_is_a_new_contact_and_vk_is_a_source(): void
+    {
+        $item = $this->item('42', 5);
+        $roma = $this->sell($item, ['white' => '0', 'client_name' => 'Рома']);
+        $vlad = $this->sell($item, ['white' => '0', 'client_name' => 'Влад', 'source' => 'ВК']);
+        $this->assertNotSame($roma->contact_id, $vlad->contact_id, 'без телефона — не первый попавшийся контакт без телефона');
+        $this->assertSame('Влад', $vlad->contact->name);
+        $this->assertSame('ВК', $vlad->manual_source);
+
+        $first = $this->sell($item, ['white' => '0', 'client_phone' => '+79990001122']);
+        $again = $this->sell($item, ['white' => '0', 'client_phone' => '+79990001122', 'client_name' => 'Олег']);
+        $this->assertSame($first->contact_id, $again->contact_id, 'с телефоном — тот же клиент');
+        $this->assertSame('Олег', $again->contact->fresh()->name, 'имя дописано, если его не было');
+
+        $this->actingAs($this->head)->get(route('sale.quick'))->assertOk()->assertSee('>ВК</option>', false);
+    }
+
     public function test_quick_sale_page_marks_white_sizes(): void
     {
         $white = $this->item('41', qty: 1);

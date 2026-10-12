@@ -245,8 +245,9 @@
             <label>Откуда клиент</label>
             <select name="source">
                 <option value="">— не важно —</option>
-                <option>Avito</option><option>Instagram</option><option>Telegram</option>
-                <option>Сайт</option><option>Сарафан</option><option>Магазин</option><option>Другое</option>
+                @foreach(\App\Models\Deal::SNEAKER_SOURCES as $so)
+                    <option @selected(old('source') === $so)>{{ $so }}</option>
+                @endforeach
             </select>
         </div>
         <div class="col-6 col-lg-2 fld">

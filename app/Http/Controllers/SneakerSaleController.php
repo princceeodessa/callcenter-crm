@@ -123,15 +123,23 @@ class SneakerSaleController extends Controller
             : ($item->sale_price !== null ? (float) $item->sale_price : null);
         $amount = $price !== null ? round($price * $qty, 2) : null;
 
-        // Клиент (не обязателен)
+        // Клиент (не обязателен). С телефоном — тот же клиент по телефону; без телефона — новый контакт с этим именем.
+        // Раньше без телефона искался контакт «с пустым телефоном» — и все такие продажи липли к одному («Рома», 12.10.2026).
         $contact = null;
         $clientName = trim((string) ($data['client_name'] ?? ''));
         $clientPhone = trim((string) ($data['client_phone'] ?? ''));
-        if ($clientName !== '' || $clientPhone !== '') {
-            $contact = Contact::firstOrCreate(
-                ['account_id' => $user->account_id, 'phone' => $clientPhone !== '' ? $clientPhone : null],
-                ['name' => $clientName !== '' ? $clientName : null]
-            );
+        if ($clientPhone !== '') {
+            $contact = Contact::where('account_id', $user->account_id)->where('phone', $clientPhone)->first();
+            if ($contact && $clientName !== '' && trim((string) $contact->name) === '') {
+                $contact->forceFill(['name' => $clientName])->save();
+            }
+        }
+        if (! $contact && ($clientName !== '' || $clientPhone !== '')) {
+            $contact = Contact::create([
+                'account_id' => $user->account_id,
+                'name' => $clientName !== '' ? $clientName : null,
+                'phone' => $clientPhone !== '' ? $clientPhone : null,
+            ]);
         }
 
         $pipeline = Pipeline::where('account_id', $user->account_id)->orderByDesc('is_default')->first();

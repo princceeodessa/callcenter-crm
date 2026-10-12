@@ -496,7 +496,13 @@
             <label class="form-label small mb-1">Источник</label>
             <select name="manual_source" class="form-select form-select-sm">
               <option value="">— не указан —</option>
-              @foreach(['Avito','Instagram','Telegram','Сайт','Сарафан','Другое'] as $so)
+              @php
+                $sources = \App\Models\Deal::SNEAKER_SOURCES;
+              @endphp
+              @if($deal->manual_source && ! in_array($deal->manual_source, $sources, true))
+                <option value="{{ $deal->manual_source }}" selected>{{ $deal->manual_source }}</option>
+              @endif
+              @foreach($sources as $so)
                 <option value="{{ $so }}" @selected($deal->manual_source === $so)>{{ $so }}</option>
               @endforeach
             </select>
