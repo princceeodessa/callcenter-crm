@@ -21,7 +21,7 @@
 <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
     <div>
         <h4 class="mb-0" style="letter-spacing:-.02em">🧾 1С: продажи белых пар</h4>
-        <div class="text-muted small">каждая продажа белой пары — свой «Отчёт о розничных продажах» в 1С «Обувь», возврат — отдельный; серые пары в 1С не идут</div>
+        <div class="text-muted small">с 13.10.2026 белые пары продают в 1С «Обувь» чеками, CRM подтягивает их сюда — в статистику и на склад; серые пары продают в CRM</div>
     </div>
     <a class="btn btn-sm btn-outline-secondary" href="{{ route('warehouse.index') }}">← К складу</a>
 </div>
@@ -44,6 +44,42 @@
     <div class="oc-stat"><div class="l">Ещё {{ \App\Services\Onec\SaleDocExport::COOLING_MINUTES }} мин можно поправить</div><div class="v">{{ $cooling }}</div></div>
     <div class="oc-stat"><div class="l">В 1С · ждут прихода · ошибки</div><div class="v" style="font-size:1rem">{{ $doneCount }} · {{ $waitingCount }} · <span class="{{ $errorCount ? 'text-danger' : '' }}">{{ $errorCount }}</span></div></div>
 </div>
+
+@php
+    $impCls = ['linked' => 'text-success', 'unlinked' => 'text-warning-emphasis', 'returned' => 'text-info-emphasis', 'return_unmatched' => 'text-danger', 'cancelled_in_1c' => 'text-danger'];
+    $impAttention = $imports->whereIn('status', ['unlinked', 'return_unmatched', 'cancelled_in_1c'])->count();
+@endphp
+<div class="card shadow-sm mb-3">
+    <div class="card-header fw-semibold d-flex justify-content-between flex-wrap gap-2">
+        <span>Продажи из 1С · {{ $imports->count() }}</span>
+        @if($impAttention > 0)
+            <span class="text-danger small">разобрать вручную: {{ $impAttention }}</span>
+        @endif
+    </div>
+    @if($imports->isEmpty())
+        <div class="card-body text-muted small">Из 1С пока ничего не пришло. Станция читает чеки 1С раз в 30 минут; продажа появится здесь, в «Продажах за день» и на складе.</div>
+    @else
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead><tr><th>Когда</th><th>Документ 1С</th><th>Карточка 1С</th><th class="text-end">Сумма</th><th>Итог</th><th>Сделка</th></tr></thead>
+                <tbody>
+                @foreach($imports as $im)
+                    <tr>
+                        <td class="text-nowrap">{{ $im->onec_date->format('d.m H:i') }}</td>
+                        <td class="text-nowrap">{{ \App\Models\OnecSaleImport::TYPE_LABELS[$im->doc_type] ?? $im->doc_type }} № {{ $im->onec_number }}</td>
+                        <td class="small">{{ $im->card_name }} @if($im->qty > 1)× {{ $im->qty }}@endif</td>
+                        <td class="text-end text-nowrap">{{ $money($im->amount) }} ₽</td>
+                        <td class="small"><span class="{{ $impCls[$im->status] ?? '' }}">{{ \App\Models\OnecSaleImport::STATUS_LABELS[$im->status] ?? $im->status }}</span>@if($im->note)<div class="text-muted">{{ $im->note }}</div>@endif</td>
+                        <td class="text-nowrap">@if($im->deal)<a href="{{ route('deals.show', $im->deal) }}">#{{ $im->deal_id }}</a>@else — @endif</td>
+                    </tr>
+                @endforeach
+                </tbody>
+            </table>
+        </div>
+    @endif
+</div>
+
+<div class="text-muted small mb-2">Ниже — выгрузка продаж из CRM в 1С, как было до 13.10.2026 (сейчас выключена).</div>
 
 @if($ambiguous->isNotEmpty())
     <div class="card shadow-sm mb-3 border-warning-subtle">

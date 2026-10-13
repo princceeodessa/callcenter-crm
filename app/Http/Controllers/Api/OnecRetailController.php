@@ -5,12 +5,14 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\IntegrationConnection;
 use App\Services\Onec\SaleDocExport;
+use App\Services\Onec\SaleImport;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * API для станции (компьютера с доступом к 1С «Обувь»): какие продажи и возвраты белых пар занести в 1С
- * (по документу на каждую) и что вышло. Доступ — по токену подключения `onec_obuv` (заголовок X-Onec-Token).
+ * API для станции (компьютера с доступом к 1С «Обувь»). До 13.10.2026: какие продажи белых пар занести в 1С и что вышло.
+ * С 13.10.2026 белые пары продают в 1С чеками: станция спрашивает, с какой даты читать (importSince), и привозит
+ * чеки, возвраты и отчёты без чеков (imports). Доступ — по токену подключения `onec_obuv` (заголовок X-Onec-Token).
  */
 class OnecRetailController extends Controller
 {
@@ -53,6 +55,47 @@ class OnecRetailController extends Controller
         ])->save();
 
         return response()->json(['ok' => true, 'saved' => $n]);
+    }
+
+    public function importSince(Request $request, SaleImport $import): JsonResponse
+    {
+        $connection = $this->connection($request);
+        $connection->forceFill(['last_synced_at' => now()])->save();
+
+        return response()->json(['since' => $import->since($connection)]);
+    }
+
+    public function imports(Request $request, SaleImport $import): JsonResponse
+    {
+        $connection = $this->connection($request);
+        $data = $request->validate([
+            'docs' => ['present', 'array', 'max:500'],
+            'docs.*.uuid' => ['required', 'string', 'max:36'],
+            'docs.*.type' => ['required', 'in:check,return,report'],
+            'docs.*.number' => ['nullable', 'string', 'max:32'],
+            'docs.*.date' => ['required', 'date'],
+            'docs.*.posted' => ['boolean'],
+            'docs.*.deleted' => ['boolean'],
+            'docs.*.base_uuid' => ['nullable', 'string', 'max:36'],
+            'docs.*.payment' => ['nullable', 'in:'.implode(',', array_keys(\App\Models\Deal::PAYMENT_METHODS))],
+            'docs.*.rows' => ['present', 'array'],
+            'docs.*.rows.*.row' => ['required'],
+            'docs.*.rows.*.code' => ['nullable', 'string', 'max:32'],
+            'docs.*.rows.*.name' => ['required', 'string', 'max:500'],
+            'docs.*.rows.*.qty' => ['required', 'numeric'],
+            'docs.*.rows.*.price' => ['nullable', 'numeric'],
+            'docs.*.rows.*.amount' => ['required', 'numeric'],
+            'docs.*.rows.*.mark' => ['nullable', 'string', 'max:500'],
+        ]);
+        try {
+            $results = $import->import((int) $connection->account_id, $data['docs']);
+            $connection->forceFill(['last_synced_at' => now(), 'last_error' => null])->save();
+        } catch (\Throwable $e) {
+            $connection->forceFill(['last_synced_at' => now(), 'last_error' => mb_substr('приём из 1С: '.$e->getMessage(), 0, 1000)])->save();
+            throw $e;
+        }
+
+        return response()->json(['ok' => true, 'results' => $results]);
     }
 
     private function connection(Request $request): IntegrationConnection

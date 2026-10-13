@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Deal;
 use App\Models\DealActivity;
 use App\Models\OnecSaleDoc;
+use App\Models\OnecSaleImport;
 use App\Models\Purchase;
 use App\Services\Onec\SaleDocExport;
 use Illuminate\Http\Request;
@@ -48,7 +49,11 @@ class OnecSalesController extends Controller
             ->whereNotNull('stock_deducted_at')->where('stock_deducted_at', '>=', $since)
             ->with('warehouseItem')->orderByDesc('stock_deducted_at')->get();
 
-        return view('onec.index', compact('connection', 'start', 'docs', 'queue', 'queueDeals', 'cancelled', 'cooling', 'ambiguous', 'noPayment'));
+        // С 13.10.2026 белые пары продают в 1С чеками — станция привозит их сюда
+        $imports = OnecSaleImport::where('account_id', $accId)->with('deal.warehouseItem')
+            ->orderByDesc('onec_date')->orderByDesc('id')->limit(150)->get();
+
+        return view('onec.index', compact('connection', 'start', 'docs', 'queue', 'queueDeals', 'cancelled', 'cooling', 'ambiguous', 'noPayment', 'imports'));
     }
 
     /** Белая/серая и способ оплаты у проданной пары (из карточки сделки и со страницы 1С). */
