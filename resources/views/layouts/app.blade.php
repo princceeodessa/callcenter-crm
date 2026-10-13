@@ -297,7 +297,7 @@
             @auth
                 @if($isSneakerOwner)
                     {{-- на сводке потолков «Продажи за день» (кроссовки) не показываем — там другой бизнес --}}
-                    @php($onCeilings = request()->routeIs('owner.ceilings'))
+                    @php($onCeilings = request()->routeIs('owner.ceilings') || (request()->routeIs('owner.smm') && request()->route('business') === 'ceilings'))
                     <a class="btn btn-sm btn-success fw-semibold" href="{{ route($onCeilings ? 'owner.ceilings' : 'owner.dashboard') }}">📊 Сводка</a>
                     @if(! $onCeilings)
                         <a class="btn btn-sm btn-outline-light" href="{{ route('sale.day') }}" title="Продажи кроссовок за день">🗓 Продажи за день</a>

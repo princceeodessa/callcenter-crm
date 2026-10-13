@@ -41,8 +41,10 @@ class VkAdsSource
     /** @return array<string, array<string, mixed>> день => цифры (+ groups) */
     public function daily(Carbon $from, Carbon $to): array
     {
-        $plans = $this->getAll('/api/v2/ad_plans.json', ['fields' => 'id,name,status,objective']);
-        $plans = array_values(array_filter($plans, fn ($p) => ($p['status'] ?? '') !== 'deleted'));
+        $plans = $this->getAll('/api/v2/ad_plans.json', ['fields' => 'id,name,status,objective,budget_limit_day,created']);
+        $since = (string) ($this->cfg['plans_since'] ?? '');
+        $plans = array_values(array_filter($plans, fn ($p) => ($p['status'] ?? '') !== 'deleted'
+            && ($since === '' || (string) ($p['created'] ?? '') >= $since)));
         $ids = array_values(array_map(fn ($p) => (int) $p['id'], $plans));
         $leadPlans = array_values(array_map(fn ($p) => (int) $p['id'], array_filter($plans, fn ($p) => ($p['objective'] ?? '') === 'leadads')));
         $out = [];
@@ -88,26 +90,49 @@ class VkAdsSource
             $planById[(int) $p['id']] = $p;
         }
         $groups = array_values(array_filter(
-            $this->getAll('/api/v2/ad_groups.json', ['fields' => 'id,name,status,ad_plan_id']),
+            $this->getAll('/api/v2/ad_groups.json', ['fields' => 'id,name,status,ad_plan_id,created,price,issues,budget_limit_day']),
             fn ($g) => ($g['status'] ?? '') !== 'deleted' && isset($planById[(int) ($g['ad_plan_id'] ?? 0)])
         ));
-        $clips = [];
-        foreach ($this->getAll('/api/v2/banners.json', ['fields' => 'id,ad_group_id,urls']) as $b) {
-            $url = (string) ($b['urls']['vk_clip']['url'] ?? '');
-            if ($url !== '' && str_starts_with($url, 'https://vk.com/')) {
-                $clips[(int) ($b['ad_group_id'] ?? 0)] ??= $url;
+        // креатив группы: ссылка на клип, модерация и её причины (у клиповой группы — один креатив)
+        $banners = [];
+        foreach ($this->getAll('/api/v2/banners.json', ['fields' => 'id,ad_group_id,status,moderation_status,moderation_reasons,urls']) as $b) {
+            $gid = (int) ($b['ad_group_id'] ?? 0);
+            if (($b['status'] ?? '') === 'deleted' && isset($banners[$gid])) {
+                continue;
             }
+            $banners[$gid] = $b;
         }
+        $codes = fn ($list) => array_values(array_filter(array_map(fn ($x) => is_array($x) ? (string) ($x['code'] ?? '') : (string) $x, (array) $list)));
         $meta = [];
+        $groupLimit = [];
         foreach ($groups as $g) {
+            $gid = (int) $g['id'];
             $plan = $planById[(int) $g['ad_plan_id']];
-            $meta[(int) $g['id']] = [
+            $b = $banners[$gid] ?? [];
+            $url = (string) ($b['urls']['vk_clip']['url'] ?? '');
+            $clip = $url !== '' && str_starts_with($url, 'https://vk.com/') ? $url : null;
+            $owner = $clipId = null;
+            if ($clip && preg_match('~clip(-?\d+)_(\d+)~', $clip, $m)) {
+                [$owner, $clipId] = [$m[1], $m[2]];
+            }
+            $groupLimit[(int) $g['ad_plan_id']] = max($groupLimit[(int) $g['ad_plan_id']] ?? 0, (float) ($g['budget_limit_day'] ?? 0));
+            $meta[$gid] = [
                 'name' => (string) ($g['name'] ?? ''),
                 'status' => (string) ($g['status'] ?? ''),
+                'plan_id' => (int) $g['ad_plan_id'],
                 'plan' => (string) ($plan['name'] ?? ''),
                 'plan_status' => (string) ($plan['status'] ?? ''),
+                'objective' => (string) ($plan['objective'] ?? ''),
                 'leadads' => ($plan['objective'] ?? '') === 'leadads',
-                'clip' => $clips[(int) $g['id']] ?? null,
+                'created' => (string) ($g['created'] ?? ''),
+                'price' => isset($g['price']) ? (float) $g['price'] : null,
+                'day_limit' => isset($g['budget_limit_day']) ? (float) $g['budget_limit_day'] : null,
+                'issues' => $codes($g['issues'] ?? []),
+                'moderation' => isset($b['moderation_status']) ? (string) $b['moderation_status'] : null,
+                'reasons' => $codes($b['moderation_reasons'] ?? []),
+                'clip' => $clip,
+                'owner' => $owner,
+                'clip_id' => $clipId,
             ];
         }
         foreach (array_chunk(array_keys($meta), 100) as $chunk) {
@@ -133,7 +158,18 @@ class VkAdsSource
                 }
             }
         }
-        $this->meta = ['groups' => $meta];
+        $this->meta = [
+            'groups' => $meta,
+            'plans' => array_map(fn ($p) => [
+                'id' => (int) $p['id'],
+                'name' => (string) ($p['name'] ?? ''),
+                'status' => (string) ($p['status'] ?? ''),
+                'objective' => (string) ($p['objective'] ?? ''),
+                'day_limit' => isset($p['budget_limit_day']) && $p['budget_limit_day'] !== null
+                    ? (float) $p['budget_limit_day'] : (($groupLimit[(int) $p['id']] ?? 0) ?: null),
+                'created' => (string) ($p['created'] ?? ''),
+            ], $plans),
+        ];
     }
 
     /** Строка статистики VK → цифры (как parse_total в clips_manager.py). */
@@ -220,14 +256,14 @@ class VkAdsSource
         return $resp['access_token'];
     }
 
-    private static function tokenPath(): string
+    private function tokenPath(): string
     {
-        return self::$tokenFile ?? storage_path('app/owner-marketing/vk_ads_token.json');
+        return self::$tokenFile ?? storage_path('app/owner-marketing/'.basename((string) ($this->cfg['token_file'] ?? 'vk_ads_token.json')));
     }
 
     private function savedToken(): ?array
     {
-        $path = self::tokenPath();
+        $path = $this->tokenPath();
         $data = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
 
         return is_array($data) ? $data : null;
@@ -235,7 +271,7 @@ class VkAdsSource
 
     private function saveToken(array $data): void
     {
-        $path = self::tokenPath();
+        $path = $this->tokenPath();
         if (! is_dir(dirname($path))) {
             mkdir(dirname($path), 0700, true);
         }

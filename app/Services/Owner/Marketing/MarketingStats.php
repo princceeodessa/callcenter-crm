@@ -89,7 +89,7 @@ class MarketingStats
 
     public static function forPeriod(Carbon $from, Carbon $to): array
     {
-        $rows = DB::table('owner_marketing_daily')
+        $rows = DB::table('owner_marketing_daily')->whereIn('source', ['direct', 'vk', 'avito', 'sheet'])
             ->where('day', '>=', $from->toDateString())
             ->where('day', '<', $to->toDateString())
             ->get(['source', 'day', 'metrics']);
@@ -130,6 +130,9 @@ class MarketingStats
         $status = DB::table('owner_marketing_sources')->get()->keyBy('source');
         $sources = [];
         foreach (MarketingCollector::sources() as $key => $src) {
+            if ($key === 'vk_shag') {
+                continue;   // реклама «Шагового» — у кроссовок, не в сводке потолков
+            }
             $s = $status[$key] ?? null;
             $sources[$key] = [
                 'label' => MarketingCollector::LABELS[$key],

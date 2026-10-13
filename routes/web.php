@@ -203,6 +203,11 @@ Route::middleware('auth')->group(function () {
         Route::get('/owner/ceilings', [\App\Http\Controllers\OwnerCeilingsController::class, 'index'])
             ->withoutMiddleware('purchases')->middleware('owner')
             ->name('owner.ceilings');
+        // «SMM-контент»: реклама клипов VK по бизнесу (потолки — владельцу всех бизнесов, кроссовки — как сводка)
+        Route::get('/owner/smm/{business}', [\App\Http\Controllers\OwnerSmmController::class, 'show'])
+            ->withoutMiddleware('purchases')->middleware('owner')
+            ->whereIn('business', ['ceilings', 'sneakers'])
+            ->name('owner.smm');
         Route::get('/sneaker/report', [SneakerReportController::class, 'index'])->name('sneaker.report');
         Route::get('/sneaker/report/export', [SneakerReportController::class, 'export'])->name('sneaker.report.export');
     });

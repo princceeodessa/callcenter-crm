@@ -22,10 +22,10 @@ class Kernel extends ConsoleKernel
             ->dailyAt('09:00')
             ->withoutOverlapping();
 
-        // Сводка владельца: реклама потолков (VK Реклама, Яндекс Директ) — каждые 2 часа. Авито — своим таймером
+        // Сводка владельца: реклама потолков (VK Реклама, Яндекс Директ) и VK «Шагового» — каждые 2 часа. Авито — своим таймером
         // systemd раз в час (deploy/ubuntu/callcenter-crm-avito-stats.timer): лимит его статистики — запрос в минуту,
         // сбор идёт 3–4 минуты и задержал бы здесь опрос чатов.
-        $schedule->command('owner:marketing-collect --source=direct --source=vk')
+        $schedule->command('owner:marketing-collect --source=direct --source=vk --source=vk_shag')
             ->cron('20 */2 * * *')
             ->withoutOverlapping(30);
 

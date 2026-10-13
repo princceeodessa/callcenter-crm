@@ -198,7 +198,10 @@
             <h4 class="own-title">📊 Сводка бизнеса · Потолки</h4>
             <div class="text-muted small">колл-центр: лиды, замеры, звонки, источники и операторы · данные на {{ now()->format('H:i:s') }}, страница обновляется сама каждые 30 с</div>
         </div>
-        @include('owner._switch', ['active' => 'ceilings'])
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <a class="btn btn-sm btn-outline-primary mb-3" href="{{ route('owner.smm', ['business' => 'ceilings']) }}">📱 SMM-контент</a>
+            @include('owner._switch', ['active' => 'ceilings'])
+        </div>
     </div>
 
     <div class="d-flex flex-wrap gap-2 align-items-center justify-content-between mb-3">

@@ -15,6 +15,7 @@ class MarketingCollector
     public const LABELS = [
         'direct' => 'Яндекс Директ',
         'vk' => 'VK Реклама',
+        'vk_shag' => 'VK Реклама · Шаговый',
         'avito' => 'Авито',
         'sheet' => 'Таблица замеров',
     ];
@@ -27,6 +28,7 @@ class MarketingCollector
         return [
             'direct' => new DirectSource((array) ($cfg['direct'] ?? [])),
             'vk' => new VkAdsSource((array) ($cfg['vk_ads'] ?? [])),
+            'vk_shag' => new VkAdsSource((array) ($cfg['vk_ads_shag'] ?? [])),
             'avito' => new AvitoSource((array) ($cfg['avito'] ?? [])),
             'sheet' => new LeadsSheetSource((array) ($cfg['leads_sheet'] ?? [])),
         ];
