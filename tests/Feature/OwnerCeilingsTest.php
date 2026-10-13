@@ -40,13 +40,25 @@ class OwnerCeilingsTest extends TestCase
         return $u;
     }
 
-    private function deal(string $created, string $stage = 'lead', ?string $closedAt = null, ?string $result = null, ?int $closedBy = null): int
+    private function deal(string $created, string $stage = 'lead', ?string $closedAt = null, ?string $result = null, ?int $closedBy = null, ?int $contact = null): int
     {
         return DB::table('deals')->insertGetId([
             'account_id' => $this->acc, 'pipeline_id' => $this->pipeline, 'stage_id' => $this->stage[$stage],
             'title' => 'Тест', 'closed_at' => $closedAt, 'closed_result' => $result, 'closed_by_user_id' => $closedBy,
-            'created_at' => $created, 'updated_at' => $created,
+            'contact_id' => $contact, 'created_at' => $created, 'updated_at' => $created,
         ]);
+    }
+
+    private function contact(string $phone): int
+    {
+        return DB::table('contacts')->insertGetId(['account_id' => $this->acc, 'name' => 'Клиент', 'phone' => $phone, 'created_at' => now(), 'updated_at' => now()]);
+    }
+
+    /** Чат сделки и входящее сообщение в нём. */
+    private function message(int $deal, string $channel, string $at): void
+    {
+        $conv = DB::table('conversations')->insertGetId(['account_id' => $this->acc, 'deal_id' => $deal, 'channel' => $channel, 'created_at' => $at, 'updated_at' => $at]);
+        DB::table('messages')->insert(['account_id' => $this->acc, 'conversation_id' => $conv, 'direction' => 'in', 'body' => 'Здравствуйте', 'created_at' => $at, 'updated_at' => $at]);
     }
 
     private function toMeasure(int $deal, string $at, ?int $by = null): void
@@ -64,7 +76,7 @@ class OwnerCeilingsTest extends TestCase
         $op = $this->owner(false, 'operator');
         $d1 = $this->deal('2026-09-05 10:00:00', 'measure');                               // чат Авито → замер (перевёл оператор)
         $this->toMeasure($d1, '2026-09-06 11:00:00', $op->id);
-        DB::table('conversations')->insert(['account_id' => $this->acc, 'deal_id' => $d1, 'channel' => 'avito', 'created_at' => '2026-09-05 09:59:00', 'updated_at' => '2026-09-05 09:59:00']);
+        $this->message($d1, 'avito', '2026-09-05 09:59:00');
         $d2 = $this->deal('2026-09-07 10:00:00', 'done', '2026-09-08 12:00:00', 'won', $op->id); // звонок на номер «сайт (директ)», успешно без этапа
         $this->activity($d2, 'call', ['type' => 'INCOMING', 'callid' => 'c1', 'diversion' => '79225174552'], '2026-09-07 10:00:00');
         $this->activity($d2, 'call', ['type' => 'ACCEPTED', 'callid' => 'c1', 'diversion' => '79225174552'], '2026-09-07 10:00:05');
@@ -90,6 +102,19 @@ class OwnerCeilingsTest extends TestCase
         $this->assertSame(1, $kpi['open']);
         $this->assertEqualsWithDelta(40.0, $kpi['conversion'], 0.01);
         $this->assertSame(['incoming' => 2, 'answered' => 1, 'missed' => 1, 'outgoing' => 1], $kpi['calls']);
+        // обратились: чат Авито (d1), звонок на номер сайта (d2), форма Tilda (d3), звонок с неизвестного номера (d5);
+        // d4 — только исходящий звонок оператора, это не обращение
+        $c = $kpi['contacts'];
+        $this->assertSame([4, 2, 1, 0, 1], [$c['total'], $c['booked'], $c['non_target'], $c['lost'], $c['open']]);
+        $cg = collect($c['groups'])->keyBy('key');
+        $this->assertSame(['total' => 2, 'non_target' => 1], ['total' => $cg['direct']['total'], 'non_target' => $cg['direct']['non_target']]);
+        $this->assertSame([
+            'call' => ['total' => 1, 'booked' => 1, 'non_target' => 0],
+            'form_tilda' => ['total' => 1, 'booked' => 0, 'non_target' => 1],
+        ], $cg['direct']['kinds']);
+        $this->assertSame(['chat_avito' => ['total' => 1, 'booked' => 1, 'non_target' => 0]], $cg['avito']['kinds']);
+        $this->assertSame(1, $cg['other']['total']);
+        $this->assertSame(0, $kpi['prev']['contacts']);
 
         $groups = collect($kpi['channels'])->keyBy('key');
         $this->assertSame(2, $groups['direct']['leads']);     // звонок на номер сайта + заявка Tilda
@@ -103,6 +128,63 @@ class OwnerCeilingsTest extends TestCase
         $this->assertSame(1, $opRow['non_target']);
         $this->assertSame(1, collect($kpi['operators'])->firstWhere('user_id', null)['bookings']); // старый лид — «Система»
         $res->assertSee('Потолки');
+    }
+
+    /**
+     * «Обратились в КЦ» — клиенты, а не звонки: один номер, позвонивший дважды и написавший, — одно обращение (источник —
+     * первое обращение); исходящий звонок оператора — не обращение. Записались — по CRM (с таблицей замеров не
+     * подгоняется), запись, сделанная до периода, не в счёт.
+     */
+    public function test_contacts_are_clients_and_bookings_come_from_crm(): void
+    {
+        $a = $this->contact('8 (912) 000-11-22');
+        $a1 = $this->deal('2026-09-02 09:00:00', 'lead', null, null, null, $a);
+        $this->activity($a1, 'call', ['type' => 'INCOMING', 'callid' => 'x1', 'diversion' => '79225085574'], '2026-09-02 09:00:00');
+        $this->activity($a1, 'call', ['type' => 'in', 'callid' => 'x1', 'diversion' => '79225085574'], '2026-09-02 09:05:00');
+        $this->activity($a1, 'call', ['type' => 'INCOMING', 'callid' => 'x2', 'diversion' => '79225085574'], '2026-09-04 09:00:00');
+        $this->message($a1, 'vk', '2026-09-05 10:00:00');
+        $this->toMeasure($a1, '2026-09-06 12:00:00');
+        // другой контакт с тем же номером в другом виде: написал в ВК (нецелевой), потом оставил лид-форму (в работе)
+        $b1 = $this->deal('2026-09-03 10:00:00', 'done', '2026-09-03 12:00:00', 'extra_non_target', null, $this->contact('+7 912 000-33-44'));
+        $this->message($b1, 'vk', '2026-09-03 10:00:00');
+        $b2 = $this->deal('2026-09-06 10:00:00', 'lead', null, null, null, $this->contact('89120003344'));
+        $this->activity($b2, 'lead_form', ['provider' => 'vk'], '2026-09-06 10:00:00');
+        $c1 = $this->deal('2026-09-04 10:00:00', 'nt');                                     // нецелевой, написал в чат Авито
+        $this->message($c1, 'avito', '2026-09-04 10:00:00');
+        $e1 = $this->deal('2026-08-15 10:00:00', 'measure');                                // записан в августе, в сентябре написал
+        $this->toMeasure($e1, '2026-08-20 10:00:00');
+        $this->message($e1, 'vk', '2026-09-08 10:00:00');
+        $out = $this->deal('2026-09-07 10:00:00', 'done', '2026-09-07 11:00:00', 'extra_non_target');
+        $this->activity($out, 'call', ['type' => 'OUTGOING', 'callid' => 'o1'], '2026-09-07 10:00:00');
+        $this->activity($out, 'call', ['type' => 'out', 'callid' => 'o1'], '2026-09-07 10:01:00');
+        $this->activity($a1, 'call', ['type' => 'INCOMING', 'callid' => 'x0', 'diversion' => '79225085574'], '2026-08-31 23:00:00'); // вне периода
+
+        // в таблице замеров — свои цифры; в обращения они не подставляются
+        DB::table('owner_marketing_daily')->where('source', 'sheet')->where('day', 'like', '2026-09%')->delete();
+        DB::table('owner_marketing_daily')->insert(['source' => 'sheet', 'day' => '2026-09-05', 'metrics' => json_encode(['total' => 6, 'sources' => ['ВК' => 2, 'Авито' => 1, 'Офис' => 3]], JSON_UNESCAPED_UNICODE), 'created_at' => now(), 'updated_at' => now()]);
+
+        $res = $this->actingAs($this->owner())->get(route('owner.ceilings', ['period' => 'custom', 'from' => '2026-09-01', 'to' => '2026-09-30']));
+        $res->assertOk();
+        $c = $res->viewData('kpi')['contacts'];
+        // клиент А (записан), B (два контакта, в работе), c1 (нецелевой), e1 (записан ещё в августе — в работе)
+        $this->assertSame([4, 1, 1, 2, 0, 1], [$c['total'], $c['booked'], $c['non_target'], $c['open'], $c['lost'], $c['booked_earlier']]);
+        $cg = collect($c['groups'])->keyBy('key');
+        $this->assertSame([3, 1, 0], [$cg['vk']['total'], $cg['vk']['booked'], $cg['vk']['non_target']]);
+        $this->assertSame([                                                            // A — первым позвонил, B и e1 — написали
+            'chat_vk' => ['total' => 2, 'booked' => 0, 'non_target' => 0],
+            'call' => ['total' => 1, 'booked' => 1, 'non_target' => 0],
+        ], $cg['vk']['kinds']);
+        $this->assertSame([1, 0, 1], [$cg['avito']['total'], $cg['avito']['booked'], $cg['avito']['non_target']]);
+        $this->assertSame(['2026-09-02' => 1, '2026-09-03' => 1, '2026-09-04' => 1, '2026-09-08' => 1], $c['by_day']);
+        $this->assertSame(6, $res->viewData('measures')['total']);                   // плитка «Замеры» — по таблице, как была
+
+        $res->assertSee('Обратились в КЦ')->assertSee('Обращения в колл-центр');
+        $html = preg_replace('/\s+/u', ' ', strip_tags($res->getContent()));
+        $this->assertStringContainsString('Написали в соцсети и чаты 3 записались 0 (0%) · нецелевые 1 (33%) ВК 2, чат Авито 1', $html);
+        $this->assertStringContainsString('Позвонили 1 записались 1 (100%) · нецелевые 0 (0%)', $html);
+        $this->assertStringContainsString('Авито написали в чат 1 0 1 100% 0%', $html);
+        $this->assertStringContainsString('ВКонтакте 3 1 0 0% 33% написали в сообщения 2 0 0 0% 0% позвонили 1 1 0 0% 100%', $html);
+        $this->assertStringContainsString('Итого 4 1 1 25% 25%', $html);
     }
 
     public function test_nonclosures_from_blagodar_summary(): void

@@ -56,6 +56,9 @@
     .legend{ display:flex; gap:1rem; font-size:.8rem; color:var(--crm-muted); flex-wrap:wrap; }
     .legend i{ display:inline-block; width:.7rem; height:.7rem; border-radius:3px; margin-right:.3rem; vertical-align:-1px; }
     .note{ font-size:.8rem; color:var(--crm-muted); }
+    .own-card tr.src-row td:first-child{ font-weight:700; }
+    .own-card tr.src-row td:first-child .note{ font-weight:400; }
+    .own-card tr.sub td:first-child{ padding-left:1.8rem; color:var(--crm-muted); }
 
     /* телефон: таблицы складываются в карточки строк, крупные цифры меньше */
     @media (max-width: 575.98px){
@@ -116,6 +119,33 @@
     $mSourceNote = $useSheet ? 'по таблице замеров' : 'по CRM — в таблице замеров за период пусто';
     $mCoverage = ($useSheet && $ms['days'] < $ms['period_days']) ? 'в таблице замеров есть '.$ms['days'].' из '.$ms['period_days'].' дн. периода' : null;
 
+    // Обратились в КЦ — клиенты, которые сами позвонили, написали или оставили контакты в форме (CeilingsKpi::contactsBetween).
+    // Всё по CRM: записались — сделка клиента с начала периода дошла до «Замер назначен» или закрыта «Успешно»
+    // (с таблицей замеров, по которой плитка «Замеры», число не подгоняется — решение 13.10.2026).
+    $ct = $kpi['contacts'];
+    $ctGroups = collect($ct['groups'])->keyBy('key');
+    $share = fn ($a, $b) => $b > 0 ? round($a / $b * 100).'%' : '—';
+    $ctRows = array_values(array_filter($ct['groups'], fn ($g) => $g['total'] > 0));
+    $kindLabel = fn (string $kind, string $group) => $kind === 'call' && $group === 'other'
+        ? 'позвонили на другие номера' : \App\Services\Owner\CeilingsKpi::contactKindLabel($kind);
+    // как обращались: написали / позвонили / формы — по первому обращению клиента
+    $how = [
+        'chat' => ['label' => 'Написали в соцсети и чаты', 'total' => 0, 'booked' => 0, 'non_target' => 0, 'parts' => []],
+        'call' => ['label' => 'Позвонили', 'total' => 0, 'booked' => 0, 'non_target' => 0, 'parts' => []],
+        'form' => ['label' => 'Формы на сайте и лид-формы', 'total' => 0, 'booked' => 0, 'non_target' => 0, 'parts' => []],
+    ];
+    foreach ($ct['groups'] as $g) {
+        foreach ($g['kinds'] as $k => $v) {
+            $cls = str_starts_with($k, 'chat_') ? 'chat' : (str_starts_with($k, 'form_') ? 'form' : 'call');
+            foreach (['total', 'booked', 'non_target'] as $f) $how[$cls][$f] += $v[$f];
+            if ($cls === 'chat') {
+                $name = ['vk' => 'ВК', 'avito' => 'чат Авито', 'telegram' => 'Telegram'][substr($k, 5)] ?? substr($k, 5);
+                $how['chat']['parts'][$name] = ($how['chat']['parts'][$name] ?? 0) + $v['total'];
+            }
+        }
+    }
+    arsort($how['chat']['parts']);
+
     $chartRows = [];
     foreach ($series['rows'] as $r) {
         $m = 0;
@@ -130,7 +160,7 @@
         }
         $chartRows[] = $r + ['m' => $m];
     }
-    $maxBar = max(1, collect($chartRows)->max('leads') ?? 0, collect($chartRows)->max('m') ?? 0);
+    $maxBar = max(1, collect($chartRows)->max('contacts') ?? 0, collect($chartRows)->max('m') ?? 0);
     $showChart = count($chartRows) >= 2;   // за один день столбик ничего не добавляет к цифрам наверху
     $labelEvery = count($chartRows) <= 16 ? 1 : (count($chartRows) <= 40 ? 3 : 7);
 
@@ -157,8 +187,8 @@
     $avDirs = $ads['avito_dirs'];
     $avApi = str_starts_with((string) ($ads['spend']['avito']['from'] ?? ''), 'API Авито');
     foreach ($sourceCards as &$c) {
-        $c['leads'] = $c['paid'] ? (int) ($groups[$c['paid']]['leads'] ?? 0) : null;
-        $c['non_target'] = $c['paid'] ? (int) ($groups[$c['paid']]['non_target'] ?? 0) : null;
+        $c['leads'] = $c['paid'] ? (int) ($ctGroups[$c['paid']]['total'] ?? 0) : null;
+        $c['non_target'] = $c['paid'] ? (int) ($ctGroups[$c['paid']]['non_target'] ?? 0) : null;
         $c['spend'] = $c['paid'] ? ($ads['spend'][$c['paid']] ?? null) : null;
         // «Ремонт (Авито)», «Кондиционеры (Авито)» — замеры с объявлений другого направления того же кабинета
         $c['dir'] = null;
@@ -196,7 +226,7 @@
     <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
         <div>
             <h4 class="own-title">📊 Сводка бизнеса · Потолки</h4>
-            <div class="text-muted small">колл-центр: лиды, замеры, звонки, источники и операторы · данные на {{ now()->format('H:i:s') }}, страница обновляется сама каждые 30 с</div>
+            <div class="text-muted small">колл-центр: обращения, замеры, звонки, источники и операторы · данные на {{ now()->format('H:i:s') }}, страница обновляется сама каждые 30 с</div>
         </div>
         <div class="d-flex align-items-center gap-2 flex-wrap">
             <a class="btn btn-sm btn-outline-primary mb-3" href="{{ route('owner.smm', ['business' => 'ceilings']) }}">📱 SMM-контент</a>
@@ -229,6 +259,11 @@
             @endif
         </div>
         <div class="own-stat">
+            <div class="l">Обратились в КЦ</div>
+            <div class="v">{{ $n($ct['total']) }}</div>
+            <div class="s">{!! $delta($ct['total'], $prev['contacts']) !!} к прошлым {{ $days }} дн. ({{ $n($prev['contacts']) }}) · нецелевых {{ $n($ct['non_target']) }}</div>
+        </div>
+        <div class="own-stat">
             <div class="l">Входящие звонки</div>
             <div class="v">{{ $n($calls['incoming']) }}</div>
             <div class="s">{!! $delta($calls['incoming'], $prev['incoming']) !!} · пропущено {{ $n($calls['missed']) }}</div>
@@ -237,17 +272,75 @@
             <div class="own-stat">
                 <div class="l">Расход на рекламу</div>
                 <div class="v">{{ $money($spendTotal) }}</div>
-                <div class="s">цена лида {{ $per($spendTotal, $kpi['leads']) }} · цена замера {{ $per($spendTotal, $mTotal) }}</div>
+                <div class="s">цена обращения {{ $per($spendTotal, $ct['total']) }} · цена замера {{ $per($spendTotal, $mTotal) }}</div>
             </div>
         @endif
     </div>
 
     <div class="own-kpi">
-        <div class="k"><div class="l">Нецелевые</div><div class="v">{{ $n($kpi['non_target']) }}</div></div>
-        <div class="k"><div class="l">Отказ</div><div class="v">{{ $n($kpi['lost']) }}</div></div>
-        <div class="k"><div class="l">Ещё в работе</div><div class="v">{{ $n($kpi['open']) }}</div></div>
+        <div class="k"><div class="l">Нецелевые</div><div class="v">{{ $n($ct['non_target']) }}</div></div>
+        <div class="k"><div class="l">Отказ</div><div class="v">{{ $n($ct['lost']) }}</div></div>
+        <div class="k"><div class="l">Ещё в работе</div><div class="v">{{ $n($ct['open']) }}</div></div>
         <div class="k"><div class="l">Принято звонков</div><div class="v">{{ $n($calls['answered']) }}</div></div>
         <div class="k"><div class="l">Исходящие звонки</div><div class="v">{{ $n($calls['outgoing']) }}</div></div>
+    </div>
+
+    <div class="own-card">
+        <div class="hd"><span>Обращения в колл-центр</span><span class="note">клиент считается один раз — по первому обращению за период · всё по CRM</span></div>
+        <div class="bd">
+            <div class="own-kpi" style="margin-bottom:0">
+                @foreach($how as $h)
+                    <div class="k">
+                        <div class="l">{{ $h['label'] }}</div>
+                        <div class="v">{{ $n($h['total']) }}</div>
+                        <div class="note">записались {{ $n($h['booked']) }} ({{ $share($h['booked'], $h['total']) }}) · нецелевые {{ $n($h['non_target']) }} ({{ $share($h['non_target'], $h['total']) }})</div>
+                        @if(count($h['parts']) > 0)
+                            <div class="note">@foreach($h['parts'] as $name => $cnt){{ $name }} {{ $n($cnt) }}@if(! $loop->last), @endif @endforeach</div>
+                        @endif
+                    </div>
+                @endforeach
+            </div>
+        </div>
+        <table class="stack">
+            <thead><tr><th>Источник</th><th class="num">Обратились</th><th class="num">Записались на замер</th><th class="num">Нецелевые</th><th class="num">% записи</th></tr></thead>
+            <tbody>
+            @forelse($ctRows as $g)
+                @php $multi = count($g['kinds']) > 1; @endphp
+                <tr class="src-row">
+                    <td>
+                        {{ $g['label'] }}
+                        @if(! $multi)<div class="note">{{ $kindLabel((string) array_key_first($g['kinds']), $g['key']) }}</div>@endif
+                    </td>
+                    <td class="num" data-l="обратились">{{ $n($g['total']) }}</td>
+                    <td class="num" data-l="записались">{{ $n($g['booked']) }}</td>
+                    <td class="num" data-l="нецелевые">{{ $n($g['non_target']) }} <span class="note">{{ $share($g['non_target'], $g['total']) }}</span></td>
+                    <td class="num" data-l="% записи">{{ $share($g['booked'], $g['total']) }}</td>
+                </tr>
+                @if($multi)
+                    @foreach($g['kinds'] as $k => $v)
+                        <tr class="sub">
+                            <td>{{ $kindLabel($k, $g['key']) }}</td>
+                            <td class="num" data-l="обратились">{{ $n($v['total']) }}</td>
+                            <td class="num" data-l="записались">{{ $n($v['booked']) }}</td>
+                            <td class="num" data-l="нецелевые">{{ $n($v['non_target']) }} <span class="note">{{ $share($v['non_target'], $v['total']) }}</span></td>
+                            <td class="num" data-l="% записи">{{ $share($v['booked'], $v['total']) }}</td>
+                        </tr>
+                    @endforeach
+                @endif
+            @empty
+                <tr><td colspan="5" class="text-muted">За период обращений нет.</td></tr>
+            @endforelse
+            @if(count($ctRows) > 0)
+                <tr class="grp">
+                    <td>Итого</td>
+                    <td class="num" data-l="обратились">{{ $n($ct['total']) }}</td>
+                    <td class="num" data-l="записались">{{ $n($ct['booked']) }}</td>
+                    <td class="num" data-l="нецелевые">{{ $n($ct['non_target']) }} <span class="note">{{ $share($ct['non_target'], $ct['total']) }}</span></td>
+                    <td class="num" data-l="% записи">{{ $share($ct['booked'], $ct['total']) }}</td>
+                </tr>
+            @endif
+            </tbody>
+        </table>
     </div>
 
     <div class="own-card">
@@ -263,11 +356,11 @@
                             <div class="cnt">{{ $n($c['cnt']) }} <small>{{ $plural((int) $c['cnt'], 'замер', 'замера', 'замеров') }}</small></div>
                             @if($c['paid'])
                                 <dl>
-                                    <dt>лиды в CRM</dt><dd>{{ $n($c['leads']) }}</dd>
+                                    <dt>обратились</dt><dd>{{ $n($c['leads']) }}</dd>
                                     <dt>нецелевые</dt><dd>{{ $n($c['non_target']) }}</dd>
                                     @if($c['spend'])
                                         <dt>{{ $c['paid'] === 'avito' && $avApi ? 'расход на потолки' : 'расход' }}</dt><dd title="по данным: {{ $c['spend']['from'] }}">{{ $money($c['spend']['value']) }}</dd>
-                                        <dt>цена лида</dt><dd>{{ $per($c['spend']['value'], $c['leads']) }}</dd>
+                                        <dt>цена обращения</dt><dd>{{ $per($c['spend']['value'], $c['leads']) }}</dd>
                                         <dt>цена замера</dt><dd>{{ $per($c['spend']['value'], $c['cnt']) }}</dd>
                                     @endif
                                 </dl>
@@ -291,13 +384,13 @@
     <div class="own-card">
         <div class="hd">
             <span>{{ $series['by'] === 'month' ? 'По месяцам' : 'По дням' }}</span>
-            <span class="legend"><span><i style="background:#93c5fd"></i>лиды</span><span><i style="background:#10b981"></i>замеры{{ $useSheet ? ' (по таблице)' : '' }}</span></span>
+            <span class="legend"><span><i style="background:#93c5fd"></i>обратились</span><span><i style="background:#10b981"></i>замеры{{ $useSheet ? ' (по таблице)' : '' }}</span></span>
         </div>
         <div class="bd">
             <div class="bars">
                 @foreach($chartRows as $r)
-                    <div class="col" title="{{ $r['key'] }}: лидов {{ $r['leads'] }}, замеров {{ $r['m'] }}, входящих звонков {{ $r['calls'] }}">
-                        <div class="b leads" style="height:{{ round($r['leads'] / $maxBar * 100, 2) }}%"></div>
+                    <div class="col" title="{{ $r['key'] }}: обратились {{ $r['contacts'] }}, замеров {{ $r['m'] }}, входящих звонков {{ $r['calls'] }}">
+                        <div class="b leads" style="height:{{ round($r['contacts'] / $maxBar * 100, 2) }}%"></div>
                         <div class="b book" style="height:{{ round($r['m'] / $maxBar * 100, 2) }}%"></div>
                     </div>
                 @endforeach
@@ -429,9 +522,14 @@
     <p class="note">
         Как считается. <b>Замеры</b> — по Google-таблице замеров колл-центра (столбец «Сумма» и источники по дням), сводка
         перечитывает её каждые 30 секунд; если за период в таблице пусто — по CRM (сделка впервые попала на этап «Замер назначен»
-        или закрыта «Успешно»). <b>Источники</b> — только те, где за период есть замеры. У Директа, Авито и ВК — лиды CRM этого
-        канала (по самому раннему сигналу сделки: звонок на рекламный номер, чат, форма на сайте), расход и цены.
-        <b>Лид</b> — новая сделка в колл-центре потолков за период. <b>Звонки</b> — по событиям Мегафона: пропущенный —
+        или закрыта «Успешно»). <b>Обратились в КЦ</b> — клиенты, которые за период сами позвонили, написали (ВК, чат Авито,
+        Telegram) или оставили контакты в форме (сайт, лид-форма ВК); клиент — номер телефона: позвонил трижды и написал — одно
+        обращение. Источник клиента — его первое обращение за период (звонок на рекламный номер, чат, форма). Исходящие
+        звонки операторов — не обращения (на новый номер CRM заводит сделку, но клиент сам не обращался). <b>Нецелевые</b>,
+        <b>отказ</b>, <b>в работе</b> — по сделкам этих клиентов в CRM. <b>Записались на замер</b> в обращениях — тоже по CRM:
+        сделка клиента с начала периода дошла до «Замер назначен» или закрыта «Успешно» (с таблицей замеров не сверяется,
+        поэтому может отличаться от плитки «Замеры»); «Прочее» — звонки на нерекламные номера. <b>Источники замеров</b> — только те, где за период есть
+        замеры; у Директа, Авито и ВК — обратившиеся этого источника, расход и цены. <b>Звонки</b> — по событиям Мегафона: пропущенный —
         входящий, который никто не принял. <b>Операторы</b> — по действиям в CRM: «перевели на замер» — кто первым перевёл сделку
         на «Замер назначен» (или закрыл «Успешно»); «обработано» — сделки, которые сотрудник двигал по этапам или закрывал.
         <b>Реклама</b> собирается сама: Директ и VK — каждые 2 часа, Авито — каждый час; расход — из их кабинетов (Директ и

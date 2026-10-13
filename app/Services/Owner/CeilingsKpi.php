@@ -3,6 +3,7 @@
 namespace App\Services\Owner;
 
 use App\Models\Deal;
+use App\Support\Leads\LeadDeduplicator;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Support\Collection;
@@ -18,6 +19,7 @@ use Illuminate\Support\Facades\DB;
  * - Нецелевой — закрыт «Доп.работы / Не целевой» или стоит на этапе «Нецелевое»; отказ — закрыт «Отказ».
  * - Источник лида — самый ранний сигнал: чат, форма с сайта, импорт или звонок на рекламный номер.
  * - Звонки — события Мегафона: входящий (INCOMING), принят (ACCEPTED), исходящий (OUTGOING), по callid.
+ * - Обратились — клиенты, которые сами позвонили, написали или оставили контакты в форме в периоде (contactsBetween).
  */
 class CeilingsKpi
 {
@@ -29,6 +31,16 @@ class CeilingsKpi
         'radio' => 'Радио',
         'tv' => 'ТВ',
         'other' => 'Прочее',
+    ];
+
+    /** Как клиент обратился впервые за период — для разбивки источника. */
+    public const CONTACT_KINDS = [
+        'call' => 'позвонили',
+        'chat_vk' => 'написали в сообщения',
+        'chat_avito' => 'написали в чат',
+        'chat_telegram' => 'написали в Telegram',
+        'form_tilda' => 'форма на сайте',
+        'form_vk' => 'лид-форма',
     ];
 
     private ?array $stageIds = null;
@@ -51,6 +63,7 @@ class CeilingsKpi
         $channels = $this->channelsFor($leadIds);
         $bookings = $this->bookingsBetween($from, $to);
         $calls = $this->callsBetween($from, $to);
+        $contacts = $this->contactsBetween($from, $to);
 
         $outcome = [];
         foreach ($leads as $d) {
@@ -81,15 +94,17 @@ class CeilingsKpi
             'conversion_targeted' => $targeted > 0 ? $booked / $targeted * 100 : null,
             'bookings' => count($bookings),
             'calls' => $calls['totals'],
+            'contacts' => $contacts,
             'prev' => [
                 'leads' => count($prevLeads),
                 'bookings' => count($this->bookingsBetween($prevFrom, $from)),
                 'conversion' => count($prevLeads) > 0 ? $prevBooked / count($prevLeads) * 100 : null,
                 'incoming' => $prevCalls['totals']['incoming'],
+                'contacts' => $this->contactsBetween($prevFrom, $from)['total'],
             ],
             'channels' => $this->channelTable($leads, $outcome, $channels),
             'operators' => $this->operatorTable($from, $to, $bookings),
-            'series' => $this->series($from, $to, $leads, $bookings, $calls['incoming_days']),
+            'series' => $this->series($from, $to, $leads, $bookings, $calls['incoming_days'], $contacts['by_day']),
         ];
     }
 
@@ -240,6 +255,15 @@ class CeilingsKpi
         };
     }
 
+    public static function contactKindLabel(string $kind): string
+    {
+        return self::CONTACT_KINDS[$kind] ?? match (true) {
+            str_starts_with($kind, 'chat_') => 'написали ('.substr($kind, 5).')',
+            str_starts_with($kind, 'form_') => 'форма ('.substr($kind, 5).')',
+            default => $kind,
+        };
+    }
+
     public static function channelGroup(string $key): string
     {
         $phones = Deal::incomingPhoneSourceOptions();
@@ -384,15 +408,120 @@ class CeilingsKpi
         ];
     }
 
-    /** Ряд по дням (до 62 дней) или по месяцам: лиды, замеры, входящие звонки. */
-    private function series(Carbon $from, Carbon $to, Collection $leads, Collection $bookings, array $callDays): array
+    /**
+     * Обратившиеся клиенты: сами позвонили (входящий звонок), написали (входящее сообщение в чате) или оставили контакты
+     * (форма) в периоде. Исходящие звонки операторов не в счёт — на новый номер CRM заводит сделку, но это не обращение.
+     * Клиент — номер телефона контакта (без номера — контакт, без контакта — сделка): позвонил трижды и написал — одно
+     * обращение. Источник клиента — его первое обращение в периоде. Итог — по его сделкам с обращениями: с начала периода
+     * сделка дошла до «Замер назначен» или закрыта «Успешно» — «записался» (запись, сделанная раньше периода, — старая, не
+     * в счёт); все нецелевые — «нецелевой»; иначе есть открытая — «в работе», нет — «отказ».
+     */
+    private function contactsBetween(Carbon $from, Carbon $to): array
+    {
+        $touches = []; // [сделка, когда, как обратился, ключ канала]
+        $calls = DB::table('deal_activities')
+            ->where('account_id', $this->accountId)->where('type', 'call')
+            ->where('created_at', '>=', $from)->where('created_at', '<', $to)
+            ->whereRaw("JSON_UNQUOTE(JSON_EXTRACT(payload, '$.type')) IN ('INCOMING', 'in')")
+            ->get(['deal_id', 'payload', 'created_at']);
+        foreach ($calls as $c) {
+            $payload = json_decode((string) $c->payload, true);
+            $key = (is_array($payload) ? Deal::resolveIncomingPhoneSourceFilterKeyFromPayload($payload) : null) ?? 'phone_other';
+            $touches[] = [(int) $c->deal_id, (string) $c->created_at, 'call', $key];
+        }
+        $chats = DB::table('messages')->join('conversations', 'conversations.id', '=', 'messages.conversation_id')
+            ->where('messages.account_id', $this->accountId)->where('messages.direction', 'in')
+            ->where('messages.created_at', '>=', $from)->where('messages.created_at', '<', $to)
+            ->groupBy('conversations.deal_id', 'conversations.channel')
+            ->get(['conversations.deal_id', 'conversations.channel', DB::raw('MIN(messages.created_at) as at')]);
+        foreach ($chats as $c) {
+            $kind = 'chat_'.mb_strtolower((string) $c->channel);
+            $touches[] = [(int) $c->deal_id, (string) $c->at, $kind, $kind];
+        }
+        $forms = DB::table('deal_activities')
+            ->where('account_id', $this->accountId)->where('type', 'lead_form')
+            ->where('created_at', '>=', $from)->where('created_at', '<', $to)
+            ->get(['deal_id', 'created_at', DB::raw("JSON_UNQUOTE(JSON_EXTRACT(payload, '$.provider')) as provider")]);
+        foreach ($forms as $f) {
+            $provider = mb_strtolower((string) ($f->provider ?? ''));
+            $kind = 'form_'.($provider !== '' ? $provider : 'other');
+            $touches[] = [(int) $f->deal_id, (string) $f->created_at, $kind, $kind];
+        }
+
+        $dealIds = array_values(array_unique(array_column($touches, 0)));
+        $deals = [];
+        foreach (array_chunk($dealIds, 1000) as $chunk) {
+            $rows = DB::table('deals')->leftJoin('contacts', 'contacts.id', '=', 'deals.contact_id')->whereIn('deals.id', $chunk)
+                ->get(['deals.id', 'deals.contact_id', 'deals.stage_id', 'deals.closed_at', 'deals.closed_result', 'contacts.phone']);
+            foreach ($rows as $d) {
+                $deals[(int) $d->id] = $d;
+            }
+        }
+        $bookedAt = $this->bookedAtFor($dealIds);
+        $booked = array_filter($bookedAt, fn ($b) => $b->at->gte($from));
+
+        usort($touches, fn ($a, $b) => strcmp($a[1], $b[1]));
+        $clients = [];
+        foreach ($touches as [$dealId, $at, $kind, $key]) {
+            $d = $deals[$dealId] ?? null;
+            $phone = LeadDeduplicator::normalizePhone($d?->phone);
+            $client = $phone !== null ? 'p'.$phone : ($d?->contact_id ? 'c'.$d->contact_id : 'd'.$dealId);
+            $clients[$client] ??= ['at' => $at, 'kind' => $kind, 'key' => $key, 'deals' => []];
+            $clients[$client]['deals'][$dealId] = true;
+        }
+
+        $out = ['total' => 0, 'booked' => 0, 'non_target' => 0, 'lost' => 0, 'open' => 0, 'booked_earlier' => 0];
+        $groups = [];
+        foreach (self::GROUPS as $g => $label) {
+            $groups[$g] = ['key' => $g, 'label' => $label, 'total' => 0, 'booked' => 0, 'non_target' => 0, 'kinds' => []];
+        }
+        $byDay = [];
+        foreach ($clients as $c) {
+            $outcomes = [];
+            foreach (array_keys($c['deals']) as $id) {
+                $outcomes[] = isset($deals[$id]) ? $this->outcome($deals[$id], isset($booked[$id])) : 'open';
+            }
+            $o = match (true) {
+                in_array('booked', $outcomes, true) => 'booked',
+                array_values(array_unique($outcomes)) === ['non_target'] => 'non_target',
+                in_array('open', $outcomes, true) => 'open',
+                default => 'lost',
+            };
+            $out['total']++;
+            $out[$o]++;
+            if ($o !== 'booked' && array_intersect_key($bookedAt, $c['deals'])) {
+                $out['booked_earlier']++;   // записан ещё до периода — для проверки, в сводке не показывается
+            }
+            $g = self::channelGroup($c['key']);
+            $groups[$g]['total']++;
+            $groups[$g]['booked'] += $o === 'booked' ? 1 : 0;
+            $groups[$g]['non_target'] += $o === 'non_target' ? 1 : 0;
+            $k = &$groups[$g]['kinds'][$c['kind']];
+            $k ??= ['total' => 0, 'booked' => 0, 'non_target' => 0];
+            $k['total']++;
+            $k['booked'] += $o === 'booked' ? 1 : 0;
+            $k['non_target'] += $o === 'non_target' ? 1 : 0;
+            unset($k);
+            $day = substr($c['at'], 0, 10);
+            $byDay[$day] = ($byDay[$day] ?? 0) + 1;
+        }
+        foreach ($groups as &$g) {
+            uasort($g['kinds'], fn ($a, $b) => $b['total'] <=> $a['total']);
+        }
+        unset($g);
+
+        return $out + ['groups' => array_values($groups), 'by_day' => $byDay];
+    }
+
+    /** Ряд по дням (до 62 дней) или по месяцам: лиды, обратившиеся, замеры, входящие звонки. */
+    private function series(Carbon $from, Carbon $to, Collection $leads, Collection $bookings, array $callDays, array $contactDays): array
     {
         $byMonth = $from->diffInDays($to) > 62;
         $fmt = $byMonth ? 'Y-m' : 'Y-m-d';
         $buckets = [];
         $period = CarbonPeriod::create($from->copy()->startOfDay(), $byMonth ? '1 month' : '1 day', $to->copy()->subSecond());
         foreach ($period as $p) {
-            $buckets[$p->format($fmt)] = ['key' => $p->format($fmt), 'leads' => 0, 'bookings' => 0, 'calls' => 0];
+            $buckets[$p->format($fmt)] = ['key' => $p->format($fmt), 'leads' => 0, 'contacts' => 0, 'bookings' => 0, 'calls' => 0];
         }
         foreach ($leads as $d) {
             $k = Carbon::parse($d->created_at)->format($fmt);
@@ -410,6 +539,12 @@ class CeilingsKpi
             $k = $byMonth ? substr($day, 0, 7) : $day;
             if (isset($buckets[$k])) {
                 $buckets[$k]['calls'] += $n;
+            }
+        }
+        foreach ($contactDays as $day => $n) {
+            $k = $byMonth ? substr($day, 0, 7) : $day;
+            if (isset($buckets[$k])) {
+                $buckets[$k]['contacts'] += $n;
             }
         }
 
