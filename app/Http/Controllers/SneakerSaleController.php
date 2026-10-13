@@ -101,22 +101,15 @@ class SneakerSaleController extends Controller
 
         $qty = (int) $data['qty'];
 
-        // Белая пара или серая. Если в размере только белые или только серые — решаем сами, иначе спрашиваем продавца.
-        $white = $warehouse->guessWhite($item, $qty);
-        if ($white === null) {
-            if (! isset($data['white'])) {
-                return redirect()->route('sale.quick', ['item' => $item->id])->withInput()->withErrors(['white' => 'В этом размере есть и белые, и серые пары — отметьте, какую продаёте.']);
-            }
-            $split = $warehouse->whiteSplit($item);
-            $white = $data['white'] === '1';
-            if (($white ? $split['white'] : $split['other']) < $qty) {
-                return redirect()->route('sale.quick', ['item' => $item->id])->withInput()->withErrors(['white' => ($white ? 'Белых' : 'Серых').' пар этого размера на складе меньше, чем продаёте.']);
-            }
+        // Белые пары продаются в 1С чеками (решение 13.10.2026): CRM их не продаёт, а подтягивает продажи из 1С.
+        // В размере только белые — отказ; есть и белые, и серые — продаётся серая, если серых хватает.
+        $split = $warehouse->whiteSplit($item);
+        if ($split['white'] > 0 && $split['other'] < $qty) {
+            return redirect()->route('sale.quick', ['item' => $item->id])->withInput()->withErrors(['white' => $split['other'] > 0
+                ? 'Серых пар этого размера на складе '.$split['other'].' шт — остальные белые, их продают через 1С (чек на кассе).'
+                : 'Белая пара продаётся через 1С (чек на кассе), а не в CRM — продажа подтянется в CRM сама.']);
         }
-        // Белые пары уходят в отчёт 1С, там наличные и безнал раздельно — способ оплаты обязателен.
-        if ($white && empty($data['payment'])) {
-            return redirect()->route('sale.quick', ['item' => $item->id])->withInput()->withErrors(['payment' => 'Белая пара уходит в 1С — укажите оплату: наличные, карта или перевод.']);
-        }
+        $white = false;
 
         $price = ($data['price'] ?? null) !== null && $data['price'] !== ''
             ? (float) $data['price']
@@ -186,7 +179,6 @@ class SneakerSaleController extends Controller
             'author_user_id' => $user->id,
             'type' => 'system',
             'body' => 'Быстрая продажа: '.$item->display_name.' × '.$qty.($amount !== null ? ' на '.number_format($amount, 0, ',', ' ').' ₽' : '')
-                .($white ? ' · белая пара (уйдёт в 1С)' : '')
                 .(! empty($data['payment']) ? ' · '.mb_strtolower(Deal::PAYMENT_METHODS[$data['payment']]) : ''),
         ]);
 

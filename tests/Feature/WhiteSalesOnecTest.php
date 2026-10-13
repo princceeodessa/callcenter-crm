@@ -50,24 +50,21 @@ class WhiteSalesOnecTest extends TestCase
         $this->assertSame(['white' => 2, 'other' => 1], $ws->whiteSplit($item));
         $this->assertNull($ws->guessWhite($item), 'есть и те и другие — решает продавец');
 
-        $this->sell($item, ['white' => '1', 'payment' => 'card']);
+        $this->whiteSale($item, ['payment' => 'card']);
         $this->assertSame(['white' => 1, 'other' => 1], $ws->whiteSplit($item->fresh()));
     }
 
-    public function test_quick_sale_white_only_size_is_white_and_needs_payment(): void
+    public function test_white_pair_is_not_sold_in_crm(): void
     {
         $item = $this->item('43', qty: 1);
         $this->whitePurchase($item, 1);
 
-        $this->actingAs($this->head)->post(route('sale.quick.store'), ['warehouse_item_id' => $item->id, 'qty' => 1])
+        // 13.10.2026: белые пары продаются через 1С чеками, CRM их подтягивает — в быстрой продаже белую не продать
+        $this->actingAs($this->head)->post(route('sale.quick.store'), ['warehouse_item_id' => $item->id, 'qty' => 1, 'payment' => 'cash', 'white' => '1'])
             ->assertRedirect(route('sale.quick', ['item' => $item->id]))
-            ->assertSessionHasErrors('payment');
-        $this->assertSame(1, $item->fresh()->quantity, 'без оплаты не продали');
-
-        $deal = $this->sell($item, ['payment' => 'cash']);
-        $this->assertTrue($deal->stock_white);
-        $this->assertSame('cash', $deal->payment_method);
-        $this->assertSame(0, $item->fresh()->quantity);
+            ->assertSessionHasErrors('white');
+        $this->assertSame(1, $item->fresh()->quantity, 'белая пара осталась на складе');
+        $this->assertSame(0, Deal::where('warehouse_item_id', $item->id)->count());
     }
 
     public function test_quick_sale_grey_size_is_not_white_and_payment_optional(): void
@@ -79,17 +76,18 @@ class WhiteSalesOnecTest extends TestCase
         $this->assertNull($deal->payment_method);
     }
 
-    public function test_mixed_size_asks_the_seller(): void
+    public function test_mixed_size_sells_the_grey_pair_and_keeps_the_white_one(): void
     {
         $item = $this->item('45', qty: 2);
         $this->whitePurchase($item, 1);
 
-        $this->actingAs($this->head)->post(route('sale.quick.store'), ['warehouse_item_id' => $item->id, 'qty' => 1, 'payment' => 'card'])
-            ->assertSessionHasErrors('white');
-
-        $deal = $this->sell($item, ['white' => '0']);
+        $deal = $this->sell($item, ['white' => '1']);   // даже если прислали «белая» — продаётся серая
         $this->assertFalse($deal->stock_white);
         $this->assertSame(['white' => 1, 'other' => 0], app(WarehouseService::class)->whiteSplit($item->fresh()));
+
+        $this->actingAs($this->head)->post(route('sale.quick.store'), ['warehouse_item_id' => $item->id, 'qty' => 1])
+            ->assertSessionHasErrors('white');           // осталась только белая — через 1С
+        $this->assertSame(1, $item->fresh()->quantity);
     }
 
     public function test_quick_sale_client_without_phone_is_a_new_contact_and_vk_is_a_source(): void
@@ -116,17 +114,18 @@ class WhiteSalesOnecTest extends TestCase
 
         $html = $this->actingAs($this->head)->get(route('sale.quick'))->assertOk()->getContent();
         $this->assertMatchesRegularExpression('/data-item="'.$white->id.'"[^>]*data-white="1"[^>]*data-other="0"/s', $html);
-        $this->assertStringContainsString('Белая пара — уйдёт в 1С', $html);
-        $this->assertStringContainsString('name="payment"', $html);
+        $this->assertStringContainsString('Белая пара — продаётся через 1С (чек на кассе)', $html);
+        $this->assertStringContainsString('id="wNote"', $html);
+        $this->assertStringNotContainsString('name="white"', $html);
     }
 
     public function test_station_gets_each_sale_after_the_cooling_window_and_reports_back(): void
     {
         $item = $this->item('42', qty: 3);
         $this->whitePurchase($item, 3, article: 'DV3337-010');
-        $deal = $this->sell($item, ['payment' => 'card', 'price' => 13000]);
+        $deal = $this->whiteSale($item, ['payment' => 'card', 'price' => 13000]);
         $deal->forceFill(['stock_deducted_at' => now()->subMinutes(30)])->save();
-        $fresh = $this->sell($item, ['payment' => 'cash']);   // только что — ещё можно поправить
+        $fresh = $this->whiteSale($item, ['payment' => 'cash']);   // только что — ещё можно поправить
 
         $this->getJson(route('api.onec.pending'))->assertUnauthorized();
         $this->getJson(route('api.onec.pending'), ['X-Onec-Token' => 'x'.$this->token])->assertUnauthorized();
@@ -172,7 +171,7 @@ class WhiteSalesOnecTest extends TestCase
     {
         $item = $this->item('43', qty: 1);
         $this->whitePurchase($item, 1);
-        $deal = $this->sell($item, ['payment' => 'cash']);
+        $deal = $this->whiteSale($item, ['payment' => 'cash']);
         $deal->forceFill(['stock_deducted_at' => now()->subHour()])->save();
         app(WarehouseService::class)->returnDealStock($deal->fresh());
 
@@ -185,7 +184,7 @@ class WhiteSalesOnecTest extends TestCase
     {
         $item = $this->item('40', qty: 1);
         $this->whitePurchase($item, 1, article: 'ZZ-NO-CARD');
-        $deal = $this->sell($item, ['payment' => 'cash']);
+        $deal = $this->whiteSale($item, ['payment' => 'cash']);
         $deal->forceFill(['stock_deducted_at' => now()->subHours(2)])->save();
         $export = app(SaleDocExport::class);
         $start = now()->subDays(5)->toDateString();
@@ -205,7 +204,7 @@ class WhiteSalesOnecTest extends TestCase
     {
         $item = $this->item('41', qty: 1);
         $this->whitePurchase($item, 1);
-        $deal = $this->sell($item, ['payment' => 'cash']);
+        $deal = $this->whiteSale($item, ['payment' => 'cash']);
         OnecSaleDoc::withoutGlobalScopes()->create([
             'account_id' => $this->head->account_id, 'deal_id' => $deal->id, 'kind' => 'sale', 'status' => 'done',
             'rows_hash' => 'x', 'onec_number' => 'ЗРНФ-000007', 'onec_date' => now()->subHour(),
@@ -221,9 +220,7 @@ class WhiteSalesOnecTest extends TestCase
     {
         $item = $this->item('39', qty: 2);
         $this->whitePurchase($item, 1);
-        $deal = $this->sell($item, ['white' => '1']);   // белая, но без оплаты нельзя
-        $this->assertNull($deal);
-        $deal = $this->sell($item, ['white' => '1', 'payment' => 'transfer']);
+        $deal = $this->whiteSale($item, ['payment' => 'transfer']);
 
         $this->actingAs($this->head)->get(route('onec.index'))->assertOk()
             ->assertSee('1С: продажи белых пар')->assertSee('Документы в 1С')->assertSee('можно поправить');
@@ -269,6 +266,24 @@ class WhiteSalesOnecTest extends TestCase
             'stocked_quantity' => $qty,
             'warehouse_item_id' => $item->id,
         ]);
+    }
+
+    /** Белая продажа — как её заведёт обмен с 1С (в CRM белые пары не продаются с 13.10.2026). */
+    private function whiteSale(WarehouseItem $item, array $extra = []): Deal
+    {
+        $pipeline = \App\Models\Pipeline::where('account_id', $this->head->account_id)->orderByDesc('is_default')->firstOrFail();
+        $stage = \App\Models\PipelineStage::where('account_id', $this->head->account_id)->where('pipeline_id', $pipeline->id)
+            ->where('is_final', 1)->orderBy('sort')->firstOrFail();
+        $deal = Deal::create([
+            'account_id' => $this->head->account_id, 'pipeline_id' => $pipeline->id, 'stage_id' => $stage->id,
+            'title' => 'Продажа: '.$item->display_name, 'title_is_custom' => 1, 'responsible_user_id' => $this->head->id,
+            'amount' => $extra['price'] ?? $item->sale_price, 'currency' => 'RUB', 'product_category' => 'sneakers',
+            'closed_at' => now(), 'closed_result' => 'won', 'closed_by_user_id' => $this->head->id,
+            'warehouse_item_id' => $item->id, 'sold_quantity' => 1, 'stock_white' => true, 'payment_method' => $extra['payment'] ?? null,
+        ]);
+        app(WarehouseService::class)->syncDealStock($deal);
+
+        return $deal->fresh();
     }
 
     /** Быстрая продажа; null — если не продалось (ошибка формы). */

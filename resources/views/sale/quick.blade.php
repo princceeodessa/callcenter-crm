@@ -201,7 +201,7 @@
                         @if($s['available'] > 0)
                             @php
                                 $wCls = $s['white'] > 0 ? ($s['other'] > 0 ? 'wm' : 'w') : '';
-                                $wTip = $s['white'] > 0 ? ($s['other'] > 0 ? 'Белых '.$s['white'].', серых '.$s['other'].' — при продаже отметьте, какую' : 'Белая пара — уйдёт в 1С') : '';
+                                $wTip = $s['white'] > 0 ? ($s['other'] > 0 ? 'Белых '.$s['white'].', серых '.$s['other'].' — здесь продаётся серая, белые — через 1С' : 'Белая пара — продаётся через 1С (чек на кассе)') : '';
                             @endphp
                             <span class="qs-size {{ $wCls }}" @if($wTip) title="{{ $wTip }}" @endif
                                   data-item="{{ $s['id'] }}"
@@ -258,12 +258,8 @@
             <label>Телефон (не обязательно)</label>
             <input type="text" name="client_phone" maxlength="32">
         </div>
-        <div class="col-12 col-lg-5 fld" id="wBox" style="display:none">
-            <label>Какую пару продаёте? <span class="text-muted">в размере есть белые и серые</span></label>
-            <div class="qs-seg" id="wSeg">
-                <label><input type="radio" name="white" value="1"> 🤍 Белая (в 1С)</label>
-                <label><input type="radio" name="white" value="0"> Серая</label>
-            </div>
+        <div class="col-12 col-lg-5 fld" id="wNote" style="display:none">
+            <div class="alert alert-warning py-2 mb-0">🤍 Белая пара продаётся через 1С (чек на кассе), а не здесь — продажа подтянется в CRM сама.</div>
         </div>
         <div class="col-12 col-lg-5 fld">
             <label>Оплата <span class="text-muted" id="payHint"></span></label>
@@ -295,33 +291,21 @@
     const pSize = document.getElementById('pSize');
     const pAvail = document.getElementById('pAvail');
     const pTotal = document.getElementById('pTotal');
-    const wBox = document.getElementById('wBox');
-    const wSeg = document.getElementById('wSeg');
-    const paySeg = document.getElementById('paySeg');
-    const payHint = document.getElementById('payHint');
+    const wNote = document.getElementById('wNote');
+    const sellBtn = panel.querySelector('.qs-sell');
     let selected = null;
 
-    // Белая / серая: только белые → белая, только серые → серая, есть и те и другие → спросить продавца.
-    const whiteMode = () => {
-        if (!selected) return 'none';
+    // Белые пары продаются через 1С (13.10.2026): в размере только белые — продать здесь нельзя; есть и серые — продаётся серая.
+    const onlyWhite = () => {
+        if (!selected) return false;
         const w = parseInt(selected.dataset.white || '0', 10), o = parseInt(selected.dataset.other || '0', 10);
-        return w > 0 && o > 0 ? 'ask' : (w > 0 ? 'white' : 'grey');
-    };
-    const chosenWhite = () => {
-        const m = whiteMode();
-        if (m === 'ask') { const r = wSeg.querySelector('input:checked'); return r ? r.value === '1' : null; }
-        return m === 'white';
+        return w > 0 && o <= 0;
     };
     const refreshWhite = () => {
-        const m = whiteMode();
-        wBox.style.display = m === 'ask' ? '' : 'none';
-        if (m !== 'ask') wSeg.querySelectorAll('input').forEach(r => { r.checked = false; });
-        const isWhite = chosenWhite();
-        payHint.textContent = isWhite ? '— обязательно: белая пара уходит в 1С' : '';
-        paySeg.classList.toggle('need', isWhite === true && !paySeg.querySelector('input:checked'));
+        const ow = onlyWhite();
+        wNote.style.display = ow ? '' : 'none';
+        sellBtn.disabled = ow;
     };
-    wSeg.addEventListener('change', refreshWhite);
-    paySeg.addEventListener('change', refreshWhite);
 
     const fmt = (n) => new Intl.NumberFormat('ru-RU').format(Math.round(n)) + ' ₽';
 
@@ -395,8 +379,7 @@
 
     panel.addEventListener('submit', (e) => {
         if (!fItem.value) { e.preventDefault(); alert('Сначала выберите товар и размер.'); return; }
-        if (whiteMode() === 'ask' && chosenWhite() === null) { e.preventDefault(); alert('В этом размере есть белые и серые пары — отметьте, какую продаёте.'); return; }
-        if (chosenWhite() === true && !paySeg.querySelector('input:checked')) { e.preventDefault(); alert('Белая пара уходит в 1С — укажите оплату.'); }
+        if (onlyWhite()) { e.preventDefault(); alert('Белая пара продаётся через 1С (чек на кассе), а не в CRM.'); }
     });
 
     // Журнал последних продаж — надёжный toggle (без <details>).
