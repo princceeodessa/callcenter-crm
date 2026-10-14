@@ -44,6 +44,12 @@ class MegafonVatsDealSync
         $accountId = $connection->account_id;
         $p = $event->payload ?? [];
 
+        // Звонок через личный номер, подключённый к АТС (руководитель и т.п.), — не работа колл-центра:
+        // ни сделки, ни звонка в карточке, ни записи. Номера — только в настройках подключения, не в коде.
+        if (self::viaIgnoredLine($connection, $p)) {
+            return;
+        }
+
         // Pick client phone (best-effort for MegaFon VATS payloads)
         $clientPhone = self::resolveClientPhone($connection, $p);
         if (!$clientPhone) {
@@ -374,6 +380,28 @@ class MegafonVatsDealSync
         }
 
         return null;
+    }
+
+    /**
+     * Звонок идёт через линию из settings.ignored_line_numbers. Линия — номер, на который позвонили (diversion):
+     * у звонков через личный номер он стоит там во всех событиях, входящих и исходящих. Список «наших номеров»
+     * (ignored_phone_numbers) для этого не годится: он убирает номер из кандидатов в клиенты, а клиентом тогда
+     * становится тот, кто звонит на личный номер.
+     */
+    private static function viaIgnoredLine(IntegrationConnection $connection, array $payload): bool
+    {
+        $settings = is_array($connection->settings) ? $connection->settings : [];
+        $lines = $settings['ignored_line_numbers'] ?? [];
+        if (is_string($lines)) {
+            $lines = preg_split('/[\s,;]+/', $lines) ?: [];
+        }
+        $lines = array_filter(array_map(fn ($n) => self::normalizePhone((string) $n), is_array($lines) ? $lines : []));
+        if ($lines === []) {
+            return false;
+        }
+        $line = self::normalizePhone(self::firstString($payload, ['diversion']));
+
+        return $line !== null && in_array($line, $lines, true);
     }
 
     private static function excludedPhoneNumbers(IntegrationConnection $connection): array
