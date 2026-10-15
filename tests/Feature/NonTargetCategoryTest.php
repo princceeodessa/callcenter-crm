@@ -115,6 +115,28 @@ class NonTargetCategoryTest extends TestCase
         $this->assertNotContains($old, $ids);
     }
 
+    /** «Завершённые» — период «с … по …» вместо месяца: и список, и колонки исходов. */
+    public function test_closed_page_by_date_range(): void
+    {
+        $before = $this->deal('done', ['closed_at' => '2026-10-14 18:00:00', 'closed_result' => 'extra_non_target']);
+        $first = $this->deal('done', ['closed_at' => '2026-10-15 09:30:00', 'closed_result' => 'extra_non_target', 'non_target_category' => 'dealer']);
+        $last = $this->deal('done', ['closed_at' => '2026-10-16 23:50:00', 'closed_result' => 'won']);
+        $after = $this->deal('done', ['closed_at' => '2026-10-17 00:10:00', 'closed_result' => 'lost']);
+
+        $res = $this->actingAs($this->op)->get(route('deals.closed', ['from' => '2026-10-15', 'to' => '2026-10-16']))->assertOk();
+        $ids = collect($res->viewData('deals')->items())->pluck('id')->sort()->values()->all();
+        $this->assertSame([$first, $last], $ids);
+        $this->assertSame(1, $res->viewData('outcomeCounts')['dealer']);
+        $this->assertSame(1, $res->viewData('outcomeCounts')['booked']);
+        $this->assertSame(0, $res->viewData('outcomeCounts')['none']);
+        $res->assertSee('Исходы закрытых за 15.10.2026 – 16.10.2026')->assertSee('value="2026-10-15"', false);
+
+        // колонка-фильтр сохраняет период
+        $res->assertSee(route('deals.closed', ['from' => '2026-10-15', 'to' => '2026-10-16', 'category' => 'dealer']));
+        // старая ссылка по месяцу работает как раньше
+        $this->assertCount(4, $this->actingAs($this->op)->get(route('deals.closed', ['month' => '2026-10']))->viewData('deals')->items());
+    }
+
     public function test_other_spaces_close_non_target_without_a_category(): void
     {
         config(['owner.ceilings_account_id' => -1]);    // это пространство — не потолки

@@ -12,7 +12,12 @@
 <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
   <h4 class="mb-0">Завершённые сделки</h4>
   <form class="d-flex gap-2 flex-wrap" method="GET" action="{{ route('deals.closed') }}">
-    <input type="month" name="month" class="form-control form-control-sm" value="{{ $month }}" style="width: 170px;">
+    <div class="d-flex align-items-center gap-1">
+      <span class="text-muted small">с</span>
+      <input type="date" name="from" class="form-control form-control-sm" value="{{ $fromValue }}" style="width: 150px;">
+      <span class="text-muted small">по</span>
+      <input type="date" name="to" class="form-control form-control-sm" value="{{ $toValue }}" style="width: 150px;">
+    </div>
     <select class="form-select form-select-sm" name="result" style="width: 170px;">
       <option value="all" @selected($result === 'all')>Все</option>
       <option value="won" @selected($result === 'won')>Успешно</option>
@@ -37,13 +42,13 @@
   <div class="card shadow-sm mb-3">
     <div class="card-body py-2">
       <div class="d-flex justify-content-between flex-wrap gap-2 mb-2">
-        <span class="fw-semibold">Исходы закрытых за месяц</span>
+        <span class="fw-semibold">Исходы закрытых за {{ \Carbon\Carbon::parse($fromValue)->format('d.m.Y') }}{{ $toValue !== $fromValue ? ' – '.\Carbon\Carbon::parse($toValue)->format('d.m.Y') : '' }}</span>
         <span class="text-muted small">нажмите на колонку — покажем эти сделки</span>
       </div>
       <div class="nt-strip">
         @foreach($outcomeColumns as $key => $label)
           @continue($key === 'none' && ($outcomeCounts['none'] ?? 0) === 0)
-          <a href="{{ route('deals.closed', array_filter(['month' => $month, 'q' => $q, 'category' => $category === $key ? null : $key])) }}" class="nt-cell {{ $category === $key ? 'on' : '' }}">
+          <a href="{{ route('deals.closed', array_filter(['from' => $fromValue, 'to' => $toValue, 'q' => $q, 'category' => $category === $key ? null : $key])) }}" class="nt-cell {{ $category === $key ? 'on' : '' }}">
             <div class="l">{{ $label }}</div>
             <div class="v">{{ $outcomeCounts[$key] ?? 0 }}</div>
           </a>

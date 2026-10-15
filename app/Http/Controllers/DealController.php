@@ -744,8 +744,19 @@ class DealController extends Controller
         [$y, $m] = explode('-', $month);
         $from = now()->setDate((int)$y, (int)$m, 1)->startOfDay();
         $to = (clone $from)->addMonth()->startOfDay();
+        // период «с … по …» вместо месяца (например, с 15.10.2026 — с тех пор у нецелевых есть категории)
+        try {
+            $rangeFrom = Carbon::createFromFormat('!Y-m-d', $request->string('from')->toString());
+            $rangeTo = Carbon::createFromFormat('!Y-m-d', $request->string('to')->toString())->addDay();
+            if ($rangeTo->gt($rangeFrom) && $rangeFrom->diffInDays($rangeTo) <= 400) {
+                [$from, $to] = [$rangeFrom, $rangeTo];
+            }
+        } catch (\Throwable) {
+        }
+        $fromValue = $from->toDateString();
+        $toValue = $to->copy()->subDay()->toDateString();
 
-        // потолки: исходы закрытых за месяц — целевой записанный / целевой отказ / нецелевые по категориям
+        // потолки: исходы закрытых за период — целевой записанный / целевой отказ / нецелевые по категориям
         $outcomeColumns = NonTargetCategory::appliesTo((int) $user->account_id)
             ? NonTargetCategory::COLUMNS + ['none' => 'Нецелевые без категории'] : [];
         $outcomes = $outcomeColumns ? $this->closedOutcomes((int) $user->account_id, $from, $to) : [];
@@ -758,7 +769,7 @@ class DealController extends Controller
         $deals = Deal::query()
             ->where('account_id', $user->account_id)
             ->whereNotNull('closed_at')
-            ->whereBetween('closed_at', [$from, $to])
+            ->where('closed_at', '>=', $from)->where('closed_at', '<', $to)
             ->when($result !== 'all', fn($qq) => $qq->where('closed_result', $result))
             ->when($category !== '', fn ($qq) => $qq->whereIn('id', array_keys($outcomes, $category, true) ?: [0]))
             ->when($q, function ($query) use ($q) {
@@ -781,7 +792,7 @@ class DealController extends Controller
             ->paginate(25)
             ->withQueryString();
 
-        return view('deals.closed', compact('deals','q','result','month','category','outcomeColumns','outcomeCounts'));
+        return view('deals.closed', compact('deals','q','result','month','category','outcomeColumns','outcomeCounts','fromValue','toValue'));
     }
 
     /**
