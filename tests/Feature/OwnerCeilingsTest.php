@@ -108,11 +108,12 @@ class OwnerCeilingsTest extends TestCase
         $this->assertSame([4, 2, 1, 0, 1], [$c['total'], $c['booked'], $c['non_target'], $c['lost'], $c['open']]);
         $cg = collect($c['groups'])->keyBy('key');
         $this->assertSame(['total' => 2, 'non_target' => 1], ['total' => $cg['direct']['total'], 'non_target' => $cg['direct']['non_target']]);
-        $this->assertSame([
-            'call' => ['total' => 1, 'booked' => 1, 'non_target' => 0],
-            'form_tilda' => ['total' => 1, 'booked' => 0, 'non_target' => 1],
+        $this->assertSame([                                        // d3 закрыта нецелевой до категорий — «без категории»
+            'call' => ['total' => 1, 'booked' => 1, 'non_target' => 0, 'cats' => ['booked' => 1]],
+            'form_tilda' => ['total' => 1, 'booked' => 0, 'non_target' => 1, 'cats' => ['none' => 1]],
         ], $cg['direct']['kinds']);
-        $this->assertSame(['chat_avito' => ['total' => 1, 'booked' => 1, 'non_target' => 0]], $cg['avito']['kinds']);
+        $this->assertSame(['chat_avito' => ['total' => 1, 'booked' => 1, 'non_target' => 0, 'cats' => ['booked' => 1]]], $cg['avito']['kinds']);
+        $this->assertSame(['booked' => 2, 'none' => 1, 'open' => 1], $c['cats']);
         $this->assertSame(1, $cg['other']['total']);
         $this->assertSame(0, $kpi['prev']['contacts']);
 
@@ -149,7 +150,8 @@ class OwnerCeilingsTest extends TestCase
         $this->message($b1, 'vk', '2026-09-03 10:00:00');
         $b2 = $this->deal('2026-09-06 10:00:00', 'lead', null, null, null, $this->contact('89120003344'));
         $this->activity($b2, 'lead_form', ['provider' => 'vk'], '2026-09-06 10:00:00');
-        $c1 = $this->deal('2026-09-04 10:00:00', 'nt');                                     // нецелевой, написал в чат Авито
+        $c1 = $this->deal('2026-09-04 10:00:00', 'nt');                                     // нецелевой (спам), написал в чат Авито
+        DB::table('deals')->where('id', $c1)->update(['non_target_category' => 'spam']);
         $this->message($c1, 'avito', '2026-09-04 10:00:00');
         $e1 = $this->deal('2026-08-15 10:00:00', 'measure');                                // записан в августе, в сентябре написал
         $this->toMeasure($e1, '2026-08-20 10:00:00');
@@ -171,20 +173,24 @@ class OwnerCeilingsTest extends TestCase
         $cg = collect($c['groups'])->keyBy('key');
         $this->assertSame([3, 1, 0], [$cg['vk']['total'], $cg['vk']['booked'], $cg['vk']['non_target']]);
         $this->assertSame([                                                            // A — первым позвонил, B и e1 — написали
-            'chat_vk' => ['total' => 2, 'booked' => 0, 'non_target' => 0],
-            'call' => ['total' => 1, 'booked' => 1, 'non_target' => 0],
+            'chat_vk' => ['total' => 2, 'booked' => 0, 'non_target' => 0, 'cats' => ['open' => 2]],
+            'call' => ['total' => 1, 'booked' => 1, 'non_target' => 0, 'cats' => ['booked' => 1]],
         ], $cg['vk']['kinds']);
+        $this->assertSame(['booked' => 1, 'open' => 2, 'spam' => 1], $c['cats']);
         $this->assertSame([1, 0, 1], [$cg['avito']['total'], $cg['avito']['booked'], $cg['avito']['non_target']]);
         $this->assertSame(['2026-09-02' => 1, '2026-09-03' => 1, '2026-09-04' => 1, '2026-09-08' => 1], $c['by_day']);
         $this->assertSame(6, $res->viewData('measures')['total']);                   // плитка «Замеры» — по таблице, как была
 
         $res->assertSee('Обратились в КЦ')->assertSee('Обращения в колл-центр');
-        $html = preg_replace('/\s+/u', ' ', strip_tags($res->getContent()));
+        $html = preg_replace('/\s+/u', ' ', strip_tags(str_replace('<', ' <', $res->getContent())));   // ячейки — через пробел
         $this->assertStringContainsString('Написали в соцсети и чаты 3 записались 0 (0%) · нецелевые 1 (33%) ВК 2, чат Авито 1', $html);
         $this->assertStringContainsString('Позвонили 1 записались 1 (100%) · нецелевые 0 (0%)', $html);
-        $this->assertStringContainsString('Авито написали в чат 1 0 1 100% 0%', $html);
-        $this->assertStringContainsString('ВКонтакте 3 1 0 0% 33% написали в сообщения 2 0 0 0% 0% позвонили 1 1 0 0% 100%', $html);
-        $this->assertStringContainsString('Итого 4 1 1 25% 25%', $html);
+        // колонки: обратились | целевой записанный | целевой отказ | 6 категорий нецелевых | в работе | % записи
+        $this->assertStringContainsString('Обратились Целевой записанный Целевой отказ Дилерский Запись на монтаж Сливы и доп. работы Реклама и спам Запрос на связь с замерщиком Претензии В работе % записи', $html);
+        $this->assertStringNotContainsString('Нецелевые без категории', $html);   // все нецелевые периода — с категорией
+        $this->assertStringContainsString('Авито написали в чат 1 0 0 0 0 0 1 0 0 0 0%', $html);
+        $this->assertStringContainsString('ВКонтакте 3 1 0 0 0 0 0 0 0 2 33% написали в сообщения 2 0 0 0 0 0 0 0 0 2 0% позвонили 1 1 0 0 0 0 0 0 0 0 100%', $html);
+        $this->assertStringContainsString('Итого 4 1 0 0 0 0 1 0 0 2 25%', $html);
     }
 
     public function test_nonclosures_from_blagodar_summary(): void

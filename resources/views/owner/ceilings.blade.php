@@ -59,6 +59,9 @@
     .own-card tr.src-row td:first-child{ font-weight:700; }
     .own-card tr.src-row td:first-child .note{ font-weight:400; }
     .own-card tr.sub td:first-child{ padding-left:1.8rem; color:var(--crm-muted); }
+    .ct-scroll{ overflow-x:auto; }
+    .own-card table.ct th, .own-card table.ct td{ padding:.4rem .5rem; }
+    .own-card table.ct th.cat{ white-space:normal; line-height:1.2; min-width:66px; vertical-align:bottom; }
 
     /* телефон: таблицы складываются в карточки строк, крупные цифры меньше */
     @media (max-width: 575.98px){
@@ -145,6 +148,11 @@
         }
     }
     arsort($how['chat']['parts']);
+    // колонки исходов: целевой записанный / отказ / нецелевые по категориям (+ старые без категории) / в работе
+    $ctCols = \App\Support\Deals\NonTargetCategory::COLUMNS;
+    if (($ct['cats']['none'] ?? 0) > 0) $ctCols['none'] = 'Нецелевые без категории';
+    $ctCols['open'] = 'В работе';
+    $catCell = fn (array $cats, string $key) => ($cats[$key] ?? 0) > 0 ? $n($cats[$key]) : '<span class="note">0</span>';
 
     $chartRows = [];
     foreach ($series['rows'] as $r) {
@@ -301,8 +309,13 @@
                 @endforeach
             </div>
         </div>
-        <table class="stack">
-            <thead><tr><th>Источник</th><th class="num">Обратились</th><th class="num">Записались на замер</th><th class="num">Нецелевые</th><th class="num">% записи</th></tr></thead>
+        <div class="ct-scroll">
+        <table class="stack ct">
+            <thead><tr>
+                <th>Источник</th><th class="num">Обратились</th>
+                @foreach($ctCols as $cl)<th class="num cat">{{ $cl }}</th>@endforeach
+                <th class="num">% записи</th>
+            </tr></thead>
             <tbody>
             @forelse($ctRows as $g)
                 @php $multi = count($g['kinds']) > 1; @endphp
@@ -312,8 +325,7 @@
                         @if(! $multi)<div class="note">{{ $kindLabel((string) array_key_first($g['kinds']), $g['key']) }}</div>@endif
                     </td>
                     <td class="num" data-l="обратились">{{ $n($g['total']) }}</td>
-                    <td class="num" data-l="записались">{{ $n($g['booked']) }}</td>
-                    <td class="num" data-l="нецелевые">{{ $n($g['non_target']) }} <span class="note">{{ $share($g['non_target'], $g['total']) }}</span></td>
+                    @foreach($ctCols as $ck => $cl)<td class="num" data-l="{{ mb_strtolower($cl) }}">{!! $catCell($g['cats'], $ck) !!}</td>@endforeach
                     <td class="num" data-l="% записи">{{ $share($g['booked'], $g['total']) }}</td>
                 </tr>
                 @if($multi)
@@ -321,26 +333,25 @@
                         <tr class="sub">
                             <td>{{ $kindLabel($k, $g['key']) }}</td>
                             <td class="num" data-l="обратились">{{ $n($v['total']) }}</td>
-                            <td class="num" data-l="записались">{{ $n($v['booked']) }}</td>
-                            <td class="num" data-l="нецелевые">{{ $n($v['non_target']) }} <span class="note">{{ $share($v['non_target'], $v['total']) }}</span></td>
+                            @foreach($ctCols as $ck => $cl)<td class="num" data-l="{{ mb_strtolower($cl) }}">{!! $catCell($v['cats'], $ck) !!}</td>@endforeach
                             <td class="num" data-l="% записи">{{ $share($v['booked'], $v['total']) }}</td>
                         </tr>
                     @endforeach
                 @endif
             @empty
-                <tr><td colspan="5" class="text-muted">За период обращений нет.</td></tr>
+                <tr><td colspan="{{ count($ctCols) + 3 }}" class="text-muted">За период обращений нет.</td></tr>
             @endforelse
             @if(count($ctRows) > 0)
                 <tr class="grp">
                     <td>Итого</td>
                     <td class="num" data-l="обратились">{{ $n($ct['total']) }}</td>
-                    <td class="num" data-l="записались">{{ $n($ct['booked']) }}</td>
-                    <td class="num" data-l="нецелевые">{{ $n($ct['non_target']) }} <span class="note">{{ $share($ct['non_target'], $ct['total']) }}</span></td>
+                    @foreach($ctCols as $ck => $cl)<td class="num" data-l="{{ mb_strtolower($cl) }}">{!! $catCell($ct['cats'], $ck) !!}</td>@endforeach
                     <td class="num" data-l="% записи">{{ $share($ct['booked'], $ct['total']) }}</td>
                 </tr>
             @endif
             </tbody>
         </table>
+        </div>
     </div>
 
     <div class="own-card">
@@ -526,7 +537,9 @@
         Telegram) или оставили контакты в форме (сайт, лид-форма ВК); клиент — номер телефона: позвонил трижды и написал — одно
         обращение. Источник клиента — его первое обращение за период (звонок на рекламный номер, чат, форма). Исходящие
         звонки операторов — не обращения (на новый номер CRM заводит сделку, но клиент сам не обращался). <b>Нецелевые</b>,
-        <b>отказ</b>, <b>в работе</b> — по сделкам этих клиентов в CRM. <b>Записались на замер</b> в обращениях — тоже по CRM:
+        <b>отказ</b>, <b>в работе</b> — по сделкам этих клиентов в CRM; нецелевые делятся по категориям, которые оператор
+        выбирает при закрытии «Не целевой» и при переводе на этап «Нецелевое» (с 15.10.2026; отмеченные раньше — «без
+        категории»). <b>Записались на замер</b> в обращениях — тоже по CRM:
         сделка клиента с начала периода дошла до «Замер назначен» или закрыта «Успешно» (с таблицей замеров не сверяется,
         поэтому может отличаться от плитки «Замеры»); «Прочее» — звонки на нерекламные номера. <b>Источники замеров</b> — только те, где за период есть
         замеры; у Директа, Авито и ВК — обратившиеся этого источника, расход и цены. <b>Звонки</b> — по событиям Мегафона: пропущенный —

@@ -10,6 +10,9 @@
         .kanban-list{ min-height: 64px; }
         .kanban-card{ cursor: grab; user-select: none; }
         .kanban-card:active{ cursor: grabbing; }
+        .nt-picker{ position: fixed; inset: 0; background: rgba(15, 23, 42, .45); display: flex; align-items: center; justify-content: center; z-index: 2000; padding: 16px; }
+        .nt-picker[hidden]{ display: none; }
+        .nt-picker-box{ background: var(--bs-body-bg, #fff); border-radius: 14px; padding: 1rem 1.1rem; width: 320px; max-width: 100%; box-shadow: 0 20px 45px rgba(15, 23, 42, .25); }
         .drag-ghost{ opacity: .5; }
         .drag-chosen{ outline: 2px dashed rgba(13,110,253,.6); outline-offset: 2px; }
         .kanban-card .deal-title { line-height: 1.25; }
@@ -199,6 +202,7 @@
                             @if($answeredBy)
                                 <div class="text-muted small mt-1">Ответил: {{ $answeredBy }}</div>
                             @endif
+                            <div class="small mt-1 text-warning-emphasis kanban-nt" @if(! \App\Support\Deals\NonTargetCategory::label($deal->non_target_category)) hidden @endif>Нецелевая: {{ \App\Support\Deals\NonTargetCategory::label($deal->non_target_category) }}</div>
                             <div class="text-muted small mt-2 kanban-last-moved">{{ $deal->last_moved_by_label }}</div>
                         </div>
                     @endforeach
@@ -208,6 +212,21 @@
             </div>
         @endforeach
     </div>
+
+    @if(!empty($nonTargetCategories) && $nonTargetStageId)
+        {{-- потолки: перенос на «Нецелевое» — только с категорией (по ним статистика) --}}
+        <div id="ntPicker" class="nt-picker" hidden>
+            <div class="nt-picker-box">
+                <div class="fw-semibold mb-2">Почему сделка нецелевая?</div>
+                <div class="d-grid gap-2">
+                    @foreach($nonTargetCategories as $key => $label)
+                        <button type="button" class="btn btn-outline-secondary btn-sm text-start" data-cat="{{ $key }}">{{ $label }}</button>
+                    @endforeach
+                    <button type="button" class="btn btn-link btn-sm text-muted" data-cat="">Отмена</button>
+                </div>
+            </div>
+        </div>
+    @endif
 @endsection
 
 @push('scripts')
@@ -218,6 +237,28 @@
             const btnRow = document.getElementById('kbModeRow');
             const btnWrap = document.getElementById('kbModeWrap');
             const moveErrorMessage = @json($ui['move_error']);
+            const ntStageId = @json(!empty($nonTargetCategories) && $nonTargetStageId ? (string) $nonTargetStageId : null);
+            const ntLabels = @json($nonTargetCategories ?? []);
+            const ntPicker = document.getElementById('ntPicker');
+            // окно «почему нецелевая»: категория или null (отмена, клик мимо, Esc)
+            const pickCategory = () => new Promise((resolve) => {
+                if (!ntPicker) { resolve(null); return; }
+                const done = (value) => {
+                    ntPicker.hidden = true;
+                    ntPicker.removeEventListener('click', onClick);
+                    document.removeEventListener('keydown', onKey);
+                    resolve(value);
+                };
+                const onClick = (e) => {
+                    const btn = e.target.closest('[data-cat]');
+                    if (btn) done(btn.dataset.cat || null);
+                    else if (e.target === ntPicker) done(null);
+                };
+                const onKey = (e) => { if (e.key === 'Escape') done(null); };
+                ntPicker.hidden = false;
+                ntPicker.addEventListener('click', onClick);
+                document.addEventListener('keydown', onKey);
+            });
 
             const applyMode = (mode) => {
                 board.classList.remove('mode-row','mode-wrap');
@@ -294,6 +335,18 @@
                         if (!dealId || !toStageId) return;
                         if (fromStageId === toStageId) { updateCount(fromStageId); return; }
 
+                        const revert = () => {
+                            const ref = evt.from.children[evt.oldIndex] || null;
+                            evt.from.insertBefore(cardEl, ref);
+                            updateCount(fromStageId);
+                            updateCount(toStageId);
+                        };
+                        let category = null;
+                        if (ntStageId && toStageId === ntStageId) {
+                            category = await pickCategory();
+                            if (!category) { revert(); return; }
+                        }
+
                         try {
                             const res = await fetch(`{{ url('/deals') }}/${dealId}/move`, {
                                 method: 'POST',
@@ -302,7 +355,9 @@
                                     'X-CSRF-TOKEN': csrf,
                                     'Accept': 'application/json'
                                 },
-                                body: JSON.stringify({ to_stage_id: Number(toStageId) })
+                                body: JSON.stringify(category
+                                    ? { to_stage_id: Number(toStageId), non_target_category: category }
+                                    : { to_stage_id: Number(toStageId) })
                             });
 
                             const payload = await res.json().catch(() => ({}));
@@ -321,14 +376,16 @@
                             if (lastMovedEl && payload.last_moved_by_label) {
                                 lastMovedEl.textContent = payload.last_moved_by_label;
                             }
+                            const ntEl = cardEl?.querySelector('.kanban-nt');
+                            if (ntEl) {
+                                ntEl.textContent = category ? `Нецелевая: ${ntLabels[category] || category}` : '';
+                                ntEl.hidden = !category;
+                            }
 
                             updateCount(fromStageId);
                             updateCount(toStageId);
                         } catch (e) {
-                            const ref = evt.from.children[evt.oldIndex] || null;
-                            evt.from.insertBefore(cardEl, ref);
-                            updateCount(fromStageId);
-                            updateCount(toStageId);
+                            revert();
                             alert(moveErrorMessage);
                         }
                     }

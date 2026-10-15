@@ -15,11 +15,13 @@ use App\Services\Tasks\TaskWorkflowService;
 use App\Services\Warehouse\WarehouseService;
 use App\Support\Users\AssignmentScope;
 use App\Support\Deals\InteractsWithDealBroadcasts;
+use App\Support\Deals\NonTargetCategory;
 use Carbon\Carbon;
 use App\Support\Marking\MarkCode;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
@@ -226,7 +228,11 @@ class DealController extends Controller
             }
         }
 
-        return view('deals.kanban', compact('stages','dealsByStage','showSpam','q', 'dateFilteredStageIds', 'focusDate', 'canSeeKanbanIds', 'canSeeKanbanCreatedAt'));
+        // потолки: при переносе на «Нецелевое» оператор выбирает категорию
+        $nonTargetCategories = NonTargetCategory::appliesTo((int) $user->account_id) ? NonTargetCategory::LABELS : [];
+        $nonTargetStageId = $nonTargetCategories ? NonTargetCategory::stageId((int) $user->account_id) : null;
+
+        return view('deals.kanban', compact('stages','dealsByStage','showSpam','q', 'dateFilteredStageIds', 'focusDate', 'canSeeKanbanIds', 'canSeeKanbanCreatedAt', 'nonTargetCategories', 'nonTargetStageId'));
     }
 
     public function create()
@@ -531,6 +537,8 @@ class DealController extends Controller
         });
 
         $isSneakerSpace = in_array($user->role, ['sneaker_head', 'sneaker_operator'], true);
+        $nonTargetCategories = NonTargetCategory::appliesTo((int) $deal->account_id) ? NonTargetCategory::LABELS : [];
+        $nonTargetStageId = $nonTargetCategories ? NonTargetCategory::stageId((int) $deal->account_id) : null;
         $warehouseItems = $isSneakerSpace
             ? WarehouseItem::where('account_id', $user->account_id)
                 ->orderBy('brand')->orderBy('model')->orderBy('size')->get()
@@ -554,6 +562,8 @@ class DealController extends Controller
             'productCategoryOptions',
             'canAssignToAll',
             'assignAllLabel',
+            'nonTargetCategories',
+            'nonTargetStageId',
         ));
     }
 
@@ -735,11 +745,22 @@ class DealController extends Controller
         $from = now()->setDate((int)$y, (int)$m, 1)->startOfDay();
         $to = (clone $from)->addMonth()->startOfDay();
 
+        // потолки: исходы закрытых за месяц — целевой записанный / целевой отказ / нецелевые по категориям
+        $outcomeColumns = NonTargetCategory::appliesTo((int) $user->account_id)
+            ? NonTargetCategory::COLUMNS + ['none' => 'Нецелевые без категории'] : [];
+        $outcomes = $outcomeColumns ? $this->closedOutcomes((int) $user->account_id, $from, $to) : [];
+        $outcomeCounts = array_map(fn ($key) => count(array_keys($outcomes, $key, true)), array_combine(array_keys($outcomeColumns), array_keys($outcomeColumns)));
+        $category = $request->string('category')->toString();
+        if (! isset($outcomeColumns[$category])) {
+            $category = '';
+        }
+
         $deals = Deal::query()
             ->where('account_id', $user->account_id)
             ->whereNotNull('closed_at')
             ->whereBetween('closed_at', [$from, $to])
             ->when($result !== 'all', fn($qq) => $qq->where('closed_result', $result))
+            ->when($category !== '', fn ($qq) => $qq->whereIn('id', array_keys($outcomes, $category, true) ?: [0]))
             ->when($q, function ($query) use ($q) {
                 // IMPORTANT: wrap OR conditions to avoid leaking rows from other accounts.
                 $query->where(function ($qq) use ($q) {
@@ -760,7 +781,39 @@ class DealController extends Controller
             ->paginate(25)
             ->withQueryString();
 
-        return view('deals.closed', compact('deals','q','result','month'));
+        return view('deals.closed', compact('deals','q','result','month','category','outcomeColumns','outcomeCounts'));
+    }
+
+    /**
+     * Исход каждой сделки, закрытой за [from, to): категория нецелевого, если оператор её выбрал; иначе «целевой
+     * записанный» — закрыта «Успешно» или была на «Замер назначен»; «целевой отказ» — закрыта «Отказ»; нецелевые
+     * без категории (закрытые до появления категорий) — «none». @return array<int, string>
+     */
+    private function closedOutcomes(int $accountId, Carbon $from, Carbon $to): array
+    {
+        $deals = DB::table('deals')->where('account_id', $accountId)
+            ->whereNotNull('closed_at')->where('closed_at', '>=', $from)->where('closed_at', '<', $to)
+            ->get(['id', 'closed_result', 'non_target_category']);
+        $measure = PipelineStage::query()->where('account_id', $accountId)->where('name', 'like', '%амер назначен%')->value('id');
+        $booked = [];
+        if ($measure !== null) {
+            foreach ($deals->pluck('id')->chunk(1000) as $chunk) {
+                foreach (DB::table('deal_stage_history')->where('to_stage_id', $measure)->whereIn('deal_id', $chunk->all())->distinct()->pluck('deal_id') as $id) {
+                    $booked[(int) $id] = true;
+                }
+            }
+        }
+        $out = [];
+        foreach ($deals as $d) {
+            $out[(int) $d->id] = match (true) {
+                NonTargetCategory::label($d->non_target_category) !== null => $d->non_target_category,
+                $d->closed_result === 'won' || isset($booked[(int) $d->id]) => 'booked',
+                $d->closed_result === 'lost' => 'lost',
+                default => 'none',
+            };
+        }
+
+        return $out;
     }
 
     public function close(Request $request, Deal $deal, WarehouseService $warehouse)
@@ -771,12 +824,19 @@ class DealController extends Controller
         $data = $request->validate([
             'result' => ['required', 'in:won,lost,extra_non_target'],
             'reason' => ['nullable','string','max:255'],
+            'category' => ['nullable', 'in:'.implode(',', array_keys(NonTargetCategory::LABELS))],
         ]);
+        // потолки: нецелевую закрывают только с категорией — по ним статистика
+        $withCategory = $data['result'] === 'extra_non_target' && NonTargetCategory::appliesTo((int) $deal->account_id);
+        if ($withCategory && empty($data['category'])) {
+            return back()->withErrors(['category' => "Выберите, почему сделка нецелевая."])->withInput();
+        }
 
         $deal->closed_at = now();
         $deal->closed_result = $data['result'];
         $deal->closed_reason = $data['reason'] ?? null;
         $deal->closed_by_user_id = $user->id;
+        $deal->non_target_category = $withCategory ? $data['category'] : null;
 
         // Move to final stage (if exists) to keep pipeline consistent
         $finalStage = PipelineStage::query()
@@ -795,10 +855,11 @@ class DealController extends Controller
             'deal_id' => $deal->id,
             'author_user_id' => $user->id,
             'type' => 'deal_closed',
-            'body' => $this->dealClosedActivityBody($deal->closed_result, $deal->closed_reason),
+            'body' => $this->dealClosedActivityBody($deal->closed_result, $deal->closed_reason, NonTargetCategory::label($deal->non_target_category)),
             'payload' => [
                 'closed_result' => $deal->closed_result,
                 'closed_reason' => $deal->closed_reason,
+                'non_target_category' => $deal->non_target_category,
             ],
         ]);
 
@@ -810,7 +871,8 @@ class DealController extends Controller
     public function changeStage(Request $request, Deal $deal, WarehouseService $warehouse)
     {
         $data = $request->validate([
-            'stage_id' => ['required','exists:pipeline_stages,id']
+            'stage_id' => ['required','exists:pipeline_stages,id'],
+            'non_target_category' => ['nullable', 'in:'.implode(',', array_keys(NonTargetCategory::LABELS))],
         ]);
 
         $user = Auth::user();
@@ -819,12 +881,31 @@ class DealController extends Controller
         abort_unless($to->account_id === $user->account_id, 403);
         $fromId = $deal->stage_id;
         $reopened = $this->shouldReopenDealOnStageChange($deal->closed_at !== null, (int) $fromId, $to);
+        // потолки: на «Нецелевое» — только с категорией
+        $toNonTarget = NonTargetCategory::appliesTo((int) $deal->account_id) && NonTargetCategory::isNonTargetStage($to);
+        if ($toNonTarget && empty($data['non_target_category']) && ((int) $fromId !== (int) $to->id || $reopened)) {
+            return back()->withErrors(['non_target_category' => "Выберите, почему сделка нецелевая."]);
+        }
 
         if ($to->pipeline_id !== $deal->pipeline_id) {
             abort(422, "\u{042D}\u{0442}\u{0430}\u{043F} \u{043E}\u{0442}\u{043D}\u{043E}\u{0441}\u{0438}\u{0442}\u{0441}\u{044F} \u{043A} \u{0434}\u{0440}\u{0443}\u{0433}\u{043E}\u{0439} \u{0432}\u{043E}\u{0440}\u{043E}\u{043D}\u{043A}\u{0435}");
         }
 
         if ((int) $fromId === (int) $to->id && ! $reopened) {
+            // уже на «Нецелевое» — поменяли только категорию
+            if ($toNonTarget && $deal->closed_at === null && ! empty($data['non_target_category']) && $deal->non_target_category !== $data['non_target_category']) {
+                $deal->non_target_category = $data['non_target_category'];
+                $deal->save();
+                DealActivity::create([
+                    'account_id' => $user->account_id,
+                    'deal_id' => $deal->id,
+                    'author_user_id' => $user->id,
+                    'type' => 'deal_updated',
+                    'body' => 'Нецелевая: '.NonTargetCategory::label($deal->non_target_category).'.',
+                    'payload' => ['non_target_category' => $deal->non_target_category],
+                ]);
+            }
+
             return back();
         }
 
@@ -838,6 +919,9 @@ class DealController extends Controller
             $deal->closed_reason = null;
             $deal->closed_by_user_id = null;
         }
+        if ($deal->closed_at === null) {
+            $deal->non_target_category = $toNonTarget ? $data['non_target_category'] : null;
+        }
         $deal->save();
 
         DealActivity::create([
@@ -845,8 +929,8 @@ class DealController extends Controller
             'deal_id' => $deal->id,
             'author_user_id' => $user->id,
             'type' => 'stage_changed',
-            'body' => $this->stageChangedActivityBody(),
-            'payload' => ['from_stage_id' => $fromId, 'to_stage_id' => $to->id],
+            'body' => $this->stageChangedActivityBody($toNonTarget ? NonTargetCategory::label($deal->non_target_category) : null),
+            'payload' => ['from_stage_id' => $fromId, 'to_stage_id' => $to->id] + ($toNonTarget ? ['non_target_category' => $deal->non_target_category] : []),
         ]);
 
         DealStageHistory::create([
@@ -890,6 +974,7 @@ class DealController extends Controller
     {
         $data = $request->validate([
             'to_stage_id' => ['required', 'integer', 'exists:pipeline_stages,id'],
+            'non_target_category' => ['nullable', 'in:'.implode(',', array_keys(NonTargetCategory::LABELS))],
         ]);
 
         $user = Auth::user();
@@ -913,8 +998,14 @@ class DealController extends Controller
         if ((int)$fromId === (int)$to->id) {
             return response()->json(['ok' => true]);
         }
+        // потолки: на «Нецелевое» — только с категорией (канбан спрашивает её в окне)
+        $toNonTarget = NonTargetCategory::appliesTo((int) $deal->account_id) && NonTargetCategory::isNonTargetStage($to);
+        if ($toNonTarget && empty($data['non_target_category'])) {
+            return response()->json(['ok' => false, 'need_category' => true, 'message' => "Выберите, почему сделка нецелевая."], 422);
+        }
 
         $deal->stage_id = $to->id;
+        $deal->non_target_category = $toNonTarget ? $data['non_target_category'] : null;
         $deal->save();
 
         DealActivity::create([
@@ -922,8 +1013,8 @@ class DealController extends Controller
             'deal_id' => $deal->id,
             'author_user_id' => $user->id,
             'type' => 'stage_changed',
-            'body' => $this->stageChangedActivityBody(),
-            'payload' => ['from_stage_id' => $fromId, 'to_stage_id' => $to->id],
+            'body' => $this->stageChangedActivityBody($toNonTarget ? NonTargetCategory::label($deal->non_target_category) : null),
+            'payload' => ['from_stage_id' => $fromId, 'to_stage_id' => $to->id] + ($toNonTarget ? ['non_target_category' => $deal->non_target_category] : []),
         ]);
 
         DealStageHistory::create([
@@ -1099,13 +1190,16 @@ class DealController extends Controller
         return "\u{0421}\u{0434}\u{0435}\u{043B}\u{043A}\u{0430} \u{043E}\u{0431}\u{043D}\u{043E}\u{0432}\u{043B}\u{0435}\u{043D}\u{0430}.";
     }
 
-    private function dealClosedActivityBody(string $result, ?string $reason): string
+    private function dealClosedActivityBody(string $result, ?string $reason, ?string $category = null): string
     {
         $base = match ($result) {
             'won' => "\u{0421}\u{0434}\u{0435}\u{043B}\u{043A}\u{0430} \u{0437}\u{0430}\u{043A}\u{0440}\u{044B}\u{0442}\u{0430} \u{0443}\u{0441}\u{043F}\u{0435}\u{0448}\u{043D}\u{043E}.",
             'extra_non_target' => "\u{0421}\u{0434}\u{0435}\u{043B}\u{043A}\u{0430} \u{0437}\u{0430}\u{043A}\u{0440}\u{044B}\u{0442}\u{0430} \u{043A}\u{0430}\u{043A} \u{00AB}\u{0414}\u{043E}\u{043F}.\u{0420}\u{0430}\u{0431}\u{043E}\u{0442}\u{044B} / \u{041D}\u{0435} \u{0446}\u{0435}\u{043B}\u{0435}\u{0432}\u{043E}\u{0439}\u{00BB}.",
             default => "\u{0421}\u{0434}\u{0435}\u{043B}\u{043A}\u{0430} \u{0437}\u{0430}\u{043A}\u{0440}\u{044B}\u{0442}\u{0430} \u{043A}\u{0430}\u{043A} \u{043D}\u{0435}\u{0443}\u{0441}\u{043F}\u{0435}\u{0448}\u{043D}\u{0430}\u{044F}.",
         };
+        if ($category !== null) {
+            $base = rtrim($base, '.').': '.$category.'.';
+        }
 
         $reason = trim((string) $reason);
         if ($reason === '') {
@@ -1209,9 +1303,11 @@ class DealController extends Controller
         return true;
     }
 
-    private function stageChangedActivityBody(): string
+    private function stageChangedActivityBody(?string $nonTargetCategory = null): string
     {
-        return "\u{0421}\u{0442}\u{0430}\u{0434}\u{0438}\u{044F} \u{0441}\u{0434}\u{0435}\u{043B}\u{043A}\u{0438} \u{0438}\u{0437}\u{043C}\u{0435}\u{043D}\u{0435}\u{043D}\u{0430}.";
+        $body = "\u{0421}\u{0442}\u{0430}\u{0434}\u{0438}\u{044F} \u{0441}\u{0434}\u{0435}\u{043B}\u{043A}\u{0438} \u{0438}\u{0437}\u{043C}\u{0435}\u{043D}\u{0435}\u{043D}\u{0430}.";
+
+        return $nonTargetCategory !== null ? $body.' Нецелевая: '.$nonTargetCategory.'.' : $body;
     }
 
     private function lastMovedByLabel(string $userName): string

@@ -3,6 +3,7 @@
 namespace App\Services\Owner;
 
 use App\Models\Deal;
+use App\Support\Deals\NonTargetCategory;
 use App\Support\Leads\LeadDeduplicator;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
@@ -122,6 +123,10 @@ class CeilingsKpi
 
     private function outcome(object $deal, bool $booked): string
     {
+        // оператор отметил категорию нецелевого — это его решение, даже если сделка когда-то была на замере
+        if (NonTargetCategory::label($deal->non_target_category ?? null) !== null) {
+            return 'non_target';
+        }
         if ($booked) {
             return 'booked';
         }
@@ -452,7 +457,7 @@ class CeilingsKpi
         $deals = [];
         foreach (array_chunk($dealIds, 1000) as $chunk) {
             $rows = DB::table('deals')->leftJoin('contacts', 'contacts.id', '=', 'deals.contact_id')->whereIn('deals.id', $chunk)
-                ->get(['deals.id', 'deals.contact_id', 'deals.stage_id', 'deals.closed_at', 'deals.closed_result', 'contacts.phone']);
+                ->get(['deals.id', 'deals.contact_id', 'deals.stage_id', 'deals.closed_at', 'deals.closed_result', 'deals.non_target_category', 'contacts.phone']);
             foreach ($rows as $d) {
                 $deals[(int) $d->id] = $d;
             }
@@ -470,10 +475,10 @@ class CeilingsKpi
             $clients[$client]['deals'][$dealId] = true;
         }
 
-        $out = ['total' => 0, 'booked' => 0, 'non_target' => 0, 'lost' => 0, 'open' => 0, 'booked_earlier' => 0];
+        $out = ['total' => 0, 'booked' => 0, 'non_target' => 0, 'lost' => 0, 'open' => 0, 'booked_earlier' => 0, 'cats' => []];
         $groups = [];
         foreach (self::GROUPS as $g => $label) {
-            $groups[$g] = ['key' => $g, 'label' => $label, 'total' => 0, 'booked' => 0, 'non_target' => 0, 'kinds' => []];
+            $groups[$g] = ['key' => $g, 'label' => $label, 'total' => 0, 'booked' => 0, 'non_target' => 0, 'cats' => [], 'kinds' => []];
         }
         $byDay = [];
         foreach ($clients as $c) {
@@ -487,8 +492,20 @@ class CeilingsKpi
                 in_array('open', $outcomes, true) => 'open',
                 default => 'lost',
             };
+            // колонка статистики: записан / отказ / в работе или категория нецелевого (none — без категории, старые)
+            $cat = $o;
+            if ($o === 'non_target') {
+                $cat = 'none';
+                foreach (array_reverse(array_keys($c['deals'])) as $id) {
+                    if (NonTargetCategory::label($deals[$id]->non_target_category ?? null) !== null) {
+                        $cat = $deals[$id]->non_target_category;
+                        break;
+                    }
+                }
+            }
             $out['total']++;
             $out[$o]++;
+            $out['cats'][$cat] = ($out['cats'][$cat] ?? 0) + 1;
             if ($o !== 'booked' && array_intersect_key($bookedAt, $c['deals'])) {
                 $out['booked_earlier']++;   // записан ещё до периода — для проверки, в сводке не показывается
             }
@@ -496,11 +513,13 @@ class CeilingsKpi
             $groups[$g]['total']++;
             $groups[$g]['booked'] += $o === 'booked' ? 1 : 0;
             $groups[$g]['non_target'] += $o === 'non_target' ? 1 : 0;
+            $groups[$g]['cats'][$cat] = ($groups[$g]['cats'][$cat] ?? 0) + 1;
             $k = &$groups[$g]['kinds'][$c['kind']];
-            $k ??= ['total' => 0, 'booked' => 0, 'non_target' => 0];
+            $k ??= ['total' => 0, 'booked' => 0, 'non_target' => 0, 'cats' => []];
             $k['total']++;
             $k['booked'] += $o === 'booked' ? 1 : 0;
             $k['non_target'] += $o === 'non_target' ? 1 : 0;
+            $k['cats'][$cat] = ($k['cats'][$cat] ?? 0) + 1;
             unset($k);
             $day = substr($c['at'], 0, 10);
             $byDay[$day] = ($byDay[$day] ?? 0) + 1;

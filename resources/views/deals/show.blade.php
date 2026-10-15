@@ -347,19 +347,52 @@
         <i class="bi bi-grid-1x2 me-1"></i>{{ $deal->ceilingProject ? 'Проект потолка' : 'Создать проект потолка' }}
       </a>
     @endif
-    <form method="POST" action="{{ route('deals.stage', $deal) }}" class="d-flex">
+    <form method="POST" action="{{ route('deals.stage', $deal) }}" class="d-flex gap-2 flex-wrap" id="dealStageForm">
       @csrf
       <select
         name="stage_id"
         class="form-select form-select-sm"
         style="min-width: 280px;"
-        onchange="this.form.submit()"
+        id="dealStageSelect"
       >
         @foreach($stages as $s)
           <option value="{{ $s->id }}" @selected($deal->stage_id === $s->id)>{{ $s->name }}</option>
         @endforeach
       </select>
+      @if(!empty($nonTargetCategories) && $nonTargetStageId)
+        {{-- потолки: на «Нецелевое» — только с категорией --}}
+        <select name="non_target_category" class="form-select form-select-sm" style="min-width: 260px;" id="dealNonTargetSelect"
+          @if(! ((int) $deal->stage_id === (int) $nonTargetStageId && ! $deal->closed_at)) hidden @endif>
+          <option value="">— почему нецелевая? —</option>
+          @foreach($nonTargetCategories as $key => $label)
+            <option value="{{ $key }}" @selected($deal->non_target_category === $key)>{{ $label }}</option>
+          @endforeach
+        </select>
+      @endif
     </form>
+    <script>
+      (() => {
+        const form = document.getElementById('dealStageForm');
+        const stage = document.getElementById('dealStageSelect');
+        const category = document.getElementById('dealNonTargetSelect');
+        const nonTargetStageId = @json(!empty($nonTargetCategories) && $nonTargetStageId ? (string) $nonTargetStageId : null);
+        stage.addEventListener('change', () => {
+          if (category && nonTargetStageId && stage.value === nonTargetStageId) {
+            category.hidden = false;
+            category.value = '';
+            category.focus();
+            return;
+          }
+          form.submit();
+        });
+        if (category) {
+          category.addEventListener('change', () => { if (category.value) form.submit(); });
+        }
+      })();
+    </script>
+    @error('non_target_category')
+      <div class="text-danger small w-100">{{ $message }}</div>
+    @enderror
     @if($deal->closed_at)
       <div class="text-muted small">
         Перевод в рабочую стадию переоткроет сделку.
@@ -442,6 +475,9 @@
           <div class="mt-2">
             <div class="mb-1"><b>Закрыта:</b> {{ $deal->closed_at->format('d.m.Y H:i') }}</div>
             <div class="mb-1"><b>Результат:</b> {{ $dealClosedResult['short_label'] }}</div>
+            @if(\App\Support\Deals\NonTargetCategory::label($deal->non_target_category))
+              <div class="mb-1"><b>Категория:</b> {{ \App\Support\Deals\NonTargetCategory::label($deal->non_target_category) }}</div>
+            @endif
             @if($deal->closed_reason)
               <div class="mb-1"><b>Причина:</b> {{ $deal->closed_reason }}</div>
             @endif
@@ -461,12 +497,23 @@
             <input class="form-control form-control-sm" name="reason" placeholder="Причина отказа (необязательно)">
             <button class="btn btn-sm btn-danger">Отказ</button>
           </form>
-          <form method="POST" action="{{ route('deals.close', $deal) }}" class="d-flex gap-2 mt-2">
+          <form method="POST" action="{{ route('deals.close', $deal) }}" class="d-flex gap-2 mt-2 flex-wrap">
             @csrf
             <input type="hidden" name="result" value="extra_non_target">
-            <input class="form-control form-control-sm" name="reason" placeholder="Комментарий по доп.работам / нецелевой сделке (необязательно)">
+            @if(!empty($nonTargetCategories))
+              <select name="category" class="form-select form-select-sm" style="max-width: 260px;" required>
+                <option value="">— почему нецелевая? —</option>
+                @foreach($nonTargetCategories as $key => $label)
+                  <option value="{{ $key }}" @selected(old('category', $deal->non_target_category) === $key)>{{ $label }}</option>
+                @endforeach
+              </select>
+            @endif
+            <input class="form-control form-control-sm" style="flex: 1 1 200px;" name="reason" placeholder="Комментарий по доп.работам / нецелевой сделке (необязательно)">
             <button class="btn btn-sm btn-warning">Доп.Работы / Не целевой</button>
           </form>
+          @error('category')
+            <div class="text-danger small mt-1">{{ $message }}</div>
+          @enderror
         @endif
       </div>
     </div>
