@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\OwnerPeriod;
 use App\Services\Owner\CeilingsKpi;
 use App\Services\Owner\Marketing\MarketingStats;
 use App\Services\Owner\NonClosureSummary;
@@ -15,14 +16,7 @@ use Illuminate\Http\Request;
  */
 class OwnerCeilingsController extends Controller
 {
-    public const PERIODS = [
-        'today' => 'Сегодня',
-        'yesterday' => 'Вчера',
-        '7d' => '7 дней',
-        '30d' => '30 дней',
-        'month' => 'Этот месяц',
-        'prev_month' => 'Прошлый месяц',
-    ];
+    use OwnerPeriod;
 
     public function index(Request $request)
     {
@@ -46,33 +40,5 @@ class OwnerCeilingsController extends Controller
             'fromValue' => $from->format('Y-m-d'),
             'toValue' => $to->copy()->subDay()->format('Y-m-d'),
         ]);
-    }
-
-    /** @return array{0: string, 1: Carbon, 2: Carbon} период [from, to) */
-    private function period(Request $request): array
-    {
-        $period = (string) $request->query('period', 'month');
-        $today = Carbon::today();
-
-        if ($period === 'custom') {
-            try {
-                $from = Carbon::createFromFormat('Y-m-d', (string) $request->query('from'))->startOfDay();
-                $to = Carbon::createFromFormat('Y-m-d', (string) $request->query('to'))->startOfDay()->addDay();
-                if ($to->gt($from) && $from->diffInDays($to) <= 400) {
-                    return ['custom', $from, $to];
-                }
-            } catch (\Throwable) {
-            }
-            $period = 'month';
-        }
-
-        return match ($period) {
-            'today' => ['today', $today->copy(), $today->copy()->addDay()],
-            'yesterday' => ['yesterday', $today->copy()->subDay(), $today->copy()],
-            '7d' => ['7d', $today->copy()->subDays(6), $today->copy()->addDay()],
-            '30d' => ['30d', $today->copy()->subDays(29), $today->copy()->addDay()],
-            'prev_month' => ['prev_month', $today->copy()->subMonthNoOverflow()->startOfMonth(), $today->copy()->startOfMonth()],
-            default => ['month', $today->copy()->startOfMonth(), $today->copy()->addDay()],
-        };
     }
 }

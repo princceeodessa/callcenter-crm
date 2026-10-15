@@ -86,8 +86,9 @@
         @endforeach
     </div>
     <div class="spacer"></div>
-    <span class="smm-note">цифры кабинета VK Рекламы обновляются каждые 2 часа</span>
+    @include('owner._daterange', ['action' => route('owner.smm', ['business' => $business]), 'params' => [], 'from' => $report['date_from'], 'to' => $report['date_to']])
 </div>
+<p class="smm-note" style="margin:-12px 0 14px">цифры кабинета VK Рекламы обновляются каждые 2 часа</p>
 
 <div class="smm-report">
     <p class="smm-note" id="period" style="margin-top:-10px"></p>

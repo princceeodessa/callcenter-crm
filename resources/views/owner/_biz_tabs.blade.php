@@ -1,7 +1,7 @@
 {{--
     Вкладки сводки: «Потолки | SMM-контент | Кроссовки» (как в макете дизайнера). Потолки видит только владелец всех
     бизнесов (users.all_businesses); остальным — «Кроссовки | SMM-контент». SMM — того бизнеса, на котором стоим.
-    $biz — ceilings | sneakers, $tab — summary | smm.
+    $biz — ceilings | sneakers, $tab — summary | smm | day («Продажи за день» кроссовок).
 --}}
 @php
     $tabsUser = auth()->user();
@@ -17,7 +17,7 @@
         <a href="{{ route('owner.smm', ['business' => 'ceilings']) }}" class="{{ $tab === 'smm' ? 'active' : '' }}">SMM-контент</a>
         <a href="{{ route('owner.dashboard') }}">{!! $tabsShoe !!} Кроссовки</a>
     @else
-        <a href="{{ route('owner.dashboard') }}" class="{{ $tab === 'summary' ? 'active' : '' }}">{!! $tabsShoe !!} Кроссовки</a>
+        <a href="{{ route('owner.dashboard') }}" class="{{ in_array($tab, ['summary', 'day'], true) ? 'active' : '' }}">{!! $tabsShoe !!} Кроссовки</a>
         <a href="{{ route('owner.smm', ['business' => 'sneakers']) }}" class="{{ $tab === 'smm' ? 'active' : '' }}">SMM-контент</a>
     @endif
 </div>

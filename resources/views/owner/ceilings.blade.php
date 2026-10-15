@@ -192,14 +192,7 @@
             @endforeach
         </div>
         <div class="spacer"></div>
-        <form method="GET" action="{{ route('owner.ceilings') }}" class="chip">
-            <input type="hidden" name="period" value="custom">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>
-            <input type="date" name="from" value="{{ $fromValue }}" aria-label="с">
-            <span>—</span>
-            <input type="date" name="to" value="{{ $toValue }}" aria-label="по">
-            <button type="submit">Показать</button>
-        </form>
+        @include('owner._daterange', ['action' => route('owner.ceilings'), 'params' => ['period' => 'custom'], 'from' => $fromValue, 'to' => $toValue])
         <a class="export" href="{{ request()->fullUrlWithQuery(['export' => 'contacts']) }}" title="Номер телефона, менеджер (кто первым взял лид), записался ли. Без нецелевых и исходящих дозвонов.">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 11l4 4 4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg> Обращения в Excel
         </a>
@@ -525,7 +518,7 @@
     function refresh() {
         if (busy || document.hidden) return;
         var a = document.activeElement;
-        if (a && a.closest && a.closest('#dash form')) return;
+        if ((a && a.closest && a.closest('#dash form')) || window.bdDateRange.isOpen()) return;
         busy = true;
         fetch(location.href, { credentials: 'same-origin', cache: 'no-store', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
             .then(function (r) { return r.ok && !r.redirected ? r.text() : null; })
@@ -533,7 +526,7 @@
                 if (!html) return;
                 var doc = new DOMParser().parseFromString(html, 'text/html');
                 var fresh = doc.getElementById('dash'), cur = document.getElementById('dash');
-                if (fresh && cur) { cur.replaceWith(fresh); window.bdCharts.draw(); }
+                if (fresh && cur) { cur.replaceWith(fresh); window.bdCharts.draw(); window.bdDateRange.init(); }
                 var sub = doc.querySelector('.hsub'), curSub = document.querySelector('.hsub');
                 if (sub && curSub) curSub.textContent = sub.textContent;
             })

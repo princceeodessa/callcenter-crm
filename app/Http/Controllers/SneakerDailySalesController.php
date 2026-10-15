@@ -117,7 +117,8 @@ class SneakerDailySalesController extends Controller
         $strip = $strip->map(fn ($s, $i) => $s + ['mobile_hidden' => $i < $mobileFrom || $i > $mobileFrom + 6]);
         $stripMax = max(1, (float) $strip->max('revenue'));
 
-        return view('sale.day', [
+        // владельцу — в оформлении сводок (layouts/owner), продавцам и руководителю — страница CRM
+        return view($isOwner ? 'owner.day' : 'sale.day', [
             'day' => $day,
             'isToday' => $day->isSameDay($today),
             'prevDate' => $day->copy()->subDay()->toDateString(),

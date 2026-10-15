@@ -29,17 +29,29 @@ class OwnerSmmController extends Controller
         }
         $today = Carbon::today();
         $from = $today->copy()->subDays($days - 1);
+        $toExclusive = $today->copy()->addDay();
+        // свои даты из календаря (from/to) — вместо 7/30/60 дней
+        $custom = false;
+        try {
+            $f = Carbon::createFromFormat('!Y-m-d', (string) $request->query('from'));
+            $t = Carbon::createFromFormat('!Y-m-d', (string) $request->query('to'))->addDay();
+            if ($t->gt($f) && $f->diffInDays($t) <= 400) {
+                [$from, $toExclusive, $custom] = [$f, $t, true];
+                $days = (int) $f->diffInDays($t);
+            }
+        } catch (\Throwable) {
+        }
         $report = [
             'generated' => now()->format('Y-m-d H:i'),
             'date_from' => $from->toDateString(),
-            'date_to' => $today->toDateString(),
+            'date_to' => $toExclusive->copy()->subDay()->toDateString(),
             'period_days' => $days,
-            'cabinets' => [SmmReport::cabinet($business, $from, $today->copy()->addDay())],
+            'cabinets' => [SmmReport::cabinet($business, $from, $toExclusive)],
         ];
 
         return view('owner.smm', [
             'business' => $business,
-            'days' => $days,
+            'days' => $custom ? null : $days,
             'periods' => self::PERIODS,
             'report' => $report,
         ]);

@@ -109,12 +109,15 @@ class SneakerDailySalesTest extends TestCase
 
         $this->actingAs($owner)->get(route('sale.day'))
             ->assertOk()
+            ->assertViewIs('owner.day')                                          // у владельца — в оформлении сводок
             ->assertSee($item->model)
             ->assertSee('Прибыль')
             ->assertSee('4 000 ₽')
-            ->assertSee('🗓 Продажи за день')                                   // кнопка в меню владельца
+            ->assertSee('Продажи за день')
+            ->assertSee('data-mode="day"', false)                                // выбор дня — календарём
             ->assertDontSee('href="'.route('sale.quick').'"', false)            // «Продать» — не для владельца
             ->assertDontSee(route('deals.show', $deal->id), false);             // и ссылок на сделки нет
+        $this->actingAs($head)->get(route('sale.day'))->assertViewIs('sale.day');   // руководителю — страница CRM
 
         // Остальные рабочие страницы владельцу по-прежнему закрыты.
         $this->actingAs($owner)->get(route('sale.quick'))->assertForbidden();

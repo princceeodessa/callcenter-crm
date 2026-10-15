@@ -1,0 +1,72 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\User;
+use Carbon\Carbon;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Facades\Hash;
+use Tests\TestCase;
+
+/**
+ * Период на страницах владельца выбирается календарём (как в макете дизайнера): сводка кроссовок — те же периоды,
+ * что у потолков, свои даты и старые ссылки ?month=; SMM — 7/30/60 дней или свои даты.
+ */
+class OwnerPeriodsTest extends TestCase
+{
+    use DatabaseTransactions;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Carbon::setTestNow('2026-10-15 12:00:00');
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
+
+    private function owner(): User
+    {
+        $u = User::create([
+            'account_id' => User::where('role', 'sneaker_head')->firstOrFail()->account_id, 'name' => 'Рустам Тестов',
+            'email' => 'owner_period_'.uniqid(), 'password' => Hash::make('password'), 'role' => 'sneaker_owner', 'is_active' => true,
+        ]);
+        $u->forceFill(['all_businesses' => true])->save();
+
+        return $u;
+    }
+
+    public function test_sneakers_summary_periods(): void
+    {
+        $owner = $this->owner();
+        $res = $this->actingAs($owner)->get(route('owner.dashboard', ['period' => 'custom', 'from' => '2026-09-01', 'to' => '2026-09-10']))->assertOk();
+        $this->assertSame(['2026-09-01', '2026-09-10', 'custom'], [$res->viewData('fromValue'), $res->viewData('toValue'), $res->viewData('period')]);
+        $this->assertCount(10, $res->viewData('series')['rows']);
+        $res->assertSee('data-daterange', false)->assertSee('01.09 — 10.09.2026')->assertSee('Добрый день, <span class="name">Рустам</span>', false);
+
+        // старые ссылки на месяц
+        $res = $this->actingAs($owner)->get(route('owner.dashboard', ['month' => '2026-08']))->assertOk();
+        $this->assertSame(['2026-08-01', '2026-08-31'], [$res->viewData('fromValue'), $res->viewData('toValue')]);
+
+        // «Этот месяц» по умолчанию — ряд по сегодняшний день
+        $res = $this->actingAs($owner)->get(route('owner.dashboard'))->assertOk();
+        $this->assertSame('month', $res->viewData('period'));
+        $this->assertCount(15, $res->viewData('series')['rows']);
+    }
+
+    public function test_smm_custom_dates_and_ceilings_calendar(): void
+    {
+        $owner = $this->owner();
+        $res = $this->actingAs($owner)->get(route('owner.smm', ['business' => 'ceilings', 'from' => '2026-09-01', 'to' => '2026-09-30']))->assertOk();
+        $report = $res->viewData('report');
+        $this->assertSame(['2026-09-01', '2026-09-30', 30], [$report['date_from'], $report['date_to'], $report['period_days']]);
+        $this->assertNull($res->viewData('days'));                     // ни одна из кнопок 7/30/60 не выбрана
+        $res->assertSee('data-daterange', false);
+
+        $this->actingAs($owner)->get(route('owner.ceilings', ['period' => 'custom', 'from' => '2026-10-01', 'to' => '2026-10-14']))
+            ->assertOk()->assertSee('data-daterange', false)->assertSee('01.10 — 14.10.2026');
+    }
+}
