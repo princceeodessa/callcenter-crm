@@ -14,70 +14,6 @@
 @endsection
 
 @section('content')
-@verbatim
-<style>
-/* SMM-контент: стили отчёта SMM-специалиста (blagodar-clips), в цветах CRM и только внутри .smm-report */
-.smm-report { --surface: var(--card); --lead: #94a3b8; --other: #c9b98f;
-  --good: #15803d; --good-bg: rgba(22,163,74,.14); --warn: #b45309; --warn-bg: rgba(245,158,11,.18); --bad: #dc2626; --bad-bg: rgba(220,38,38,.13);
-  --idle: var(--muted); --idle-bg: rgba(127,127,127,.14); display: grid; gap: 1.6rem; }
-.smm-report #view { display: grid; gap: 1.6rem; }
-.smm-report h2 { font-size: 1.1rem; font-weight: 700; margin: 0; letter-spacing: -.01em; }
-.smm-report h3 { margin: 0; font-size: 1rem; font-weight: 700; }
-.smm-report p { margin: 0; }
-.smm-report .muted { color: var(--muted); }
-.smm-report .small { font-size: .82rem; }
-.smm-report .num { font-variant-numeric: tabular-nums; }
-.smm-report .section { display: grid; gap: .7rem; }
-.smm-report .section-head { display: grid; gap: .15rem; }
-.smm-report .alert { border-radius: 12px; padding: .7rem .9rem; background: var(--bad-bg); color: var(--bad); font-size: .9rem; margin: 0; border: 0; }
-.smm-report .tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); }
-.smm-report .tab { font: inherit; font-weight: 600; background: transparent; color: var(--muted); border: 0; border-bottom: 3px solid transparent; padding: .5rem .8rem; }
-.smm-report .tab[aria-selected="true"] { color: inherit; border-bottom-color: var(--accent); }
-.smm-report .tab .tab-note { font-weight: 400; font-size: .8rem; margin-left: 6px; }
-.smm-report .brief { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow-sm); padding: 1rem 1.15rem; display: grid; gap: .55rem; }
-.smm-report .brief-head { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: baseline; }
-.smm-report .brief ul { margin: 0; padding-left: 1.2rem; display: grid; gap: .3rem; max-width: 85ch; }
-.smm-report .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: .7rem; }
-.smm-report .kpi { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: .7rem .9rem; display: grid; gap: 2px; align-content: start; }
-.smm-report .kpi b { font-size: 1.35rem; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
-.smm-report .kpi span { font-size: .8rem; color: var(--muted); }
-.smm-report .empty-note { background: var(--surface); border: 1px dashed var(--line); border-radius: 12px; padding: .8rem 1rem; color: var(--muted); }
-.smm-report .table-box { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
-.smm-report table { border-collapse: collapse; width: 100%; min-width: 820px; font-variant-numeric: tabular-nums; }
-.smm-report table.narrow { min-width: 640px; }
-.smm-report th, .smm-report td { text-align: right; padding: .5rem .75rem; border-bottom: 1px solid var(--line); white-space: nowrap; font-size: .86rem; vertical-align: top; }
-.smm-report th { font-size: .7rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-.smm-report th:first-child, .smm-report td:first-child, .smm-report th:nth-child(2), .smm-report td:nth-child(2) { text-align: left; }
-.smm-report td.wrap-cell { white-space: normal; text-align: left; min-width: 200px; }
-.smm-report tr:last-child td { border-bottom: 0; }
-.smm-report tr.dim td { color: var(--muted); }
-.smm-report td.empty { text-align: left; color: var(--muted); }
-.smm-report .sub { display: block; font-size: .75rem; color: var(--muted); white-space: normal; max-width: 240px; }
-.smm-report .pill { display: inline-block; font-size: .75rem; font-weight: 700; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
-.smm-report .p-good { color: var(--good); background: var(--good-bg); }
-.smm-report .p-warn { color: var(--warn); background: var(--warn-bg); }
-.smm-report .p-bad { color: var(--bad); background: var(--bad-bg); }
-.smm-report .p-idle { color: var(--idle); background: var(--idle-bg); }
-.smm-report .trend-down { color: var(--bad); }
-.smm-report .trend-up { color: var(--good); }
-.smm-report .chart-box { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: .8rem; overflow-x: auto; }
-.smm-report .chart-box svg { width: 100%; min-width: 560px; height: auto; display: block; }
-.smm-report .legend { display: flex; flex-wrap: wrap; gap: 1rem; font-size: .8rem; color: var(--muted); margin-top: .35rem; }
-.smm-report .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
-.smm-report .recs { display: grid; gap: .6rem; }
-.smm-report .rec { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: .8rem 1rem; display: grid; gap: .3rem; }
-.smm-report .rec-top { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: baseline; }
-.smm-report .rec p { max-width: 85ch; }
-.smm-report .rec .act { font-weight: 600; }
-.smm-report .brief, .smm-report .kpi, .smm-report .table-box, .smm-report .chart-box, .smm-report .rec { border-radius: var(--r-sm); }
-.smm-report .kpi { overflow: visible; }
-.smm-note { font-size: 12px; color: var(--muted); }
-.smm-report a { color: var(--accent); font-weight: 600; text-decoration: none; }
-.smm-report a:hover { text-decoration: underline; }
-@media (max-width: 575.98px) { .smm-report th, .smm-report td { padding: .4rem .5rem; font-size: .8rem; } }
-</style>
-@endverbatim
-
 <div class="filters" id="top">
     @include('owner._biz_tabs', ['biz' => $business, 'tab' => 'smm'])
     <div class="seg">
@@ -88,79 +24,62 @@
     <div class="spacer"></div>
     @include('owner._daterange', ['action' => route('owner.smm', ['business' => $business]), 'params' => [], 'from' => $report['date_from'], 'to' => $report['date_to']])
 </div>
-<p class="smm-note" style="margin:-12px 0 14px">цифры кабинета VK Рекламы обновляются каждые 2 часа</p>
 
+{{-- SMM-контент в дизайн-системе сводок (прототип дизайнера): итог, 6 плиток, кампании, расход по дням, клипы,
+     лид-формы, что улучшить. Считает и рисует скрипт ниже из JSON отчёта (App\Services\Owner\SmmReport). --}}
 <div class="smm-report">
-    <p class="smm-note" id="period" style="margin-top:-10px"></p>
+    <p class="smm-note" id="period"></p>
     <script id="report-data" type="application/json" data-biz="{{ $business === 'ceilings' ? 'БлагоДар · Потолки' : 'Кроссовки' }}">{!! json_encode($report, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) !!}</script>
 
 @verbatim
-  <nav class="tabs" role="tablist" aria-label="Бизнес" id="tabs"></nav>
+  <div class="seg smm-tabs" role="tablist" aria-label="Кабинет" id="tabs"></div>
 
   <div id="view">
-    <div class="alert" id="alert" hidden></div>
+    <div class="card smm-alert" id="alert" hidden></div>
 
-    <section class="brief" aria-labelledby="briefTitle">
-      <div class="brief-head"><span class="pill" id="briefPill"></span><h2 id="briefTitle"></h2></div>
+    <div class="card insights" id="brief">
+      <div class="st"><span class="tag" id="briefPill"></span> <span id="briefTitle"></span></div>
       <ul id="briefList"></ul>
-    </section>
+    </div>
 
-    <section class="section" aria-labelledby="s-plans">
-      <div class="section-head"><h2 id="s-plans">Кампании</h2><p class="muted small">Действующие кампании и созданные или тратившие за период.</p></div>
-      <div class="table-box"><table class="narrow" id="planTable">
-        <thead><tr><th>Кампания</th><th>Статус</th><th>Тип</th><th>Лимит в день</th><th>Групп</th><th>Что мешает</th></tr></thead>
+    <div class="cc smm-kpis" id="kpis"></div>
+
+    <div class="card tbl-card">
+      <div class="tbl-head"><h2>Кампании</h2><span class="note">действующие и тратившие за период</span></div>
+      <div class="tbl-wrap"><table class="t" id="planTable">
+        <thead><tr><th>Кампания</th><th>Статус</th><th>Тип</th><th class="num">Лимит/день</th><th class="num">Групп</th><th>Что мешает</th></tr></thead>
         <tbody></tbody>
       </table></div>
-    </section>
+    </div>
 
-    <section class="section" aria-labelledby="s-sum">
-      <div class="section-head"><h2 id="s-sum">Итоги по клипам за период</h2><p class="muted small" id="sumNote"></p></div>
-      <div class="kpis" id="kpis"></div>
-    </section>
+    <div class="card chartcard" id="spend">
+      <div class="sec" style="margin:0 0 4px"><h2>Расход по дням</h2><span class="note" id="chartNote"></span></div>
+      <div class="legend" id="chartLegend"></div>
+      <div class="chart-h"><canvas id="smmDaily"></canvas></div>
+      <p class="smm-note" id="chartSub"></p>
+    </div>
 
-    <section class="section" aria-labelledby="s-clips">
-      <div class="section-head">
-        <h2 id="s-clips">Каждый клип</h2>
-        <p class="muted small">Динамика CTR: первые 7 дней показов против последних 7. Оценка ставится, когда у клипа набралось от 9 000 показов.</p>
-      </div>
-      <div class="table-box"><table id="clipTable">
-        <thead><tr><th>Клип</th><th>Статус</th><th>Показы</th><th>CTR</th><th>Динамика CTR</th><th>Досмотры 100%</th><th>₽ за досмотр</th><th>₽ за клик</th><th>Расход</th></tr></thead>
+    <div class="card tbl-card" id="clips">
+      <div class="tbl-head"><h2>Каждый клип</h2><span class="note">динамика CTR: первые 7 дней показов против последних 7 · оценка — от 9 000 показов</span></div>
+      <div class="tbl-wrap"><table class="t" id="clipTable">
+        <thead><tr><th>Клип</th><th>Статус</th><th class="num">Показы</th><th class="num">CTR</th><th>Динамика CTR</th><th class="num">Досмотры 100%</th><th class="num">₽/досмотр</th><th class="num">₽/клик</th><th class="num">Расход</th></tr></thead>
         <tbody></tbody>
       </table></div>
-    </section>
+    </div>
 
-    <section class="section" aria-labelledby="s-leads">
-      <div class="section-head"><h2 id="s-leads">Заявки (лид-формы)</h2></div>
-      <div class="table-box"><table id="leadTable">
-        <thead><tr><th>Группа</th><th>Статус</th><th>Показы</th><th>Клики</th><th>CTR</th><th>Заявки</th><th>₽ за заявку</th><th>Расход</th><th>Дни показа</th></tr></thead>
+    <div class="card tbl-card">
+      <div class="tbl-head"><h2>Заявки (лид-формы)</h2></div>
+      <div class="tbl-wrap"><table class="t" id="leadTable">
+        <thead><tr><th>Группа</th><th>Статус</th><th class="num">Показы</th><th class="num">Клики</th><th class="num">CTR</th><th class="num">Заявки</th><th class="num">₽/заявку</th><th class="num">Расход</th><th>Дни показа</th></tr></thead>
         <tbody></tbody>
       </table></div>
-    </section>
+    </div>
 
-    <section class="section" aria-labelledby="s-chart">
-      <div class="section-head"><h2 id="s-chart">Расход по дням</h2><p class="muted small" id="chartNote"></p></div>
-      <div class="chart-box">
-        <svg id="chart" viewBox="0 0 660 230" role="img" aria-label="Расход по дням"></svg>
-        <div class="legend">
-          <span><i class="sw" style="background:var(--accent)"></i>клипы</span>
-          <span><i class="sw" style="background:var(--lead)"></i>лид-формы</span>
-          <span><i class="sw" style="background:var(--other)"></i>прочее</span>
-          <span id="limitLegend"><i class="sw" style="background:var(--bad)"></i>дневной лимит клипов</span>
-        </div>
-      </div>
-    </section>
-
-    <section class="section" aria-labelledby="s-recs">
-      <div class="section-head">
-        <h2 id="s-recs">Что улучшить</h2>
-        <p class="muted small">Считается из свежих цифр. Изменения в кабинете вносятся только после согласования.</p>
-      </div>
-      <div class="recs" id="recs"></div>
-    </section>
-
+    <div class="sec" id="recsHead"><h2>Что улучшить</h2><span class="note">считается из свежих цифр · изменения в кабинете — только после согласования</span></div>
+    <div class="smm-recs" id="recs"></div>
   </div>
-
 @endverbatim
+    <p class="smm-note">цифры кабинета VK Рекламы обновляются каждые 2 часа</p>
 </div>
 
 @verbatim
@@ -172,16 +91,19 @@
   var dmy = function (s) { return s ? dm(s) + '.' + s.slice(0, 4) : ''; };
   var BIZ = document.getElementById('report-data').dataset.biz || 'БлагоДар';
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  var b = function (s) { return '<b>' + esc(s) + '</b>'; };
   var plural = function (n, one, few, many) { var m10 = n % 10, m100 = n % 100; return (m10 === 1 && m100 !== 11) ? one : (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) ? few : many; };
   var sum = function (arr, k) { return arr.reduce(function (s, g) { return s + (g[k] || 0); }, 0); };
+  var DASH = '<span class="muted">—</span>';
 
   var R, raw = $('report-data').textContent.trim();
   try { R = JSON.parse(raw); } catch (e) {
     R = { cabinets: [], templateError: 'Данные отчёта не загрузились.' };
   }
   var cabs = R.cabinets || [];
+  var DAYS = R.period_days + ' ' + plural(R.period_days || 0, 'день', 'дня', 'дней');
   $('period').textContent = R.date_from
-    ? 'Данные кабинетов VK Рекламы за ' + dmy(R.date_from) + '–' + dmy(R.date_to) + ' (последние ' + R.period_days + ' дн., сегодня — неполный день). Сформировано ' + dmy(R.generated.slice(0, 10)) + ' в ' + R.generated.slice(11) + '.'
+    ? 'Кабинет VK Рекламы за ' + dmy(R.date_from) + '–' + dmy(R.date_to) + ' (' + DAYS + ', сегодня — неполный день) · сформировано ' + dmy(R.generated.slice(0, 10)) + ' в ' + R.generated.slice(11)
     : '';
   if (!cabs.length) { $('alert').hidden = false; $('alert').textContent = R.templateError || 'В отчёте нет данных.'; return; }
 
@@ -189,7 +111,7 @@
     NO_MONEY: 'на балансе нет денег', AD_PLAN_STOPPED: 'кампания на паузе', NO_ALLOWED_BANNERS: 'нет одобренных креативов',
     STOPPED: 'группа на паузе', ARCHIVED: 'в архиве', AD_PLAN_ARCHIVED: 'кампания в архиве', ON_MODERATION: 'на модерации', BANNED: 'отклонено модерацией'
   };
-  var REASON = { NO_ORGN_BANNER: 'не заполнено «О рекламодателе» (ОГРН или ИНН)' };
+  var REASON = { NO_ORGN_BANNER: 'не заполнено «О рекламодателе» (ОГРН/ИНН)' };
   var OBJ = { branding_socialengagement: 'Продвижение клипов', leadads: 'Лид-форма (заявки)', socialengagement: 'Вовлечение' };
   var reasonText = function (codes) { return (codes || []).map(function (c) { return REASON[c] || c; }).join('; '); };
   var isOn = function (g) { return g.status === 'active' && g.plan_status === 'active'; };
@@ -208,10 +130,11 @@
     return 'mid';
   }
   var VD = {
-    lead: ['Лидер', 'p-good'], fatigue: ['Выгорает', 'p-warn'], mid: ['Средний', 'p-idle'], weak: ['Заменить', 'p-bad'],
-    'new': ['Рано судить', 'p-idle'], moder: ['На модерации', 'p-warn'], banned: ['Отклонён', 'p-bad'], paused: ['Готов, на паузе', 'p-idle'], off: ['Остановлен', 'p-idle']
+    lead: ['Лидер', 'green'], fatigue: ['Выгорает', 'amber'], mid: ['Средний', 'gray'], weak: ['Заменить', 'red'],
+    'new': ['Рано судить', 'blue'], moder: ['На модерации', 'amber'], banned: ['Отклонён', 'red'], paused: ['Готов, на паузе', 'gray'], off: ['Остановлен', 'gray']
   };
   var ORDER = { lead: 0, fatigue: 0, mid: 0, weak: 0, 'new': 0, moder: 1, banned: 1, paused: 2, off: 3 };
+  var tag = function (text, cls) { return '<span class="tag ' + cls + '">' + esc(text) + '</span>'; };
 
   // Derived numbers for one cabinet
   function analyse(c) {
@@ -237,19 +160,19 @@
     var moder = a.clips.filter(function (g) { return g.v === 'moder'; });
     var noMoney = a.groups.some(function (g) { return (g.issues || []).indexOf('NO_MONEY') >= 0; });
     if (a.running.length) {
-      pill = ['Идёт', 'p-good'];
+      pill = ['Идёт', 'green'];
       title = 'Реклама идёт: ' + a.running.length + ' ' + plural(a.running.length, 'клип', 'клипа', 'клипов') + ' в показах';
-      items.push('За последние 7 дней — в среднем ' + fmt(Math.round(a.avg7)) + ' ₽ в день' + (a.limit ? ' из ' + fmt(a.limit) + ' ₽ лимита' : '') + '.');
-      if (a.cs.shows) items.push('За ' + R.period_days + ' дн.: ' + fmt(a.cs.spent) + ' ₽, ' + fmt(a.cs.shows) + ' показов, CTR ' + fmt(100 * a.cs.clicks / a.cs.shows, 2) + '%, до конца досмотрели ' + fmt(100 * a.cs.v100 / a.cs.shows, 1) + '%.');
+      items.push('За последние 7 дней — в среднем ' + b(fmt(Math.round(a.avg7)) + ' ₽/день') + (a.limit ? ' из ' + esc(fmt(a.limit)) + ' ₽ лимита' : '') + '.');
+      if (a.cs.shows) items.push('За ' + esc(DAYS) + ': ' + b(fmt(a.cs.spent) + ' ₽') + ', ' + esc(fmt(a.cs.shows)) + ' показов, CTR ' + esc(fmt(100 * a.cs.clicks / a.cs.shows, 2)) + '%, досмотрели до конца ' + esc(fmt(100 * a.cs.v100 / a.cs.shows, 1)) + '%.');
       var attention = [];
       var weak = a.clips.filter(function (g) { return g.v === 'weak'; }), fat = a.clips.filter(function (g) { return g.v === 'fatigue'; });
-      if (weak.length) attention.push('заменить ' + weak.map(function (g) { return g.clip; }).join(', '));
-      if (fat.length) attention.push('выгорает ' + fat.map(function (g) { return g.clip; }).join(', '));
-      if (moder.length) attention.push(moder.length + ' ' + plural(moder.length, 'новый клип', 'новых клипа', 'новых клипов') + ' на модерации');
-      if (banned.length) attention.push(banned.length + ' ' + plural(banned.length, 'клип отклонён', 'клипа отклонены', 'клипов отклонены') + ' модерацией');
-      if (attention.length) { pill = ['Идёт, есть вопросы', 'p-warn']; items.push('Требует внимания: ' + attention.join('; ') + '.'); }
+      if (weak.length) attention.push(b('заменить ' + weak.map(function (g) { return g.clip; }).join(', ')));
+      if (fat.length) attention.push(esc('выгорает ' + fat.map(function (g) { return g.clip; }).join(', ')));
+      if (moder.length) attention.push(esc(moder.length + ' ' + plural(moder.length, 'новый клип', 'новых клипа', 'новых клипов') + ' на модерации'));
+      if (banned.length) attention.push(esc(banned.length + ' ' + plural(banned.length, 'клип отклонён', 'клипа отклонены', 'клипов отклонены') + ' модерацией'));
+      if (attention.length) { pill = ['Идёт, есть вопросы', 'amber']; items.push('Требует внимания: ' + attention.join('; ') + '.'); }
     } else {
-      pill = ['Не идёт', 'p-bad'];
+      pill = ['Не идёт', 'red'];
       title = 'Реклама сейчас не идёт';
       var why = [];
       if (a.mainPlan && a.mainPlan.status !== 'active') why.push('кампания «' + a.mainPlan.name + '» на паузе');
@@ -257,20 +180,20 @@
       if (banned.length) why.push(banned.length + ' ' + plural(banned.length, 'креатив отклонён', 'креатива отклонены', 'креативов отклонены') + ': ' + reasonText(Array.from(new Set([].concat.apply([], banned.map(function (g) { return g.reasons || []; }))))));
       if (moder.length) why.push(moder.length + ' на модерации');
       if (!a.clips.length) why.push('клиповых кампаний за период не было');
-      items.push('Причины: ' + (why.join('; ') || 'не определены') + '.');
-      if (a.clips.length) items.push('Подготовлено ' + a.clips.length + ' ' + plural(a.clips.length, 'клип', 'клипа', 'клипов') + (a.mainPlan ? ' в кампании ' + a.mainPlan.id : '') + '.');
+      items.push('Причины: ' + esc(why.join('; ') || 'не определены') + '.');
+      if (a.clips.length) items.push(esc('Подготовлено ' + a.clips.length + ' ' + plural(a.clips.length, 'клип', 'клипа', 'клипов') + (a.mainPlan ? ' в кампании ' + a.mainPlan.id : '') + '.'));
     }
     var leadN = sum(a.leads, 'leads'), leadSpent = sum(a.leads, 'spent');
-    if (a.leads.length) items.push('Заявки за ' + R.period_days + ' дн.: ' + fmt(leadN) + (leadN ? ' по ' + fmt(leadSpent / leadN) + ' ₽' : '') + '; лид-форма ' + (a.leads.some(isOn) ? 'работает' : 'на паузе') + '.');
+    if (a.leads.length) items.push(esc('Заявки за ' + DAYS + ': ' + fmt(leadN) + (leadN ? ' по ' + fmt(leadSpent / leadN) + ' ₽' : '') + '; лид-форма ' + (a.leads.some(isOn) ? 'работает' : 'на паузе') + '.'));
     else items.push('Лид-форм за период не было: реклама даёт только охват.');
-    $('briefPill').className = 'pill ' + pill[1]; $('briefPill').textContent = pill[0];
+    $('briefPill').className = 'tag ' + pill[1]; $('briefPill').textContent = pill[0];
     $('briefTitle').textContent = title;
-    $('briefList').innerHTML = items.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('');
+    $('briefList').innerHTML = items.map(function (t) { return '<li>' + t + '</li>'; }).join('');
   }
 
   function renderPlans(c, a) {
     var tb = document.querySelector('#planTable tbody');
-    if (!a.plans.length) { tb.innerHTML = '<tr><td class="empty" colspan="6">Кампаний за период нет.</td></tr>'; return; }
+    if (!a.plans.length) { tb.innerHTML = '<tr><td class="muted" colspan="6">Кампаний за период нет.</td></tr>'; return; }
     tb.innerHTML = a.plans.map(function (p) {
       var gs = a.groups.filter(function (g) { return g.plan_id === p.id && g.status !== 'deleted'; });
       var probs = {};
@@ -280,102 +203,85 @@
       });
       if (p.status === 'active') delete probs[ISSUE.AD_PLAN_STOPPED];
       var probText = Object.keys(probs).join('; ');
-      return '<tr' + (p.status === 'active' ? '' : ' class="dim"') + '><td>' + esc(p.name) + '<span class="sub">№ ' + p.id + ' · создана ' + dmy((p.created || '').slice(0, 10)) + '</span></td>' +
-        '<td><span class="pill ' + (p.status === 'active' ? 'p-good' : 'p-idle') + '">' + (p.status === 'active' ? 'Активна' : 'На паузе') + '</span></td>' +
+      return '<tr><td class="wrap">' + esc(p.name) + '<div class="muted smm-sub">№ ' + esc(p.id) + ' · ' + dmy((p.created || '').slice(0, 10)) + '</div></td>' +
+        '<td>' + tag(p.status === 'active' ? 'Активна' : 'На паузе', p.status === 'active' ? 'green' : 'gray') + '</td>' +
         '<td>' + esc(OBJ[p.objective] || p.objective) + '</td>' +
-        '<td>' + (p.day_limit ? fmt(p.day_limit) + ' ₽' : '—') + '</td>' +
-        '<td>' + gs.length + '</td>' +
-        '<td class="wrap-cell">' + (probText ? esc(probText) : '<span class="muted">—</span>') + '</td></tr>';
+        '<td class="num">' + (p.day_limit ? fmt(p.day_limit) + ' ₽' : DASH) + '</td>' +
+        '<td class="num">' + gs.length + '</td>' +
+        '<td class="muted wrap">' + (probText ? esc(probText) : '—') + '</td></tr>';
     }).join('');
   }
 
   function renderKpis(c, a) {
     var cs = a.cs;
-    $('sumNote').textContent = 'Клиповых групп за период: ' + a.clips.length + ', в показах сейчас ' + a.running.length + '.';
-    if (!cs.shows) { $('kpis').innerHTML = '<div class="empty-note">За ' + R.period_days + ' дн. показов клипов не было.</div>'; return; }
+    if (!cs.shows) { $('kpis').innerHTML = '<div class="card smm-empty">За ' + esc(DAYS) + ' показов клипов не было.</div>'; return; }
     var kp = [
-      [fmt(cs.spent) + ' ₽', 'расход на клипы'],
-      [fmt(cs.shows), 'показов'],
-      [fmt(100 * cs.clicks / cs.shows, 2) + '%', 'CTR, ' + fmt(cs.clicks) + ' ' + plural(cs.clicks, 'клик', 'клика', 'кликов')],
-      [fmt(100 * cs.v100 / cs.shows, 1) + '%', 'досмотрели до конца (' + fmt(cs.v100) + ')'],
-      [cs.v100 ? fmt(cs.spent / cs.v100, 2) + ' ₽' : '—', 'за один полный досмотр'],
-      [fmt(Math.round(a.avg7 / 10) * 10) + ' ₽', 'в день за последние 7 дней' + (a.limit ? ' при лимите ' + fmt(a.limit) + ' ₽' : '')]
+      ['Расход на клипы', fmt(cs.spent) + ' ₽', 'за ' + DAYS],
+      ['Показов', fmt(cs.shows), fmt(cs.clicks) + ' ' + plural(cs.clicks, 'клик', 'клика', 'кликов')],
+      ['CTR', fmt(100 * cs.clicks / cs.shows, 2) + '%', 'кликов ÷ показы'],
+      ['Досмотры до конца', fmt(100 * cs.v100 / cs.shows, 1) + '%', fmt(cs.v100) + ' ' + plural(cs.v100, 'полный досмотр', 'полных досмотра', 'полных досмотров')],
+      ['Цена досмотра', cs.v100 ? fmt(cs.spent / cs.v100, 2) + ' ₽' : '—', 'за один полный досмотр'],
+      ['В день (7 дней)', fmt(Math.round(a.avg7 / 10) * 10) + ' ₽', a.limit ? 'при лимите ' + fmt(a.limit) + ' ₽' : 'активного лимита нет']
     ];
-    $('kpis').innerHTML = kp.map(function (k) { return '<div class="kpi"><b>' + k[0] + '</b><span>' + k[1] + '</span></div>'; }).join('');
+    $('kpis').innerHTML = kp.map(function (k) { return '<div class="card"><div class="lbl">' + esc(k[0]) + '</div><div class="val num">' + esc(k[1]) + '</div><div class="sub">' + esc(k[2]) + '</div></div>'; }).join('');
   }
 
+  var PLAY = ' <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
   function renderClips(c, a) {
     var tb = document.querySelector('#clipTable tbody');
     var rows = a.clips.slice().sort(function (x, y) { return (ORDER[x.v] - ORDER[y.v]) || (y.spent - x.spent) || (y.id - x.id); });
-    if (!rows.length) { tb.innerHTML = '<tr><td class="empty" colspan="9">Клипов в рекламе за период не было.</td></tr>'; return; }
+    if (!rows.length) { tb.innerHTML = '<tr><td class="muted" colspan="9">Клипов в рекламе за период не было.</td></tr>'; return; }
     tb.innerHTML = rows.map(function (g) {
-      var dash = '<span class="muted">—</span>', has = g.shows > 0;
-      var trend = dash;
+      var has = g.shows > 0, trend = DASH;
       if (g.ctr_first != null && g.ctr_last != null) {
-        var cls = g.ctr_last < g.ctr_first - 0.03 ? 'trend-down' : (g.ctr_last > g.ctr_first + 0.03 ? 'trend-up' : '');
+        var cls = g.ctr_last < g.ctr_first - 0.03 ? 'smm-down' : (g.ctr_last > g.ctr_first + 0.03 ? 'smm-up' : 'muted');
         trend = '<span class="' + cls + '">' + fmt(g.ctr_first, 2) + '% → ' + fmt(g.ctr_last, 2) + '%</span>';
       }
       // ▶ — плеер клипа поверх страницы (layouts/owner, public/js/bd-owner-head.js)
       var label = g.clip ? '<button type="button" class="watch" data-oid="' + esc(g.owner) + '" data-vid="' + esc(g.clip) + '" data-url="https://vk.ru/clip' + esc(g.owner) + '_' + esc(g.clip) + '"' +
-        ' data-title="Клип ' + esc(g.clip) + '" data-sub="' + esc('VK Клип · ' + BIZ + ' · ' + VD[g.v][0]) + '" title="Смотреть клип">' + esc(g.clip) +
-        ' <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button>' : esc(g.name);
-      var sub = g.v === 'banned' && g.reasons && g.reasons.length ? '<span class="sub">' + esc(reasonText(g.reasons)) + '</span>' : '';
+        ' data-title="Клип ' + esc(g.clip) + '" data-sub="' + esc('VK Клип · ' + BIZ + ' · ' + VD[g.v][0]) + '" title="Смотреть клип">' + esc(g.clip) + PLAY + '</button>' : esc(g.name);
+      var sub = g.v === 'banned' && g.reasons && g.reasons.length ? '<div class="muted smm-sub">' + esc(reasonText(g.reasons)) + '</div>' : '';
       var dim = ['off', 'paused'].indexOf(g.v) >= 0;
-      return '<tr' + (dim ? ' class="dim"' : '') + '><td>' + label + '</td>' +
-        '<td><span class="pill ' + VD[g.v][1] + '">' + VD[g.v][0] + '</span>' + sub + '</td>' +
-        '<td>' + (has ? fmt(g.shows) : dash) + '</td><td>' + (has ? fmt(ctrOf(g), 2) + '%' : dash) + '</td><td>' + trend + '</td>' +
-        '<td>' + (has ? fmt(vpOf(g), 1) + '%' : dash) + '</td>' +
-        '<td>' + (g.v100 ? fmt(g.spent / g.v100, 2) + ' ₽' : dash) + '</td>' +
-        '<td>' + (g.clicks ? fmt(g.spent / g.clicks) + ' ₽' : dash) + '</td>' +
-        '<td>' + (has ? fmt(g.spent) + ' ₽' : dash) + '</td></tr>';
+      var num = function (v) { return '<td class="num' + (has ? '' : ' muted') + '">' + (has ? v : '—') + '</td>'; };
+      return '<tr' + (dim ? ' class="smm-dim"' : '') + '><td>' + label + '</td><td>' + tag(VD[g.v][0], VD[g.v][1]) + sub + '</td>' +
+        num(fmt(g.shows)) + num(fmt(ctrOf(g), 2) + '%') + '<td>' + trend + '</td>' + num(fmt(vpOf(g), 1) + '%') +
+        '<td class="num">' + (g.v100 ? fmt(g.spent / g.v100, 2) + ' ₽' : DASH) + '</td>' +
+        '<td class="num">' + (g.clicks ? fmt(g.spent / g.clicks) + ' ₽' : DASH) + '</td>' + num(fmt(g.spent) + ' ₽') + '</tr>';
     }).join('');
   }
 
   function renderLeads(c, a) {
     var tb = document.querySelector('#leadTable tbody');
     var rows = a.leads.slice().sort(function (x, y) { return y.spent - x.spent; });
-    if (!rows.length) { tb.innerHTML = '<tr><td class="empty" colspan="9">За период лид-формы не показывались.</td></tr>'; return; }
+    if (!rows.length) { tb.innerHTML = '<tr><td class="muted" colspan="9">За период лид-формы не показывались.</td></tr>'; return; }
     tb.innerHTML = rows.map(function (g) {
-      return '<tr' + (isOn(g) ? '' : ' class="dim"') + '><td>' + esc(g.name) + '</td>' +
-        '<td><span class="pill ' + (isOn(g) ? 'p-good' : 'p-idle') + '">' + (isOn(g) ? 'Активна' : 'На паузе') + '</span></td>' +
-        '<td>' + fmt(g.shows) + '</td><td>' + fmt(g.clicks) + '</td><td>' + fmt(ctrOf(g), 2) + '%</td>' +
-        '<td>' + fmt(g.leads) + '</td><td>' + (g.leads ? fmt(g.spent / g.leads) + ' ₽' : '—') + '</td>' +
-        '<td>' + fmt(g.spent) + ' ₽</td><td>' + (g.first_date ? dm(g.first_date) + '–' + dm(g.last_date) : '—') + '</td></tr>';
+      return '<tr' + (isOn(g) ? '' : ' class="smm-dim"') + '><td class="wrap">' + esc(g.name) + '</td>' +
+        '<td>' + tag(isOn(g) ? 'Активна' : 'На паузе', isOn(g) ? 'green' : 'gray') + '</td>' +
+        '<td class="num">' + fmt(g.shows) + '</td><td class="num">' + fmt(g.clicks) + '</td><td class="num">' + fmt(ctrOf(g), 2) + '%</td>' +
+        '<td class="num">' + fmt(g.leads) + '</td><td class="num">' + (g.leads ? fmt(g.spent / g.leads) + ' ₽' : '—') + '</td>' +
+        '<td class="num">' + fmt(g.spent) + ' ₽</td><td>' + (g.first_date ? dm(g.first_date) + '–' + dm(g.last_date) : '—') + '</td></tr>';
     }).join('');
   }
 
+  // Расход по дням — столбцы дизайн-системы (window.bdCharts в layouts/owner): клипы, лид-формы, прочее + лимит клипов
   function renderChart(c, a) {
-    var svg = $('chart'), NS = 'http://www.w3.org/2000/svg';
-    svg.innerHTML = '';
-    var X0 = 52, X1 = 648, Y0 = 196, Y1 = 14, days = a.days;
+    var days = a.days;
     var maxDay = days.reduce(function (m, d) { return Math.max(m, d.clip + d.lead + d.other); }, 0);
-    var MAX = Math.max(1000, Math.ceil(Math.max(maxDay, a.limit) * 1.1 / 1000) * 1000);
-    var step = MAX <= 5000 ? 1000 : Math.ceil(MAX / 5000) * 1000;
-    var y = function (v) { return Y0 - (v / MAX) * (Y0 - Y1); };
-    var el = function (tag, attrs, text) { var e = document.createElementNS(NS, tag); for (var k in attrs) e.setAttribute(k, attrs[k]); if (text) e.textContent = text; svg.appendChild(e); return e; };
-    for (var v = 0; v <= MAX; v += step) {
-      el('line', { x1: X0, x2: X1, y1: y(v), y2: y(v), stroke: 'var(--line)', 'stroke-width': 1 });
-      el('text', { x: X0 - 8, y: y(v) + 4, 'text-anchor': 'end', 'font-size': 11, fill: 'var(--muted)' }, fmt(v));
-    }
-    if (days.length) {
-      var slot = (X1 - X0) / days.length, bw = Math.max(2, slot * 0.66);
-      days.forEach(function (d, i) {
-        var x = X0 + i * slot + (slot - bw) / 2, base = 0;
-        [['clip', 'var(--accent)'], ['lead', 'var(--lead)'], ['other', 'var(--other)']].forEach(function (p) {
-          var val = d[p[0]] || 0; if (val <= 0) return;
-          el('rect', { x: x, y: y(base + val), width: bw, height: y(base) - y(base + val), fill: p[1] });
-          base += val;
-        });
-        if (i % 7 === 0 || i === days.length - 1) el('text', { x: x + bw / 2, y: Y0 + 18, 'text-anchor': 'middle', 'font-size': 11, fill: 'var(--muted)' }, dm(d.d));
-      });
-    }
-    $('limitLegend').hidden = !a.limit;
-    if (a.limit) {
-      el('line', { x1: X0, x2: X1, y1: y(a.limit), y2: y(a.limit), stroke: 'var(--bad)', 'stroke-width': 1.5, 'stroke-dasharray': '5 4' });
-      el('text', { x: X1, y: y(a.limit) - 6, 'text-anchor': 'end', 'font-size': 11, fill: 'var(--bad)' }, 'лимит клипов ' + fmt(a.limit) + ' ₽');
-    }
-    $('chartNote').textContent = maxDay === 0 ? 'За ' + R.period_days + ' дн. расходов не было.'
-      : (a.limit ? 'Клипы за последние 7 дней тратили в среднем ' + fmt(Math.round(a.avg7)) + ' ₽ в день из ' + fmt(a.limit) + ' ₽ (' + fmt(100 * a.avg7 / a.limit) + '% лимита).' : 'Активных клиповых кампаний сейчас нет.');
+    var sets = [['clip', 'клипы', '--accent'], ['lead', 'лид-формы', '#94a3b8'], ['other', 'прочее', '#c9b98f']]
+      .filter(function (s) { return days.some(function (d) { return (d[s[0]] || 0) > 0; }); })
+      .map(function (s) { return { label: s[1], color: s[2], data: days.map(function (d) { return Math.round(d[s[0]] || 0); }) }; });
+    $('smmDaily').dataset.bars = JSON.stringify({
+      labels: days.map(function (d) { return dm(d.d); }), titles: days.map(function (d) { return dmy(d.d); }),
+      sets: sets.length ? sets : [{ label: 'клипы', color: '--accent', data: days.map(function () { return 0; }) }],
+      stacked: true, suffix: ' ₽', limit: a.limit ? { label: 'лимит клипов', value: a.limit } : null
+    });
+    $('chartLegend').innerHTML = sets.map(function (s) {
+      return '<span class="lg"><span class="dot2" style="background:' + (s.color.indexOf('--') === 0 ? 'var(' + s.color + ')' : s.color) + '"></span>' + esc(s.label) + '</span>';
+    }).join('') + (a.limit ? '<span class="lg"><span class="dot2 dash"></span>лимит ' + esc(fmt(a.limit)) + ' ₽/день</span>' : '');
+    $('chartNote').textContent = DAYS + (a.limit ? ' · лимит ' + fmt(a.limit) + ' ₽/день' : '');
+    $('chartSub').textContent = maxDay === 0 ? 'За ' + DAYS + ' расходов не было.'
+      : (a.limit ? 'Клипы за последние 7 дней тратили в среднем ' + fmt(Math.round(a.avg7)) + ' ₽ в день — ' + fmt(100 * a.avg7 / a.limit) + '% лимита.' : 'Активных клиповых кампаний сейчас нет.');
+    if (window.bdCharts) window.bdCharts.draw();
   }
 
   function renderRecs(c, a) {
@@ -385,53 +291,53 @@
     var orgn = banned.filter(function (g) { return (g.reasons || []).indexOf('NO_ORGN_BANNER') >= 0; });
     var otherBanned = banned.filter(function (g) { return orgn.indexOf(g) < 0; });
     var noMoney = a.groups.some(function (g) { return (g.issues || []).indexOf('NO_MONEY') >= 0; });
-    if (orgn.length) add('Сейчас', 'p-bad', 'Заполнить «О рекламодателе»',
+    if (orgn.length) add('Сейчас', 'red', 'Заполнить «О рекламодателе»',
       'Модерация отклонила ' + orgn.length + ' ' + plural(orgn.length, 'креатив', 'креатива', 'креативов') + ' (' + orgn.map(function (g) { return g.clip; }).join(', ') + '): по закону о рекламе нужны данные рекламодателя.',
-      'В кабинете VK Рекламы заполнить поле «О рекламодателе» (ООО: название, адрес, ОГРН; ИП: ФИО и ОГРНИП) и отправить креативы на повторную проверку.');
-    otherBanned.forEach(function (g) { add('Сейчас', 'p-bad', 'Клип ' + g.clip + ' отклонён', 'Причина: ' + (reasonText(g.reasons) || 'не указана') + '.', 'Исправить по замечанию модерации или заменить клип.'); });
+      'В кабинете VK Рекламы заполнить «О рекламодателе» (ООО: название, адрес, ОГРН; ИП: ФИО и ОГРНИП) и отправить креативы на повторную проверку.');
+    otherBanned.forEach(function (g) { add('Сейчас', 'red', 'Клип ' + g.clip + ' отклонён', 'Причина: ' + (reasonText(g.reasons) || 'не указана') + '.', 'Исправить по замечанию модерации или заменить клип.'); });
     if (!a.running.length && a.clips.length) {
-      if (noMoney) add('Сейчас', 'p-bad', 'Пополнить баланс', 'Кабинет сообщает, что на балансе нет денег: без этого показы не начнутся.', 'Пополнить баланс кабинета VK Рекламы.');
-      if (a.mainPlan && a.mainPlan.status !== 'active') add('Перед запуском', 'p-warn', 'Включить кампанию ' + a.mainPlan.id, 'Кампания «' + a.mainPlan.name + '» на паузе.', 'Включить после пополнения баланса и одобрения креативов.');
+      if (noMoney) add('Сейчас', 'red', 'Пополнить баланс', 'Кабинет сообщает, что на балансе нет денег: без этого показы не начнутся.', 'Пополнить баланс кабинета VK Рекламы.');
+      if (a.mainPlan && a.mainPlan.status !== 'active') add('Перед запуском', 'amber', 'Включить кампанию ' + a.mainPlan.id, 'Кампания «' + a.mainPlan.name + '» на паузе.', 'Включить после пополнения баланса и одобрения креативов.');
     }
-    if (!a.running.length && !a.clips.length) add('Предложение', 'p-warn', 'Запустить продвижение клипов', 'За ' + R.period_days + ' дн. клиповой рекламы не было.', 'Подобрать клипы и согласовать запуск с SMM-специалистом.');
+    if (!a.running.length && !a.clips.length) add('Предложение', 'amber', 'Запустить продвижение клипов', 'За ' + DAYS + ' клиповой рекламы не было.', 'Подобрать клипы и согласовать запуск с SMM-специалистом.');
     var moder = a.clips.filter(function (g) { return g.v === 'moder'; });
-    if (moder.length) add('Наблюдать', 'p-idle', 'На модерации: ' + moder.map(function (g) { return g.clip; }).join(', '), 'Обычно проверка занимает от нескольких минут до нескольких часов.', 'После одобрения включить новые клипы' + (a.running.length ? ' и отключить те, которые они заменяют.' : '.'));
+    if (moder.length) add('Наблюдать', 'gray', 'На модерации: ' + moder.map(function (g) { return g.clip; }).join(', '), 'Обычно проверка занимает от нескольких минут до нескольких часов.', 'После одобрения включить новые клипы' + (a.running.length ? ' и отключить те, которые они заменяют.' : '.'));
     var leader = a.clips.filter(function (g) { return g.v === 'lead'; }).sort(function (x, y) { return ctrOf(y) - ctrOf(x); })[0];
     a.clips.filter(function (g) { return g.v === 'weak'; }).forEach(function (g) {
-      add('Сейчас', 'p-bad', 'Заменить клип ' + g.clip,
-        'CTR ' + fmt(ctrOf(g), 2) + '%, досмотры ' + fmt(vpOf(g), 1) + '%, клик стоит ' + (g.clicks ? fmt(g.spent / g.clicks) : '—') + ' ₽' + (leader ? '; у лидера ' + leader.clip + ': CTR ' + fmt(ctrOf(leader), 2) + '%, досмотры ' + fmt(vpOf(leader), 1) + '%.' : '.'),
+      add('Сейчас', 'red', 'Заменить клип ' + g.clip,
+        'CTR ' + fmt(ctrOf(g), 2) + '%, досмотры ' + fmt(vpOf(g), 1) + '%, клик ' + (g.clicks ? fmt(g.spent / g.clicks) : '—') + ' ₽' + (leader ? '; у лидера ' + leader.clip + ': CTR ' + fmt(ctrOf(leader), 2) + '%, досмотры ' + fmt(vpOf(leader), 1) + '%.' : '.'),
         'Отключить группу ' + g.id + ' и поставить на её место новый клип.');
     });
     a.clips.filter(function (g) { return g.v === 'fatigue'; }).forEach(function (g) {
-      add('На этой неделе', 'p-warn', 'Готовить замену клипу ' + g.clip, 'CTR упал с ' + fmt(g.ctr_first, 2) + '% до ' + fmt(g.ctr_last, 2) + '%, досмотры ' + fmt(vpOf(g), 1) + '%. Аудитория его уже видела.', 'Заменить клипом с похожей подачей, если CTR не вернётся выше 0,4%.');
+      add('На этой неделе', 'amber', 'Готовить замену клипу ' + g.clip, 'CTR упал с ' + fmt(g.ctr_first, 2) + '% до ' + fmt(g.ctr_last, 2) + '%, досмотры ' + fmt(vpOf(g), 1) + '%. Аудитория его уже видела.', 'Заменить клипом с похожей подачей, если CTR не вернётся выше 0,4%.');
     });
     var young = a.clips.filter(function (g) { return g.v === 'new'; });
-    if (young.length) add('Наблюдать', 'p-idle', 'Рано судить: ' + young.map(function (g) { return g.clip; }).join(', '),
+    if (young.length) add('Наблюдать', 'blue', 'Рано судить: ' + young.map(function (g) { return g.clip; }).join(', '),
       young.map(function (g) { return g.clip + ': ' + fmt(g.shows) + ' показов, CTR ' + fmt(ctrOf(g), 2) + '%'; }).join('; ') + '.', 'Оценить, когда наберётся 9 000 показов (около 3 дней).');
-    if (leader) add('Держать', 'p-good', 'Лидер — клип ' + leader.clip, 'CTR ' + fmt(ctrOf(leader), 2) + '%, досмотры ' + fmt(vpOf(leader), 1) + '%, клик ' + fmt(leader.spent / Math.max(leader.clicks, 1)) + ' ₽.', 'Не трогать. Можно на 3 дня поднять ставку до 170 ₽ и проверить, вырастут ли показы.');
+    if (leader) add('Держать', 'green', 'Лидер — клип ' + leader.clip, 'CTR ' + fmt(ctrOf(leader), 2) + '%, досмотры ' + fmt(vpOf(leader), 1) + '%, клик ' + fmt(leader.spent / Math.max(leader.clicks, 1)) + ' ₽.', 'Не трогать. Можно на 3 дня поднять ставку до 170 ₽ и проверить, вырастут ли показы.');
     if (a.limit && a.running.length && a.avg7 < a.limit * 0.85) {
-      var perClip = a.avg7 / a.running.length;
-      add('На этой неделе', 'p-warn', 'Бюджет недорасходуется', 'За последние 7 дней клипы тратили ' + fmt(Math.round(a.avg7)) + ' ₽ в день из ' + fmt(a.limit) + ' ₽. Один клип берёт около ' + fmt(Math.round(perClip / 10) * 10) + ' ₽ в день, упор идёт в ставку.',
-        'Добавить ' + Math.max(1, Math.round((a.limit - a.avg7) / Math.max(perClip, 1))) + ' ' + plural(Math.max(1, Math.round((a.limit - a.avg7) / Math.max(perClip, 1))), 'клип', 'клипа', 'клипов') + ' или поднять ставку лидеру.');
+      var perClip = a.avg7 / a.running.length, more = Math.max(1, Math.round((a.limit - a.avg7) / Math.max(perClip, 1)));
+      add('На этой неделе', 'amber', 'Бюджет недорасходуется', 'За последние 7 дней клипы тратили ' + fmt(Math.round(a.avg7)) + ' ₽ в день из ' + fmt(a.limit) + ' ₽. Один клип берёт около ' + fmt(Math.round(perClip / 10) * 10) + ' ₽ в день, упор идёт в ставку.',
+        'Добавить ' + more + ' ' + plural(more, 'клип', 'клипа', 'клипов') + ' или поднять ставку лидеру.');
     }
     if (a.running.length) {
       var lOn = a.leads.filter(isOn), lN = sum(a.leads, 'leads'), lSpent = sum(a.leads, 'spent');
-      if (lOn.length) add('Заявки', 'p-good', 'Лид-форма работает', 'За период: ' + fmt(sum(lOn, 'leads')) + ' заявок при расходе ' + fmt(sum(lOn, 'spent')) + ' ₽.', 'Держать и сравнивать с клипами по обращениям в сообщество.');
-      else if (lN) add('Предложение', 'p-warn', 'Вернуть лид-форму', 'За период лид-формы дали ' + fmt(lN) + ' заявок по ' + fmt(lSpent / lN) + ' ₽, сейчас все на паузе. Охват клипов не переводится в заявки.', 'Перезапустить на 1 000 ₽ в день параллельно с клипами и через неделю сравнить цену заявки.');
-      else add('Предложение', 'p-warn', 'Добавить кампанию на заявки', 'Заявок из рекламы за период не было: клипы дают только охват.', 'Запустить параллельно кампанию на сообщения в сообщество или лид-форму.');
+      if (lOn.length) add('Заявки', 'green', 'Лид-форма работает', 'За период: ' + fmt(sum(lOn, 'leads')) + ' заявок при расходе ' + fmt(sum(lOn, 'spent')) + ' ₽.', 'Держать и сравнивать с клипами по обращениям в сообщество.');
+      else if (lN) add('Предложение', 'amber', 'Вернуть лид-форму', 'За период лид-формы дали ' + fmt(lN) + ' заявок по ' + fmt(lSpent / lN) + ' ₽, сейчас все на паузе. Охват клипов не переводится в заявки.', 'Перезапустить на 1 000 ₽ в день параллельно с клипами и через неделю сравнить цену заявки.');
+      else add('Предложение', 'amber', 'Добавить кампанию на заявки', 'Заявок из рекламы за период не было: клипы дают только охват.', 'Запустить параллельно кампанию на сообщения в сообщество или лид-форму.');
     }
-    add('Правило', 'p-good', 'Решать по клипу через 3 дня', 'За 3 дня клип набирает около 9 000 показов, этого хватает для решения.', 'Оставлять: CTR от 0,45% и досмотры от 20%. Заменять: CTR ниже 0,30% или досмотры ниже 12%.');
-    add('Учёт', 'p-idle', 'Сверять рост сообщества вручную', 'Охват и вступления в группу по клипам кабинет не отдаёт.', 'Раз в неделю записывать число подписчиков и сообщений в сообществе' + (c.community ? ' (' + c.community + ')' : '') + '.');
+    add('Правило', 'gray', 'Решать по клипу через 3 дня', 'За 3 дня клип набирает около 9 000 показов, этого хватает для решения.', 'Оставлять: CTR от 0,45% и досмотры от 20%. Заменять: CTR ниже 0,30% или досмотры ниже 12%.');
+    add('Учёт', 'gray', 'Сверять рост сообщества вручную', 'Охват и вступления в группу по клипам кабинет не отдаёт.', 'Раз в неделю записывать число подписчиков и сообщений в сообществе' + (c.community ? ' (' + c.community + ')' : '') + '.');
     $('recs').innerHTML = recs.map(function (r) {
-      return '<div class="rec"><div class="rec-top"><span class="pill ' + r.cls + '">' + r.tag + '</span><h3>' + esc(r.title) + '</h3></div><p>' + esc(r.why) + '</p><p class="act">' + esc(r.act) + '</p></div>';
+      return '<div class="card smm-rec"><div class="smm-rec-top">' + tag(r.tag, r.cls) + '<h3>' + esc(r.title) + '</h3></div><p>' + esc(r.why) + '</p><p class="act">' + esc(r.act) + '</p></div>';
     }).join('');
   }
 
-  // ---- Tabs ----
+  // ---- кабинеты (если их несколько) ----
   function show(key) {
     var c = cabs.filter(function (x) { return x.key === key; })[0] || cabs[0];
     current = c.key;
-    [].forEach.call(document.querySelectorAll('.tab'), function (t) { t.setAttribute('aria-selected', t.dataset.key === c.key ? 'true' : 'false'); t.tabIndex = t.dataset.key === c.key ? 0 : -1; });
+    [].forEach.call(document.querySelectorAll('#tabs button'), function (t) { var on = t.dataset.key === c.key; t.classList.toggle('active', on); t.setAttribute('aria-selected', on ? 'true' : 'false'); t.tabIndex = on ? 0 : -1; });
     var a = analyse(c);
     $('alert').hidden = !c.error;
     $('alert').textContent = c.error ? (c.stale ? 'Свежие данные по кабинету «' + c.title + '» получить не удалось, показаны данные от ' + (c.updated ? dmy(c.updated.slice(0, 10)) + ' ' + c.updated.slice(11) : 'прошлого отчёта') + '. ' : '') + 'Причина: ' + c.error : '';
@@ -441,16 +347,15 @@
   $('tabs').hidden = cabs.length < 2;
   $('tabs').innerHTML = cabs.map(function (c) {
     var a = analyse(c);
-    var note = a.running.length ? 'идёт' : 'не идёт';
-    return '<button type="button" class="tab" role="tab" data-key="' + esc(c.key) + '" aria-controls="view">' + esc(c.title) + '<span class="tab-note">' + esc(c.brand !== c.title ? c.brand + ' · ' : '') + note + '</span></button>';
+    return '<button type="button" role="tab" data-key="' + esc(c.key) + '" aria-controls="view">' + esc(c.title) + ' · ' + (a.running.length ? 'идёт' : 'не идёт') + '</button>';
   }).join('');
-  [].forEach.call(document.querySelectorAll('.tab'), function (t) {
+  [].forEach.call(document.querySelectorAll('#tabs button'), function (t) {
     t.addEventListener('click', function () { show(t.dataset.key); try { history.replaceState(null, '', '#' + t.dataset.key); } catch (e) {} });
     t.addEventListener('keydown', function (e) {
       if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
       var keys = cabs.map(function (c) { return c.key; }), i = keys.indexOf(current);
       var next = keys[(i + (e.key === 'ArrowRight' ? 1 : keys.length - 1)) % keys.length];
-      show(next); document.querySelector('.tab[data-key="' + next + '"]').focus();
+      show(next); document.querySelector('#tabs button[data-key="' + next + '"]').focus();
     });
   });
   var initial = (location.hash || '').slice(1);

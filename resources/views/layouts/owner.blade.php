@@ -128,15 +128,19 @@
 <script src="{{ asset('js/bd-owner-head.js') }}?v={{ @filemtime(public_path('js/bd-owner-head.js')) ?: 1 }}"></script>
 <script>
 /* Графики дизайн-системы: <canvas data-spark='{"data":[…],"labels":[…],"unit":["замер","замера","замеров"]}' data-on-accent="1">
-   (линия внизу KPI-карточки) и <canvas data-bars='{"labels":[…],"sets":[{"label":"…","data":[…],"color":"--blue"}]}'>.
+   (линия внизу KPI-карточки) и <canvas data-bars='{"labels":[…],"sets":[{"label":"…","data":[…],"color":"--blue"}]}'>
+   (у столбцов ещё "stacked":true, "suffix":" ₽", "limit":{"label":"…","value":3000} — пунктир лимита).
+   Столбцы от 8 штук можно увеличивать: «+»/«−» и жест двумя пальцами (zoomable).
    draw() перерисовывает всё на странице: при загрузке, смене темы и после автообновления сводки. */
 window.bdCharts = (function () {
     const reg = new Map();
+    const zoomState = new Map(); // id графика → масштаб и прокрутка: переживают автообновление сводки
     const cssv = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
     const fmt = n => Number(n).toLocaleString('ru-RU');
     const isDark = () => document.documentElement.getAttribute('data-theme') === 'dark';
     const plural = (n, f) => { const d = Math.abs(n) % 100, d1 = d % 10; return d > 10 && d < 20 ? f[2] : (d1 > 1 && d1 < 5 ? f[1] : (d1 === 1 ? f[0] : f[2])); };
     const unitText = (v, u) => !u ? fmt(v) : (typeof u === 'string' ? fmt(v) + ' ' + u : fmt(v) + ' ' + plural(v, u));
+    const color = c => c && c.indexOf('--') === 0 ? cssv(c) : (c || cssv('--accent'));
     function tooltip(extra) {
         return Object.assign({ backgroundColor: cssv('--tip'), titleColor: cssv('--tip-ink'), bodyColor: cssv('--tip-ink'), padding: 10, cornerRadius: 10 }, extra || {});
     }
@@ -147,27 +151,98 @@ window.bdCharts = (function () {
         const fill = onAccent ? 'rgba(255,255,255,.22)' : (isDark() ? 'rgba(36,185,116,.20)' : 'rgba(31,174,99,.14)');
         return new Chart(el, { type: 'line',
             data: { labels: d.labels || d.data.map((_, i) => i + 1), datasets: [{ data: d.data, borderColor: line, borderWidth: 2.4, fill: true, backgroundColor: fill,
-                tension: .4, pointRadius: 0, pointHoverRadius: 4, pointHoverBorderWidth: 2, pointHoverBackgroundColor: line, pointHoverBorderColor: onAccent ? cssv('--accent') : '#fff' }] },
+                cubicInterpolationMode: 'monotone', pointRadius: 0, pointHoverRadius: 4, pointHoverBorderWidth: 2, pointHoverBackgroundColor: line, pointHoverBorderColor: onAccent ? cssv('--accent') : '#fff' }] },
             options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 8, bottom: 0 } }, interaction: { mode: 'index', intersect: false },
                 plugins: { legend: { display: false }, tooltip: tooltip({ displayColors: false, padding: 8, cornerRadius: 8, titleFont: { size: 11 }, bodyFont: { size: 13, weight: '700' },
                     callbacks: { label: c => unitText(c.raw, d.unit) } }) },
-                scales: { x: { display: false }, y: { display: false, grace: '12%' } } } });
+                scales: { x: { display: false }, y: { display: false, beginAtZero: true, grace: '12%' } } } });
     }
     function bars(el) {
         const d = JSON.parse(el.dataset.bars || '{}');
-        const grid = cssv('--line'), muted = cssv('--muted');
+        const grid = cssv('--line'), muted = cssv('--muted'), suffix = d.suffix || '', stacked = !!d.stacked;
+        const sets = d.sets.map(s => ({ label: s.label, data: s.data, backgroundColor: color(s.color), borderRadius: stacked ? 4 : 7, maxBarThickness: 22, order: 2 }));
+        if (d.limit) {
+            sets.push({ type: 'line', label: d.limit.label, data: d.labels.map(() => d.limit.value), borderColor: cssv('--neg'), borderWidth: 1.5,
+                borderDash: [5, 4], pointRadius: 0, pointHoverRadius: 0, fill: false, order: 1 });
+        }
         return new Chart(el, { type: 'bar',
-            data: { labels: d.labels, datasets: d.sets.map(s => ({ label: s.label, data: s.data, backgroundColor: cssv(s.color || '--accent'), borderRadius: 7, maxBarThickness: 22 })) },
-            options: { responsive: true, maintainAspectRatio: false,
-                plugins: { legend: { display: false }, tooltip: tooltip({ callbacks: { title: it => (d.titles || d.labels)[it[0].dataIndex], label: c => ' ' + c.dataset.label + ': ' + fmt(c.raw) } }) },
-                scales: { x: { grid: { display: false }, border: { display: false }, ticks: { color: muted, font: { size: 11 }, autoSkip: true, maxRotation: 0 } },
-                    y: { beginAtZero: true, grid: { color: grid }, border: { display: false }, ticks: { color: muted, font: { size: 11 }, maxTicksLimit: 5, precision: 0 } } } } });
+            data: { labels: d.labels, datasets: sets },
+            options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+                layout: { padding: { right: el.closest('.chart-zoom') ? 42 : 0 } },
+                plugins: { legend: { display: false }, tooltip: tooltip({ callbacks: { title: it => (d.titles || d.labels)[it[0].dataIndex], label: c => ' ' + c.dataset.label + ': ' + fmt(c.raw) + suffix } }) },
+                scales: { x: { stacked, grid: { display: false }, border: { display: false }, ticks: { color: muted, font: { size: 11 }, autoSkip: true, maxRotation: 0 } },
+                    y: { stacked, beginAtZero: true, grid: { color: grid }, border: { display: false }, ticks: { color: muted, font: { size: 11 }, maxTicksLimit: 5, precision: 0 } } } } });
     }
+    // масштаб: график внутри полосы прокрутки, ширина = масштаб × экран; якорь (центр или точка между пальцами) остаётся на месте
+    function zoomable(el) {
+        const box = el.parentElement;
+        const n = (JSON.parse(el.dataset.bars || '{}').labels || []).length;
+        if (!box || !box.classList.contains('chart-h') || el.closest('.chart-zoom') || n < 8) return;
+        const wrap = document.createElement('div');
+        wrap.className = 'chart-zoom';
+        wrap.innerHTML = '<div class="cz-scroll"><div class="cz-inner"></div></div>'
+            + '<div class="cz-btns"><button type="button" data-z="in" title="Крупнее" aria-label="Увеличить график">+</button>'
+            + '<button type="button" data-z="out" title="Мельче" aria-label="Уменьшить график">−</button></div>';
+        box.insertBefore(wrap, el);
+        const scroll = wrap.querySelector('.cz-scroll'), inner = wrap.querySelector('.cz-inner');
+        const bIn = wrap.querySelector('[data-z="in"]'), bOut = wrap.querySelector('[data-z="out"]');
+        inner.appendChild(el);
+        const key = el.id || ('z' + n), max = Math.max(2, Math.min(8, n / 5));
+        const st = zoomState.get(key) || { z: 1, left: 0 };
+        zoomState.set(key, st);
+        const apply = () => {
+            inner.style.width = (st.z * 100) + '%';
+            bIn.disabled = st.z >= max;
+            bOut.disabled = st.z <= 1;
+            const chart = reg.get(el);
+            if (chart) chart.resize();
+        };
+        function set(z, a) {
+            z = Math.min(max, Math.max(1, z));
+            const w = scroll.clientWidth, pos = (scroll.scrollLeft + w * a) / (w * st.z);
+            st.z = z;
+            apply();
+            scroll.scrollLeft = Math.max(0, pos * w * z - w * a);
+            st.left = scroll.scrollLeft;
+        }
+        apply();
+        scroll.scrollLeft = st.left;
+        scroll.addEventListener('scroll', () => { st.left = scroll.scrollLeft; }, { passive: true });
+        bIn.addEventListener('click', () => set(st.z * 1.5, .5));
+        bOut.addEventListener('click', () => set(st.z / 1.5, .5));
+        let pinch = null;
+        const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+        scroll.addEventListener('touchstart', e => {
+            if (e.touches.length !== 2) return;
+            const r = scroll.getBoundingClientRect();
+            pinch = { d: dist(e.touches) || 1, z: st.z, a: Math.min(1, Math.max(0, ((e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left) / r.width)) };
+        }, { passive: true });
+        scroll.addEventListener('touchmove', e => {
+            if (!pinch || e.touches.length !== 2) return;
+            e.preventDefault();
+            set(pinch.z * dist(e.touches) / pinch.d, pinch.a);
+        }, { passive: false });
+        scroll.addEventListener('touchend', e => { if (e.touches.length < 2) pinch = null; });
+    }
+    // крупные цифры плиток — одной строкой: если сумма не влезает в карточку (телефон), шрифт чуть меньше, «₽» не отрывается
+    function fit() {
+        document.querySelectorAll('.kpi .val, .mini .val, .cc .val').forEach(el => {
+            el.style.fontSize = '';
+            let s = parseFloat(getComputedStyle(el).fontSize);
+            while (el.scrollWidth > el.clientWidth + 1 && s > 15) { s -= 1; el.style.fontSize = s + 'px'; }
+        });
+    }
+    let fitTimer = null;
+    window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(fit, 150); });
     function draw() {
+        fit();
         if (typeof Chart === 'undefined') return;
         reg.forEach((chart, el) => { chart.destroy(); reg.delete(el); });
         document.querySelectorAll('canvas[data-spark], canvas[data-bars]').forEach(el => {
-            try { reg.set(el, el.dataset.spark ? spark(el) : bars(el)); } catch (e) { console.warn('chart skipped', e); }
+            try {
+                if (!el.dataset.spark) zoomable(el);
+                reg.set(el, el.dataset.spark ? spark(el) : bars(el));
+            } catch (e) { console.warn('chart skipped', e); }
         });
     }
     return { draw };
