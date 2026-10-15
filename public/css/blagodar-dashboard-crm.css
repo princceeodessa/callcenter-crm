@@ -1,0 +1,83 @@
+/* Дополнения к дизайн-системе «БлагоДар» (blagodar-dashboard.css — файл дизайнера, его не правим):
+   то, чего нет в макете, но есть в сводках CRM — переключатели ссылками, период датами, таблица исходов,
+   незаключённые договоры, реклама по площадкам, авто-обновление. Только токены дизайн-системы. */
+
+/* переключатели в макете — кнопки; у нас это ссылки */
+.seg a{border:0;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:600;
+  padding:9px 16px;border-radius:999px;cursor:pointer;text-decoration:none;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+.seg a:hover{color:var(--ink)}
+.seg a.active{background:var(--card);color:var(--ink);box-shadow:var(--shadow-sm)}
+.seg.accent a.active{background:var(--accent);color:var(--accent-ink);box-shadow:0 6px 16px rgba(31,174,99,.35)}
+a.export{text-decoration:none}
+.nav a.sub{padding:10px 14px;font-size:13.5px}
+
+/* период датами — в стиле «чипа» */
+form.chip{gap:6px;padding:6px 8px 6px 14px;margin:0}
+form.chip input[type=date]{border:0;background:transparent;color:var(--ink);font:inherit;font-size:13px;outline:none;padding:3px 0;color-scheme:light}
+:root[data-theme="dark"] form.chip input[type=date]{color-scheme:dark}
+form.chip input[type=month]{border:0;background:transparent;color:var(--ink);font:inherit;font-size:13px;outline:none;padding:3px 0;color-scheme:light}
+:root[data-theme="dark"] form.chip input[type=month]{color-scheme:dark}
+form.chip button{border:0;background:var(--accent);color:var(--accent-ink);border-radius:999px;padding:6px 12px;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer}
+
+/* KPI: «без изменений» и подсказки под цифрой */
+.badge.flat{color:var(--muted);background:var(--tile)}
+.kpi.accent .badge.up,.kpi.accent .badge.flat{color:#fff;background:rgba(255,255,255,.22)}
+.kpi .warn{font-size:12px;color:var(--neg);margin-top:4px}
+.kpi.accent .warn{color:#fff;font-weight:600}
+.kpi.no-chart{padding-bottom:20px}
+.mini .val.muted{color:var(--muted)}
+
+/* таблицы сводки */
+table.t th.cat{white-space:normal;min-width:70px;line-height:1.25;vertical-align:bottom}
+table.t tr.src-row td:first-child{font-weight:700}
+table.t tr.grp td{font-weight:800;background:var(--tile)}
+table.t td .note,table.t td .muted{color:var(--muted);font-size:11.5px;font-weight:500}
+table.t td.wrap{white-space:normal}
+table.t td a{color:var(--accent);text-decoration:none;font-weight:700}
+table.t td a:hover{text-decoration:underline}
+.tbl-head .note a{color:var(--accent);text-decoration:none}
+.tbl-head{flex-wrap:wrap}
+.sec{flex-wrap:wrap}
+
+/* реклама по площадкам и незаключённые — сетки карточек */
+.cc .card .rows{margin-top:10px;border-top:1px solid var(--line);padding-top:8px;display:grid;gap:4px}
+.cc .card .rw{display:flex;justify-content:space-between;gap:10px;font-size:12.5px}
+.cc .card .rw span:first-child{color:var(--muted)}
+.cc .card .nm{display:flex;align-items:center;gap:8px}
+.status-line{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12px;color:var(--muted)}
+.status-line .bad{color:var(--neg)}
+.nc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:16px;margin-bottom:26px}
+.nc-grid .tbl-card{margin-bottom:0}
+.empty-card{padding:18px 20px;color:var(--muted);font-size:13px;margin-bottom:26px}
+.empty-card.bad{color:var(--neg)}
+.src .warn{color:var(--neg)}
+.src .rw{gap:8px}
+.src .rw b{white-space:nowrap}
+
+/* плотные таблицы: исходы по категориям (много колонок) и незаключённые (три таблицы в ряд) */
+table.t.compact th,table.t.compact td{padding:9px 8px}
+table.t.compact th.cat{min-width:0;max-width:92px;text-transform:none;font-size:11px;letter-spacing:0}
+table.t.compact td:first-child{min-width:150px}
+table.t.compact tr.sub-row td:first-child{padding-left:30px}
+table.t.compact th:first-child,table.t.compact td:first-child{padding-left:16px}
+.nc-grid table.t th,.nc-grid table.t td{padding:8px 9px}
+.nc-grid table.t th:first-child,.nc-grid table.t td:first-child{padding-left:14px;white-space:normal}
+.nc-grid .op-ava{width:28px;height:28px;font-size:11px}
+.nc-grid .op-cell{gap:9px}
+.nc-grid .tbl-head{padding:16px 14px 10px}
+
+/* сводка кроссовок: две таблицы рядом, длинный список продаж со своей прокруткой */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:26px}
+.grid2 .tbl-card{margin-bottom:0}
+.tbl-scroll{max-height:70vh;overflow-y:auto}
+.tbl-scroll thead th{position:sticky;top:0;z-index:1}
+.nm-inline{display:inline-flex;align-items:center;gap:8px}
+.nm-inline .src-logo{width:20px;height:20px}
+@media(max-width:1080px){.grid2{grid-template-columns:1fr}}
+
+@media(max-width:620px){
+  .filters .seg{max-width:100%;overflow-x:auto;scrollbar-width:none}
+  .filters .seg::-webkit-scrollbar{display:none}
+  form.chip{flex-wrap:wrap}
+  .kpi .val{font-size:30px}
+}

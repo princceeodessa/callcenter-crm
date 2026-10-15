@@ -165,6 +165,24 @@ class MarketingStats
             ];
         }
 
+        // расход по дням — из тех же источников, что итог (API площадки или таблица замеров), для графика в карточке
+        $spendByDay = [];
+        foreach ($rows as $r) {
+            $m = json_decode((string) $r->metrics, true) ?: [];
+            $v = match (true) {
+                $r->source === 'direct' && $live('direct') => (float) ($m['cost'] ?? 0),
+                $r->source === 'vk' && $live('vk') => (float) ($m['spent'] ?? 0),
+                $r->source === 'avito' && $live('avito') && isset($sum['avito']['ceilings_spend']) => (float) ($m['ceilings_spend'] ?? 0),
+                $r->source === 'sheet' => (! $live('direct') ? (float) ($m['spend']['Директ'] ?? 0) : 0)
+                    + (! $live('vk') ? (float) ($m['spend']['ВК'] ?? 0) : 0)
+                    + (! ($live('avito') && isset($sum['avito']['ceilings_spend'])) ? (float) ($m['spend']['Авито'] ?? 0) : 0),
+                default => 0.0,
+            };
+            $day = substr((string) $r->day, 0, 10);
+            $spendByDay[$day] = ($spendByDay[$day] ?? 0) + $v;
+        }
+        ksort($spendByDay);
+
         $vkMeta = json_decode((string) ($status['vk']->meta ?? ''), true) ?: [];
         $groups = [];
         foreach ($vkGroups as $gid => $g) {
@@ -190,6 +208,7 @@ class MarketingStats
             'avito_shared' => (float) ($sum['avito']['shared_spend'] ?? 0),
             'vk_groups' => $groups,
             'spend_total' => array_sum(array_map(fn ($s) => $s['value'] ?? 0, array_filter($spend))),
+            'spend_by_day' => $spendByDay,
             'sources' => $sources,
             'any' => $rows->isNotEmpty(),
         ];

@@ -42,7 +42,6 @@ class OwnerSmmController extends Controller
             'days' => $days,
             'periods' => self::PERIODS,
             'report' => $report,
-            'canBoth' => $user && $user->role === 'sneaker_owner' && $user->all_businesses,
         ]);
     }
 }

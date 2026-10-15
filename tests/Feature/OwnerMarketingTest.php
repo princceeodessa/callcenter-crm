@@ -290,9 +290,10 @@ class OwnerMarketingTest extends TestCase
         $res->assertDontSee('заяв');
         $res->assertDontSee('онверси');                         // конверсию не показываем
         $html = $res->getContent();
-        $this->assertSame(4, substr_count($html, 'class="src '));   // карточки: Директ, Авито, Офис, ВК — без «Радио» (0 замеров)
-        $this->assertStringNotContainsString('<div class="name">Радио</div>', $html);
-        $this->assertStringContainsString('<div class="name">Офис</div>', $html);
+        $this->assertSame(4, substr_count($html, 'class="card src"'));   // карточки: Директ, Авито, Офис, ВК — без «Радио» (0 замеров)
+        $this->assertDoesNotMatchRegularExpression('~<div class="nm">\s*Радио</div>~u', $html);
+        $this->assertMatchesRegularExpression('~<div class="nm">\s*Офис</div>~u', $html);
+        $this->assertMatchesRegularExpression('~<div class="nm">\s*<svg class="src-logo"[^>]*aria-label="Яндекс Директ"~u', $html);   // логотип площадки
         $res->assertSee('Расход на рекламу');
         $res->assertSee('Реклама по площадкам');
         $res->assertSee('весь кабинет 2 300 ₽, кроме потолков: кондиционеры 110 ₽ · ремонт и шумоизоляция 40 ₽ · тариф и прочее 200 ₽');

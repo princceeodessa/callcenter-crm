@@ -1,161 +1,207 @@
-@extends('layouts.app')
-
-@section('content')
-<style>
-    .own-wrap{ max-width:1280px; margin:0 auto; }
-    .own-hero{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.7rem; margin-bottom:1rem; }
-    .own-stat{
-        position:relative; overflow:hidden;
-        background:var(--crm-surface-strong); border:1px solid var(--crm-border);
-        border-radius:16px; padding:.85rem 1.05rem; box-shadow:var(--crm-shadow);
-    }
-    .own-stat .l{ font-size:.7rem; text-transform:uppercase; letter-spacing:.06em; color:var(--crm-muted); font-weight:700; }
-    .own-stat .v{ font-size:1.7rem; font-weight:800; line-height:1.15; letter-spacing:-.02em; margin-top:.1rem; }
-    .own-stat.green .v{ color:#10b981; }
-
-    .own-kpi{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:.7rem; margin-bottom:1rem; }
-    .own-kpi .k{ background:var(--crm-surface-strong); border:1px solid var(--crm-border); border-radius:14px; padding:.7rem .9rem; }
-    .own-kpi .k .l{ font-size:.68rem; text-transform:uppercase; letter-spacing:.05em; color:var(--crm-muted); font-weight:600; }
-    .own-kpi .k .v{ font-size:1.4rem; font-weight:800; letter-spacing:-.02em; }
-
-    .own-card{ background:var(--crm-surface-strong); border:1px solid var(--crm-border); border-radius:16px; box-shadow:var(--crm-shadow); margin-bottom:1rem; }
-    .own-card .hd{ padding:.7rem 1.05rem; font-weight:700; border-bottom:1px solid var(--crm-border); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.5rem; }
-    .own-card table{ width:100%; border-collapse:collapse; }
-    .own-card th, .own-card td{ padding:.4rem .8rem; font-size:.85rem; border-bottom:1px solid var(--crm-border); }
-    .own-card th{ font-size:.7rem; text-transform:uppercase; letter-spacing:.04em; color:var(--crm-muted); text-align:left; }
-    .own-card tr:last-child td{ border-bottom:0; }
-    .tbl-scroll{ max-height:70vh; overflow-y:auto; }
-    .num{ text-align:right; white-space:nowrap; }
-</style>
+@extends('layouts.owner')
 
 @php
     $money = fn ($v) => number_format((float) $v, 0, ',', ' ');
+    $navUser = auth()->user();
+    $isOwner = $navUser?->role === 'sneaker_owner';
+    $monthStart = \Carbon\Carbon::createFromFormat('!Y-m', $monthValue);
+    $monthLabel = $monthStart->translatedFormat('F Y');
+
+    // продажи по дням месяца (до сегодня, если месяц текущий) — для графиков в карточках и «По дням»
+    $lastDay = $monthStart->isSameMonth(now()) ? (int) now()->format('j') : (int) $monthStart->copy()->endOfMonth()->format('j');
+    $daily = [];
+    for ($d = 1; $d <= $lastDay; $d++) {
+        $daily[$d] = ['revenue' => 0.0, 'profit' => 0.0, 'units' => 0, 'orders' => 0];
+    }
+    foreach ($sold as $deal) {
+        $d = (int) optional($deal->stock_deducted_at)->format('j');
+        if (! isset($daily[$d])) continue;
+        $daily[$d]['revenue'] += (float) ($deal->amount ?? 0);
+        $daily[$d]['profit'] += (float) ($deal->sale_profit ?? 0);
+        $daily[$d]['units'] += (int) $deal->sold_quantity;
+        $daily[$d]['orders']++;
+    }
+    $showChart = count($daily) >= 2;
+    $titles = array_map(fn ($d) => $monthStart->copy()->day($d)->format('d.m.Y'), array_keys($daily));
+    $spark = fn (string $key, $unit) => json_encode(['data' => array_map(fn ($r) => round($r[$key]), array_values($daily)), 'labels' => $titles, 'unit' => $unit], JSON_UNESCAPED_UNICODE);
+    $bars = json_encode(['labels' => array_map(fn ($d) => sprintf('%02d', $d), array_keys($daily)), 'titles' => $titles, 'sets' => [
+        ['label' => 'выручка, ₽', 'data' => array_map(fn ($r) => round($r['revenue']), array_values($daily)), 'color' => '--blue'],
+        ['label' => 'прибыль, ₽', 'data' => array_map(fn ($r) => round($r['profit']), array_values($daily)), 'color' => '--accent'],
+    ]], JSON_UNESCAPED_UNICODE);
 @endphp
 
-<div class="own-wrap">
-    <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
-        <div>
-            <h4 class="mb-0" style="letter-spacing:-.02em">📊 Сводка бизнеса</h4>
-            <div class="text-muted small">склад в деньгах · продажи и прибыль по каждому заказу</div>
-        </div>
-        <div class="d-flex align-items-center gap-2 flex-wrap">
-            <a class="btn btn-sm btn-outline-primary mb-3" href="{{ route('owner.smm', ['business' => 'sneakers']) }}">📱 SMM-контент</a>
-            @include('owner._switch', ['active' => 'sneakers'])
-        </div>
-        <form method="GET" action="{{ route('owner.dashboard') }}" class="d-flex gap-2 align-items-center">
-            <label class="small text-muted mb-0">Месяц</label>
-            <input type="month" name="month" value="{{ $monthValue }}" class="form-control form-control-sm" style="width:auto" onchange="this.form.submit()">
+@section('title', 'Кроссовки')
+@section('subtitle')Сводка бизнеса · Кроссовки · {{ $monthLabel }} · склад в деньгах, продажи и прибыль по каждому заказу@endsection
+
+@section('nav')
+    <a href="#top" class="active"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg> Обзор</a>
+    <a href="#stock"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg> Склад</a>
+    @if($showChart)
+        <a href="#days"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M8 17V11M13 17V7M18 17v-4"/></svg> По дням</a>
+    @endif
+    <a href="#models"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l9 5-9 5-9-5 9-5z"/><path d="M3 12l9 5 9-5M3 17l9 5 9-5"/></svg> Модели и источники</a>
+    <a href="#sales"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1.4"/><circle cx="18" cy="21" r="1.4"/><path d="M1 1h4l2.7 13.4a2 2 0 002 1.6h9.7a2 2 0 002-1.6L23 6H6"/></svg> Все продажи</a>
+    <span class="lbl">{{ $isOwner ? 'Ещё' : 'CRM' }}</span>
+    <a href="{{ route('sale.day') }}" class="sub" title="Продажи кроссовок за день"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/></svg> Продажи за день</a>
+    <a href="{{ route('owner.smm', ['business' => 'sneakers']) }}" class="sub"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="M10 8l5 4-5 4V8z"/></svg> SMM-контент</a>
+    @unless($isOwner)
+        <a href="{{ route('sale.quick') }}" class="sub"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg> Вернуться в CRM</a>
+    @endunless
+@endsection
+
+@section('content')
+<div id="dash">
+    <div class="filters" id="top">
+        @include('owner._biz_tabs', ['biz' => 'sneakers', 'tab' => 'summary'])
+        <div class="spacer"></div>
+        <form method="GET" action="{{ route('owner.dashboard') }}" class="chip">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>
+            <span>Месяц</span>
+            <input type="month" name="month" value="{{ $monthValue }}" onchange="this.form.submit()" aria-label="месяц">
         </form>
     </div>
 
-    {{-- Склад в деньгах --}}
-    <div class="own-hero">
-        <div class="own-stat"><div class="l">Товаров</div><div class="v">{{ $productsCount }}</div></div>
-        <div class="own-stat"><div class="l">Пар на складе</div><div class="v">{{ $totalUnits }}</div></div>
-        <div class="own-stat"><div class="l">Доступно</div><div class="v">{{ $availableSum }}</div></div>
-        <div class="own-stat"><div class="l">Вложено · по закупке</div><div class="v">{{ $money($stockCostValue) }} ₽</div></div>
-        <div class="own-stat"><div class="l">Стоимость · по продаже</div><div class="v">{{ $money($stockSaleValue) }} ₽</div></div>
-        <div class="own-stat green"><div class="l">Потенц. прибыль</div><div class="v">{{ $money($potentialProfit) }} ₽</div></div>
-        <div class="own-stat"><div class="l">Пар в доставке</div><div class="v">{{ $inDeliveryUnits }}</div></div>
-        <div class="own-stat"><div class="l">В доставке · по закупке</div><div class="v">{{ $money($inDeliveryValue) }} ₽</div></div>
-    </div>
-
     {{-- KPI за месяц --}}
-    <div class="own-kpi">
-        <div class="k"><div class="l">Выручка за месяц</div><div class="v">{{ $money($revenue) }} ₽</div></div>
-        <div class="k"><div class="l">Чистая прибыль</div><div class="v {{ $profit >= 0 ? 'text-success' : 'text-danger' }}">{{ $money($profit) }} ₽</div></div>
-        <div class="k"><div class="l">Маржа</div><div class="v">{{ $revenue > 0 ? round($margin).'%' : '—' }}</div></div>
-        <div class="k"><div class="l">Продано пар</div><div class="v">{{ $units }}</div></div>
-        <div class="k"><div class="l">Заказов</div><div class="v">{{ $count }}</div></div>
-        <div class="k"><div class="l">Средний чек</div><div class="v">{{ $count > 0 ? $money($avg).' ₽' : '—' }}</div></div>
+    <div class="kpis">
+        <div class="card kpi accent {{ $showChart ? '' : 'no-chart' }}">
+            <div class="top"><span class="lbl">Выручка за месяц</span>
+                <span class="ic"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20M6 15h4"/></svg></span>
+            </div>
+            <div class="val num">{{ $money($revenue) }} ₽</div>
+            <div class="cap">заказов {{ $count }} · средний чек {{ $count > 0 ? $money($avg).' ₽' : '—' }}</div>
+            @if($showChart)<div class="kpi-chart"><canvas id="sp-rev" data-on-accent="1" data-spark="{{ $spark('revenue', '₽') }}"></canvas></div>@endif
+        </div>
+        <div class="card kpi {{ $showChart ? '' : 'no-chart' }}">
+            <div class="top"><span class="lbl">Чистая прибыль</span>
+                <span class="ic"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg></span>
+            </div>
+            <div class="val num" style="{{ $profit < 0 ? 'color:var(--neg)' : '' }}">{{ $money($profit) }} ₽</div>
+            <div style="margin-bottom:4px"><span class="badge {{ $profit >= 0 ? 'up' : 'down' }}">маржа {{ $revenue > 0 ? round($margin).'%' : '—' }}</span></div>
+            @if($showChart)<div class="kpi-chart"><canvas id="sp-prof" data-spark="{{ $spark('profit', '₽') }}"></canvas></div>@endif
+        </div>
+        <div class="card kpi {{ $showChart ? '' : 'no-chart' }}">
+            <div class="top"><span class="lbl">Продано пар</span>
+                <span class="ic"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 17h20v3H2zM4 17l2-7 5 2 3-4 6 4 2 5"/></svg></span>
+            </div>
+            <div class="val num">{{ $units }}</div>
+            <div class="cap">за {{ $monthLabel }}</div>
+            @if($showChart)<div class="kpi-chart"><canvas id="sp-units" data-spark="{{ $spark('units', ['пара', 'пары', 'пар']) }}"></canvas></div>@endif
+        </div>
+        <div class="card kpi {{ $showChart ? '' : 'no-chart' }}">
+            <div class="top"><span class="lbl">Заказов</span>
+                <span class="ic"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1.4"/><circle cx="18" cy="21" r="1.4"/><path d="M1 1h4l2.7 13.4a2 2 0 002 1.6h9.7a2 2 0 002-1.6L23 6H6"/></svg></span>
+            </div>
+            <div class="val num">{{ $count }}</div>
+            <div class="cap">средний чек {{ $count > 0 ? $money($avg).' ₽' : '—' }}</div>
+            @if($showChart)<div class="kpi-chart"><canvas id="sp-orders" data-spark="{{ $spark('orders', ['заказ', 'заказа', 'заказов']) }}"></canvas></div>@endif
+        </div>
     </div>
 
     @if($noCostCount > 0)
-        <div class="alert alert-warning py-2 small">
-            У {{ $noCostCount }} заказ(ов) не указана закупочная цена — их прибыль в расчёт не вошла и показана как «—».
-            Проставьте закуп на складе (⚙️ Управление товаром → Цены), чтобы прибыль считалась полностью.
+        <div class="card insights" style="border-left-color:var(--neg)">
+            <div class="st">Прибыль посчитана не по всем заказам</div>
+            <ul><li>У {{ $noCostCount }} заказ(ов) не указана закупочная цена — их прибыль в расчёт не вошла и показана как «—».
+                Проставьте закуп на складе (⚙️ Управление товаром → Цены), чтобы прибыль считалась полностью.</li></ul>
         </div>
     @endif
 
-    <div class="row g-3">
-        {{-- Топ моделей --}}
-        <div class="col-lg-6">
-            <div class="own-card">
-                <div class="hd">Топ моделей за месяц <span class="text-muted small fw-normal">по прибыли</span></div>
-                <table>
-                    <thead><tr><th>Модель</th><th class="num">Пар</th><th class="num">Выручка</th><th class="num">Прибыль</th></tr></thead>
-                    <tbody>
-                    @forelse($topModels as $t)
-                        <tr>
-                            <td>{{ $t['name'] }}</td>
-                            <td class="num">{{ $t['units'] }}</td>
-                            <td class="num">{{ $money($t['revenue']) }} ₽</td>
-                            <td class="num text-success">{{ $money($t['profit']) }} ₽</td>
-                        </tr>
-                    @empty
-                        <tr><td colspan="4" class="text-muted small text-center py-3">Продаж за месяц нет.</td></tr>
-                    @endforelse
-                    </tbody>
-                </table>
+    {{-- Склад в деньгах --}}
+    <div class="sec" id="stock"><h2>Склад в деньгах</h2><span class="note">сейчас, без учёта месяца</span></div>
+    <div class="kpis4">
+        <div class="card mini"><div class="lbl">Товаров</div><div class="val num">{{ $productsCount }}</div></div>
+        <div class="card mini"><div class="lbl">Пар на складе</div><div class="val num">{{ $totalUnits }}</div></div>
+        <div class="card mini"><div class="lbl">Доступно</div><div class="val num">{{ $availableSum }}</div></div>
+        <div class="card mini"><div class="lbl">Вложено · по закупке</div><div class="val num">{{ $money($stockCostValue) }} ₽</div></div>
+        <div class="card mini"><div class="lbl">Стоимость · по продаже</div><div class="val num">{{ $money($stockSaleValue) }} ₽</div></div>
+        <div class="card mini"><div class="lbl">Потенц. прибыль</div><div class="val num" style="color:var(--accent)">{{ $money($potentialProfit) }} ₽</div></div>
+        <div class="card mini"><div class="lbl">Пар в доставке</div><div class="val num">{{ $inDeliveryUnits }}</div></div>
+        <div class="card mini"><div class="lbl">В доставке · по закупке</div><div class="val num">{{ $money($inDeliveryValue) }} ₽</div></div>
+    </div>
+
+    @if($showChart)
+        <div class="card chartcard" id="days" style="margin-top:10px">
+            <div class="sec" style="margin:0 0 4px">
+                <h2>Выручка и прибыль по дням</h2>
+                <div class="legend">
+                    <span class="lg"><span class="dot2" style="background:var(--blue)"></span>выручка</span>
+                    <span class="lg"><span class="dot2" style="background:var(--accent)"></span>прибыль</span>
+                </div>
             </div>
+            <div class="chart-h"><canvas id="bars-days" data-bars="{{ $bars }}"></canvas></div>
         </div>
-        {{-- По источникам --}}
-        <div class="col-lg-6">
-            <div class="own-card">
-                <div class="hd">По источникам за месяц</div>
-                <table>
-                    <thead><tr><th>Источник</th><th class="num">Заказов</th><th class="num">Выручка</th><th class="num">Прибыль</th></tr></thead>
-                    <tbody>
-                    @forelse($bySource as $s)
-                        <tr>
-                            <td>{{ $s['name'] }}</td>
-                            <td class="num">{{ $s['count'] }}</td>
-                            <td class="num">{{ $money($s['revenue']) }} ₽</td>
-                            <td class="num text-success">{{ $money($s['profit']) }} ₽</td>
-                        </tr>
-                    @empty
-                        <tr><td colspan="4" class="text-muted small text-center py-3">Нет данных.</td></tr>
-                    @endforelse
-                    </tbody>
-                </table>
-            </div>
+    @endif
+
+    {{-- Топ моделей и источники --}}
+    <div class="grid2" id="models">
+        <div class="card tbl-card">
+            <div class="tbl-head"><h2>Топ моделей за месяц</h2><span class="note">по прибыли</span></div>
+            <div class="tbl-wrap"><table class="t">
+                <thead><tr><th>Модель</th><th class="num">Пар</th><th class="num">Выручка</th><th class="num">Прибыль</th></tr></thead>
+                <tbody>
+                @forelse($topModels as $t)
+                    <tr>
+                        <td class="wrap">{{ $t['name'] }}</td>
+                        <td class="num">{{ $t['units'] }}</td>
+                        <td class="num">{{ $money($t['revenue']) }} ₽</td>
+                        <td class="num" style="color:var(--pos);font-weight:700">{{ $money($t['profit']) }} ₽</td>
+                    </tr>
+                @empty
+                    <tr><td colspan="4" class="muted">Продаж за месяц нет.</td></tr>
+                @endforelse
+                </tbody>
+            </table></div>
+        </div>
+        <div class="card tbl-card">
+            <div class="tbl-head"><h2>По источникам за месяц</h2></div>
+            <div class="tbl-wrap"><table class="t">
+                <thead><tr><th>Источник</th><th class="num">Заказов</th><th class="num">Выручка</th><th class="num">Прибыль</th></tr></thead>
+                <tbody>
+                @forelse($bySource as $s)
+                    <tr>
+                        <td><span class="nm-inline">@include('owner._src_logo', ['name' => $s['name']]){{ $s['name'] }}</span></td>
+                        <td class="num">{{ $s['count'] }}</td>
+                        <td class="num">{{ $money($s['revenue']) }} ₽</td>
+                        <td class="num" style="color:var(--pos);font-weight:700">{{ $money($s['profit']) }} ₽</td>
+                    </tr>
+                @empty
+                    <tr><td colspan="4" class="muted">Нет данных.</td></tr>
+                @endforelse
+                </tbody>
+            </table></div>
         </div>
     </div>
 
     {{-- Все продажи за месяц с маржой по каждому заказу --}}
-    <div class="own-card">
-        <div class="hd">
-            <span>Все продажи за месяц — прибыль по каждому заказу</span>
-            <span class="small text-muted fw-normal">{{ $count }} заказ(ов) · «—» = закуп не указан</span>
-        </div>
-        <div class="tbl-scroll">
-            <table>
-                <thead><tr>
-                    <th>Дата</th><th>Товар</th><th>Источник</th><th>Продавец</th>
-                    <th class="num">Пар</th><th class="num">Сумма</th><th class="num">Себест.</th><th class="num">Прибыль</th><th class="num">Маржа</th>
-                </tr></thead>
-                <tbody>
-                @forelse($sold as $d)
-                    @php($dProfit = $d->sale_profit)
-                    @php($dMargin = $d->sale_margin_percent)
-                    @php($dCost = $d->unit_cost_basis)
-                    <tr>
-                        <td class="text-muted small">{{ optional($d->stock_deducted_at)->format('d.m H:i') }}</td>
-                        <td>{{ $d->warehouseItem?->display_name ?? $d->title }}</td>
-                        <td class="small">{{ $d->manual_source ?: '—' }}</td>
-                        <td class="small">{{ $d->responsible?->name ?? '—' }}</td>
-                        <td class="num">{{ (int) $d->sold_quantity }}</td>
-                        <td class="num">{{ $money($d->amount) }} ₽</td>
-                        <td class="num text-muted">{{ $dCost !== null ? $money($dCost).' ₽' : '—' }}</td>
-                        <td class="num fw-semibold {{ $dProfit === null ? 'text-muted' : ($dProfit >= 0 ? 'text-success' : 'text-danger') }}">{{ $dProfit !== null ? $money($dProfit).' ₽' : '—' }}</td>
-                        <td class="num {{ $dMargin === null ? 'text-muted' : '' }}">{{ $dMargin !== null ? $dMargin.'%' : '—' }}</td>
-                    </tr>
-                @empty
-                    <tr><td colspan="9" class="text-muted small text-center py-4">Продаж за выбранный месяц нет.</td></tr>
-                @endforelse
-                </tbody>
-            </table>
-        </div>
+    <div class="card tbl-card" id="sales">
+        <div class="tbl-head"><h2>Все продажи за месяц — прибыль по каждому заказу</h2><span class="note">{{ $count }} заказ(ов) · «—» = закуп не указан</span></div>
+        <div class="tbl-wrap tbl-scroll"><table class="t">
+            <thead><tr>
+                <th>Дата</th><th>Товар</th><th>Источник</th><th>Продавец</th>
+                <th class="num">Пар</th><th class="num">Сумма</th><th class="num">Себест.</th><th class="num">Прибыль</th><th class="num">Маржа</th>
+            </tr></thead>
+            <tbody>
+            @forelse($sold as $d)
+                @php
+                    $dProfit = $d->sale_profit;
+                    $dMargin = $d->sale_margin_percent;
+                    $dCost = $d->unit_cost_basis;
+                @endphp
+                <tr>
+                    <td class="muted">{{ optional($d->stock_deducted_at)->format('d.m H:i') }}</td>
+                    <td class="wrap">{{ $d->warehouseItem?->display_name ?? $d->title }}</td>
+                    <td>{{ $d->manual_source ?: '—' }}</td>
+                    <td>{{ $d->responsible?->name ?? '—' }}</td>
+                    <td class="num">{{ (int) $d->sold_quantity }}</td>
+                    <td class="num">{{ $money($d->amount) }} ₽</td>
+                    <td class="num muted">{{ $dCost !== null ? $money($dCost).' ₽' : '—' }}</td>
+                    <td class="num" style="font-weight:700;color:{{ $dProfit === null ? 'var(--muted)' : ($dProfit >= 0 ? 'var(--pos)' : 'var(--neg)') }}">{{ $dProfit !== null ? $money($dProfit).' ₽' : '—' }}</td>
+                    <td class="num {{ $dMargin === null ? 'muted' : '' }}">{{ $dMargin !== null ? $dMargin.'%' : '—' }}</td>
+                </tr>
+            @empty
+                <tr><td colspan="9" class="muted">Продаж за выбранный месяц нет.</td></tr>
+            @endforelse
+            </tbody>
+        </table></div>
     </div>
 </div>
 @endsection

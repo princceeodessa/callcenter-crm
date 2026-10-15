@@ -1,16 +1,25 @@
-@extends('layouts.app')
+@extends('layouts.owner')
 
-@section('content')
 @php
-    $titles = ['ceilings' => '🏠 Потолки · БлагоДар', 'sneakers' => '👟 Кроссовки · Шаговый'];
+    $titles = ['ceilings' => 'Потолки · БлагоДар', 'sneakers' => 'Кроссовки · Шаговый'];
     $back = $business === 'ceilings' ? route('owner.ceilings') : route('owner.dashboard');
 @endphp
+
+@section('title', 'SMM-контент')
+@section('subtitle')SMM-контент · {{ $titles[$business] }} · реклама клипов VK: что идёт, какие клипы тянут, что заменить@endsection
+
+@section('nav')
+    <a href="{{ $back }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg> Сводка</a>
+    <a href="#top" class="active"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="M10 8l5 4-5 4V8z"/></svg> Клипы</a>
+@endsection
+
+@section('content')
 @verbatim
 <style>
 /* SMM-контент: стили отчёта SMM-специалиста (blagodar-clips), в цветах CRM и только внутри .smm-report */
-.smm-report { --surface: var(--crm-surface-strong); --line: var(--crm-border); --muted: var(--crm-muted); --accent: #2563eb; --lead: #94a3b8; --other: #c9b98f;
+.smm-report { --surface: var(--card); --lead: #94a3b8; --other: #c9b98f;
   --good: #15803d; --good-bg: rgba(22,163,74,.14); --warn: #b45309; --warn-bg: rgba(245,158,11,.18); --bad: #dc2626; --bad-bg: rgba(220,38,38,.13);
-  --idle: var(--crm-muted); --idle-bg: rgba(127,127,127,.14); max-width: 1280px; margin: 0 auto; display: grid; gap: 1.6rem; }
+  --idle: var(--muted); --idle-bg: rgba(127,127,127,.14); display: grid; gap: 1.6rem; }
 .smm-report #view { display: grid; gap: 1.6rem; }
 .smm-report h2 { font-size: 1.1rem; font-weight: 700; margin: 0; letter-spacing: -.01em; }
 .smm-report h3 { margin: 0; font-size: 1rem; font-weight: 700; }
@@ -25,7 +34,7 @@
 .smm-report .tab { font: inherit; font-weight: 600; background: transparent; color: var(--muted); border: 0; border-bottom: 3px solid transparent; padding: .5rem .8rem; }
 .smm-report .tab[aria-selected="true"] { color: inherit; border-bottom-color: var(--accent); }
 .smm-report .tab .tab-note { font-weight: 400; font-size: .8rem; margin-left: 6px; }
-.smm-report .brief { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--crm-shadow); padding: 1rem 1.15rem; display: grid; gap: .55rem; }
+.smm-report .brief { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow-sm); padding: 1rem 1.15rem; display: grid; gap: .55rem; }
 .smm-report .brief-head { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: baseline; }
 .smm-report .brief ul { margin: 0; padding-left: 1.2rem; display: grid; gap: .3rem; max-width: 85ch; }
 .smm-report .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: .7rem; }
@@ -60,33 +69,28 @@
 .smm-report .rec-top { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: baseline; }
 .smm-report .rec p { max-width: 85ch; }
 .smm-report .rec .act { font-weight: 600; }
-.smm-chips { display: flex; gap: .35rem; flex-wrap: wrap; align-items: center; }
-.smm-chips a { padding: .25rem .7rem; border-radius: 999px; border: 1px solid var(--crm-border); font-size: .82rem; text-decoration: none; color: inherit; }
-.smm-chips a.on { background: #2563eb; border-color: #2563eb; color: #fff; }
+.smm-report .brief, .smm-report .kpi, .smm-report .table-box, .smm-report .chart-box, .smm-report .rec { border-radius: var(--r-sm); }
+.smm-report .kpi { overflow: visible; }
+.smm-note { font-size: 12px; color: var(--muted); }
+.smm-report a { color: var(--accent); font-weight: 600; text-decoration: none; }
+.smm-report a:hover { text-decoration: underline; }
 @media (max-width: 575.98px) { .smm-report th, .smm-report td { padding: .4rem .5rem; font-size: .8rem; } }
 </style>
 @endverbatim
 
-<div class="smm-report">
-    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-        <div>
-            <h4 class="mb-0" style="font-size:1.5rem;font-weight:700;letter-spacing:-.02em">📱 SMM-контент · {{ $titles[$business] }}</h4>
-            <div class="text-muted small" id="period">реклама клипов VK: что идёт, какие клипы тянут, что заменить</div>
-        </div>
-        @if($canBoth)
-            @include('owner._switch_smm', ['active' => $business])
-        @endif
+<div class="filters" id="top">
+    @include('owner._biz_tabs', ['biz' => $business, 'tab' => 'smm'])
+    <div class="seg">
+        @foreach($periods as $d => $label)
+            <a href="{{ route('owner.smm', ['business' => $business, 'days' => $d]) }}" class="{{ $days === $d ? 'active' : '' }}">{{ $label }}</a>
+        @endforeach
     </div>
-    <div class="d-flex flex-wrap gap-2 align-items-center justify-content-between">
-        <div class="smm-chips">
-            <a href="{{ $back }}">← Сводка</a>
-            @foreach($periods as $d => $label)
-                <a href="{{ route('owner.smm', ['business' => $business, 'days' => $d]) }}" class="{{ $days === $d ? 'on' : '' }}">{{ $label }}</a>
-            @endforeach
-        </div>
-        <span class="text-muted small">цифры кабинета VK Рекламы обновляются каждые 2 часа</span>
-    </div>
+    <div class="spacer"></div>
+    <span class="smm-note">цифры кабинета VK Рекламы обновляются каждые 2 часа</span>
+</div>
 
+<div class="smm-report">
+    <p class="smm-note" id="period" style="margin-top:-10px"></p>
     <script id="report-data" type="application/json">{!! json_encode($report, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) !!}</script>
 
 @verbatim

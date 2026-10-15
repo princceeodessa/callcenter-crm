@@ -183,8 +183,8 @@ class OwnerCeilingsTest extends TestCase
 
         $res->assertSee('Обратились в КЦ')->assertSee('Обращения в колл-центр');
         $html = preg_replace('/\s+/u', ' ', strip_tags(str_replace('<', ' <', $res->getContent())));   // ячейки — через пробел
-        $this->assertStringContainsString('Написали в соцсети и чаты 3 записались 0 (0%) · нецелевые 1 (33%) ВК 2, чат Авито 1', $html);
-        $this->assertStringContainsString('Позвонили 1 записались 1 (100%) · нецелевые 0 (0%)', $html);
+        $this->assertStringContainsString('Написали в соцсети и чаты 3 нецелевые 1 (33%) · ВК 2, чат Авито 1 записались 0 0%', $html);
+        $this->assertStringContainsString('Позвонили 1 нецелевые 0 (0%) записались 1 100%', $html);
         // колонки: обратились | целевой записанный | целевой отказ | 6 категорий нецелевых | в работе | % записи
         $this->assertStringContainsString('Обратились Целевой записанный Целевой отказ Дилерский Запись на монтаж Сливы и доп. работы Реклама и спам Запрос на связь с замерщиком Претензии В работе % записи', $html);
         $this->assertStringNotContainsString('Нецелевые без категории', $html);   // все нецелевые периода — с категорией
