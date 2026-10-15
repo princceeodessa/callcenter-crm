@@ -10,7 +10,7 @@
     $hour = (int) now()->format('G');
     $greeting = $hour < 5 ? 'Доброй ночи' : ($hour < 12 ? 'Доброе утро' : ($hour < 18 ? 'Добрый день' : 'Добрый вечер'));
     $css = fn (string $f) => asset('css/'.$f).'?v='.(@filemtime(public_path('css/'.$f)) ?: 1);
-    $roleLabel = ['sneaker_owner' => 'Владелец', 'sneaker_head' => 'Руководитель · Кроссовки'][$ownerUser?->role] ?? 'Сотрудник';
+    $roleLabel = ['sneaker_owner' => 'Владелец · БлагоДар', 'sneaker_head' => 'Руководитель · Кроссовки'][$ownerUser?->role] ?? 'Сотрудник';
 @endphp
 <!doctype html>
 <html lang="ru" data-theme="light">
@@ -58,9 +58,24 @@
                     <button class="iconbtn m-menu" id="bdMenu" type="button" title="Меню" aria-label="Меню" aria-controls="bdSide" aria-expanded="false">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
                     </button>
+                    {{-- поиск по сделкам и клиентам (на телефоне — кнопкой, поле открывается поверх) --}}
+                    <div class="searchbox" id="bdSearchBox">
+                        <label class="search" title="Поиск по сделкам и клиентам">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+                            <input id="bdSearch" type="search" autocomplete="off" spellcheck="false" placeholder="Поиск по сделкам, клиентам" aria-label="Поиск по сделкам и клиентам">
+                        </label>
+                        <div class="search-pop" id="bdSearchPop" hidden></div>
+                    </div>
                     <button class="iconbtn" id="bdTheme" type="button" title="Светлая / тёмная тема">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg>
                     </button>
+                    <div class="pop-wrap">
+                        <button class="iconbtn" id="bdBell" type="button" title="Уведомления" aria-label="Уведомления"><span class="dot" id="bdBellDot" hidden></span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg></button>
+                        <div class="menu-pop notif-pop" id="bdNotifPop" hidden>
+                            <div class="notif-head"><span>Уведомления</span><button class="notif-read" id="bdNotifRead" type="button" disabled>Прочитать все</button></div>
+                            <div class="notif-list" id="bdNotifList"><div class="sr-empty">Загружаю…</div></div>
+                        </div>
+                    </div>
                     <div class="pop-wrap">
                         <button class="avatar" id="bdAvatar" type="button" title="{{ $ownerUser?->name }}">{{ mb_strtoupper(mb_substr($ownerFirst !== '' ? $ownerFirst : 'В', 0, 1)) }}</button>
                         <div class="menu-pop acc-pop" id="bdAccPop" hidden>
@@ -70,7 +85,7 @@
                             </div>
                             <div class="menu-list">
                                 @yield('account-links')
-                                <form method="POST" action="{{ route('logout') }}">
+                                <form method="POST" action="{{ route('logout') }}" class="menu-form">
                                     @csrf
                                     <button class="menu-item danger" type="submit">
                                         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></svg> Выйти
@@ -87,7 +102,30 @@
     </main>
 </div>
 
+{{-- плеер клипа VK (кнопки .watch в таблицах клипов) --}}
+<div class="cm" id="bdClip" hidden>
+    <div class="cm-back" data-cm-close></div>
+    <div class="cm-card" role="dialog" aria-modal="true" aria-labelledby="bdClipTtl">
+        <button class="cm-x" type="button" data-cm-close aria-label="Закрыть">✕</button>
+        <div class="cm-frame"><iframe id="bdClipFrame" title="Клип VK" allow="autoplay; encrypted-media; fullscreen; picture-in-picture"></iframe></div>
+        <div class="cm-ttl" id="bdClipTtl">Клип</div>
+        <p class="cm-sub" id="bdClipSub">VK Клип · БлагоДар</p>
+        <div class="cm-act"><a class="cm-btn pri" id="bdClipVk" target="_blank" rel="noopener">Открыть в VK ↗</a></div>
+    </div>
+</div>
+
+{{-- карточка сделки или клиента из поиска и уведомлений (только просмотр) --}}
+<div class="cm" id="bdCard" hidden>
+    <div class="cm-back" data-cm-close></div>
+    <div class="cm-card dc-card" role="dialog" aria-modal="true" aria-label="Карточка">
+        <button class="cm-x" type="button" data-cm-close aria-label="Закрыть">✕</button>
+        <div id="bdCardBody"></div>
+    </div>
+</div>
+
 <script src="{{ asset('js/bd-daterange.js') }}?v={{ @filemtime(public_path('js/bd-daterange.js')) ?: 1 }}"></script>
+<script>window.bdFeedUrl = @json(route('owner.dashboard'));</script>
+<script src="{{ asset('js/bd-owner-head.js') }}?v={{ @filemtime(public_path('js/bd-owner-head.js')) ?: 1 }}"></script>
 <script>
 /* Графики дизайн-системы: <canvas data-spark='{"data":[…],"labels":[…],"unit":["замер","замера","замеров"]}' data-on-accent="1">
    (линия внизу KPI-карточки) и <canvas data-bars='{"labels":[…],"sets":[{"label":"…","data":[…],"color":"--blue"}]}'>.
@@ -143,10 +181,19 @@ window.bdCharts = (function () {
         try { localStorage.setItem('bdTheme', dark ? 'dark' : 'light'); } catch (e) {}
         window.bdCharts.draw();
     });
-    const btn = document.getElementById('bdAvatar'), pop = document.getElementById('bdAccPop');
-    btn.addEventListener('click', e => { e.stopPropagation(); pop.hidden = !pop.hidden; });
-    document.addEventListener('click', e => { if (!pop.hidden && !pop.contains(e.target)) pop.hidden = true; });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') pop.hidden = true; });
+    // всплывашки шапки: личный кабинет и уведомления — открыта одна, закрываются кликом мимо и Esc
+    const pops = [['bdAvatar', 'bdAccPop'], ['bdBell', 'bdNotifPop']].map(([b, p]) => ({ btn: document.getElementById(b), pop: document.getElementById(p) }));
+    const closePops = except => pops.forEach(m => { if (m.pop !== except) m.pop.hidden = true; });
+    pops.forEach(m => m.btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const open = m.pop.hidden;
+        closePops(m.pop);
+        window.bdHead.closeSearch();
+        m.pop.hidden = !open;
+        if (open && m.btn.id === 'bdBell') window.bdHead.loadNotifs();
+    }));
+    document.addEventListener('click', e => pops.forEach(m => { if (!m.pop.hidden && !m.pop.contains(e.target)) m.pop.hidden = true; }));
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closePops(null); });
 
     // телефон: меню слева выезжает по кнопке, закрывается по пункту меню, по фону и Esc
     const menuBtn = document.getElementById('bdMenu'), back = document.getElementById('bdSideBack');

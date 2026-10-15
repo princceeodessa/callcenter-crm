@@ -91,6 +91,75 @@ table.t.compact th:first-child,table.t.compact td:first-child{padding-left:16px}
 @media(max-width:1080px){.grid3{grid-template-columns:1fr}}
 @media(max-width:620px){.day-strip{gap:2px;overflow-x:auto}.ds-day .v{display:none}}
 
+/* шапка: «Выйти» — кнопка формы, но выглядит пунктом меню, как в макете */
+.menu-form{margin:0}
+button.menu-item{width:100%;border:0;background:transparent;font-family:inherit;text-align:left}
+button.menu-item:focus-visible,.notif-item.link:focus-visible,.sr-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.search input::-webkit-search-cancel-button{display:none}
+.notif-item.link{cursor:pointer}
+.ni-sub{font-size:11.5px;color:var(--muted);margin-top:2px;line-height:1.35;padding-right:10px}
+.sr-tt mark{background:color-mix(in srgb,var(--accent) 26%,transparent);color:inherit;border-radius:3px;padding:0 1px}
+
+/* плеер клипа VK и карточка сделки — модальные окна из макета дизайнера (.cm) */
+.watch{background:none;border:0;color:var(--accent);font:inherit;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:0;font-variant-numeric:tabular-nums;text-align:left}
+.watch:hover{text-decoration:underline}
+.watch svg{flex:none}
+.cm{position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center;padding:20px}
+.cm[hidden]{display:none}
+.cm-back{position:absolute;inset:0;background:rgba(8,10,16,.62)}
+.cm-card{position:relative;z-index:1;width:340px;max-width:100%;background:var(--card);border-radius:20px;box-shadow:var(--shadow);padding:14px}
+.cm-x{position:absolute;top:-12px;right:-12px;width:36px;height:36px;border-radius:50%;border:0;background:var(--card);box-shadow:var(--shadow-sm);color:var(--ink);cursor:pointer;font-size:16px;z-index:2}
+.cm-frame{position:relative;aspect-ratio:9/16;max-height:70vh;margin:0 auto;border-radius:14px;overflow:hidden;background:#0e0f14}
+.cm-frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.cm-ttl{font-size:15px;font-weight:800;margin:12px 2px 2px}
+.cm-sub{font-size:12px;color:var(--muted);margin:0 2px}
+.cm-act{display:flex;gap:8px;margin-top:12px}
+.cm-btn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;border-radius:12px;padding:10px;font-weight:700;font-size:13px;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink);text-decoration:none}
+.cm-btn.pri{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+body.cm-open{overflow:hidden}
+.dc-card{width:460px;padding:18px;max-height:calc(100vh - 40px);overflow:auto}
+.dc-card .cm-x{top:10px;right:10px;box-shadow:none;background:var(--tile)}
+.dc-head{display:flex;align-items:center;gap:12px;padding-right:40px}
+.dc-ttl{font-size:16px;font-weight:800;line-height:1.3;color:var(--ink)}
+.dc-sub{font-size:12px;color:var(--muted);margin-top:2px}
+.dc-back{display:inline-block;font-size:12.5px;font-weight:600;color:var(--accent);text-decoration:none;margin-bottom:10px}
+.dc-contact{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin:14px 0 4px;padding:11px 14px;border-radius:12px;background:var(--tile);font-size:13.5px;color:var(--ink)}
+.dc-contact a{color:var(--accent);text-decoration:none;font-weight:600;display:inline-flex;align-items:center;gap:5px}
+.dc-facts{margin:12px 0 0;display:grid;grid-template-columns:1fr 1fr;gap:10px 16px}
+.dc-facts div{min-width:0}
+.dc-facts dt{font-size:10.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.dc-facts dd{margin:3px 0 0;font-size:13px;font-weight:600;color:var(--ink);overflow-wrap:anywhere}
+.dc-sec{font-size:10.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin:18px 0 8px}
+.dc-tl{list-style:none;margin:0;padding:0}
+.dc-tl li{display:flex;gap:11px;padding:7px 0;position:relative}
+.dc-tl li:not(:last-child)::before{content:"";position:absolute;left:4px;top:20px;bottom:-6px;width:2px;background:var(--line)}
+.dc-dot{width:10px;height:10px;border-radius:50%;margin-top:4px;flex:none;background:var(--muted)}
+.dc-tl li.green .dc-dot{background:var(--accent)}
+.dc-tl li.red .dc-dot{background:var(--neg)}
+.dc-tl li.violet .dc-dot{background:var(--violet)}
+.dc-tx{font-size:13px;font-weight:600;color:var(--ink);line-height:1.4}
+.dc-tm{font-size:11px;color:var(--muted);margin-top:2px}
+.dc-deals{margin:0 -6px}
+@media(max-width:620px){.dc-facts{grid-template-columns:1fr}.dc-card{padding:16px}}
+
+/* телефон: поиск — кнопкой-лупой, поле и результаты открываются поверх страницы */
+@media(max-width:900px){
+  .searchbox .search{cursor:pointer}
+  .searchbox.open::before{content:"";position:fixed;inset:0;background:rgba(8,10,16,.45);z-index:225}
+  .searchbox.open .search{position:fixed;left:16px;right:16px;top:16px;width:auto;z-index:230;padding:11px 16px;box-shadow:var(--shadow);cursor:text}
+  .searchbox.open .search input{display:block}
+  .searchbox.open .search-pop{position:fixed;left:16px;right:16px;top:72px;width:auto;max-width:none;z-index:230}
+  body.search-open{overflow:hidden}
+}
+/* телефон: кнопки шапки — в строке с логотипом, приветствие под ними во всю ширину; уведомления — во всю ширину экрана */
+@media(max-width:620px){
+  .top{position:relative;display:block}
+  .top-right{position:absolute;top:0;right:0}
+  .top .m-brand{min-height:42px}
+  .top-right .notif-pop{position:fixed;top:66px;left:16px;right:16px;width:auto;max-width:none}
+}
+@media(max-width:420px){.top-right{gap:6px}.top-right .iconbtn,.top-right .avatar,.searchbox .search{width:40px;height:40px}.searchbox.open .search{width:auto;height:auto}}
+
 /* телефон: меню слева выезжает по кнопке ☰ в шапке (в макете на узком экране оно просто скрыто) */
 .m-menu,.side-backdrop{display:none}
 @keyframes bdSideIn{from{transform:translateX(-100%)}to{transform:none}}

@@ -92,7 +92,7 @@
 
 <div class="smm-report">
     <p class="smm-note" id="period" style="margin-top:-10px"></p>
-    <script id="report-data" type="application/json">{!! json_encode($report, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) !!}</script>
+    <script id="report-data" type="application/json" data-biz="{{ $business === 'ceilings' ? 'БлагоДар · Потолки' : 'Кроссовки' }}">{!! json_encode($report, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) !!}</script>
 
 @verbatim
   <nav class="tabs" role="tablist" aria-label="Бизнес" id="tabs"></nav>
@@ -170,6 +170,7 @@
   var fmt = function (n, d) { return Number(n || 0).toLocaleString('ru-RU', { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 }); };
   var dm = function (s) { return s ? s.slice(8, 10) + '.' + s.slice(5, 7) : ''; };
   var dmy = function (s) { return s ? dm(s) + '.' + s.slice(0, 4) : ''; };
+  var BIZ = document.getElementById('report-data').dataset.biz || 'БлагоДар';
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
   var plural = function (n, one, few, many) { var m10 = n % 10, m100 = n % 100; return (m10 === 1 && m100 !== 11) ? one : (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) ? few : many; };
   var sum = function (arr, k) { return arr.reduce(function (s, g) { return s + (g[k] || 0); }, 0); };
@@ -314,7 +315,10 @@
         var cls = g.ctr_last < g.ctr_first - 0.03 ? 'trend-down' : (g.ctr_last > g.ctr_first + 0.03 ? 'trend-up' : '');
         trend = '<span class="' + cls + '">' + fmt(g.ctr_first, 2) + '% → ' + fmt(g.ctr_last, 2) + '%</span>';
       }
-      var label = g.clip ? '<a href="https://vk.ru/clip' + esc(g.owner) + '_' + esc(g.clip) + '" target="_blank" rel="noopener">' + esc(g.clip) + '</a>' : esc(g.name);
+      // ▶ — плеер клипа поверх страницы (layouts/owner, public/js/bd-owner-head.js)
+      var label = g.clip ? '<button type="button" class="watch" data-oid="' + esc(g.owner) + '" data-vid="' + esc(g.clip) + '" data-url="https://vk.ru/clip' + esc(g.owner) + '_' + esc(g.clip) + '"' +
+        ' data-title="Клип ' + esc(g.clip) + '" data-sub="' + esc('VK Клип · ' + BIZ + ' · ' + VD[g.v][0]) + '" title="Смотреть клип">' + esc(g.clip) +
+        ' <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button>' : esc(g.name);
       var sub = g.v === 'banned' && g.reasons && g.reasons.length ? '<span class="sub">' + esc(reasonText(g.reasons)) + '</span>' : '';
       var dim = ['off', 'paused'].indexOf(g.v) >= 0;
       return '<tr' + (dim ? ' class="dim"' : '') + '><td>' + label + '</td>' +

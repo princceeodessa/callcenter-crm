@@ -404,7 +404,11 @@
                 @foreach($vkGroups as $g)
                     <tr>
                         <td class="wrap">
-                            @if($g['clip'])<a href="{{ $g['clip'] }}" target="_blank" rel="noopener">{{ $g['name'] }}</a>@else{{ $g['name'] }}@endif
+                            @if($g['clip'] && preg_match('~clip(-?\d+)_(\d+)~', $g['clip'], $cm))
+                                {{-- ▶ — плеер клипа поверх страницы (layouts/owner, public/js/bd-owner-head.js) --}}
+                                <button type="button" class="watch" data-oid="{{ $cm[1] }}" data-vid="{{ $cm[2] }}" data-url="{{ $g['clip'] }}" data-title="{{ $g['name'] }}"
+                                        data-sub="VK Клип · БлагоДар · Потолки · {{ $g['active'] ? 'в работе' : 'остановлена' }}" title="Смотреть клип">{{ $g['name'] }} <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button>
+                            @elseif($g['clip'])<a href="{{ $g['clip'] }}" target="_blank" rel="noopener">{{ $g['name'] }}</a>@else{{ $g['name'] }}@endif
                             <span class="tag {{ $g['active'] ? 'green' : 'gray' }}">{{ $g['active'] ? 'в работе' : 'остановлена' }}</span>
                             @if($g['plan'] !== '')<div class="note">{{ $g['plan'] }}</div>@endif
                         </td>

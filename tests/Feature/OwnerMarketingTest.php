@@ -305,7 +305,9 @@ class OwnerMarketingTest extends TestCase
         // это продажи кроссовок: на самой сводке потолков их нет, только ссылка в боковом меню (под «Кроссовками»)
         $this->assertStringNotContainsString('Продажи за день', strstr($html, '<main class="main">'));
         $res->assertSee('VK Реклама — группы объявлений');
-        $res->assertSee('<a href="https://vk.com/clip-1_111" target="_blank" rel="noopener">Клип 111</a>', false);
+        // клип — кнопка ▶: плеер VK поверх страницы, в нём ссылка на клип
+        $this->assertMatchesRegularExpression('~<button type="button" class="watch" data-oid="-1" data-vid="111" data-url="https://vk.com/clip-1_111" data-title="Клип 111"~u', $html);
+        $res->assertSee('id="bdClip"', false);
         $res->assertSee('Лиды с формы');
         $res->assertSee('1,63 ₽');                              // просмотр клипа 1300 ₽ / 800 — с копейками, не «2 ₽»
         $res->assertDontSee('Новые лиды');                      // плитки лидов на сводке нет (решение владельца 09.10)

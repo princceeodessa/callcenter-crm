@@ -6,6 +6,7 @@ use App\Http\Controllers\Concerns\OwnerPeriod;
 use App\Models\Deal;
 use App\Models\Purchase;
 use App\Models\WarehouseItem;
+use App\Services\Owner\OwnerFeed;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -21,6 +22,9 @@ class OwnerDashboardController extends Controller
 
     public function index(Request $request)
     {
+        if ($request->filled('feed')) {
+            return $this->feed($request);
+        }
         $user = Auth::user();
         $accId = $user->account_id;
 
@@ -115,5 +119,25 @@ class OwnerDashboardController extends Controller
             'fromValue' => $start->toDateString(), 'toValue' => $end->toDateString(),
             'series' => ['by' => $byMonth ? 'month' : 'day', 'rows' => array_values($series)],
         ]);
+    }
+
+    /**
+     * Шапка всех страниц владельца (JSON): ?feed=search&q=…, ?feed=deal&id=…, ?feed=client&id=…, ?feed=notifications.
+     * Сделки и клиенты — только тех бизнесов, что видит пользователь (OwnerFeed).
+     */
+    private function feed(Request $request)
+    {
+        $feed = new OwnerFeed($request->user());
+        $id = (int) $request->query('id');
+        $data = match ((string) $request->query('feed')) {
+            'search' => $feed->search((string) $request->query('q', '')),
+            'deal' => $feed->deal($id),
+            'client' => $feed->client($id),
+            'notifications' => ['items' => $feed->notifications(now())],
+            default => null,
+        };
+        abort_if($data === null, 404);
+
+        return response()->json($data)->header('Cache-Control', 'no-store');
     }
 }

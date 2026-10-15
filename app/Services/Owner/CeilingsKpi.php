@@ -109,6 +109,16 @@ class CeilingsKpi
         ];
     }
 
+    /** Короткие итоги дня — для уведомлений владельца: обратились, записаны на замер, звонки. */
+    public function daySummary(Carbon $from, Carbon $to): array
+    {
+        return [
+            'contacts' => $this->contactsBetween($from, $to)['total'],
+            'bookings' => count($this->bookingsBetween($from, $to)),
+            'calls' => $this->callsBetween($from, $to)['totals'],
+        ];
+    }
+
     /** @return array{measure: ?int, non_target: ?int} */
     private function stages(): array
     {
@@ -146,7 +156,7 @@ class CeilingsKpi
      * Когда и кем сделка доведена до замера: раньшее из «первый раз на этапе «Замер назначен»» (кто перевёл) и
      * «закрыта «Успешно»» (кто закрыл). @return array<int, object{at: Carbon, by: ?int}>
      */
-    private function bookedAtFor(array $dealIds): array
+    public function bookedAtFor(array $dealIds): array
     {
         $out = [];
         $measure = $this->stages()['measure'];
@@ -172,7 +182,7 @@ class CeilingsKpi
     }
 
     /** Замеры, назначенные в периоде (по сделкам любого возраста). @return Collection<int, object{id:int, by:?int, at:Carbon}> */
-    private function bookingsBetween(Carbon $from, Carbon $to): Collection
+    public function bookingsBetween(Carbon $from, Carbon $to): Collection
     {
         $measure = $this->stages()['measure'];
         $ids = collect();
@@ -194,7 +204,7 @@ class CeilingsKpi
     }
 
     /** Источник каждого лида — ключ канала. @return array<int, string> */
-    private function channelsFor(array $dealIds): array
+    public function channelsFor(array $dealIds): array
     {
         $signals = []; // deal_id => [time, key]
         $note = function (int $dealId, $at, string $key) use (&$signals) {
