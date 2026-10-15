@@ -384,6 +384,15 @@ class MegafonVatsDealSync
     private static function resolveClientPhone(IntegrationConnection $connection, array $payload): ?string
     {
         $excluded = self::excludedPhoneNumbers($connection);
+
+        // У МегаФона клиент — phone, а telnum/diversion — наша линия. Если в phone наш номер (сотрудник из
+        // ignored_phone_numbers), звонок внутренний: клиента нет. Раньше клиентом становилась линия, и звонок
+        // прилипал к любой открытой сделке, где уже был звонок через эту линию.
+        $phone = self::normalizePhone(self::firstString($payload, ['phone']));
+        if ($phone !== null) {
+            return in_array($phone, $excluded, true) ? null : $phone;
+        }
+
         $candidates = [];
 
         foreach ([

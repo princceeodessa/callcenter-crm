@@ -76,6 +76,26 @@ class OutboundDialAndLeadHandlersTest extends TestCase
         $this->actingAs($op)->postJson(route('deals.move', $id), ['to_stage_id' => $this->stage['dial']])->assertOk()->assertJson(['ok' => true]);
     }
 
+    /** Звонок сотруднику (наш номер из ignored_phone_numbers) — внутренний: не прилипает к сделке клиента через общую линию. */
+    public function test_calls_with_our_own_numbers_do_not_stick_to_client_deals(): void
+    {
+        IntegrationConnection::create(['account_id' => $this->acc, 'provider' => 'megafon_vats', 'status' => 'active',
+            'settings' => ['crm_webhook_token' => 'dial', 'ignored_phone_numbers' => ['79001110017']]]);
+        $this->user('Admin', 'admin');
+        $line = ['telnum' => '79658432111', 'diversion' => '79658432111'];
+        // клиенту звонят через линию
+        $this->vats(['cmd' => 'event', 'type' => 'OUTGOING', 'callid' => 'k1', 'phone' => '79001234546'] + $line);
+        $deal = DB::table('deals')->where('account_id', $this->acc)->value('id');
+        // оператор звонит замерщику через ту же линию, замерщик перезванивает
+        $this->vats(['cmd' => 'event', 'type' => 'OUTGOING', 'callid' => 'k2', 'phone' => '79001110017'] + $line);
+        $this->vats(['cmd' => 'event', 'type' => 'ACCEPTED', 'callid' => 'k2', 'phone' => '79001110017'] + $line);
+        $this->vats(['cmd' => 'event', 'type' => 'INCOMING', 'callid' => 'k3', 'phone' => '89001110017'] + $line);
+
+        $this->assertSame(1, DB::table('deals')->where('account_id', $this->acc)->count());
+        $this->assertSame(1, DB::table('deal_activities')->where('deal_id', $deal)->where('type', 'call')->count());
+        $this->assertSame(0, DB::table('contacts')->where('account_id', $this->acc)->where('phone', 'like', '%9658432111')->count());
+    }
+
     public function test_lead_belongs_to_whoever_took_it_first(): void
     {
         $a = $this->user('Анна');
