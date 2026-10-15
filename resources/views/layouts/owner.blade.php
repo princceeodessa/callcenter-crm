@@ -32,7 +32,8 @@
 </head>
 <body>
 <div class="app">
-    <aside class="side">
+    <div class="side-backdrop" id="bdSideBack"></div>
+    <aside class="side" id="bdSide">
         <div class="brand">
             <span class="logo-sq">@include('owner._brand_logo')</span>
             <span class="brand-tx">БлагоДар<small>Сводка бизнеса</small></span>
@@ -53,6 +54,10 @@
                     <p class="hsub">@yield('subtitle')</p>
                 </div>
                 <div class="top-right">
+                    {{-- на телефоне меню слева скрыто — открывается этой кнопкой --}}
+                    <button class="iconbtn m-menu" id="bdMenu" type="button" title="Меню" aria-label="Меню" aria-controls="bdSide" aria-expanded="false">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+                    </button>
                     <button class="iconbtn" id="bdTheme" type="button" title="Светлая / тёмная тема">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg>
                     </button>
@@ -82,6 +87,7 @@
     </main>
 </div>
 
+<script src="{{ asset('js/bd-daterange.js') }}?v={{ @filemtime(public_path('js/bd-daterange.js')) ?: 1 }}"></script>
 <script>
 /* Графики дизайн-системы: <canvas data-spark='{"data":[…],"labels":[…],"unit":["замер","замера","замеров"]}' data-on-accent="1">
    (линия внизу KPI-карточки) и <canvas data-bars='{"labels":[…],"sets":[{"label":"…","data":[…],"color":"--blue"}]}'>.
@@ -129,104 +135,6 @@ window.bdCharts = (function () {
     return { draw };
 })();
 
-/* Календарь выбора периода из макета дизайнера: [data-daterange] (owner/_daterange) — кнопка и месяц во всплывашке;
-   диапазон (from/to) или один день (date). init() безопасно звать повторно — после автообновления сводки. */
-window.bdDateRange = (function () {
-    const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
-    const WD = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-    const pad = n => String(n).padStart(2, '0');
-    const parse = s => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || ''); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null; };
-    const iso = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
-    const ts = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-    const same = (a, b) => !!(a && b) && ts(a) === ts(b);
-    const fmtD = d => pad(d.getDate()) + '.' + pad(d.getMonth() + 1);
-    const fmtFull = d => fmtD(d) + '.' + d.getFullYear();
-    const rangeText = (a, b) => same(a, b) ? fmtFull(a) : (a.getFullYear() === b.getFullYear() ? fmtD(a) : fmtFull(a)) + ' — ' + fmtFull(b);
-    const closeAll = () => document.querySelectorAll('[data-dr-pop]').forEach(p => { p.hidden = true; });
-
-    function setup(root) {
-        if (root.dataset.drReady) return;
-        root.dataset.drReady = '1';
-        const day = root.dataset.mode === 'day';
-        const btn = root.querySelector('[data-dr-btn]'), pop = root.querySelector('[data-dr-pop]');
-        const max = parse(root.dataset.max);
-        let selStart = parse(root.dataset.from), selEnd = parse(root.dataset.to) || selStart;
-        const base = selEnd || new Date();
-        let view = { y: base.getFullYear(), m: base.getMonth() };
-        function render() {
-            let h = '<div class="cal-head"><button type="button" class="cal-nav" data-nav="-1" aria-label="Предыдущий месяц">‹</button>'
-                + '<div class="m">' + MONTHS[view.m] + ' ' + view.y + '</div>'
-                + '<button type="button" class="cal-nav" data-nav="1" aria-label="Следующий месяц">›</button></div><div class="cal-grid">';
-            WD.forEach(w => { h += '<div class="wd">' + w + '</div>'; });
-            const startIdx = (new Date(view.y, view.m, 1).getDay() + 6) % 7;
-            const dim = new Date(view.y, view.m + 1, 0).getDate();
-            const prevDays = new Date(view.y, view.m, 0).getDate();
-            const today = new Date();
-            for (let i = startIdx - 1; i >= 0; i--) h += '<div class="d muted">' + (prevDays - i) + '</div>';
-            for (let dd = 1; dd <= dim; dd++) {
-                const d = new Date(view.y, view.m, dd), t = ts(d);
-                if (max && t > ts(max)) { h += '<div class="d muted">' + dd + '</div>'; continue; }
-                let cls = 'd';
-                if (selStart && selEnd && t > ts(selStart) && t < ts(selEnd)) cls += ' in-range';
-                if (same(d, selStart)) cls += ' range-start';
-                if (same(d, selEnd) || (selStart && !selEnd && same(d, selStart))) cls += ' range-end';
-                if (same(d, today)) cls += ' today';
-                h += '<div class="' + cls + '" data-day="' + dd + '">' + dd + '</div>';
-            }
-            const trailing = (7 - ((startIdx + dim) % 7)) % 7;
-            for (let i = 1; i <= trailing; i++) h += '<div class="d muted">' + i + '</div>';
-            const rng = selStart && selEnd ? rangeText(selStart, selEnd) : (selStart ? fmtD(selStart) + ' — …' : (day ? 'выберите день' : 'выберите период'));
-            h += '</div><div class="cal-foot"><button type="button" class="cal-reset" data-dr-reset>Сбросить</button><span class="rng">' + rng + '</span>'
-                + '<button type="button" class="cal-apply" data-dr-apply>Применить</button></div>';
-            pop.innerHTML = h;
-        }
-        btn.addEventListener('click', e => {
-            e.stopPropagation();
-            const open = pop.hidden;
-            closeAll();
-            if (open) { pop.hidden = false; render(); }
-        });
-        pop.addEventListener('click', e => {
-            e.stopPropagation();   // клик внутри календаря — не «клик мимо»
-            const nav = e.target.closest('[data-nav]');
-            if (nav) {
-                view.m += +nav.dataset.nav;
-                if (view.m < 0) { view.m = 11; view.y--; }
-                if (view.m > 11) { view.m = 0; view.y++; }
-                render();
-                return;
-            }
-            const dc = e.target.closest('.d[data-day]');
-            if (dc) {
-                const d = new Date(view.y, view.m, +dc.dataset.day);
-                if (day) { selStart = d; selEnd = d; }
-                else if (!selStart || selEnd) { selStart = d; selEnd = null; }
-                else if (ts(d) < ts(selStart)) { selEnd = selStart; selStart = d; }
-                else selEnd = d;
-                render();
-                return;
-            }
-            if (e.target.closest('[data-dr-reset]')) { selStart = null; selEnd = null; render(); return; }
-            if (e.target.closest('[data-dr-apply]')) {
-                if (selStart && !selEnd) selEnd = selStart;
-                if (!selStart) return;
-                const q = new URLSearchParams(JSON.parse(root.dataset.params || '{}'));
-                if (day) q.set('date', iso(selStart)); else { q.set('from', iso(selStart)); q.set('to', iso(selEnd)); }
-                root.querySelector('[data-dr-label]').textContent = day ? fmtFull(selStart) : rangeText(selStart, selEnd);
-                pop.hidden = true;
-                location.href = root.dataset.action + '?' + q.toString();
-            }
-        });
-    }
-    document.addEventListener('click', closeAll);
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAll(); });
-
-    return {
-        init: () => document.querySelectorAll('[data-daterange]').forEach(setup),
-        isOpen: () => !!document.querySelector('[data-dr-pop]:not([hidden])'),
-    };
-})();
-
 (function () {
     const root = document.documentElement;
     document.getElementById('bdTheme').addEventListener('click', function () {
@@ -239,6 +147,14 @@ window.bdDateRange = (function () {
     btn.addEventListener('click', e => { e.stopPropagation(); pop.hidden = !pop.hidden; });
     document.addEventListener('click', e => { if (!pop.hidden && !pop.contains(e.target)) pop.hidden = true; });
     document.addEventListener('keydown', e => { if (e.key === 'Escape') pop.hidden = true; });
+
+    // телефон: меню слева выезжает по кнопке, закрывается по пункту меню, по фону и Esc
+    const menuBtn = document.getElementById('bdMenu'), back = document.getElementById('bdSideBack');
+    const setSide = open => { document.body.classList.toggle('side-open', open); menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false'); };
+    menuBtn.addEventListener('click', e => { e.stopPropagation(); setSide(! document.body.classList.contains('side-open')); });
+    back.addEventListener('click', () => setSide(false));
+    document.querySelectorAll('#bdSide .nav a').forEach(a => a.addEventListener('click', () => setSide(false)));
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') setSide(false); });
 
     // меню слева — якоря блоков страницы: плавная прокрутка и подсветка текущего блока
     const links = [...document.querySelectorAll('#bdNav a[href^="#"]')];

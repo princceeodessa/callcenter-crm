@@ -166,5 +166,22 @@ class OutboundDialAndLeadHandlersTest extends TestCase
         ], array_map(fn ($r) => array_map('strval', array_slice($r, 0, 3)), $rows));
 
         $this->actingAs($main)->get(route('reports.monthly', ['month' => '2026-09']))->assertOk()->assertSee('Обращения в Excel');
+
+        // свои даты из календаря: отчёт и выгрузка — за выбранные дни
+        $res = $this->actingAs($main)->get(route('reports.monthly', ['from' => '2026-09-03', 'to' => '2026-09-04']))->assertOk();
+        $this->assertSame(['from' => '2026-09-03', 'to' => '2026-09-04', 'custom' => true], $res->viewData('period'));
+        $res->assertSee('data-daterange', false)->assertSee('03.09 — 04.09.2026')
+            ->assertSee(e(route('reports.monthly', ['from' => '2026-09-03', 'to' => '2026-09-04', 'export' => 'contacts'])), false);
+        $res = $this->actingAs($main)->get(route('reports.monthly', ['from' => '2026-09-03', 'to' => '2026-09-04', 'export' => 'contacts']))->assertOk();
+        $this->assertStringContainsString('obrashcheniya-kc-2026-09-03_2026-09-04.xlsx', $res->headers->get('Content-Disposition'));
+        $path = tempnam(sys_get_temp_dir(), 'xl');
+        file_put_contents($path, $res->getContent());
+        $rows = \App\Support\Warehouse\SimpleXlsxReader::rows($path, 3);
+        @unlink($path);
+        $this->assertSame([['Номер телефона', 'Менеджер (кто принял)', 'Записался'], ['+7 (900) 444-55-66', 'Борис', 'нет']],
+            array_map(fn ($r) => array_map('strval', array_slice($r, 0, 3)), $rows));
+
+        // кривые даты — обычный месяц
+        $this->assertFalse($this->actingAs($main)->get(route('reports.monthly', ['month' => '2026-09', 'from' => '2026-09-10', 'to' => 'x']))->assertOk()->viewData('period')['custom']);
     }
 }

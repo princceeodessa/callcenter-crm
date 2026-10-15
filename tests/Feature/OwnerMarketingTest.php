@@ -302,7 +302,8 @@ class OwnerMarketingTest extends TestCase
         $res->assertSee('весь кабинет Авито <b>2 300 ₽</b>: потолки 1 950 ₽ · кондиционеры 110 ₽ · ремонт и шумоизоляция 40 ₽ · тариф и прочее 200 ₽', false);
         $res->assertSee('страница обновляется сама каждые 30 с');
         $res->assertSee('setInterval(refresh, 30000)', false);
-        $res->assertDontSee('Продажи за день');                 // это продажи кроссовок — на сводке потолков их нет
+        // это продажи кроссовок: на самой сводке потолков их нет, только ссылка в боковом меню (под «Кроссовками»)
+        $this->assertStringNotContainsString('Продажи за день', strstr($html, '<main class="main">'));
         $res->assertSee('VK Реклама — группы объявлений');
         $res->assertSee('<a href="https://vk.com/clip-1_111" target="_blank" rel="noopener">Клип 111</a>', false);
         $res->assertSee('Лиды с формы');

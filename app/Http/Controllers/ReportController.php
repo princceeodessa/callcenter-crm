@@ -34,6 +34,22 @@ class ReportController extends Controller
         [$y, $m] = explode('-', $month);
         $from = now()->setDate((int)$y, (int)$m, 1)->startOfDay();
         $to = (clone $from)->addMonth()->startOfDay();
+        // свои даты из календаря (from/to) — вместо месяца
+        $customRange = false;
+        try {
+            $rangeFrom = Carbon::createFromFormat('!Y-m-d', $request->string('from')->toString());
+            $rangeTo = Carbon::createFromFormat('!Y-m-d', $request->string('to')->toString())->addDay();
+            if ($rangeTo->gt($rangeFrom) && $rangeFrom->diffInDays($rangeTo) <= 400) {
+                [$from, $to, $customRange] = [$rangeFrom, $rangeTo, true];
+                $month = $from->format('Y-m');
+            }
+        } catch (\Throwable) {
+        }
+        $period = [
+            'from' => $from->toDateString(),
+            'to' => $to->copy()->subDay()->toDateString(),
+            'custom' => $customRange,
+        ];
 
         $role = (string)$user->role;
         $showLeads = NonTargetCategory::appliesTo((int) $user->account_id);
@@ -60,10 +76,11 @@ class ReportController extends Controller
         if ($isMeasurer) {
             $measurementRows = $this->measurementCompletionRows($measurerUsers->where('id', $user->id), $from, $to);
             $measurementSummary = $this->summarizeMeasurementCompletionRows($measurementRows);
-            $dataPeriodHint = $this->measurementDataPeriodHint($requestedMonth, $month, $measurementSummary['total'], $user);
+            $dataPeriodHint = $customRange ? null : $this->measurementDataPeriodHint($requestedMonth, $month, $measurementSummary['total'], $user);
 
             return view('reports.monthly', [
                 'month' => $month,
+                'period' => $period,
                 'mode' => 'measurer',
                 'isManager' => $isManager,
                 'showLeads' => false,
@@ -86,10 +103,11 @@ class ReportController extends Controller
             $operatorSummary = $this->summarizeOperatorRows($operatorRows);
             $measurementRows = $this->measurementRows($measurerUsers, $from, $to);
             $measurementSummary = $this->summarizeMeasurementRows($measurementRows);
-            $dataPeriodHint = $this->operatorDataPeriodHint($requestedMonth, $month, $operatorSummary, $user);
+            $dataPeriodHint = $customRange ? null : $this->operatorDataPeriodHint($requestedMonth, $month, $operatorSummary, $user);
 
             return view('reports.monthly', [
                 'month' => $month,
+                'period' => $period,
                 'mode' => 'manager',
                 'isManager' => true,
                 'showLeads' => $showLeads,
@@ -104,10 +122,11 @@ class ReportController extends Controller
 
         $operatorRows = $this->operatorRows($operatorUsers->where('id', $user->id), $from, $to);
         $operatorSummary = $this->summarizeOperatorRows($operatorRows);
-        $dataPeriodHint = $this->operatorDataPeriodHint($requestedMonth, $month, $operatorSummary, $user);
+        $dataPeriodHint = $customRange ? null : $this->operatorDataPeriodHint($requestedMonth, $month, $operatorSummary, $user);
 
         return view('reports.monthly', [
             'month' => $month,
+            'period' => $period,
             'mode' => 'operator',
             'isManager' => false,
             'showLeads' => $showLeads,

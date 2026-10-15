@@ -69,4 +69,14 @@ class OwnerPeriodsTest extends TestCase
         $this->actingAs($owner)->get(route('owner.ceilings', ['period' => 'custom', 'from' => '2026-10-01', 'to' => '2026-10-14']))
             ->assertOk()->assertSee('data-daterange', false)->assertSee('01.10 — 14.10.2026');
     }
+
+    /** С телефона боковое меню открывается кнопкой ☰ — и с потолков можно перейти в «Продажи за день». */
+    public function test_owner_pages_have_mobile_menu(): void
+    {
+        $owner = $this->owner();
+        foreach ([route('owner.ceilings'), route('owner.dashboard'), route('owner.smm', ['business' => 'sneakers']), route('sale.day')] as $url) {
+            $this->actingAs($owner)->get($url)->assertOk()->assertSee('id="bdMenu"', false)->assertSee('id="bdSide"', false);
+        }
+        $this->actingAs($owner)->get(route('owner.ceilings'))->assertSee(route('sale.day'), false)->assertSee('Продажи за день');
+    }
 }

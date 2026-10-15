@@ -1,0 +1,37 @@
+/* Календарь выбора периода из дизайн-системы «БлагоДар» — для страниц CRM (на страницах владельца эти правила уже есть
+   в blagodar-dashboard.css). Всё внутри обёртки .bd-dr, цвета — из темы CRM (--crm-*), акцент — зелёный дизайнера.
+   Разметка — resources/views/owner/_daterange (с 'crm' => true), поведение — public/js/bd-daterange.js. */
+.bd-dr{--card:var(--crm-surface-strong,#fff);--line:var(--crm-border,#edeef1);--ink:var(--crm-text,#16161a);--muted:var(--crm-muted,#8a8f99);
+  --accent:#1fae63;--accent-ink:#fff;--accent-soft:rgba(31,174,99,.14);--tile:rgba(127,127,127,.10);
+  --shadow:0 10px 30px rgba(16,24,40,.14);--shadow-sm:0 3px 12px rgba(16,24,40,.06);
+  position:relative;display:inline-block;font-variant-numeric:tabular-nums}
+.bd-dr .chip{display:inline-flex;align-items:center;gap:7px;background:var(--card);border:1px solid var(--line);
+  border-radius:999px;padding:6px 14px;font-size:13px;color:var(--ink);box-shadow:var(--shadow-sm);font-family:inherit;cursor:pointer;line-height:1.4}
+.bd-dr .chip:hover{border-color:var(--accent)}
+.bd-dr .chip svg{color:var(--muted)}
+.bd-dr .cal-pop{position:absolute;top:calc(100% + 8px);right:0;z-index:1060;width:288px;background:var(--card);
+  border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:14px;backdrop-filter:blur(14px)}
+.bd-dr .cal-pop[hidden]{display:none}
+.bd-dr .cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.bd-dr .cal-head .m{font-weight:700;font-size:14px;color:var(--ink)}
+.bd-dr .cal-nav{width:30px;height:30px;border-radius:9px;border:1px solid var(--line);background:var(--card);
+  display:grid;place-items:center;cursor:pointer;color:var(--ink);font-size:17px;line-height:1;padding:0}
+.bd-dr .cal-nav:hover{border-color:var(--accent);color:var(--accent)}
+.bd-dr .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:0}
+.bd-dr .cal-grid .wd{font-size:10px;font-weight:700;color:var(--muted);text-align:center;padding:4px 0 8px;text-transform:uppercase}
+.bd-dr .cal-grid .d{height:34px;display:grid;place-items:center;font-size:12.5px;color:var(--ink);cursor:pointer;border-radius:9px;position:relative}
+.bd-dr .cal-grid .d:hover{background:var(--tile)}
+.bd-dr .cal-grid .d.muted{color:var(--muted);opacity:.4;cursor:default}
+.bd-dr .cal-grid .d.muted:hover{background:transparent}
+.bd-dr .cal-grid .d.in-range{background:var(--accent-soft);border-radius:0}
+.bd-dr .cal-grid .d.range-start,.bd-dr .cal-grid .d.range-end{background:var(--accent);color:var(--accent-ink);font-weight:700}
+.bd-dr .cal-grid .d.range-start{border-radius:9px 0 0 9px}
+.bd-dr .cal-grid .d.range-end{border-radius:0 9px 9px 0}
+.bd-dr .cal-grid .d.range-start.range-end{border-radius:9px}
+.bd-dr .cal-grid .d.today:not(.range-start):not(.range-end)::after{content:"";position:absolute;bottom:4px;width:4px;height:4px;border-radius:50%;background:var(--accent)}
+.bd-dr .cal-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;border-top:1px solid var(--line);padding-top:12px}
+.bd-dr .cal-foot .rng{font-size:11.5px;color:var(--muted);flex:1;text-align:center}
+.bd-dr .cal-apply{background:var(--accent);color:var(--accent-ink);border:0;border-radius:999px;padding:8px 16px;font-weight:700;font-size:12.5px;cursor:pointer}
+.bd-dr .cal-reset{background:transparent;border:0;color:var(--muted);font-size:12px;cursor:pointer;font-weight:600;padding:4px}
+.bd-dr .cal-reset:hover{color:var(--ink)}
+@media(max-width:620px){.bd-dr .cal-pop{right:auto;left:0}}

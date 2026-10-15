@@ -91,6 +91,17 @@ table.t.compact th:first-child,table.t.compact td:first-child{padding-left:16px}
 @media(max-width:1080px){.grid3{grid-template-columns:1fr}}
 @media(max-width:620px){.day-strip{gap:2px;overflow-x:auto}.ds-day .v{display:none}}
 
+/* телефон: меню слева выезжает по кнопке ☰ в шапке (в макете на узком экране оно просто скрыто) */
+.m-menu,.side-backdrop{display:none}
+@keyframes bdSideIn{from{transform:translateX(-100%)}to{transform:none}}
+@media(max-width:900px){
+  .m-menu{display:grid}
+  body.side-open{overflow:hidden}
+  body.side-open .side{display:flex;position:fixed;left:0;top:0;bottom:0;z-index:210;height:100%;width:min(280px,84vw);
+    overflow-y:auto;box-shadow:var(--shadow);animation:bdSideIn .18s ease-out}
+  body.side-open .side-backdrop{display:block;position:fixed;inset:0;background:rgba(8,10,16,.45);z-index:200}
+}
+
 @media(max-width:620px){
   .filters .seg{max-width:100%;overflow-x:auto;scrollbar-width:none}
   .filters .seg::-webkit-scrollbar{display:none}

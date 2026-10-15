@@ -1,7 +1,8 @@
 {{--
     Выбор периода — кнопка «01.10 — 14.10.2026» и календарь из макета дизайнера (стили .daterange/.cal-* — в
-    blagodar-dashboard.css, поведение — window.bdDateRange в layouts/owner). «Применить» открывает $action с $params
+    blagodar-dashboard.css, поведение — window.bdDateRange в public/js/bd-daterange.js). «Применить» открывает $action с $params
     и выбранными датами. $mode: range (from/to) или day (одна дата, ключ date; дни позже $max недоступны).
+    На страницах CRM (Bootstrap) — 'crm' => true и стили public/css/bd-daterange.css.
 --}}
 @php
     $drMode = $mode ?? 'range';
@@ -11,7 +12,7 @@
         : ($drFrom->isSameDay($drTo) ? $drFrom->format('d.m.Y')
             : $drFrom->format($drFrom->year === $drTo->year ? 'd.m' : 'd.m.Y').' — '.$drTo->format('d.m.Y'));
 @endphp
-<div class="daterange" data-daterange data-mode="{{ $drMode }}" data-action="{{ $action }}"
+<div class="daterange {{ ! empty($crm) ? 'bd-dr' : '' }}" data-daterange data-mode="{{ $drMode }}" data-action="{{ $action }}"
      data-params="{{ json_encode((object) ($params ?? []), JSON_UNESCAPED_UNICODE) }}"
      data-from="{{ $drFrom->toDateString() }}" data-to="{{ $drTo->toDateString() }}" data-max="{{ $max ?? '' }}">
     <button class="chip" type="button" data-dr-btn title="{{ $drMode === 'day' ? 'Выбрать день' : 'Выбрать период' }}">

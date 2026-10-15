@@ -1,6 +1,19 @@
 @extends('layouts.app')
 
+@push('styles')
+  <link rel="stylesheet" href="{{ asset('css/bd-daterange.css') }}?v={{ @filemtime(public_path('css/bd-daterange.css')) ?: 1 }}">
+@endpush
+@push('scripts')
+  <script src="{{ asset('js/bd-daterange.js') }}?v={{ @filemtime(public_path('js/bd-daterange.js')) ?: 1 }}"></script>
+  <script>window.bdDateRange.init();</script>
+@endpush
+
 @section('content')
+@php
+  $thisMonth = now()->format('Y-m');
+  $prevMonth = now()->subMonthNoOverflow()->format('Y-m');
+  $exportQuery = $period['custom'] ? ['from' => $period['from'], 'to' => $period['to'], 'export' => 'contacts'] : ['month' => $month, 'export' => 'contacts'];
+@endphp
 <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
   <div>
     <h4 class="mb-0">Отчёты</h4>
@@ -14,14 +27,16 @@
       @endif
     </div>
   </div>
-  <form method="GET" action="{{ route('reports.monthly') }}" class="d-flex gap-2">
-    <input type="month" name="month" class="form-control form-control-sm" value="{{ $month }}" style="width: 170px;">
-    <button class="btn btn-sm btn-outline-primary">Показать</button>
+  <div class="d-flex gap-2 align-items-center flex-wrap">
+    <a href="{{ route('reports.monthly', ['month' => $thisMonth]) }}" class="btn btn-sm {{ ! $period['custom'] && $month === $thisMonth ? 'btn-primary' : 'btn-outline-primary' }}">Этот месяц</a>
+    <a href="{{ route('reports.monthly', ['month' => $prevMonth]) }}" class="btn btn-sm {{ ! $period['custom'] && $month === $prevMonth ? 'btn-primary' : 'btn-outline-primary' }}">Прошлый месяц</a>
+    {{-- период — календарём из дизайн-системы сводок: любой день, неделя или диапазон --}}
+    @include('owner._daterange', ['crm' => true, 'action' => route('reports.monthly'), 'params' => [], 'from' => $period['from'], 'to' => $period['to']])
     @if($mode === 'manager' && !empty($showLeads))
-      <a href="{{ route('reports.monthly', ['month' => $month, 'export' => 'contacts']) }}" class="btn btn-sm btn-outline-success"
+      <a href="{{ route('reports.monthly', $exportQuery) }}" class="btn btn-sm btn-outline-success"
          title="Номер телефона, менеджер (кто первым взял лид), записался ли. Без нецелевых и исходящих дозвонов.">⬇ Обращения в Excel</a>
     @endif
-  </form>
+  </div>
 </div>
 
 @if(!empty($dataPeriodHint))
