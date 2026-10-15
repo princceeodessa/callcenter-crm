@@ -11,6 +11,8 @@ use App\Models\Pipeline;
 use App\Models\PipelineStage;
 use App\Models\User;
 use App\Models\CallRecording;
+use App\Models\DealStageHistory;
+use App\Support\Deals\OutboundDialStage;
 
 class MegafonVatsDealSync
 {
@@ -58,7 +60,7 @@ class MegafonVatsDealSync
         }
 
         // Блокировка по номеру: два одновременных события одного звонка не создадут дубль.
-        $deal = \App\Support\Leads\LeadDeduplicator::withPhoneLock($accountId, $clientPhone, function () use ($accountId, $clientPhone) {
+        $deal = \App\Support\Leads\LeadDeduplicator::withPhoneLock($accountId, $clientPhone, function () use ($accountId, $clientPhone, $p) {
             $contact = self::resolveContactByPhone($accountId, $clientPhone);
             $existing = self::findOpenDealByPhone($accountId, $clientPhone, $contact?->id);
             if ($existing) {
@@ -81,6 +83,14 @@ class MegafonVatsDealSync
                 return null;
             }
 
+            // Потолки: на исходящий звонок оператора (дозвон клиенту, незаключёнка) — не в «Поступил лид»,
+            // а в «Нецелевое дозвон»: это не новый лид.
+            $outbound = !Deal::isIncomingClientCallPayload($p);
+            $dialStageId = $outbound ? OutboundDialStage::id($accountId) : null;
+            if ($dialStageId !== null) {
+                $stage = PipelineStage::query()->find($dialStageId) ?? $stage;
+            }
+
             $responsible = User::query()
                 ->where('account_id', $accountId)
                 ->where('is_active', 1)
@@ -100,7 +110,7 @@ class MegafonVatsDealSync
                 'title_is_custom' => 0,
                 'contact_id' => $contact?->id,
                 'responsible_user_id' => $responsible?->id,
-                'is_unread' => true,
+                'is_unread' => $dialStageId === null,
             ]);
 
             DealActivity::create([
@@ -108,7 +118,9 @@ class MegafonVatsDealSync
                 'deal_id' => $created->id,
                 'author_user_id' => null,
                 'type' => 'system',
-                'body' => 'Сделка создана автоматически из звонка (МегаФон ВАТС).',
+                'body' => $dialStageId !== null
+                    ? 'Сделка создана автоматически из исходящего звонка (МегаФон ВАТС) — этап «Нецелевое дозвон».'
+                    : 'Сделка создана автоматически из звонка (МегаФон ВАТС).',
             ]);
 
             return $created;
@@ -194,7 +206,30 @@ class MegafonVatsDealSync
             );
         }
 
-        if (Deal::isIncomingClientCallPayload(is_array($payload) ? $payload : [])) {
+        // Клиент из «Нецелевое дозвон» перезвонил сам — это уже обращение: сделку в «Поступил лид», чтобы не потерялась
+        // в скрытой колонке. Только сам входящий звонок (INCOMING / in): «принят» бывает и у исходящих.
+        $callKind = strtolower(trim((string) ($p['type'] ?? '')));
+        $inDialStage = $deal->closed_at === null && OutboundDialStage::is($deal->stage);
+        if ($inDialStage && in_array($callKind, ['incoming', 'in'], true)) {
+            $leadStageId = OutboundDialStage::leadStageId((int) $deal->pipeline_id);
+            if ($leadStageId !== null && $leadStageId !== (int) $deal->stage_id) {
+                $fromStageId = $deal->stage_id;
+                $deal->stage_id = $leadStageId;
+                $deal->save();
+                DealStageHistory::create([
+                    'account_id' => $accountId, 'deal_id' => $deal->id, 'from_stage_id' => $fromStageId,
+                    'to_stage_id' => $leadStageId, 'changed_by_user_id' => null, 'changed_at' => now(),
+                ]);
+                DealActivity::create([
+                    'account_id' => $accountId, 'deal_id' => $deal->id, 'author_user_id' => null, 'type' => 'system',
+                    'body' => 'Клиент перезвонил сам — сделка перенесена из «Нецелевое дозвон» в «Поступил лид».',
+                ]);
+                $inDialStage = false;
+            }
+        }
+
+        // дозвоны в скрытой колонке не подсвечиваем: «принят» и «завершён» приходят и по исходящим
+        if (! $inDialStage && Deal::isIncomingClientCallPayload(is_array($payload) ? $payload : [])) {
             $deal->is_unread = true;
             $deal->save();
         }

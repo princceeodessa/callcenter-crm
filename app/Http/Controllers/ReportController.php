@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\Owner\CeilingsKpi;
+use App\Support\Deals\NonTargetCategory;
 use App\Models\Deal;
 use App\Models\DealActivity;
 use App\Models\DealStageHistory;
@@ -33,6 +35,7 @@ class ReportController extends Controller
         $to = (clone $from)->addMonth()->startOfDay();
 
         $role = (string)$user->role;
+        $showLeads = NonTargetCategory::appliesTo((int) $user->account_id);
         $isManager = in_array($role, ['admin', 'main_operator'], true);
         $isMeasurer = $role === 'measurer';
 
@@ -62,6 +65,7 @@ class ReportController extends Controller
                 'month' => $month,
                 'mode' => 'measurer',
                 'isManager' => $isManager,
+                'showLeads' => false,
                 'callSourceOptions' => $callSourceOptions,
                 'dataPeriodHint' => $dataPeriodHint,
                 'operatorSummary' => null,
@@ -82,6 +86,7 @@ class ReportController extends Controller
                 'month' => $month,
                 'mode' => 'manager',
                 'isManager' => true,
+                'showLeads' => $showLeads,
                 'callSourceOptions' => $callSourceOptions,
                 'dataPeriodHint' => $dataPeriodHint,
                 'operatorSummary' => $operatorSummary,
@@ -99,6 +104,7 @@ class ReportController extends Controller
             'month' => $month,
             'mode' => 'operator',
             'isManager' => false,
+            'showLeads' => $showLeads,
             'callSourceOptions' => $callSourceOptions,
             'dataPeriodHint' => $dataPeriodHint,
             'operatorSummary' => $operatorSummary,
@@ -169,6 +175,11 @@ class ReportController extends Controller
         if ($accountId === 0) {
             return collect();
         }
+
+        // потолки: новый лид — за тем, кто первым его перетащил (как в сводке владельца)
+        $leadHandlers = NonTargetCategory::appliesTo($accountId)
+            ? (new CeilingsKpi($accountId))->handlerStats($from->copy(), $to->copy())
+            : null;
 
         $reportUserIdSet = array_fill_keys(
             $users
@@ -285,7 +296,7 @@ class ReportController extends Controller
             ->map(fn ($value) => $value !== null ? (int) $value : null)
             ->all();
 
-        $rows = $users->values()->map(function (User $u) use ($createdDeals, $closedDealsByUser, $stageHistoryRows, $callActivities, $dealResponsibleMap, $sourceCallActivitiesByDealId, $callRecordingRowsByDealId, $integrationEventPayloadsByCallId) {
+        $rows = $users->values()->map(function (User $u) use ($createdDeals, $closedDealsByUser, $stageHistoryRows, $callActivities, $dealResponsibleMap, $sourceCallActivitiesByDealId, $callRecordingRowsByDealId, $integrationEventPayloadsByCallId, $leadHandlers) {
             $createdDealIds = $createdDeals
                 ->filter(fn (Deal $deal) => (int) $deal->responsible_user_id === (int) $u->id)
                 ->pluck('id');
@@ -333,6 +344,8 @@ class ReportController extends Controller
                 'callSourceCounts' => $callSourceStats['counts'],
                 'uncategorizedCallActivities' => $callSourceStats['uncategorized'],
                 'winRate' => $winBase > 0 ? round(($closedWon / $winBase) * 100, 1) : null,
+                'leads' => $leadHandlers === null ? null
+                    : ($leadHandlers[(int) $u->id] ?? ['taken' => 0, 'booked_self' => 0, 'not_booked' => 0, 'rescued' => 0, 'non_target' => 0, 'booked_others' => 0]),
             ];
         });
 
@@ -362,6 +375,7 @@ class ReportController extends Controller
                 'callSourceCounts' => $callSourceStats['counts'],
                 'uncategorizedCallActivities' => $callSourceStats['uncategorized'],
                 'winRate' => $winBase > 0 ? round(($closedWon / $winBase) * 100, 1) : null,
+                'leads' => null,
             ]);
         }
 

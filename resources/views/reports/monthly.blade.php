@@ -145,6 +145,12 @@
           <tr>
             <th>Пользователь</th>
             @if($mode === 'manager')<th>Роль</th>@endif
+            @if(!empty($showLeads))
+              <th title="первым перетащил новый лид с «Поступил лид»">Взял новых лидов</th>
+              <th>Записал сам</th>
+              <th title="из взятых им — не записал он сам (в том числе если потом записал другой)">Не записал</th>
+              <th title="записал на замер лиды, которые первым брал другой">Дожал чужих</th>
+            @endif
             <th>Обработано сделок</th>
             <th>Успешно</th>
             <th>Отказ</th>
@@ -160,6 +166,16 @@
               @if($mode === 'manager')
                 <td><span class="badge text-bg-secondary">{{ $row['role'] }}</span></td>
               @endif
+              @if(!empty($showLeads))
+                @if($row['leads'] !== null)
+                  <td class="fw-semibold">{{ $row['leads']['taken'] }}</td>
+                  <td class="text-success fw-semibold">{{ $row['leads']['booked_self'] }}</td>
+                  <td class="text-danger fw-semibold">{{ $row['leads']['not_booked'] }}@if($row['leads']['rescued'] > 0) <span class="text-muted small fw-normal">(записали другие: {{ $row['leads']['rescued'] }})</span>@endif</td>
+                  <td class="fw-semibold">{{ $row['leads']['booked_others'] }}</td>
+                @else
+                  <td>—</td><td>—</td><td>—</td><td>—</td>
+                @endif
+              @endif
               <td>{{ $row['created'] }}</td>
               <td class="text-success fw-semibold">{{ $row['closedWon'] }}</td>
               <td class="text-danger fw-semibold">{{ $row['closedLost'] }}</td>
@@ -168,7 +184,7 @@
               <td>{{ $row['winRate'] !== null ? $row['winRate'].'%' : '—' }}</td>
             </tr>
           @empty
-            <tr><td colspan="{{ $mode === 'manager' ? 8 : 7 }}" class="text-muted">Данных за месяц нет.</td></tr>
+            <tr><td colspan="{{ ($mode === 'manager' ? 8 : 7) + (!empty($showLeads) ? 4 : 0) }}" class="text-muted">Данных за месяц нет.</td></tr>
           @endforelse
         </tbody>
       </table>

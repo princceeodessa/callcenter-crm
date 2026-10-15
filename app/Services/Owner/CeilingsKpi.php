@@ -114,7 +114,8 @@ class CeilingsKpi
     {
         if ($this->stageIds === null) {
             $rows = DB::table('pipeline_stages')->where('account_id', $this->accountId)->get(['id', 'name']);
-            $find = fn (string $needle) => $rows->first(fn ($s) => mb_stripos((string) $s->name, $needle) !== false)?->id;
+            // «Нецелевое дозвон» (исходящие дозвоны) — не «Нецелевое»
+            $find = fn (string $needle) => $rows->first(fn ($s) => mb_stripos((string) $s->name, $needle) !== false && mb_stripos((string) $s->name, 'дозвон') === false)?->id;
             $this->stageIds = ['measure' => $find('Замер назначен'), 'non_target' => $find('Нецелев')];
         }
 
@@ -323,9 +324,101 @@ class CeilingsKpi
     }
 
     /**
+     * Кто первым взял новый лид — тот за него и отвечает (решение руководства 15.10.2026). «Взял» — первым из людей
+     * перетащил сделку с первого этапа («Поступил лид») или закрыл, не двигая. По лидам, взятым в периоде: записал сам;
+     * не записал — в том числе если потом записал другой (rescued); нецелевые. «Дожал чужих» — замеры в периоде по
+     * лидам, которые первым брал другой. Сделки из исходящих звонков (дозвоны, «Нецелевое дозвон») — не лиды.
+     *
+     * @return array<int, array{taken:int, booked_self:int, not_booked:int, rescued:int, non_target:int, booked_others:int}>
+     */
+    public function handlerStats(Carbon $from, Carbon $to, ?Collection $bookings = null): array
+    {
+        $bookings ??= $this->bookingsBetween($from, $to);
+        $candidates = DB::table('deal_stage_history')->where('account_id', $this->accountId)
+            ->whereNotNull('changed_by_user_id')->where('changed_at', '>=', $from)->where('changed_at', '<', $to)
+            ->distinct()->pluck('deal_id')
+            ->merge(DB::table('deals')->where('account_id', $this->accountId)->whereNotNull('closed_by_user_id')
+                ->where('closed_at', '>=', $from)->where('closed_at', '<', $to)->pluck('id'))
+            ->merge($bookings->pluck('id'))
+            ->map(fn ($id) => (int) $id)->unique()->values()->all();
+        if ($candidates === []) {
+            return [];
+        }
+        // первый этап каждой воронки — «Поступил лид»
+        $leadStages = DB::table('pipeline_stages')->where('account_id', $this->accountId)->orderBy('sort')->orderBy('id')
+            ->get(['id', 'pipeline_id'])->groupBy('pipeline_id')->map(fn ($s) => (int) $s->first()->id)->flip()->all();
+
+        $deals = [];
+        $handler = [];   // сделка => [кто первым взял, когда]
+        foreach (array_chunk($candidates, 1000) as $chunk) {
+            foreach (DB::table('deals')->whereIn('id', $chunk)->get(['id', 'stage_id', 'closed_at', 'closed_result', 'closed_by_user_id', 'non_target_category']) as $d) {
+                $deals[(int) $d->id] = $d;
+            }
+            $firstMove = [];
+            foreach (DB::table('deal_stage_history')->whereIn('deal_id', $chunk)->whereNotNull('changed_by_user_id')
+                ->orderBy('changed_at')->orderBy('id')->get(['deal_id', 'from_stage_id', 'changed_by_user_id', 'changed_at']) as $h) {
+                $firstMove[(int) $h->deal_id] ??= $h;
+            }
+            // заведена исходящим звонком (первый звонок — исходящий) — дозвон, не лид
+            $firstCallIds = DB::table('deal_activities')->whereIn('deal_id', $chunk)->where('type', 'call')
+                ->groupBy('deal_id')->pluck(DB::raw('MIN(id)'))->all();
+            $outbound = DB::table('deal_activities')->whereIn('id', $firstCallIds)
+                ->whereRaw("LOWER(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.type'))) IN ('out', 'outgoing')")
+                ->pluck('deal_id')->map(fn ($id) => (int) $id)->flip()->all();
+            foreach ($chunk as $id) {
+                if (isset($outbound[$id]) || ! isset($deals[$id])) {
+                    continue;
+                }
+                $d = $deals[$id];
+                $move = $firstMove[$id] ?? null;
+                $closeAt = $d->closed_at !== null && $d->closed_by_user_id !== null ? Carbon::parse($d->closed_at) : null;
+                if ($move !== null && ($closeAt === null || Carbon::parse($move->changed_at)->lte($closeAt))) {
+                    if (isset($leadStages[(int) $move->from_stage_id])) {
+                        $handler[$id] = ['user' => (int) $move->changed_by_user_id, 'at' => Carbon::parse($move->changed_at)];
+                    }
+                } elseif ($closeAt !== null) {
+                    $handler[$id] = ['user' => (int) $d->closed_by_user_id, 'at' => $closeAt];
+                }
+            }
+        }
+
+        $booked = $this->bookedAtFor(array_keys($handler));
+        $stats = [];
+        $row = function (int $user) use (&$stats) {
+            $stats[$user] ??= ['taken' => 0, 'booked_self' => 0, 'not_booked' => 0, 'rescued' => 0, 'non_target' => 0, 'booked_others' => 0];
+        };
+        foreach ($handler as $id => $h) {
+            if ($h['at']->lt($from) || $h['at']->gte($to)) {
+                continue;
+            }
+            $user = $h['user'];
+            $row($user);
+            $stats[$user]['taken']++;
+            $b = $booked[$id] ?? null;
+            if ($b !== null && $b->by === $user) {
+                $stats[$user]['booked_self']++;
+            } elseif ($this->outcome($deals[$id], $b !== null) === 'non_target') {
+                $stats[$user]['non_target']++;
+            } else {
+                $stats[$user]['not_booked']++;
+                $stats[$user]['rescued'] += $b !== null ? 1 : 0;
+            }
+        }
+        foreach ($bookings as $b) {
+            $h = $handler[(int) $b->id] ?? null;
+            if ($b->by !== null && $h !== null && $h['user'] !== $b->by) {
+                $row($b->by);
+                $stats[$b->by]['booked_others']++;
+            }
+        }
+
+        return $stats;
+    }
+
+    /**
      * Операторы — по их действиям в периоде (ответственный у сделок почти всегда «Admin», по нему не видно, кто работал):
      * обработано сделок — двигал по этапам или закрыл; замеров назначено — перевёл на «Замер назначен» / закрыл «Успешно»
-     * первым; нецелевых и отказов — закрыл с таким итогом.
+     * первым; нецелевых и отказов — закрыл с таким итогом. Плюс учёт по тому, кто первым взял лид (handlerStats).
      */
     private function operatorTable(Carbon $from, Carbon $to, Collection $bookings): array
     {
@@ -354,11 +447,16 @@ class CeilingsKpi
         foreach ($bookings as $b) {
             $rows[$touch($b->by)]['bookings']++;
         }
+        $leads = $this->handlerStats($from, $to, $bookings);
+        foreach (array_keys($leads) as $uid) {
+            $touch($uid);
+        }
         $names = DB::table('users')->whereIn('id', array_filter(array_keys($rows)))->pluck('name', 'id');
 
         return collect($rows)
-            ->map(function ($r) use ($names) {
+            ->map(function ($r) use ($names, $leads) {
                 $handled = count($r['handled']);
+                $l = $leads[(int) $r['user_id']] ?? ['taken' => 0, 'booked_self' => 0, 'not_booked' => 0, 'rescued' => 0, 'non_target' => 0, 'booked_others' => 0];
 
                 return [
                     'user_id' => $r['user_id'],
@@ -368,10 +466,16 @@ class CeilingsKpi
                     'non_target' => $r['non_target'],
                     'lost' => $r['lost'],
                     'conversion' => $handled > 0 ? $r['bookings'] / $handled * 100 : null,
+                    'taken' => $l['taken'],
+                    'booked_self' => $l['booked_self'],
+                    'not_booked' => $l['not_booked'],
+                    'rescued' => $l['rescued'],
+                    'non_target_taken' => $l['non_target'],
+                    'booked_others' => $l['booked_others'],
                 ];
             })
-            ->filter(fn ($r) => $r['handled'] > 0 || $r['bookings'] > 0)
-            ->sortByDesc(fn ($r) => $r['bookings'] * 1000000 + $r['handled'])
+            ->filter(fn ($r) => $r['handled'] > 0 || $r['bookings'] > 0 || $r['taken'] > 0)
+            ->sortByDesc(fn ($r) => $r['taken'] * 1000000 + $r['booked_self'] * 1000 + $r['handled'])
             ->values()->all();
     }
 
