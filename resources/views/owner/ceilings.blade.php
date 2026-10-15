@@ -294,7 +294,8 @@
     </div>
 
     <div class="own-card">
-        <div class="hd"><span>Обращения в колл-центр</span><span class="note">клиент считается один раз — по первому обращению за период · всё по CRM</span></div>
+        <div class="hd"><span>Обращения в колл-центр</span><span class="note">клиент считается один раз — по первому обращению за период · всё по CRM ·
+            <a href="{{ request()->fullUrlWithQuery(['export' => 'contacts']) }}" title="Номер телефона, менеджер (кто первым взял лид), записался ли. Без нецелевых и исходящих дозвонов.">⬇ списком в Excel</a></span></div>
         <div class="bd">
             <div class="own-kpi" style="margin-bottom:0">
                 @foreach($how as $h)

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\Owner\CeilingsKpi;
 use App\Support\Deals\NonTargetCategory;
+use App\Support\Export\ContactsExport;
 use App\Models\Deal;
 use App\Models\DealActivity;
 use App\Models\DealStageHistory;
@@ -73,6 +74,11 @@ class ReportController extends Controller
                 'measurementSummary' => $measurementSummary,
                 'measurementRows' => $measurementRows,
             ]);
+        }
+
+        // потолки: обращения месяца в Excel — номер, менеджер (кто первым взял лид), записался ли; без нецелевых
+        if ($isManager && $showLeads && $request->query('export') === 'contacts') {
+            return ContactsExport::download((int) $user->account_id, $from->copy(), $to->copy());
         }
 
         if ($isManager) {

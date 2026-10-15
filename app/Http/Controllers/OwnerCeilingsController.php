@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Services\Owner\CeilingsKpi;
 use App\Services\Owner\Marketing\MarketingStats;
 use App\Services\Owner\NonClosureSummary;
+use App\Support\Export\ContactsExport;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
@@ -29,6 +30,9 @@ class OwnerCeilingsController extends Controller
         abort_unless($user && $user->role === 'sneaker_owner' && $user->all_businesses, 403);
 
         [$period, $from, $to] = $this->period($request);
+        if ($request->query('export') === 'contacts') {
+            return ContactsExport::download((int) config('owner.ceilings_account_id'), $from, $to);
+        }
         $kpi = (new CeilingsKpi((int) config('owner.ceilings_account_id')))->compute($from, $to);
 
         return view('owner.ceilings', [

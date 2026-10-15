@@ -120,4 +120,51 @@ class OutboundDialAndLeadHandlersTest extends TestCase
         $this->assertSame([3, 2, 1, 1, 0], [$ops[$a->id]['taken'], $ops[$a->id]['booked_self'], $ops[$a->id]['not_booked'], $ops[$a->id]['rescued'], $ops[$a->id]['booked_others']]);
         $res->assertSee('Взял новых лидов')->assertSee('записали другие: 1');
     }
+
+    /** Выгрузка обращений в Excel: номер, менеджер (кто первым взял), записался; без нецелевых и исходящих дозвонов. */
+    public function test_contacts_export_to_excel(): void
+    {
+        $a = $this->user('Анна');
+        $b = $this->user('Борис');
+        $lead = function (string $phone, ?string $name = null) {
+            $contact = DB::table('contacts')->insertGetId(['account_id' => $this->acc, 'name' => $name ?? 'Клиент', 'phone' => $phone, 'created_at' => now(), 'updated_at' => now()]);
+
+            return DB::table('deals')->insertGetId(['account_id' => $this->acc, 'pipeline_id' => $this->pipeline, 'stage_id' => $this->stage['lead'], 'contact_id' => $contact, 'title' => 'Лид', 'created_at' => '2026-09-02 09:00:00', 'updated_at' => '2026-09-02 09:00:00']);
+        };
+        $call = fn (int $d, string $type, string $at) => DB::table('deal_activities')->insert(['account_id' => $this->acc, 'deal_id' => $d, 'type' => 'call', 'payload' => json_encode(['type' => $type, 'callid' => uniqid(), 'diversion' => '79225174552']), 'created_at' => $at, 'updated_at' => $at]);
+        $move = fn (int $d, string $from, string $to, User $u, string $at) => DB::table('deal_stage_history')->insert(['account_id' => $this->acc, 'deal_id' => $d, 'from_stage_id' => $this->stage[$from], 'to_stage_id' => $this->stage[$to], 'changed_by_user_id' => $u->id, 'changed_at' => $at]);
+
+        $booked = $lead('89001112233');                         // позвонил, Анна записала
+        $call($booked, 'INCOMING', '2026-09-02 09:00:00');
+        $move($booked, 'lead', 'measure', $a, '2026-09-02 09:10:00');
+        $open = $lead('+7 900 444-55-66');                      // позвонил, Борис взял, не записан
+        $call($open, 'INCOMING', '2026-09-03 09:00:00');
+        $move($open, 'lead', 'work', $b, '2026-09-03 09:10:00');
+        $spam = $lead('79007778899');                           // нецелевой — в выгрузку не попадает
+        $call($spam, 'INCOMING', '2026-09-04 09:00:00');
+        DB::table('deals')->where('id', $spam)->update(['stage_id' => $this->stage['done'], 'closed_at' => '2026-09-04 09:20:00', 'closed_result' => 'extra_non_target', 'closed_by_user_id' => $a->id, 'non_target_category' => 'spam']);
+        $dial = $lead('79001230000');                           // исходящий дозвон — не обращение
+        $call($dial, 'OUTGOING', '2026-09-05 09:00:00');
+        $chat = DB::table('deals')->insertGetId(['account_id' => $this->acc, 'pipeline_id' => $this->pipeline, 'stage_id' => $this->stage['lead'], 'title' => 'Альваро — Avito', 'created_at' => '2026-09-06 09:00:00', 'updated_at' => '2026-09-06 09:00:00',
+            'contact_id' => DB::table('contacts')->insertGetId(['account_id' => $this->acc, 'name' => 'Альваро', 'phone' => null, 'created_at' => now(), 'updated_at' => now()])]);
+        $conv = DB::table('conversations')->insertGetId(['account_id' => $this->acc, 'deal_id' => $chat, 'channel' => 'avito', 'created_at' => '2026-09-06 09:00:00', 'updated_at' => '2026-09-06 09:00:00']);
+        DB::table('messages')->insert(['account_id' => $this->acc, 'conversation_id' => $conv, 'direction' => 'in', 'body' => 'Сколько стоит?', 'created_at' => '2026-09-06 09:00:00', 'updated_at' => '2026-09-06 09:00:00']);
+
+        $main = $this->user('Руководитель', 'main_operator');
+        $res = $this->actingAs($main)->get(route('reports.monthly', ['month' => '2026-09', 'export' => 'contacts']));
+        $res->assertOk()->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        $this->assertStringContainsString('obrashcheniya-kc-2026-09-01_2026-09-30.xlsx', $res->headers->get('Content-Disposition'));
+        $path = tempnam(sys_get_temp_dir(), 'xl');
+        file_put_contents($path, $res->getContent());
+        $rows = \App\Support\Warehouse\SimpleXlsxReader::rows($path, 3);
+        @unlink($path);
+        $this->assertSame([
+            ['Номер телефона', 'Менеджер (кто принял)', 'Записался'],
+            ['+7 (900) 111-22-33', 'Анна', 'да'],
+            ['+7 (900) 444-55-66', 'Борис', 'нет'],
+            ['без номера — чат Авито (Альваро)', 'не взят в работу', 'нет'],
+        ], array_map(fn ($r) => array_map('strval', array_slice($r, 0, 3)), $rows));
+
+        $this->actingAs($main)->get(route('reports.monthly', ['month' => '2026-09']))->assertOk()->assertSee('Обращения в Excel');
+    }
 }

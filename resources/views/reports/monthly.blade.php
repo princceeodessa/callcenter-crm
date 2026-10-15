@@ -17,6 +17,10 @@
   <form method="GET" action="{{ route('reports.monthly') }}" class="d-flex gap-2">
     <input type="month" name="month" class="form-control form-control-sm" value="{{ $month }}" style="width: 170px;">
     <button class="btn btn-sm btn-outline-primary">Показать</button>
+    @if($mode === 'manager' && !empty($showLeads))
+      <a href="{{ route('reports.monthly', ['month' => $month, 'export' => 'contacts']) }}" class="btn btn-sm btn-outline-success"
+         title="Номер телефона, менеджер (кто первым взял лид), записался ли. Без нецелевых и исходящих дозвонов.">⬇ Обращения в Excel</a>
+    @endif
   </form>
 </div>
 

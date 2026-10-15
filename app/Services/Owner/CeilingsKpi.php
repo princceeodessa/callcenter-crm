@@ -344,43 +344,7 @@ class CeilingsKpi
         if ($candidates === []) {
             return [];
         }
-        // первый этап каждой воронки — «Поступил лид»
-        $leadStages = DB::table('pipeline_stages')->where('account_id', $this->accountId)->orderBy('sort')->orderBy('id')
-            ->get(['id', 'pipeline_id'])->groupBy('pipeline_id')->map(fn ($s) => (int) $s->first()->id)->flip()->all();
-
-        $deals = [];
-        $handler = [];   // сделка => [кто первым взял, когда]
-        foreach (array_chunk($candidates, 1000) as $chunk) {
-            foreach (DB::table('deals')->whereIn('id', $chunk)->get(['id', 'stage_id', 'closed_at', 'closed_result', 'closed_by_user_id', 'non_target_category']) as $d) {
-                $deals[(int) $d->id] = $d;
-            }
-            $firstMove = [];
-            foreach (DB::table('deal_stage_history')->whereIn('deal_id', $chunk)->whereNotNull('changed_by_user_id')
-                ->orderBy('changed_at')->orderBy('id')->get(['deal_id', 'from_stage_id', 'changed_by_user_id', 'changed_at']) as $h) {
-                $firstMove[(int) $h->deal_id] ??= $h;
-            }
-            // заведена исходящим звонком (первый звонок — исходящий) — дозвон, не лид
-            $firstCallIds = DB::table('deal_activities')->whereIn('deal_id', $chunk)->where('type', 'call')
-                ->groupBy('deal_id')->pluck(DB::raw('MIN(id)'))->all();
-            $outbound = DB::table('deal_activities')->whereIn('id', $firstCallIds)
-                ->whereRaw("LOWER(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.type'))) IN ('out', 'outgoing')")
-                ->pluck('deal_id')->map(fn ($id) => (int) $id)->flip()->all();
-            foreach ($chunk as $id) {
-                if (isset($outbound[$id]) || ! isset($deals[$id])) {
-                    continue;
-                }
-                $d = $deals[$id];
-                $move = $firstMove[$id] ?? null;
-                $closeAt = $d->closed_at !== null && $d->closed_by_user_id !== null ? Carbon::parse($d->closed_at) : null;
-                if ($move !== null && ($closeAt === null || Carbon::parse($move->changed_at)->lte($closeAt))) {
-                    if (isset($leadStages[(int) $move->from_stage_id])) {
-                        $handler[$id] = ['user' => (int) $move->changed_by_user_id, 'at' => Carbon::parse($move->changed_at)];
-                    }
-                } elseif ($closeAt !== null) {
-                    $handler[$id] = ['user' => (int) $d->closed_by_user_id, 'at' => $closeAt];
-                }
-            }
-        }
+        [$handler, $deals] = $this->leadHandlers($candidates);
 
         $booked = $this->bookedAtFor(array_keys($handler));
         $stats = [];
@@ -413,6 +377,98 @@ class CeilingsKpi
         }
 
         return $stats;
+    }
+
+    /**
+     * Кто первым взял каждую из сделок: первым из людей перетащил её с первого этапа («Поступил лид») или закрыл, не
+     * двигая. Сделки, заведённые исходящим звонком (первый звонок — исходящий), без $withOutbound не берутся — это дозвоны.
+     *
+     * @return array{0: array<int, array{user:int, at:Carbon}>, 1: array<int, object>} [сделка => кто и когда, сделки]
+     */
+    private function leadHandlers(array $dealIds, bool $withOutbound = false): array
+    {
+        // первый этап каждой воронки — «Поступил лид»
+        $leadStages = DB::table('pipeline_stages')->where('account_id', $this->accountId)->orderBy('sort')->orderBy('id')
+            ->get(['id', 'pipeline_id'])->groupBy('pipeline_id')->map(fn ($s) => (int) $s->first()->id)->flip()->all();
+        $deals = [];
+        $handler = [];
+        foreach (array_chunk(array_values(array_unique($dealIds)), 1000) as $chunk) {
+            foreach (DB::table('deals')->whereIn('id', $chunk)->get(['id', 'stage_id', 'closed_at', 'closed_result', 'closed_by_user_id', 'non_target_category']) as $d) {
+                $deals[(int) $d->id] = $d;
+            }
+            $firstMove = [];
+            foreach (DB::table('deal_stage_history')->whereIn('deal_id', $chunk)->whereNotNull('changed_by_user_id')
+                ->orderBy('changed_at')->orderBy('id')->get(['deal_id', 'from_stage_id', 'changed_by_user_id', 'changed_at']) as $h) {
+                $firstMove[(int) $h->deal_id] ??= $h;
+            }
+            // заведена исходящим звонком (первый звонок — исходящий) — дозвон, не лид
+            $firstCallIds = DB::table('deal_activities')->whereIn('deal_id', $chunk)->where('type', 'call')
+                ->groupBy('deal_id')->pluck(DB::raw('MIN(id)'))->all();
+            $outbound = DB::table('deal_activities')->whereIn('id', $firstCallIds)
+                ->whereRaw("LOWER(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.type'))) IN ('out', 'outgoing')")
+                ->pluck('deal_id')->map(fn ($id) => (int) $id)->flip()->all();
+            foreach ($chunk as $id) {
+                if ((! $withOutbound && isset($outbound[$id])) || ! isset($deals[$id])) {
+                    continue;
+                }
+                $d = $deals[$id];
+                $move = $firstMove[$id] ?? null;
+                $closeAt = $d->closed_at !== null && $d->closed_by_user_id !== null ? Carbon::parse($d->closed_at) : null;
+                if ($move !== null && ($closeAt === null || Carbon::parse($move->changed_at)->lte($closeAt))) {
+                    if (isset($leadStages[(int) $move->from_stage_id])) {
+                        $handler[$id] = ['user' => (int) $move->changed_by_user_id, 'at' => Carbon::parse($move->changed_at)];
+                    }
+                } elseif ($closeAt !== null) {
+                    $handler[$id] = ['user' => (int) $d->closed_by_user_id, 'at' => $closeAt];
+                }
+            }
+        }
+
+        return [$handler, $deals];
+    }
+
+    /**
+     * Список обратившихся за период для выгрузки в таблицу: номер, менеджер — кто первым взял лид, записался ли.
+     * Нецелевые не попадают (их не надо потом вычищать руками); исходящие дозвоны — не обращения и так.
+     *
+     * @return list<array{phone: string, manager: string, booked: bool, at: string}>
+     */
+    public function contactList(Carbon $from, Carbon $to): array
+    {
+        [$clients] = $this->contactClients($from, $to);
+        $ids = [];
+        foreach ($clients as $c) {
+            if ($c['outcome'] !== 'non_target') {
+                array_push($ids, ...array_keys($c['deals']));
+            }
+        }
+        [$handler] = $this->leadHandlers($ids, true);
+        $names = DB::table('users')->whereIn('id', array_unique(array_column($handler, 'user')))->pluck('name', 'id');
+        $channel = fn (string $kind) => ['chat_avito' => 'чат Авито', 'chat_vk' => 'ВК', 'chat_telegram' => 'Telegram', 'form_tilda' => 'форма на сайте', 'form_vk' => 'лид-форма ВК'][$kind] ?? $kind;
+
+        $rows = [];
+        foreach ($clients as $key => $c) {
+            if ($c['outcome'] === 'non_target') {
+                continue;
+            }
+            $first = null;
+            foreach (array_keys($c['deals']) as $id) {
+                if (isset($handler[$id]) && ($first === null || $handler[$id]['at']->lt($first['at']))) {
+                    $first = $handler[$id];
+                }
+            }
+            $digits = str_starts_with($key, 'p') ? substr($key, 1) : null;
+            $rows[] = [
+                'phone' => $digits !== null
+                    ? (strlen($digits) === 11 ? '+'.$digits[0].' ('.substr($digits, 1, 3).') '.substr($digits, 4, 3).'-'.substr($digits, 7, 2).'-'.substr($digits, 9, 2) : '+'.$digits)
+                    : 'без номера — '.$channel($c['kind']).($c['name'] !== '' ? ' ('.$c['name'].')' : ''),
+                'manager' => $first !== null ? (string) ($names[$first['user']] ?? 'Пользователь #'.$first['user']) : 'не взят в работу',
+                'booked' => $c['outcome'] === 'booked',
+                'at' => $c['at'],
+            ];
+        }
+
+        return $rows;
     }
 
     /**
@@ -527,57 +583,7 @@ class CeilingsKpi
      */
     private function contactsBetween(Carbon $from, Carbon $to): array
     {
-        $touches = []; // [сделка, когда, как обратился, ключ канала]
-        $calls = DB::table('deal_activities')
-            ->where('account_id', $this->accountId)->where('type', 'call')
-            ->where('created_at', '>=', $from)->where('created_at', '<', $to)
-            ->whereRaw("JSON_UNQUOTE(JSON_EXTRACT(payload, '$.type')) IN ('INCOMING', 'in')")
-            ->get(['deal_id', 'payload', 'created_at']);
-        foreach ($calls as $c) {
-            $payload = json_decode((string) $c->payload, true);
-            $key = (is_array($payload) ? Deal::resolveIncomingPhoneSourceFilterKeyFromPayload($payload) : null) ?? 'phone_other';
-            $touches[] = [(int) $c->deal_id, (string) $c->created_at, 'call', $key];
-        }
-        $chats = DB::table('messages')->join('conversations', 'conversations.id', '=', 'messages.conversation_id')
-            ->where('messages.account_id', $this->accountId)->where('messages.direction', 'in')
-            ->where('messages.created_at', '>=', $from)->where('messages.created_at', '<', $to)
-            ->groupBy('conversations.deal_id', 'conversations.channel')
-            ->get(['conversations.deal_id', 'conversations.channel', DB::raw('MIN(messages.created_at) as at')]);
-        foreach ($chats as $c) {
-            $kind = 'chat_'.mb_strtolower((string) $c->channel);
-            $touches[] = [(int) $c->deal_id, (string) $c->at, $kind, $kind];
-        }
-        $forms = DB::table('deal_activities')
-            ->where('account_id', $this->accountId)->where('type', 'lead_form')
-            ->where('created_at', '>=', $from)->where('created_at', '<', $to)
-            ->get(['deal_id', 'created_at', DB::raw("JSON_UNQUOTE(JSON_EXTRACT(payload, '$.provider')) as provider")]);
-        foreach ($forms as $f) {
-            $provider = mb_strtolower((string) ($f->provider ?? ''));
-            $kind = 'form_'.($provider !== '' ? $provider : 'other');
-            $touches[] = [(int) $f->deal_id, (string) $f->created_at, $kind, $kind];
-        }
-
-        $dealIds = array_values(array_unique(array_column($touches, 0)));
-        $deals = [];
-        foreach (array_chunk($dealIds, 1000) as $chunk) {
-            $rows = DB::table('deals')->leftJoin('contacts', 'contacts.id', '=', 'deals.contact_id')->whereIn('deals.id', $chunk)
-                ->get(['deals.id', 'deals.contact_id', 'deals.stage_id', 'deals.closed_at', 'deals.closed_result', 'deals.non_target_category', 'contacts.phone']);
-            foreach ($rows as $d) {
-                $deals[(int) $d->id] = $d;
-            }
-        }
-        $bookedAt = $this->bookedAtFor($dealIds);
-        $booked = array_filter($bookedAt, fn ($b) => $b->at->gte($from));
-
-        usort($touches, fn ($a, $b) => strcmp($a[1], $b[1]));
-        $clients = [];
-        foreach ($touches as [$dealId, $at, $kind, $key]) {
-            $d = $deals[$dealId] ?? null;
-            $phone = LeadDeduplicator::normalizePhone($d?->phone);
-            $client = $phone !== null ? 'p'.$phone : ($d?->contact_id ? 'c'.$d->contact_id : 'd'.$dealId);
-            $clients[$client] ??= ['at' => $at, 'kind' => $kind, 'key' => $key, 'deals' => []];
-            $clients[$client]['deals'][$dealId] = true;
-        }
+        [$clients, $deals, $bookedAt] = $this->contactClients($from, $to);
 
         $out = ['total' => 0, 'booked' => 0, 'non_target' => 0, 'lost' => 0, 'open' => 0, 'booked_earlier' => 0, 'cats' => []];
         $groups = [];
@@ -586,16 +592,7 @@ class CeilingsKpi
         }
         $byDay = [];
         foreach ($clients as $c) {
-            $outcomes = [];
-            foreach (array_keys($c['deals']) as $id) {
-                $outcomes[] = isset($deals[$id]) ? $this->outcome($deals[$id], isset($booked[$id])) : 'open';
-            }
-            $o = match (true) {
-                in_array('booked', $outcomes, true) => 'booked',
-                array_values(array_unique($outcomes)) === ['non_target'] => 'non_target',
-                in_array('open', $outcomes, true) => 'open',
-                default => 'lost',
-            };
+            $o = $c['outcome'];
             // колонка статистики: записан / отказ / в работе или категория нецелевого (none — без категории, старые)
             $cat = $o;
             if ($o === 'non_target') {
@@ -634,6 +631,81 @@ class CeilingsKpi
         unset($g);
 
         return $out + ['groups' => array_values($groups), 'by_day' => $byDay];
+    }
+
+    /**
+     * Обратившиеся клиенты периода (см. contactsBetween) — с их сделками и итогом.
+     *
+     * @return array{0: array<string, array{at:string, kind:string, key:string, name:string, deals:array<int,bool>, outcome:string}>, 1: array<int, object>, 2: array<int, object>}
+     */
+    private function contactClients(Carbon $from, Carbon $to): array
+    {
+        $touches = []; // [сделка, когда, как обратился, ключ канала]
+        $calls = DB::table('deal_activities')
+            ->where('account_id', $this->accountId)->where('type', 'call')
+            ->where('created_at', '>=', $from)->where('created_at', '<', $to)
+            ->whereRaw("JSON_UNQUOTE(JSON_EXTRACT(payload, '$.type')) IN ('INCOMING', 'in')")
+            ->get(['deal_id', 'payload', 'created_at']);
+        foreach ($calls as $c) {
+            $payload = json_decode((string) $c->payload, true);
+            $key = (is_array($payload) ? Deal::resolveIncomingPhoneSourceFilterKeyFromPayload($payload) : null) ?? 'phone_other';
+            $touches[] = [(int) $c->deal_id, (string) $c->created_at, 'call', $key];
+        }
+        $chats = DB::table('messages')->join('conversations', 'conversations.id', '=', 'messages.conversation_id')
+            ->where('messages.account_id', $this->accountId)->where('messages.direction', 'in')
+            ->where('messages.created_at', '>=', $from)->where('messages.created_at', '<', $to)
+            ->groupBy('conversations.deal_id', 'conversations.channel')
+            ->get(['conversations.deal_id', 'conversations.channel', DB::raw('MIN(messages.created_at) as at')]);
+        foreach ($chats as $c) {
+            $kind = 'chat_'.mb_strtolower((string) $c->channel);
+            $touches[] = [(int) $c->deal_id, (string) $c->at, $kind, $kind];
+        }
+        $forms = DB::table('deal_activities')
+            ->where('account_id', $this->accountId)->where('type', 'lead_form')
+            ->where('created_at', '>=', $from)->where('created_at', '<', $to)
+            ->get(['deal_id', 'created_at', DB::raw("JSON_UNQUOTE(JSON_EXTRACT(payload, '$.provider')) as provider")]);
+        foreach ($forms as $f) {
+            $provider = mb_strtolower((string) ($f->provider ?? ''));
+            $kind = 'form_'.($provider !== '' ? $provider : 'other');
+            $touches[] = [(int) $f->deal_id, (string) $f->created_at, $kind, $kind];
+        }
+
+        $dealIds = array_values(array_unique(array_column($touches, 0)));
+        $deals = [];
+        foreach (array_chunk($dealIds, 1000) as $chunk) {
+            $rows = DB::table('deals')->leftJoin('contacts', 'contacts.id', '=', 'deals.contact_id')->whereIn('deals.id', $chunk)
+                ->get(['deals.id', 'deals.contact_id', 'deals.stage_id', 'deals.closed_at', 'deals.closed_result', 'deals.non_target_category', 'contacts.phone', 'contacts.name']);
+            foreach ($rows as $d) {
+                $deals[(int) $d->id] = $d;
+            }
+        }
+        $bookedAt = $this->bookedAtFor($dealIds);
+        $booked = array_filter($bookedAt, fn ($b) => $b->at->gte($from));
+
+        usort($touches, fn ($a, $b) => strcmp($a[1], $b[1]));
+        $clients = [];
+        foreach ($touches as [$dealId, $at, $kind, $key]) {
+            $d = $deals[$dealId] ?? null;
+            $phone = LeadDeduplicator::normalizePhone($d?->phone);
+            $client = $phone !== null ? 'p'.$phone : ($d?->contact_id ? 'c'.$d->contact_id : 'd'.$dealId);
+            $clients[$client] ??= ['at' => $at, 'kind' => $kind, 'key' => $key, 'name' => trim((string) ($d?->name ?? '')), 'deals' => []];
+            $clients[$client]['deals'][$dealId] = true;
+        }
+        foreach ($clients as &$c) {
+            $outcomes = [];
+            foreach (array_keys($c['deals']) as $id) {
+                $outcomes[] = isset($deals[$id]) ? $this->outcome($deals[$id], isset($booked[$id])) : 'open';
+            }
+            $c['outcome'] = match (true) {
+                in_array('booked', $outcomes, true) => 'booked',
+                array_values(array_unique($outcomes)) === ['non_target'] => 'non_target',
+                in_array('open', $outcomes, true) => 'open',
+                default => 'lost',
+            };
+        }
+        unset($c);
+
+        return [$clients, $deals, $bookedAt];
     }
 
     /** Ряд по дням (до 62 дней) или по месяцам: лиды, обратившиеся, замеры, входящие звонки. */
