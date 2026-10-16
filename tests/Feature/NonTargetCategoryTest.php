@@ -55,6 +55,12 @@ class NonTargetCategoryTest extends TestCase
         $this->assertSame(['extra_non_target', 'claim'], [$d->closed_result, $d->non_target_category]);
         $this->assertStringContainsString('Претензии', DB::table('deal_activities')->where('deal_id', $id)->where('type', 'deal_closed')->value('body'));
 
+        // «Отдел светотехники» — тоже категория нецелевого (в списке при закрытии)
+        $light = $this->deal();
+        $this->actingAs($this->op)->get(route('deals.show', $light))->assertOk()->assertSee('Отдел светотехники');
+        $this->actingAs($this->op)->post(route('deals.close', $light), ['result' => 'extra_non_target', 'category' => 'lighting']);
+        $this->assertSame('lighting', DB::table('deals')->where('id', $light)->value('non_target_category'));
+
         // «Отказ» и «Успешно» — без категории
         $lost = $this->deal();
         $this->actingAs($this->op)->post(route('deals.close', $lost), ['result' => 'lost', 'category' => 'spam']);
@@ -104,7 +110,7 @@ class NonTargetCategoryTest extends TestCase
         $old = $this->deal('done', ['closed_at' => $at, 'closed_result' => 'extra_non_target']);      // закрыта до категорий
 
         $res = $this->actingAs($this->op)->get(route('deals.closed'))->assertOk();
-        $this->assertSame(['booked' => 2, 'lost' => 1, 'dealer' => 0, 'installation' => 0, 'extra_works' => 0, 'spam' => 0, 'measurer' => 0, 'claim' => 1, 'none' => 1], $res->viewData('outcomeCounts'));
+        $this->assertSame(['booked' => 2, 'lost' => 1, 'dealer' => 0, 'installation' => 0, 'extra_works' => 0, 'spam' => 0, 'measurer' => 0, 'claim' => 1, 'lighting' => 0, 'none' => 1], $res->viewData('outcomeCounts'));
         $res->assertSee('Целевой записанный')->assertSee('Нецелевые без категории');
 
         $ids = collect($this->actingAs($this->op)->get(route('deals.closed', ['category' => 'claim']))->viewData('deals')->items())->pluck('id')->all();
