@@ -5,6 +5,7 @@
     $back = $business === 'ceilings' ? route('owner.ceilings') : route('owner.dashboard');
 @endphp
 
+@section('brand', $business === 'sneakers' ? 'shag' : 'blagodar')
 @section('title', 'SMM-контент')
 @section('subtitle')SMM-контент · {{ $titles[$business] }} · реклама клипов VK: что идёт, какие клипы тянут, что заменить@endsection
 
@@ -61,8 +62,8 @@
 
     <div class="card tbl-card" id="clips">
       <div class="tbl-head"><h2>Каждый клип</h2><span class="note">динамика CTR: первые 7 дней показов против последних 7 · оценка — от 9 000 показов</span></div>
-      <div class="tbl-wrap"><table class="t" id="clipTable">
-        <thead><tr><th>Клип</th><th>Статус</th><th class="num">Показы</th><th class="num">CTR</th><th>Динамика CTR</th><th class="num">Досмотры 100%</th><th class="num">₽/досмотр</th><th class="num">₽/клик</th><th class="num">Расход</th></tr></thead>
+      <div class="tbl-wrap"><table class="t compact" id="clipTable">
+        <thead><tr><th>Клип</th><th>Статус</th><th class="num">Показы</th><th class="num">CTR</th><th>Динамика CTR</th><th class="num">Досмотры 100%</th><th class="num">₽/досмотр</th><th class="num">₽/клик</th><th class="num vj-col">Вступления</th><th class="num vj-col">₽/вступление</th><th class="num">Расход</th></tr></thead>
         <tbody></tbody>
       </table></div>
     </div>
@@ -147,7 +148,7 @@
     var limit = clipPlans.filter(function (p) { return p.status === 'active'; }).reduce(function (s, p) { return s + (p.day_limit || 0); }, 0);
     var last7 = days.slice(0, -1).slice(-7);
     var avg7 = last7.length ? last7.reduce(function (s, d) { return s + d.clip; }, 0) / last7.length : 0;
-    var cs = { spent: sum(clips, 'spent'), shows: sum(clips, 'shows'), clicks: sum(clips, 'clicks'), v100: sum(clips, 'v100') };
+    var cs = { spent: sum(clips, 'spent'), shows: sum(clips, 'shows'), clicks: sum(clips, 'clicks'), v100: sum(clips, 'v100'), joins: sum(clips, 'joins') };
     var leads = groups.filter(function (g) { return g.type === 'lead'; });
     return { groups: groups, days: days, plans: plans, clips: clips, running: running, mainPlan: mainPlan, limit: limit, avg7: avg7, cs: cs, leads: leads };
   }
@@ -164,6 +165,7 @@
       title = 'Реклама идёт: ' + a.running.length + ' ' + plural(a.running.length, 'клип', 'клипа', 'клипов') + ' в показах';
       items.push('За последние 7 дней — в среднем ' + b(fmt(Math.round(a.avg7)) + ' ₽/день') + (a.limit ? ' из ' + esc(fmt(a.limit)) + ' ₽ лимита' : '') + '.');
       if (a.cs.shows) items.push('За ' + esc(DAYS) + ': ' + b(fmt(a.cs.spent) + ' ₽') + ', ' + esc(fmt(a.cs.shows)) + ' показов, CTR ' + esc(fmt(100 * a.cs.clicks / a.cs.shows, 2)) + '%, досмотрели до конца ' + esc(fmt(100 * a.cs.v100 / a.cs.shows, 1)) + '%.');
+      if (a.cs.shows) items.push('Вступили в сообщество ВК: ' + b(fmt(a.cs.joins)) + (a.cs.joins ? ' — по ' + esc(fmt(a.cs.spent / a.cs.joins)) + ' ₽ за вступление' : '') + '.');
       var attention = [];
       var weak = a.clips.filter(function (g) { return g.v === 'weak'; }), fat = a.clips.filter(function (g) { return g.v === 'fatigue'; });
       if (weak.length) attention.push(b('заменить ' + weak.map(function (g) { return g.clip; }).join(', ')));
@@ -230,7 +232,7 @@
   function renderClips(c, a) {
     var tb = document.querySelector('#clipTable tbody');
     var rows = a.clips.slice().sort(function (x, y) { return (ORDER[x.v] - ORDER[y.v]) || (y.spent - x.spent) || (y.id - x.id); });
-    if (!rows.length) { tb.innerHTML = '<tr><td class="muted" colspan="9">Клипов в рекламе за период не было.</td></tr>'; return; }
+    if (!rows.length) { tb.innerHTML = '<tr><td class="muted" colspan="11">Клипов в рекламе за период не было.</td></tr>'; return; }
     tb.innerHTML = rows.map(function (g) {
       var has = g.shows > 0, trend = DASH;
       if (g.ctr_first != null && g.ctr_last != null) {
@@ -246,7 +248,10 @@
       return '<tr' + (dim ? ' class="smm-dim"' : '') + '><td>' + label + '</td><td>' + tag(VD[g.v][0], VD[g.v][1]) + sub + '</td>' +
         num(fmt(g.shows)) + num(fmt(ctrOf(g), 2) + '%') + '<td>' + trend + '</td>' + num(fmt(vpOf(g), 1) + '%') +
         '<td class="num">' + (g.v100 ? fmt(g.spent / g.v100, 2) + ' ₽' : DASH) + '</td>' +
-        '<td class="num">' + (g.clicks ? fmt(g.spent / g.clicks) + ' ₽' : DASH) + '</td>' + num(fmt(g.spent) + ' ₽') + '</tr>';
+        '<td class="num">' + (g.clicks ? fmt(g.spent / g.clicks) + ' ₽' : DASH) + '</td>' +
+        // вступления в сообщество ВК — главный результат клипа, столбцы выделены
+        '<td class="num vj-col">' + (g.joins ? '<b>' + fmt(g.joins) + '</b>' : DASH) + '</td>' +
+        '<td class="num vj-col">' + (g.joins ? fmt(g.spent / g.joins) + ' ₽' : DASH) + '</td>' + num(fmt(g.spent) + ' ₽') + '</tr>';
     }).join('');
   }
 

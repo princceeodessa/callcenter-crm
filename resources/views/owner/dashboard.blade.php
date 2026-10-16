@@ -21,6 +21,7 @@
     ]], JSON_UNESCAPED_UNICODE);
 @endphp
 
+@section('brand', 'shag')
 @section('title', 'Кроссовки')
 @section('subtitle')Сводка бизнеса · Кроссовки · {{ $periodLabel }} · склад в деньгах, продажи и прибыль по каждому заказу@endsection
 

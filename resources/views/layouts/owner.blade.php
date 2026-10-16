@@ -11,6 +11,9 @@
     $greeting = $hour < 5 ? 'Доброй ночи' : ($hour < 12 ? 'Доброе утро' : ($hour < 18 ? 'Добрый день' : 'Добрый вечер'));
     $css = fn (string $f) => asset('css/'.$f).'?v='.(@filemtime(public_path('css/'.$f)) ?: 1);
     $roleLabel = ['sneaker_owner' => 'Владелец · БлагоДар', 'sneaker_head' => 'Руководитель · Кроссовки'][$ownerUser?->role] ?? 'Сотрудник';
+    // страницы кроссовок (@section('brand', 'shag')) — логотип и название магазина «Шаговый»
+    $isShag = trim($__env->yieldContent('brand')) === 'shag';
+    $brandName = $isShag ? 'Шаговый' : 'БлагоДар';
 @endphp
 <!doctype html>
 <html lang="ru" data-theme="light">
@@ -18,7 +21,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>@yield('title', 'Сводка') · БлагоДар</title>
+    <title>@yield('title', 'Сводка') · {{ $brandName }}</title>
     <script>try{var t=localStorage.getItem('bdTheme');if(t==='dark'||t==='light'){document.documentElement.setAttribute('data-theme',t);}}catch(e){}</script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -35,8 +38,12 @@
     <div class="side-backdrop" id="bdSideBack"></div>
     <aside class="side" id="bdSide">
         <div class="brand">
-            <span class="logo-sq">@include('owner._brand_logo')</span>
-            <span class="brand-tx">БлагоДар<small>Сводка бизнеса</small></span>
+            @if($isShag)
+                <span class="logo-sq shag"><img src="{{ asset('icons/sneaker-touch-icon-180.png') }}" alt="Шаговый"></span>
+            @else
+                <span class="logo-sq">@include('owner._brand_logo')</span>
+            @endif
+            <span class="brand-tx">{{ $brandName }}<small>Сводка бизнеса</small></span>
         </div>
         <nav class="nav" id="bdNav">
             @yield('nav')
@@ -48,7 +55,7 @@
         <div class="wrap">
             <div class="top">
                 <div>
-                    <div class="m-brand" style="margin-bottom:10px">@include('owner._brand_mark')</div>
+                    <div class="m-brand" style="margin-bottom:10px">@if($isShag)<span class="logo-sq shag sm"><img src="{{ asset('icons/sneaker-touch-icon-180.png') }}" alt="Шаговый"></span>@else @include('owner._brand_mark')@endif</div>
                     <h1 class="hello">{{ $greeting }}@if($ownerFirst !== ''), <span class="name">{{ $ownerFirst }}</span>@endif
                         <img class="emoji" src="https://cdn.jsdelivr.net/npm/emoji-datasource-apple@14.0.0/img/apple/64/1f44b.png" alt="👋"></h1>
                     <p class="hsub">@yield('subtitle')</p>
@@ -296,6 +303,35 @@ window.bdCharts = (function () {
         }, { rootMargin: '-15% 0px -70% 0px' });
         links.forEach(a => { const t = document.getElementById(a.getAttribute('href').slice(1)); if (t) io.observe(t); });
     }
+    // таблицы .sortable: клик по заголовку — сортировка (числа — по значению, текст — по алфавиту), «Итого» внизу.
+    // data-sorted="N" — столбец, по которому сервер уже отсортировал (по убыванию): на нём стрелка.
+    const num = s => { const m = String(s).replace(/\u00a0/g, ' ').match(/-?\d[\d\s]*(?:[.,]\d+)?/); return m ? parseFloat(m[0].replace(/\s/g, '').replace(',', '.')) : null; };
+    function sortable(t) {
+        if (t.dataset.sortReady) return;
+        t.dataset.sortReady = '1';
+        const ths = [...t.tHead.rows[0].cells];
+        const mark = (i, dir) => ths.forEach((th, j) => th.dataset.dir = j === i ? dir : '');
+        if (t.dataset.sorted !== undefined) mark(+t.dataset.sorted, 'desc');
+        ths.forEach((th, i) => {
+            th.classList.add('th-sort');
+            th.addEventListener('click', () => {
+                const dir = th.dataset.dir === 'desc' ? 'asc' : 'desc';
+                const body = t.tBodies[0];
+                const rows = [...body.rows].filter(r => !r.classList.contains('grp'));
+                const tail = [...body.rows].filter(r => r.classList.contains('grp'));
+                const val = r => { const c = r.cells[i]; return c ? (c.dataset.v !== undefined ? +c.dataset.v : (num(c.textContent) ?? c.textContent.trim().toLowerCase())) : ''; };
+                rows.sort((a, b) => {
+                    const x = val(a), y = val(b);
+                    const cmp = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'ru');
+                    return dir === 'asc' ? cmp : -cmp;
+                });
+                rows.concat(tail).forEach(r => body.appendChild(r));
+                mark(i, dir);
+            });
+        });
+    }
+    window.bdSortable = () => document.querySelectorAll('table.sortable').forEach(sortable);
+    window.bdSortable();
     window.bdCharts.draw();
     window.bdDateRange.init();
 })();

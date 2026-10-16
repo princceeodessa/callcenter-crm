@@ -82,7 +82,7 @@
         @if(count($pf['by_measurer']) > 0)
             <div class="card tbl-card">
                 <div class="tbl-head"><h2>По замерщикам</h2><span class="note">чьи замеры стали договорами</span></div>
-                <div class="tbl-wrap"><table class="t">
+                <div class="tbl-wrap"><table class="t sortable" data-sorted="1">
                     <thead><tr><th>Замерщик</th><th class="num">Договоров</th><th class="num">Получим</th><th class="num">Заработаем</th><th>Маржа</th><th class="num" title="у стольких договоров в 1С не хватает цены или ставки — прибыль по ним на деле меньше">Без цены в 1С</th></tr></thead>
                     <tbody>
                     @foreach($pf['by_measurer'] as $r)

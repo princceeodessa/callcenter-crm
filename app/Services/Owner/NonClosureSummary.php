@@ -67,6 +67,8 @@ class NonClosureSummary
                 $nc = (int) ($r['not_concluded'] ?? 0);
                 $rows[] = ['measurer' => (string) ($r['measurer'] ?? '—'), 'measurements' => $m, 'not_concluded' => $nc, 'percent' => $m > 0 ? $nc / $m * 100 : null];
             }
+            // замерщики — от большего числа заключённых договоров к меньшему
+            usort($rows, fn ($x, $y) => ($y['measurements'] - $y['not_concluded']) <=> ($x['measurements'] - $x['not_concluded']) ?: $y['measurements'] <=> $x['measurements']);
             $tm = (int) ($b['total']['measurements'] ?? array_sum(array_column($rows, 'measurements')));
             $tn = (int) ($b['total']['not_concluded'] ?? array_sum(array_column($rows, 'not_concluded')));
             $blocks[] = [

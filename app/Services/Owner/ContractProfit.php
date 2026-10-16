@@ -134,7 +134,9 @@ class ContractProfit
             'departments' => array_values(array_filter(array_map(fn ($d) => ['title' => (string) ($d['title'] ?? ''), 'sum' => $money($d['sum'] ?? null)],
                 (array) ($t['departments'] ?? [])), fn ($d) => $d['title'] !== '' && $d['sum'] !== null && abs($d['sum']) >= 0.5)),
             'by_month' => array_map(fn ($m) => ['title' => (string) ($m['title'] ?? $m['month'] ?? '')] + $row((array) $m), (array) ($data['by_month'] ?? [])),
-            'by_measurer' => array_map(fn ($m) => ['measurer' => (string) ($m['measurer'] ?? '—')] + $row((array) $m), (array) ($data['by_measurer'] ?? [])),
+            // замерщики — от большего числа договоров к меньшему
+            'by_measurer' => collect((array) ($data['by_measurer'] ?? []))->map(fn ($m) => ['measurer' => (string) ($m['measurer'] ?? '—')] + $row((array) $m))
+                ->sortByDesc(fn ($m) => [$m['contracts'], $m['revenue'] ?? 0])->values()->all(),
             'updated' => $updated,
             'stale' => $stale,
             'url' => is_string($data['url'] ?? null) && str_starts_with($data['url'], 'https://') ? $data['url'] : null,

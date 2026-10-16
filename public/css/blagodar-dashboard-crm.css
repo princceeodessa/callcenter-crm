@@ -109,7 +109,10 @@ button.menu-item:focus-visible,.notif-item.link:focus-visible,.sr-item:focus-vis
 .cm-back{position:absolute;inset:0;background:rgba(8,10,16,.62)}
 .cm-card{position:relative;z-index:1;width:340px;max-width:100%;background:var(--card);border-radius:20px;box-shadow:var(--shadow);padding:14px}
 .cm-x{position:absolute;top:-12px;right:-12px;width:36px;height:36px;border-radius:50%;border:0;background:var(--card);box-shadow:var(--shadow-sm);color:var(--ink);cursor:pointer;font-size:16px;z-index:2}
-.cm-frame{position:relative;aspect-ratio:9/16;max-height:70vh;margin:0 auto;border-radius:14px;overflow:hidden;background:#0e0f14}
+/* плеер: ширина карточки = ширина видео, поэтому поля вокруг видео одинаковые со всех сторон */
+.cm-card:not(.dc-card){width:auto;max-width:calc(100vw - 40px)}
+.cm-frame{position:relative;aspect-ratio:9/16;height:min(68vh,calc((100vw - 68px) * 16 / 9),620px);height:min(68dvh,calc((100vw - 68px) * 16 / 9),620px);width:auto;border-radius:14px;overflow:hidden;background:#0e0f14}
+.cm-card:not(.dc-card) .cm-ttl,.cm-card:not(.dc-card) .cm-sub{max-width:calc(min(68vh,620px) * 9 / 16)}
 .cm-frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
 .cm-ttl{font-size:15px;font-weight:800;margin:12px 2px 2px}
 .cm-sub{font-size:12px;color:var(--muted);margin:0 2px}
@@ -235,9 +238,6 @@ td.clip-cell{white-space:nowrap}
 /* телефон: источники замеров — карточки друг под другом во всю ширину */
 @media(max-width:620px){
   .bento{grid-template-columns:1fr;gap:12px}
-  .bento .src:not(:has(.rows)){display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:14px;padding-bottom:14px}
-  .bento .src:not(:has(.rows)) .cnt{margin:0;white-space:nowrap}
-  .bento .src:not(:has(.rows)) .nm{margin:0}
   .chart-h{height:260px}
 }
 
@@ -279,3 +279,39 @@ td.clip-cell{white-space:nowrap}
   form.chip{flex-wrap:wrap}
   .kpi .val{font-size:30px}
 }
+
+/* логотип «Шаговый» на страницах кроссовок */
+.logo-sq.shag{background:none;padding:0;overflow:hidden;box-shadow:0 6px 16px rgba(124,111,240,.35)}
+.logo-sq.shag img{width:100%;height:100%;object-fit:cover;display:block}
+.logo-sq.shag.sm{width:34px;height:34px;border-radius:10px;display:grid}
+
+/* VK: вступления в сообщество — отдельной заметной плашкой и выделенными столбцами */
+.vk-joins{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.vk-joins>div{background:var(--accent-soft);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+.vk-joins .vj-lbl{font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--accent)}
+.vk-joins b{font-size:22px;font-weight:800;color:var(--ink)}
+table.t th.vj-col{color:var(--accent)}
+table.t td.vj-col{background:var(--accent-soft)}
+table.t td.vj-col b{color:var(--accent)}
+
+/* сортировка таблиц кликом по заголовку */
+table.t th.th-sort{cursor:pointer;user-select:none;white-space:nowrap}
+table.t th.th-sort:hover{color:var(--ink)}
+table.t th.th-sort[data-dir="desc"]::after{content:" ↓";color:var(--accent)}
+table.t th.th-sort[data-dir="asc"]::after{content:" ↑";color:var(--accent)}
+table.t th.cat.th-sort{white-space:normal}
+
+/* «Отчёт по месяцам» — окно выбора месяца */
+button.export{border:0;cursor:pointer;font-family:inherit}
+.months-card{width:520px}
+.dc-card #bdMonthsBody{overflow-y:auto;overscroll-behavior:contain;padding:20px;min-height:0}
+.months-card .dc-sub{padding-right:36px;line-height:1.45}
+.months-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:16px 0}
+.month-btn{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:var(--card);color:var(--ink);text-decoration:none;transition:border-color .15s}
+.month-btn b{font-size:14px;font-weight:800}
+.month-btn span{font-size:11.5px;color:var(--muted)}
+.month-btn:hover{border-color:var(--accent)}
+.month-btn.active{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.month-btn.active span{color:var(--accent-ink);opacity:.85}
+.months-excel{text-decoration:none}
+@media(max-width:620px){.months-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}

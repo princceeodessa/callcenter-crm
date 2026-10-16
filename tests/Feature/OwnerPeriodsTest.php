@@ -70,6 +70,22 @@ class OwnerPeriodsTest extends TestCase
             ->assertOk()->assertSee('data-daterange', false)->assertSee('01.10 — 14.10.2026');
     }
 
+    /** Кроссовки — под логотипом и названием «Шаговый»; потолки — «БлагоДар». «Отчёт по месяцам» — сводка за весь месяц. */
+    public function test_shag_brand_and_month_report(): void
+    {
+        $owner = $this->owner();
+        $this->actingAs($owner)->get(route('owner.dashboard'))->assertOk()
+            ->assertSee('<title>Кроссовки · Шаговый</title>', false)->assertSee('Шаговый<small>Сводка бизнеса</small>', false)->assertSee('sneaker-touch-icon-180.png', false);
+        $this->actingAs($owner)->get(route('owner.smm', ['business' => 'sneakers']))->assertOk()->assertSee('Шаговый<small>', false);
+        $this->actingAs($owner)->get(route('owner.smm', ['business' => 'ceilings']))->assertOk()->assertSee('БлагоДар<small>', false);
+        $res = $this->actingAs($owner)->get(route('owner.ceilings', ['month' => '2026-09']))->assertOk()
+            ->assertSee('БлагоДар<small>Сводка бизнеса</small>', false)->assertSee('отчёт за сентябрь 2026')
+            ->assertSee('Отчёт по месяцам')->assertSee('id="bdMonths"', false)->assertSee('Обращения в Excel');
+        $this->assertSame(['2026-09-01', '2026-09-30'], [$res->viewData('fromValue'), $res->viewData('toValue')]);
+        $this->assertMatchesRegularExpression('~class="month-btn active" href="[^"]*month=2026-09"~', $res->getContent());
+        $this->actingAs($owner)->get(route('owner.ceilings', ['period' => '7d']))->assertOk()->assertDontSee('отчёт за ');
+    }
+
     /** С телефона боковое меню открывается кнопкой ☰ — и с потолков можно перейти в «Продажи за день». */
     public function test_owner_pages_have_mobile_menu(): void
     {

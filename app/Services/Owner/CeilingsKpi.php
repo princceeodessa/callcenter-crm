@@ -568,7 +568,8 @@ class CeilingsKpi
                 ];
             })
             ->filter(fn ($r) => $r['handled'] > 0 || $r['bookings'] > 0 || $r['taken'] > 0)
-            ->sortByDesc(fn ($r) => $r['taken'] * 1000000 + $r['booked_self'] * 1000 + $r['handled'])
+            // сначала те, кто больше записал на замер (их «заключения»), дальше — по взятым лидам
+            ->sortByDesc(fn ($r) => $r['bookings'] * 1000000 + $r['taken'] * 1000 + $r['handled'])
             ->values()->all();
     }
 

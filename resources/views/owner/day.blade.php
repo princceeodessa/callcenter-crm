@@ -26,6 +26,7 @@
         'sets' => [['label' => 'пар', 'data' => array_map(fn ($h) => (int) $h['units'], $byHour->all()), 'color' => '--accent']]], JSON_UNESCAPED_UNICODE);
 @endphp
 
+@section('brand', 'shag')
 @section('title', 'Продажи за день')
 @section('subtitle')Кроссовки · продажи за {{ $dayTitle }}@if($isToday) · сегодня@endif @endsection
 

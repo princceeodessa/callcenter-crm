@@ -54,6 +54,8 @@ class OwnerCeilingsController extends Controller
             'periods' => self::PERIODS,
             'fromValue' => $from->format('Y-m-d'),
             'toValue' => $to->copy()->subDay()->format('Y-m-d'),
+            // весь календарный месяц («Отчёт по месяцам») — «отчёт за сентябрь 2026»
+            'monthReport' => $from->day === 1 && $to->equalTo($from->copy()->addMonthNoOverflow()) ? $from->translatedFormat('F Y') : null,
         ]);
     }
 }

@@ -30,13 +30,13 @@
             @foreach($ncData['blocks'] as $blk)
                 <div class="card tbl-card">
                     <div class="tbl-head"><h2>{{ $blk['title'] }}</h2></div>
-                    <div class="tbl-wrap"><table class="t">
-                        <thead><tr><th>Замерщик</th><th class="num">Замеров</th><th class="num">Незаключ.</th><th class="num">%</th></tr></thead>
+                    <div class="tbl-wrap"><table class="t sortable" data-sorted="2">
+                        <thead><tr><th>Замерщик</th><th class="num">Замеров</th><th class="num">Заключено</th><th class="num">Незаключ.</th><th class="num">%</th></tr></thead>
                         <tbody>
                         @foreach($blk['rows'] as $r)
-                            <tr><td>@include('owner._op_ava', ['name' => $r['measurer']])</td><td class="num">{{ $n($r['measurements']) }}</td><td class="num">{{ $n($r['not_concluded']) }}</td><td class="num">{{ $pct($r['percent']) }}</td></tr>
+                            <tr><td>@include('owner._op_ava', ['name' => $r['measurer']])</td><td class="num">{{ $n($r['measurements']) }}</td><td class="num"><b>{{ $n($r['measurements'] - $r['not_concluded']) }}</b></td><td class="num">{{ $n($r['not_concluded']) }}</td><td class="num">{{ $pct($r['percent']) }}</td></tr>
                         @endforeach
-                        <tr class="grp"><td>Итого</td><td class="num">{{ $n($blk['total']['measurements']) }}</td><td class="num">{{ $n($blk['total']['not_concluded']) }}</td><td class="num">{{ $pct($blk['total']['percent']) }}</td></tr>
+                        <tr class="grp"><td>Итого</td><td class="num">{{ $n($blk['total']['measurements']) }}</td><td class="num">{{ $n($blk['total']['measurements'] - $blk['total']['not_concluded']) }}</td><td class="num">{{ $n($blk['total']['not_concluded']) }}</td><td class="num">{{ $pct($blk['total']['percent']) }}</td></tr>
                         </tbody>
                     </table></div>
                 </div>

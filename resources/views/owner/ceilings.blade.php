@@ -9,7 +9,10 @@
     };
     $money = fn ($v) => $v === null ? '—' : number_format((float) $v, 0, ',', ' ').' ₽';
     // цена за штуку; дешевле 10 ₽ (просмотр клипа VK — ~0,3 ₽) — с копейками, иначе было бы «0 ₽»
-    $per = fn ($spend, $cnt) => ($spend !== null && $cnt > 0) ? number_format($spend / $cnt, $spend / $cnt < 10 ? 2 : 0, ',', ' ').' ₽' : '—';
+    $per = fn ($spend, $cnt) => ($spend !== null && $spend > 0 && $cnt > 0) ? number_format($spend / $cnt, $spend / $cnt < 10 ? 2 : 0, ',', ' ').' ₽' : '—';
+    // «Отчёт по месяцам»: месяцы с начала года до текущего (новые сверху) — окно выбора
+    $monthsList = collect(range(0, 11))->map(fn ($i) => now()->startOfMonth()->subMonthsNoOverflow($i))
+        ->filter(fn ($m) => $m->gte(\Carbon\Carbon::create(2026, 3, 1)))->values();
     // изменение к прошлому периоду той же длины — бейдж дизайн-системы
     $delta = function ($cur, $prev) {
         if ($prev === null || $cur === null) return '';
@@ -161,7 +164,7 @@
 @endphp
 
 @section('title', 'Потолки')
-@section('subtitle')Сводка бизнеса · Потолки · {{ $periodLabel }} · данные на {{ now()->format('H:i:s') }}, страница обновляется сама каждые 30 с@endsection
+@section('subtitle')Сводка бизнеса · Потолки · @if($monthReport)отчёт за {{ $monthReport }}@else{{ $periodLabel }}@endif · данные на {{ now()->format('H:i:s') }}, страница обновляется сама каждые 30 с@endsection
 
 @section('nav')
     <a href="#top" class="active"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg> Обзор</a>
@@ -172,6 +175,7 @@
     <a href="#sources"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l9 5-9 5-9-5 9-5z"/><path d="M3 12l9 5 9-5M3 17l9 5 9-5"/></svg> Источники</a>
     <a href="#ads"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20M6 15h4"/></svg> Реклама</a>
     <a href="#profit"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg> Прибыль договоров</a>
+    <a href="#months" data-months-open><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 9h18M8 2v4M16 2v4M7 14h4M7 18h7"/></svg> Отчёт по месяцам</a>
     <a href="#nonclosures"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h4"/></svg> Незаключённые</a>
     <a href="#operators"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.9"/></svg> Операторы</a>
     <span class="lbl">Бизнес</span>
@@ -191,9 +195,7 @@
         </div>
         <div class="spacer"></div>
         @include('owner._daterange', ['action' => route('owner.ceilings'), 'params' => ['period' => 'custom'], 'from' => $fromValue, 'to' => $toValue])
-        <a class="export" href="{{ request()->fullUrlWithQuery(['export' => 'contacts']) }}" title="Номер телефона, менеджер (кто первым взял лид), записался ли. Без нецелевых и исходящих дозвонов.">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 11l4 4 4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg> Обращения в Excel
-        </a>
+        <button type="button" class="export" data-months-open title="Графики и статистика за выбранный месяц; там же — обращения в Excel"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 9h18M8 2v4M16 2v4M7 14h4M7 18h7"/></svg> Отчёт по месяцам</button>
     </div>
 
     {{-- KPI --}}
@@ -374,8 +376,13 @@
                 <div class="rw"><span>показы</span><b class="num">{{ $n($vk['shows'] ?? 0) }}</b></div>
                 <div class="rw"><span>просмотры 3с</span><b class="num">{{ $n($vk['views3'] ?? 0) }} <span class="muted">· {{ $per($vk['spent'] ?? null, (int) ($vk['views3'] ?? 0)) }}</span></b></div>
                 <div class="rw"><span>досмотры</span><b class="num">{{ $n($vk['views100'] ?? 0) }}</b></div>
-                <div class="rw"><span>подписки</span><b class="num">{{ $n($vk['joins'] ?? 0) }} <span class="muted">· {{ $per($vk['spent'] ?? null, (int) ($vk['joins'] ?? 0)) }}</span></b></div>
+
                 <div class="rw"><span>клики</span><b class="num">{{ $n($vk['clicks'] ?? 0) }}</b></div>
+            </div>
+            {{-- вступления в сообщество — главный результат клипов, отдельно и заметно --}}
+            <div class="vk-joins">
+                <div><span class="vj-lbl">Вступили в сообщество</span><b class="num">{{ $n($vk['joins'] ?? 0) }}</b></div>
+                <div><span class="vj-lbl">цена вступления</span><b class="num">{{ $per($vk['spent'] ?? null, (int) ($vk['joins'] ?? 0)) }}</b></div>
             </div>
         </div>
         <div class="card">
@@ -394,9 +401,9 @@
 
     @if(count($vkGroups) > 0)
         <div class="card tbl-card" id="clips">
-            <div class="tbl-head"><h2>VK Реклама — группы объявлений</h2><span class="note">в кампании «Клипы» группа — это клип · подписки — вступления в сообщество</span></div>
+            <div class="tbl-head"><h2>VK Реклама — группы объявлений</h2><span class="note">в кампании «Клипы» группа — это клип · вступления — в сообщество ВК</span></div>
             <div class="tbl-wrap"><table class="t">
-                <thead><tr><th>Группа</th><th class="num">Расход</th><th class="num">Показы</th><th class="num">Просмотры 3с</th><th class="num">Цена просм.</th><th class="num">Досмотры</th><th class="num">Подписки</th><th class="num">Цена подписки</th>@if($vkHasLeads)<th class="num">Лиды с формы</th>@endif</tr></thead>
+                <thead><tr><th>Группа</th><th class="num">Расход</th><th class="num">Показы</th><th class="num">Просмотры 3с</th><th class="num">Цена просм.</th><th class="num">Досмотры</th><th class="num vj-col">Вступления</th><th class="num vj-col">Цена вступления</th>@if($vkHasLeads)<th class="num">Лиды с формы</th>@endif</tr></thead>
                 <tbody>
                 @foreach($vkGroups as $g)
                     <tr>
@@ -404,17 +411,17 @@
                             @if($g['clip'] && preg_match('~clip(-?\d+)_(\d+)~', $g['clip'], $cm))
                                 {{-- ▶ — плеер клипа поверх страницы (layouts/owner, public/js/bd-owner-head.js) --}}
                                 <button type="button" class="watch" data-oid="{{ $cm[1] }}" data-vid="{{ $cm[2] }}" data-url="{{ $g['clip'] }}" data-title="{{ $g['name'] }}"
-                                        data-sub="VK Клип · БлагоДар · Потолки · {{ $g['active'] ? 'в работе' : 'остановлена' }}" title="Смотреть клип">{{ $g['name'] }} <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button>
+                                        data-sub="VK Клип · БлагоДар · Потолки · {{ $g['active'] ? 'идут показы' : 'остановлена' }}" title="Смотреть клип">{{ $g['name'] }} <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button>
                             @elseif($g['clip'])<a href="{{ $g['clip'] }}" target="_blank" rel="noopener">{{ $g['name'] }}</a>@else{{ $g['name'] }}@endif
-                            <span class="tag {{ $g['active'] ? 'green' : 'gray' }}">{{ $g['active'] ? 'в работе' : 'остановлена' }}</span>
+                            <span class="tag {{ $g['active'] ? 'green' : 'gray' }}">{{ $g['active'] ? 'Идут показы' : 'Остановлена' }}</span>
                         </td>
                         <td class="num">{{ $money($g['spent'] ?? 0) }}</td>
                         <td class="num">{{ $n($g['shows'] ?? 0) }}</td>
                         <td class="num">{{ $n($g['views3'] ?? 0) }}</td>
                         <td class="num">{{ $per($g['spent'] ?? null, (int) ($g['views3'] ?? 0)) }}</td>
                         <td class="num">{{ $n($g['views100'] ?? 0) }}</td>
-                        <td class="num">{{ $n($g['joins'] ?? 0) }}</td>
-                        <td class="num">{{ $per($g['spent'] ?? null, (int) ($g['joins'] ?? 0)) }}</td>
+                        <td class="num vj-col"><b>{{ $n($g['joins'] ?? 0) }}</b></td>
+                        <td class="num vj-col">{{ $per($g['spent'] ?? null, (int) ($g['joins'] ?? 0)) }}</td>
                         @if($vkHasLeads)<td class="num">{{ $g['leadads'] ? $n($g['goals'] ?? 0) : '—' }}</td>@endif
                     </tr>
                 @endforeach
@@ -445,7 +452,7 @@
     {{-- Операторы --}}
     <div class="card tbl-card" id="operators">
         <div class="tbl-head"><h2>Операторы</h2><span class="note">лид — за тем, кто первым его перетащил; «дожал чужих» — записал лиды, которые первым брал другой</span></div>
-        <div class="tbl-wrap"><table class="t">
+        <div class="tbl-wrap"><table class="t sortable" data-sorted="6">
             <thead><tr>
                 <th>Сотрудник</th><th class="num cat">Взял новых лидов</th><th class="num cat">Записал сам</th><th class="num cat">Не записал</th>
                 <th class="num cat">Нецелевые</th><th class="num cat">Дожал чужих</th><th class="num cat">Всего на замер</th><th class="num cat">Обработано сделок</th>
@@ -484,6 +491,28 @@
         </div>
     </div>
 </div>
+
+{{-- «Отчёт по месяцам»: окно выбора месяца — страница открывается за весь месяц (графики и статистика); там же Excel --}}
+<div class="cm" id="bdMonths" hidden>
+    <div class="cm-back" data-months-close></div>
+    <div class="cm-card dc-card months-card" role="dialog" aria-modal="true" aria-label="Отчёт по месяцам">
+        <button class="cm-x" type="button" data-months-close aria-label="Закрыть">✕</button>
+        <div id="bdMonthsBody">
+            <div class="dc-ttl">Отчёт по месяцам</div>
+            <div class="dc-sub">выберите месяц — сводка откроется за весь месяц: графики по дням, источники, реклама, операторы</div>
+            <div class="months-grid">
+                @foreach($monthsList as $m)
+                    <a class="month-btn {{ $monthReport && $fromValue === $m->toDateString() ? 'active' : '' }}" href="{{ route('owner.ceilings', ['month' => $m->format('Y-m')]) }}">
+                        <b>{{ mb_convert_case($m->translatedFormat('F'), MB_CASE_TITLE) }}</b><span>{{ $m->year }}{{ $m->isSameMonth(now()) ? ' · идёт' : '' }}</span>
+                    </a>
+                @endforeach
+            </div>
+            <a class="export months-excel" href="{{ request()->fullUrlWithQuery(['export' => 'contacts']) }}" title="Номер телефона, менеджер (кто первым взял лид), записался ли. Без нецелевых и исходящих дозвонов.">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 11l4 4 4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+                Обращения в Excel · {{ $periodLabel }}</a>
+        </div>
+    </div>
+</div>
 @endsection
 
 @push('scripts')
@@ -491,6 +520,17 @@
 // Автообновление сводки: раз в 30 с та же страница запрашивается заново и подменяет содержимое — без перезагрузки,
 // мигания и прыжка прокрутки; графики перерисовываются. Свернутая вкладка не опрашивает, при возврате обновляется
 // сразу; пока вводят даты — ждёт.
+// «Отчёт по месяцам» — окно выбора месяца (кнопка над сводкой и пункт меню)
+(function () {
+    var m = document.getElementById('bdMonths');
+    var open = function (e) { e.preventDefault(); m.hidden = false; document.body.classList.add('cm-open'); };
+    var close = function () { m.hidden = true; document.body.classList.remove('cm-open'); };
+    document.addEventListener('click', function (e) {
+        if (e.target.closest('[data-months-open]')) open(e);
+        else if (e.target.closest('[data-months-close]')) close();
+    });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !m.hidden) close(); });
+})();
 (function () {
     var busy = false;
     // блоки CRM БлагоДар, которых не было в кэше: страница уже открыта, они догружаются отдельным запросом
@@ -505,6 +545,7 @@
                     tpl.innerHTML = html;
                     box.replaceWith(tpl.content);
                     window.bdCharts.draw();
+                    window.bdSortable();
                 })
                 .catch(function () { delete box.dataset.loading; box.querySelectorAll('.empty-card').forEach(function (e) { e.textContent = 'CRM БлагоДар пока не ответила — попробую при следующем обновлении страницы.'; }); });
         });
@@ -521,7 +562,7 @@
                 if (!html) return;
                 var doc = new DOMParser().parseFromString(html, 'text/html');
                 var fresh = doc.getElementById('dash'), cur = document.getElementById('dash');
-                if (fresh && cur) { cur.replaceWith(fresh); window.bdCharts.draw(); window.bdDateRange.init(); lazyBlocks(); }
+                if (fresh && cur) { cur.replaceWith(fresh); window.bdCharts.draw(); window.bdDateRange.init(); window.bdSortable(); lazyBlocks(); }
                 var sub = doc.querySelector('.hsub'), curSub = document.querySelector('.hsub');
                 if (sub && curSub) curSub.textContent = sub.textContent;
             })

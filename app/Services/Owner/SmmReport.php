@@ -103,6 +103,7 @@ class SmmReport
                 'clicks' => (int) $sum('clicks'),
                 'spent' => round($sum('spent'), 2),
                 'v100' => (int) $sum('views100'),
+                'joins' => (int) $sum('joins'),
                 'leads' => (int) $sum('goals'),
                 'active_days' => $n,
                 'first_date' => $activeDays[0] ?? null,

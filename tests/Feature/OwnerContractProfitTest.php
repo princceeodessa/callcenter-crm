@@ -154,6 +154,14 @@ class OwnerContractProfitTest extends TestCase
         $this->assertSame(1, $calls);
     }
 
+    public function test_measurers_sorted_by_contracts(): void
+    {
+        config(['owner.contract_profit' => ['url' => 'https://blagodar.test', 'token' => 't']]);
+        Http::$fake = fn () => [200, $this->answer(['by_measurer' => [0 => ['measurer' => 'Мало договоров', 'contracts' => 3], 1 => ['measurer' => 'Много договоров', 'contracts' => 40]]])];
+        $p = ContractProfit::forPeriod(\Carbon\Carbon::parse('2026-10-01'), \Carbon\Carbon::parse('2026-10-17'));
+        $this->assertSame(['Много договоров', 'Мало договоров'], array_column($p['data']['by_measurer'], 'measurer'));
+    }
+
     public function test_margin_in_words(): void
     {
         $w = fn ($m) => ContractProfit::verdict($m)[0];
