@@ -40,4 +40,10 @@ return [
         'url' => env('OWNER_NONCLOSURES_URL'),
         'token' => env('OWNER_NONCLOSURES_TOKEN'),
     ],
+
+    // Прибыль договоров (потолки) — готовые итоги CRM БлагоДар (служебный токен на чтение отчёта, только в .env сервера).
+    'contract_profit' => [
+        'url' => env('BLAGODAR_PROFIT_URL'),
+        'token' => env('BLAGODAR_PROFIT_TOKEN'),
+    ],
 ];

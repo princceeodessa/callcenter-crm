@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\OwnerPeriod;
 use App\Services\Owner\CeilingsKpi;
+use App\Services\Owner\ContractProfit;
 use App\Services\Owner\Marketing\MarketingStats;
 use App\Services\Owner\NonClosureSummary;
 use App\Support\Export\ContactsExport;
@@ -35,6 +36,8 @@ class OwnerCeilingsController extends Controller
             // число замеров — по таблице замеров (решение владельца 09.10.2026)
             'measures' => MarketingStats::measurements($from, $to),
             'nonclosures' => NonClosureSummary::forPeriod($from, $to),
+            // прибыль договоров — готовые итоги CRM БлагоДар (страница и так только владельца всех бизнесов)
+            'profit' => ContractProfit::forPeriod($from, $to),
             'period' => $period,
             'periods' => self::PERIODS,
             'fromValue' => $from->format('Y-m-d'),

@@ -158,6 +158,29 @@ body.cm-open{overflow:hidden}
 .kpi .val,.mini .val,.cc .val{white-space:nowrap}
 .kpis>*,.kpis4>*,.minis>*,.cc>*{min-width:0}
 
+/* Прибыль договоров (итоги CRM БлагоДар): 4 плитки, «куда уходят деньги» полосой, таблицы, кнопка в CRM */
+.profit-kpis{margin-bottom:16px}
+.mini .sub{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.4}
+.mini .warn{font-size:11.5px;color:var(--neg);margin-top:6px;line-height:1.4;font-weight:600}
+.mini .val.neg{color:var(--neg)}
+.profit-flow{padding:18px 20px;margin-bottom:16px}
+.pf-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.pf-head b{font-size:15px;font-weight:800}
+.pf-head .note{font-size:12px;color:var(--muted)}
+.pf-bar{display:flex;height:14px;border-radius:999px;overflow:hidden;background:var(--tile);margin:12px 0 14px}
+.pf-bar span{display:block;height:100%;min-width:2px}
+.pf-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,210px),1fr));gap:8px 24px}
+.pf-item{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink)}
+.pf-item b{margin-left:auto;font-weight:700;white-space:nowrap}
+.pf-item .muted{color:var(--muted);font-size:11.5px;min-width:30px;text-align:right}
+.pf-deps{font-size:11.5px;color:var(--muted);margin-top:12px;line-height:1.5}
+.profit-tables{margin-bottom:16px}
+.profit-tables>.tbl-card{margin-bottom:16px}
+table.t td.pf-inc{color:var(--neg);font-weight:600}
+.profit-tables td .tag{white-space:nowrap}
+.profit-more{margin:0 0 26px}
+.profit-more .export{text-decoration:none}
+
 /* KPI: плашка иконки не сжимается, когда подпись длинная (на телефоне) */
 .kpi .top{gap:8px}
 .kpi .top .ic{flex:none}
