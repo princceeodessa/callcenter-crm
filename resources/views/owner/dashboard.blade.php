@@ -133,7 +133,16 @@
                 <tbody>
                 @forelse($topModels as $t)
                     <tr>
-                        <td class="wrap">{{ $t['name'] }}</td>
+                        <td class="wrap"><span class="prod-cell">
+                            @if($t['image'])
+                                <img class="prod-thumb prod-photo" src="{{ $t['image'] }}" alt="" loading="lazy">
+                            @else
+                                {{-- фото в CRM нет — цветная плашка с кроссовком, как в макете --}}
+                                <span class="prod-thumb" style="background:linear-gradient(135deg,{{ ['#6a85f1,#9a6cf0', '#f0a26c,#f06c8e', '#2bb673,#1fae63', '#5b8def,#43c6ac', '#f06c6c,#f0a26c', '#9a6cf0,#5b8def', '#1fae63,#43c6ac', '#f0b84c,#f0906c'][crc32($t['name']) % 8] }})">
+                                    <svg viewBox="0 0 48 48" width="22" height="22" fill="none" aria-hidden="true"><path fill="#fff" d="M9.8 23.4c.2-.3.4-.6.7-.8l2-3.3 3 3 2.1-2.1 2.6 3.6c.7 1 1.8 1.6 3 1.7 5 .4 9.8 2 14 4.8 1 .7 1.6 1.8 1.6 3 0 .9-.8 1.7-1.7 1.7H10.4c-1.4 0-2.6-1-2.8-2.4-.3-2.3.1-4.6 1.3-6.6Z"/><rect x="8" y="35.4" width="32" height="3" rx="1.5" fill="#fff" opacity=".55"/></svg>
+                                </span>
+                            @endif
+                            {{ $t['name'] }}</span></td>
                         <td class="num">{{ $t['units'] }}</td>
                         <td class="num">{{ $money($t['revenue']) }} ₽</td>
                         <td class="num" style="color:var(--pos);font-weight:700">{{ $money($t['profit']) }} ₽</td>

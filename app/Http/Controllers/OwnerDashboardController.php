@@ -6,6 +6,7 @@ use App\Http\Controllers\Concerns\OwnerPeriod;
 use App\Models\Deal;
 use App\Models\Purchase;
 use App\Models\WarehouseItem;
+use App\Models\WarehouseProduct;
 use App\Services\Owner\OwnerFeed;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -68,16 +69,24 @@ class OwnerDashboardController extends Controller
         // Сколько заказов без указанного закупа (прибыль не посчитана).
         $noCostCount = $sold->filter(fn ($d) => $d->sale_profit === null)->count();
 
-        // ---- Топ моделей по прибыли ----
+        // ---- Топ моделей по прибыли (с фото модели из склада CRM: карточка товара — бренд + модель) ----
+        $modelKey = fn ($i) => mb_strtolower(trim(($i->brand ?? '').'|'.($i->model ?? '')));
         $topModels = $sold
-            ->groupBy(fn ($d) => $d->warehouseItem ? trim(($d->warehouseItem->brand ?? '').' '.($d->warehouseItem->model ?? '')) : ($d->title ?: 'Без товара'))
-            ->map(fn ($g, $name) => [
-                'name' => $name !== '' ? $name : 'Без товара',
+            ->groupBy(fn ($d) => $d->warehouseItem ? $modelKey($d->warehouseItem) : 'deal|'.($d->title ?: 'Без товара'))
+            ->map(fn ($g, $key) => [
+                'key' => $key,
+                'name' => ($i = $g->first()->warehouseItem) ? (trim(($i->brand ?? '').' '.($i->model ?? '')) ?: 'Без товара') : ($g->first()->title ?: 'Без товара'),
                 'units' => (int) $g->sum(fn ($d) => (int) $d->sold_quantity),
                 'revenue' => (float) $g->sum(fn ($d) => (float) ($d->amount ?? 0)),
                 'profit' => (float) $g->sum(fn ($d) => (float) ($d->sale_profit ?? 0)),
             ])
             ->sortByDesc('profit')->take(8)->values();
+        $photos = WarehouseProduct::with('photos')->where('account_id', $accId)->get()->keyBy(fn ($p) => $modelKey($p));
+        $topModels = $topModels->map(function ($t) use ($photos) {
+            $p = $photos[$t['key']] ?? null;
+
+            return ['name' => $p && $p->custom_name ? $p->custom_name : $t['name'], 'image' => $p?->image_url] + $t;
+        });
 
         // ---- По источникам ----
         $bySource = $sold

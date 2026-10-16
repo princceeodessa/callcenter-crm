@@ -86,6 +86,27 @@ class OwnerPeriodsTest extends TestCase
         $this->actingAs($owner)->get(route('owner.ceilings', ['period' => '7d']))->assertOk()->assertDontSee('отчёт за ');
     }
 
+    /** «Топ моделей»: фото модели из склада CRM (карточка товара), нет фото — цветная плашка с кроссовком. */
+    public function test_top_models_show_product_photos(): void
+    {
+        $owner = $this->owner();
+        $acc = $owner->account_id;
+        $item = \App\Models\WarehouseItem::create(['account_id' => $acc, 'brand' => 'TESTBRAND', 'model' => 'Photo Runner', 'size' => '42', 'quantity' => 0]);
+        $plain = \App\Models\WarehouseItem::create(['account_id' => $acc, 'brand' => 'TESTBRAND', 'model' => 'No Photo', 'size' => '42', 'quantity' => 0]);
+        \App\Models\WarehouseProduct::create(['account_id' => $acc, 'brand' => 'TESTBRAND', 'model' => 'Photo Runner', 'image_path' => 'warehouse_products/test-shoe.jpg']);
+        $pipeline = \Illuminate\Support\Facades\DB::table('pipelines')->where('account_id', $acc)->value('id');
+        $stage = \Illuminate\Support\Facades\DB::table('pipeline_stages')->where('account_id', $acc)->value('id');
+        foreach ([[$item, 900000], [$plain, 800000]] as [$it, $amount]) {
+            \Illuminate\Support\Facades\DB::table('deals')->insert(['account_id' => $acc, 'pipeline_id' => $pipeline, 'stage_id' => $stage, 'title' => 'Продажа', 'amount' => $amount, 'sold_quantity' => 1,
+                'warehouse_item_id' => $it->id, 'stock_deducted_at' => '2026-10-10 12:00:00', 'created_at' => '2026-10-10 12:00:00', 'updated_at' => '2026-10-10 12:00:00']);
+        }
+        $res = $this->actingAs($owner)->get(route('owner.dashboard', ['period' => 'custom', 'from' => '2026-10-10', 'to' => '2026-10-10']))->assertOk();
+        $top = collect($res->viewData('topModels'))->keyBy('name');
+        $this->assertStringEndsWith('/storage/warehouse_products/test-shoe.jpg', $top['TESTBRAND Photo Runner']['image']);
+        $this->assertNull($top['TESTBRAND No Photo']['image']);
+        $res->assertSee('class="prod-thumb prod-photo"', false)->assertSee('linear-gradient(135deg,', false);
+    }
+
     /** С телефона боковое меню открывается кнопкой ☰ — и с потолков можно перейти в «Продажи за день». */
     public function test_owner_pages_have_mobile_menu(): void
     {

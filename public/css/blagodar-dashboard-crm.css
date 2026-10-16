@@ -315,3 +315,6 @@ button.export{border:0;cursor:pointer;font-family:inherit}
 .month-btn.active span{color:var(--accent-ink);opacity:.85}
 .months-excel{text-decoration:none}
 @media(max-width:620px){.months-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* «Топ моделей» кроссовок: фото модели из склада CRM (обложка карточки товара) */
+.prod-thumb.prod-photo{object-fit:cover;background:var(--tile);padding:0}
