@@ -354,11 +354,16 @@ class ReportController extends Controller
             ->filter(static fn ($userId) => $userId > 0)
             ->all();
 
+        // потолки: отказ — тому, кто первым взял лид (изначально обрабатывал), а не тому, кто закрыл
+        $lostHandlerOf = $leadHandlers === null ? [] : (new CeilingsKpi($accountId))->handlersOf(
+            $closedDeals->filter(fn (Deal $deal) => $this->normalizeClosedResult($deal->closed_result) === 'lost')->pluck('id')->map(fn ($id) => (int) $id)->all()
+        );
         $closedDealsByUser = $this->closedDealsByReportUser(
             $closedDeals,
             $reportUserIdSet,
             $closedActivityUserByDealId,
-            $stageChangedUserByDealId
+            $stageChangedUserByDealId,
+            $lostHandlerOf
         );
 
         $dealResponsibleMap = Deal::query()
@@ -470,12 +475,13 @@ class ReportController extends Controller
         return $rows;
     }
 
-    private function closedDealsByReportUser(Collection $closedDeals, array $reportUserIdSet, array $closedActivityUserByDealId, array $stageChangedUserByDealId): array
+    private function closedDealsByReportUser(Collection $closedDeals, array $reportUserIdSet, array $closedActivityUserByDealId, array $stageChangedUserByDealId, array $lostHandlerOf = []): array
     {
         $byUser = [];
 
         foreach ($closedDeals as $deal) {
-            $userId = $this->resolveClosedDealReportUserId(
+            $handler = (int) ($lostHandlerOf[(int) $deal->id] ?? 0);
+            $userId = $handler > 0 && isset($reportUserIdSet[$handler]) ? $handler : $this->resolveClosedDealReportUserId(
                 $deal,
                 $reportUserIdSet,
                 $closedActivityUserByDealId,

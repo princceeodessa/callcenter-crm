@@ -414,6 +414,14 @@ class CeilingsKpi
         return $stats;
     }
 
+    /** Кто первым взял каждую из сделок (см. leadHandlers, дозвоны тоже): [сделка => пользователь]. */
+    public function handlersOf(array $dealIds): array
+    {
+        [$handler] = $this->leadHandlers($dealIds, true);
+
+        return array_map(fn ($h) => $h['user'], $handler);
+    }
+
     /**
      * Кто первым взял каждую из сделок: первым из людей перетащил её с первого этапа («Поступил лид») или закрыл, не
      * двигая. Сделки, заведённые исходящим звонком (первый звонок — исходящий), без $withOutbound не берутся — это дозвоны.

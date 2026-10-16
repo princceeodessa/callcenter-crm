@@ -77,6 +77,23 @@ class OutboundDialAndLeadHandlersTest extends TestCase
         $this->actingAs($op)->postJson(route('deals.move', $id), ['to_stage_id' => $this->stage['dial']])->assertOk()->assertJson(['ok' => true]);
     }
 
+    /** «Отчёты»: отказ засчитывается тому, кто первым взял лид, а не тому, кто закрыл сделку. */
+    public function test_refusal_goes_to_whoever_took_the_lead(): void
+    {
+        $a = $this->user('Анна');
+        $b = $this->user('Борис');
+        $main = $this->user('Руководитель', 'main_operator');
+        $deal = DB::table('deals')->insertGetId(['account_id' => $this->acc, 'pipeline_id' => $this->pipeline, 'stage_id' => $this->stage['work'], 'title' => 'Лид',
+            'created_at' => '2026-09-02 09:00:00', 'updated_at' => '2026-09-02 09:00:00']);
+        DB::table('deal_stage_history')->insert(['account_id' => $this->acc, 'deal_id' => $deal, 'from_stage_id' => $this->stage['lead'], 'to_stage_id' => $this->stage['work'], 'changed_by_user_id' => $a->id, 'changed_at' => '2026-09-02 09:10:00']);
+        // закрыл отказом Борис
+        DB::table('deals')->where('id', $deal)->update(['stage_id' => $this->stage['done'], 'closed_at' => '2026-09-05 12:00:00', 'closed_result' => 'lost', 'closed_by_user_id' => $b->id]);
+
+        $rows = collect($this->actingAs($main)->get(route('reports.monthly', ['month' => '2026-09']))->assertOk()->viewData('operatorRows'))->keyBy('id');
+        $this->assertSame([1, 0], [$rows[$a->id]['closedLost'], $rows[$b->id]['closedLost']]);
+        $this->assertSame([$deal], $rows[$a->id]['ids']['closedLost']);
+    }
+
     /** Клиент оставил номер, первыми звоним мы: новый номер — лид в «Поступил лид» и обращение «позвонили мы». */
     public function test_first_outgoing_call_to_a_new_number_is_a_lead(): void
     {
