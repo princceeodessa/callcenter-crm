@@ -100,6 +100,9 @@ class ReportController extends Controller
 
         if ($isManager) {
             $operatorRows = $this->operatorRows($operatorUsers, $from, $to);
+            if ($request->filled('drill')) {
+                return $this->drill($request, $operatorRows, $period);
+            }
             $operatorSummary = $this->summarizeOperatorRows($operatorRows);
             $measurementRows = $this->measurementRows($measurerUsers, $from, $to);
             $measurementSummary = $this->summarizeMeasurementRows($measurementRows);
@@ -121,6 +124,9 @@ class ReportController extends Controller
         }
 
         $operatorRows = $this->operatorRows($operatorUsers->where('id', $user->id), $from, $to);
+        if ($request->filled('drill')) {
+            return $this->drill($request, $operatorRows, $period);
+        }
         $operatorSummary = $this->summarizeOperatorRows($operatorRows);
         $dataPeriodHint = $customRange ? null : $this->operatorDataPeriodHint($requestedMonth, $month, $operatorSummary, $user);
 
@@ -136,6 +142,46 @@ class ReportController extends Controller
             'operatorRows' => $operatorRows,
             'measurementSummary' => null,
             'measurementRows' => collect(),
+        ]);
+    }
+
+    /** Числа таблицы «Операторы», в которые можно провалиться: ключ ?drill= → заголовок. */
+    public const DRILL = [
+        'leads.taken' => 'Взял новых лидов',
+        'leads.booked_self' => 'Записал сам',
+        'leads.not_booked' => 'Не записал',
+        'leads.booked_others' => 'Дожал чужих',
+        'created' => 'Обработано сделок',
+        'closedWon' => 'Успешно',
+        'closedLost' => 'Отказ',
+        'closedExtraNonTarget' => 'Доп.Работы / Не целевой',
+        'callActivities' => 'Звонки',
+    ];
+
+    /**
+     * Сделки за числом таблицы «Операторы» (?drill=метрика&user=id, 0 — «Не распределено»): окно на странице отчёта
+     * (?partial=1) или отдельная страница. Берутся те же сделки, что посчитаны в числе; сотрудник видит только свою строку.
+     */
+    private function drill(Request $request, Collection $operatorRows, array $period)
+    {
+        $metric = (string) $request->query('drill');
+        abort_unless(isset(self::DRILL[$metric]), 404);
+        $row = $operatorRows->first(fn ($r) => (int) $r['id'] === (int) $request->query('user'));
+        abort_if($row === null, 404);
+        $lead = str_starts_with($metric, 'leads.');
+        $ids = $lead ? (array) ($row['leads']['ids'][substr($metric, 6)] ?? []) : (array) ($row['ids'][$metric] ?? []);
+        $deals = Deal::query()->whereIn('id', $ids)
+            ->with(['contact:id,name,phone', 'stage:id,name', 'responsible:id,name'])
+            ->orderByDesc('created_at')->orderByDesc('id')->get();
+
+        return view($request->boolean('partial') ? 'reports._drill' : 'reports.drill', [
+            'deals' => $deals,
+            'title' => self::DRILL[$metric],
+            'who' => $row['name'],
+            'period' => $period,
+            // «Не записал»: кого из них потом записали другие
+            'rescued' => $metric === 'leads.not_booked' ? array_flip((array) ($row['leads']['ids']['rescued'] ?? [])) : [],
+            'backUrl' => route('reports.monthly', $period['custom'] ? ['from' => $period['from'], 'to' => $period['to']] : ['month' => substr($period['from'], 0, 7)]),
         ]);
     }
 
@@ -356,6 +402,7 @@ class ReportController extends Controller
 
             $winBase = $closedWon + $closedLost;
             $sourceTotal = $this->callSourceStatsTotal($callSourceStats);
+            $closedIds = fn (string $result) => $closedByUser->filter(fn (Deal $deal) => $this->normalizeClosedResult($deal->closed_result) === $result)->pluck('id')->values()->all();
 
             return [
                 'id' => $u->id,
@@ -370,7 +417,15 @@ class ReportController extends Controller
                 'uncategorizedCallActivities' => $callSourceStats['uncategorized'],
                 'winRate' => $winBase > 0 ? round(($closedWon / $winBase) * 100, 1) : null,
                 'leads' => $leadHandlers === null ? null
-                    : ($leadHandlers[(int) $u->id] ?? ['taken' => 0, 'booked_self' => 0, 'not_booked' => 0, 'rescued' => 0, 'non_target' => 0, 'booked_others' => 0]),
+                    : ($leadHandlers[(int) $u->id] ?? ['taken' => 0, 'booked_self' => 0, 'not_booked' => 0, 'rescued' => 0, 'non_target' => 0, 'booked_others' => 0, 'ids' => []]),
+                // сделки за каждым числом — для списка по клику (?drill=…&user=…)
+                'ids' => [
+                    'created' => $processedDealIds->all(),
+                    'closedWon' => $closedIds('won'),
+                    'closedLost' => $closedIds('lost'),
+                    'closedExtraNonTarget' => $closedIds('extra_non_target'),
+                    'callActivities' => $callSourceStats['deal_ids'],
+                ],
             ];
         });
 
@@ -387,6 +442,7 @@ class ReportController extends Controller
                 $integrationEventPayloadsByCallId
             );
             $sourceTotal = $this->callSourceStatsTotal($callSourceStats);
+            $closedIds = fn (string $result) => $unassignedClosedDeals->filter(fn (Deal $deal) => $this->normalizeClosedResult($deal->closed_result) === $result)->pluck('id')->values()->all();
 
             $rows->push([
                 'id' => 0,
@@ -401,6 +457,13 @@ class ReportController extends Controller
                 'uncategorizedCallActivities' => $callSourceStats['uncategorized'],
                 'winRate' => $winBase > 0 ? round(($closedWon / $winBase) * 100, 1) : null,
                 'leads' => null,
+                'ids' => [
+                    'created' => $unassignedClosedDeals->pluck('id')->values()->all(),
+                    'closedWon' => $closedIds('won'),
+                    'closedLost' => $closedIds('lost'),
+                    'closedExtraNonTarget' => $closedIds('extra_non_target'),
+                    'callActivities' => $callSourceStats['deal_ids'],
+                ],
             ]);
         }
 
@@ -492,6 +555,7 @@ class ReportController extends Controller
     {
         $counts = Deal::emptyIncomingPhoneSourceCounts();
         $uncategorized = 0;
+        $counted = [];
 
         foreach ($dealIds->map(static fn ($dealId) => (int) $dealId)->filter()->unique() as $dealId) {
             $activities = $sourceCallActivitiesByDealId->get($dealId, collect());
@@ -504,6 +568,7 @@ class ReportController extends Controller
 
                 if ($key !== null && array_key_exists($key, $counts)) {
                     $counts[$key]++;
+                    $counted[] = $dealId;
                     $matched = true;
                     break;
                 }
@@ -525,6 +590,7 @@ class ReportController extends Controller
 
                         if ($key !== null && array_key_exists($key, $counts)) {
                             $counts[$key]++;
+                            $counted[] = $dealId;
                             $matched = true;
                             break 2;
                         }
@@ -534,12 +600,14 @@ class ReportController extends Controller
 
             if (! $matched && ($activities->isNotEmpty() || $recordings->isNotEmpty())) {
                 $uncategorized++;
+                $counted[] = $dealId;
             }
         }
 
         return [
             'counts' => $counts,
             'uncategorized' => $uncategorized,
+            'deal_ids' => $counted,
         ];
     }
 

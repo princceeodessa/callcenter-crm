@@ -50,9 +50,10 @@ class OwnerContractProfitTest extends TestCase
         return $u;
     }
 
+    /** Блоки CRM БлагоДар — фрагмент ?part=blagodar (страница его догружает, если в кэше нет). */
     private function page(User $u)
     {
-        return $this->actingAs($u)->get(route('owner.ceilings', ['period' => 'custom', 'from' => '2026-10-01', 'to' => '2026-10-16']))->assertOk();
+        return $this->actingAs($u)->get(route('owner.ceilings', ['period' => 'custom', 'from' => '2026-10-01', 'to' => '2026-10-16', 'part' => 'blagodar']))->assertOk();
     }
 
     private function answer(array $over = []): string
@@ -96,8 +97,10 @@ class OwnerContractProfitTest extends TestCase
             ->assertSee('у 39 договоров в 1С не хватает цены или ставки — на деле прибыль меньше')
             ->assertSee('Куда уходят деньги')->assertSee('монтажники')->assertSee('2 091 065 ₽')->assertSee('Отдел документов 214 362 ₽')
             ->assertSee('Мокрушин Сергей')->assertSee('41,5% · хорошо')->assertSee('-5,0% · убыток')->assertSee('Без цены в 1С')
-            ->assertSee('Подробно в CRM БлагоДар')->assertSee('href="https://blagodar.test/reports/contract"', false)
-            ->assertSee('href="#profit"', false);
+            ->assertSee('Подробно в CRM БлагоДар')->assertSee('href="https://blagodar.test/reports/contract"', false);
+        // на самой странице (ответ уже в кэше) — блок сразу и пункт меню
+        $this->actingAs($owner)->get(route('owner.ceilings', ['period' => 'custom', 'from' => '2026-10-01', 'to' => '2026-10-16']))
+            ->assertOk()->assertSee('Заработаем')->assertSee('href="#profit"', false);
         $res->assertDontSee('По месяцам');                    // период в пределах месяца
         $this->assertStringNotContainsString('secret-token-xyz', $html);
 
@@ -128,6 +131,27 @@ class OwnerContractProfitTest extends TestCase
         Cache::forget(self::KEY);
         Http::$fake = fn () => throw new \RuntimeException('Сеть: timeout');
         $this->page($owner)->assertSee('сейчас она не ответила')->assertDontSee('Заработаем');
+    }
+
+    public function test_page_does_not_wait_for_blagodar(): void
+    {
+        config(['owner.contract_profit' => ['url' => 'https://blagodar.test', 'token' => 't']]);
+        $calls = 0;
+        Http::$fake = function () use (&$calls) {
+            $calls++;
+
+            return [200, $this->answer()];
+        };
+        $owner = $this->owner();
+        $url = route('owner.ceilings', ['period' => 'custom', 'from' => '2026-10-01', 'to' => '2026-10-16']);
+        // в кэше нет — страница без запроса в БлагоДар, с заглушкой, которая догрузит блоки
+        $this->actingAs($owner)->get($url)->assertOk()->assertSee('class="bd-lazy"', false)->assertSee('part=blagodar', false)
+            ->assertSee('Загружаю итоги из CRM БлагоДар')->assertDontSee('Заработаем');
+        $this->assertSame(0, $calls);
+        // фрагмент сходил в БлагоДар; дальше страница рисует блоки сразу, из кэша
+        $this->page($owner)->assertSee('Заработаем')->assertDontSee('<html', false);
+        $this->actingAs($owner)->get($url)->assertOk()->assertSee('Заработаем')->assertDontSee('class="bd-lazy"', false);
+        $this->assertSame(1, $calls);
     }
 
     public function test_margin_in_words(): void

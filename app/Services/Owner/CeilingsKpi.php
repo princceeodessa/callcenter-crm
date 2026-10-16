@@ -359,7 +359,12 @@ class CeilingsKpi
         $booked = $this->bookedAtFor(array_keys($handler));
         $stats = [];
         $row = function (int $user) use (&$stats) {
-            $stats[$user] ??= ['taken' => 0, 'booked_self' => 0, 'not_booked' => 0, 'rescued' => 0, 'non_target' => 0, 'booked_others' => 0];
+            $stats[$user] ??= ['taken' => 0, 'booked_self' => 0, 'not_booked' => 0, 'rescued' => 0, 'non_target' => 0, 'booked_others' => 0,
+                'ids' => ['taken' => [], 'booked_self' => [], 'not_booked' => [], 'rescued' => [], 'non_target' => [], 'booked_others' => []]];
+        };
+        $add = function (int $user, string $key, int $dealId) use (&$stats) {
+            $stats[$user][$key]++;
+            $stats[$user]['ids'][$key][] = $dealId;
         };
         foreach ($handler as $id => $h) {
             if ($h['at']->lt($from) || $h['at']->gte($to)) {
@@ -367,22 +372,24 @@ class CeilingsKpi
             }
             $user = $h['user'];
             $row($user);
-            $stats[$user]['taken']++;
+            $add($user, 'taken', (int) $id);
             $b = $booked[$id] ?? null;
             if ($b !== null && $b->by === $user) {
-                $stats[$user]['booked_self']++;
+                $add($user, 'booked_self', (int) $id);
             } elseif ($this->outcome($deals[$id], $b !== null) === 'non_target') {
-                $stats[$user]['non_target']++;
+                $add($user, 'non_target', (int) $id);
             } else {
-                $stats[$user]['not_booked']++;
-                $stats[$user]['rescued'] += $b !== null ? 1 : 0;
+                $add($user, 'not_booked', (int) $id);
+                if ($b !== null) {
+                    $add($user, 'rescued', (int) $id);
+                }
             }
         }
         foreach ($bookings as $b) {
             $h = $handler[(int) $b->id] ?? null;
             if ($b->by !== null && $h !== null && $h['user'] !== $b->by) {
                 $row($b->by);
-                $stats[$b->by]['booked_others']++;
+                $add($b->by, 'booked_others', (int) $b->id);
             }
         }
 

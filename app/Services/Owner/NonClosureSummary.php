@@ -16,6 +16,18 @@ use Illuminate\Support\Facades\Cache;
  */
 class NonClosureSummary
 {
+    /** Ответ без запроса в БлагоДар: из кэша (или «не настроено»); null — в кэше нет, нужен forPeriod(). */
+    public static function cached(Carbon $from, Carbon $toExclusive): ?array
+    {
+        $cfg = (array) config('owner.nonclosures');
+        if (empty($cfg['url']) || empty($cfg['token'])) {
+            return ['state' => 'off', 'message' => 'Отчёт строится в CRM БлагоДар и появится здесь, когда там будет готова его выдача.'];
+        }
+        $cached = Cache::get('owner.nonclosures.'.$from->toDateString().'.'.$toExclusive->copy()->subDay()->toDateString());
+
+        return is_array($cached) ? $cached : null;
+    }
+
     /** @return array{state: string, message?: string, data?: array} state: off | error | ok */
     public static function forPeriod(Carbon $from, Carbon $toExclusive): array
     {
@@ -37,14 +49,14 @@ class NonClosureSummary
                 'to' => $to->toDateString(),
             ]), ['Authorization' => 'Bearer '.$cfg['token'], 'Accept' => 'application/json'], null, 8);
         } catch (\Throwable $e) {
-            return ['state' => 'error', 'message' => 'CRM БлагоДар не ответила: '.$e->getMessage()];
+            return self::failed($key, 'CRM БлагоДар не ответила: '.$e->getMessage());
         }
         if ($status !== 200) {
-            return ['state' => 'error', 'message' => 'CRM БлагоДар ответила HTTP '.$status];
+            return self::failed($key, 'CRM БлагоДар ответила HTTP '.$status);
         }
         $data = Http::json($text);
         if (! isset($data['blocks']) || ! is_array($data['blocks'])) {
-            return ['state' => 'error', 'message' => 'CRM БлагоДар прислала сводку не в том виде'];
+            return self::failed($key, 'CRM БлагоДар прислала сводку не в том виде');
         }
 
         $blocks = [];
@@ -80,6 +92,15 @@ class NonClosureSummary
             'period' => $data['period'] ?? null,
         ]];
         Cache::put($key, $result, 600);
+
+        return $result;
+    }
+
+    /** Сбой держим минуту: автообновление сводки не ждёт БлагоДар каждые 30 секунд. */
+    private static function failed(string $key, string $message): array
+    {
+        $result = ['state' => 'error', 'message' => $message];
+        Cache::put($key, $result, 60);
 
         return $result;
     }

@@ -34,6 +34,18 @@ class ContractProfit
 
     private const DOWN = 'Итоги по прибыли договоров строятся в CRM БлагоДар';
 
+    /** Ответ без запроса в БлагоДар: из кэша (или «не настроено»); null — в кэше нет, нужен forPeriod(). */
+    public static function cached(Carbon $from, Carbon $toExclusive): ?array
+    {
+        $cfg = (array) config('owner.contract_profit');
+        if (empty($cfg['url']) || empty($cfg['token'])) {
+            return ['state' => 'off', 'message' => self::DOWN.' — здесь они появятся, когда будет подключена их выдача.'];
+        }
+        $cached = Cache::get('owner.contract_profit.'.$from->toDateString().'.'.$toExclusive->copy()->subDay()->toDateString());
+
+        return is_array($cached) ? $cached : null;
+    }
+
     /** @return array{state: string, message?: string, data?: array} state: off | error | ok */
     public static function forPeriod(Carbon $from, Carbon $toExclusive): array
     {

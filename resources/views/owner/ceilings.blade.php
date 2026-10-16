@@ -157,10 +157,6 @@
     $vkGroups = $ads['vk_groups'];
     $vkHasLeads = collect($vkGroups)->contains(fn ($g) => $g['leadads']);
 
-    $ncState = $nonclosures['state'];
-    $ncData = $nonclosures['data'] ?? null;
-    $ncUpdated = $ncData ? collect($ncData['updated'])->map(fn ($t, $k) => ($k === 'kc_sheet' ? 'таблица КЦ' : ($k === 'onec' ? '1С' : $k)).' — '.$t->format($t->isToday() ? 'H:i' : 'd.m H:i'))->implode(', ') : '';
-
     $periodLabel = $kpi['from']->format('d.m.Y').($days > 1 ? ' — '.$kpi['to']->copy()->subDay()->format('d.m.Y') : '');
 @endphp
 
@@ -427,38 +423,16 @@
         </div>
     @endif
 
-    {{-- Прибыль договоров — готовые итоги CRM БлагоДар --}}
-    @include('owner._contract_profit')
-
-    {{-- Незаключённые договоры --}}
-    <div class="sec" id="nonclosures"><h2>Незаключённые договоры по замерщикам</h2>
-        <span class="note">@if($ncState === 'ok')сверка таблицы КЦ с 1С@if($ncUpdated !== '') · обновлено: {{ $ncUpdated }}@endif @if($ncData['url']) · <a href="{{ $ncData['url'] }}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">полный отчёт →</a>@endif @endif</span>
-    </div>
-    @if($ncState !== 'ok')
-        <div class="card empty-card {{ $ncState === 'error' ? 'bad' : '' }}">{{ $nonclosures['message'] }}</div>
+    {{-- Блоки из CRM БлагоДар: прибыль договоров и незаключённые. Нет в кэше — подгружаются после открытия страницы. --}}
+    @if($blagodarReady)
+        @include('owner._blagodar_blocks')
     @else
-        @foreach($ncData['stale'] as $warn)
-            <div class="card empty-card bad" style="margin-bottom:12px">⚠ {{ $warn }}</div>
-        @endforeach
-        <div class="nc-grid">
-            @foreach($ncData['blocks'] as $blk)
-                <div class="card tbl-card">
-                    <div class="tbl-head"><h2>{{ $blk['title'] }}</h2></div>
-                    <div class="tbl-wrap"><table class="t">
-                        <thead><tr><th>Замерщик</th><th class="num">Замеров</th><th class="num">Незаключ.</th><th class="num">%</th></tr></thead>
-                        <tbody>
-                        @foreach($blk['rows'] as $r)
-                            <tr><td>@include('owner._op_ava', ['name' => $r['measurer']])</td><td class="num">{{ $n($r['measurements']) }}</td><td class="num">{{ $n($r['not_concluded']) }}</td><td class="num">{{ $pct($r['percent']) }}</td></tr>
-                        @endforeach
-                        <tr class="grp"><td>Итого</td><td class="num">{{ $n($blk['total']['measurements']) }}</td><td class="num">{{ $n($blk['total']['not_concluded']) }}</td><td class="num">{{ $pct($blk['total']['percent']) }}</td></tr>
-                        </tbody>
-                    </table></div>
-                </div>
-            @endforeach
+        <div class="bd-lazy" data-lazy-src="{{ request()->fullUrlWithQuery(['part' => 'blagodar']) }}">
+            <div class="sec" id="profit"><h2>Прибыль договоров</h2><span class="note">итоги CRM БлагоДар</span></div>
+            <div class="card empty-card">Загружаю итоги из CRM БлагоДар…</div>
+            <div class="sec" id="nonclosures"><h2>Незаключённые договоры по замерщикам</h2></div>
+            <div class="card empty-card">Загружаю…</div>
         </div>
-        @if($ncData['discrepancies'])
-            <p class="foot-note" style="margin-top:-14px">Строк, где таблица КЦ спорит с 1С: {{ $n($ncData['discrepancies']) }} — подробно в полном отчёте.</p>
-        @endif
     @endif
 
     {{-- Операторы --}}
@@ -512,6 +486,23 @@
 // сразу; пока вводят даты — ждёт.
 (function () {
     var busy = false;
+    // блоки CRM БлагоДар, которых не было в кэше: страница уже открыта, они догружаются отдельным запросом
+    function lazyBlocks() {
+        document.querySelectorAll('[data-lazy-src]').forEach(function (box) {
+            if (box.dataset.loading) return;
+            box.dataset.loading = '1';
+            fetch(box.dataset.lazySrc, { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.ok && !r.redirected ? r.text() : Promise.reject(r.status); })
+                .then(function (html) {
+                    var tpl = document.createElement('template');
+                    tpl.innerHTML = html;
+                    box.replaceWith(tpl.content);
+                    window.bdCharts.draw();
+                })
+                .catch(function () { delete box.dataset.loading; box.querySelectorAll('.empty-card').forEach(function (e) { e.textContent = 'CRM БлагоДар пока не ответила — попробую при следующем обновлении страницы.'; }); });
+        });
+    }
+    lazyBlocks();
     function refresh() {
         if (busy || document.hidden) return;
         var a = document.activeElement;
@@ -523,7 +514,7 @@
                 if (!html) return;
                 var doc = new DOMParser().parseFromString(html, 'text/html');
                 var fresh = doc.getElementById('dash'), cur = document.getElementById('dash');
-                if (fresh && cur) { cur.replaceWith(fresh); window.bdCharts.draw(); window.bdDateRange.init(); }
+                if (fresh && cur) { cur.replaceWith(fresh); window.bdCharts.draw(); window.bdDateRange.init(); lazyBlocks(); }
                 var sub = doc.querySelector('.hsub'), curSub = document.querySelector('.hsub');
                 if (sub && curSub) curSub.textContent = sub.textContent;
             })

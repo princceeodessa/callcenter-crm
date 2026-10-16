@@ -122,8 +122,12 @@ class OutboundDialAndLeadHandlersTest extends TestCase
         $move($old, 'work', 'measure', $b, '2026-09-10 10:00:00');
 
         $s = (new CeilingsKpi($this->acc))->handlerStats(Carbon::parse('2026-09-01'), Carbon::parse('2026-10-01'));
-        $this->assertSame(['taken' => 3, 'booked_self' => 2, 'not_booked' => 1, 'rescued' => 1, 'non_target' => 0, 'booked_others' => 0], $s[$a->id]);
-        $this->assertSame(['taken' => 2, 'booked_self' => 0, 'not_booked' => 1, 'rescued' => 0, 'non_target' => 1, 'booked_others' => 2], $s[$b->id]);
+        $this->assertSame(['taken' => 3, 'booked_self' => 2, 'not_booked' => 1, 'rescued' => 1, 'non_target' => 0, 'booked_others' => 0], array_diff_key($s[$a->id], ['ids' => 0]));
+        $this->assertSame(['taken' => 2, 'booked_self' => 0, 'not_booked' => 1, 'rescued' => 0, 'non_target' => 1, 'booked_others' => 2], array_diff_key($s[$b->id], ['ids' => 0]));
+        // за каждым числом — его сделки (для списка по клику в «Отчётах»)
+        $this->assertEqualsCanonicalizing([$l1, $l2, $l3], $s[$a->id]['ids']['taken']);
+        $this->assertSame([$l1], $s[$a->id]['ids']['not_booked']);
+        $this->assertEqualsCanonicalizing([$l1, $old], $s[$b->id]['ids']['booked_others']);
 
         // «Отчёты» руководителя КЦ
         $main = $this->user('Руководитель', 'main_operator');
@@ -131,6 +135,18 @@ class OutboundDialAndLeadHandlersTest extends TestCase
             ->assertSee('Взял новых лидов')->assertSee('Дожал чужих')->viewData('operatorRows'))->keyBy('id');
         $this->assertSame(3, $rows[$a->id]['leads']['taken']);
         $this->assertSame(2, $rows[$b->id]['leads']['booked_others']);
+
+        // провалиться в число: окно со списком сделок; ссылки только у ненулевых чисел; чужая строка — нет
+        $page = $this->actingAs($main)->get(route('reports.monthly', ['month' => '2026-09']))->getContent();
+        $this->assertStringContainsString(e(route('reports.monthly', ['month' => '2026-09', 'drill' => 'leads.not_booked', 'user' => $a->id])), $page);
+        $list = $this->actingAs($main)->get(route('reports.monthly', ['month' => '2026-09', 'drill' => 'leads.not_booked', 'user' => $a->id, 'partial' => 1]))
+            ->assertOk()->assertSee('Не записал: 1')->assertSee('Анна')->assertSee(route('deals.show', $l1), false)->assertSee('потом записали другие');
+        $this->assertStringNotContainsString('<html', $list->getContent());
+        $this->actingAs($main)->get(route('reports.monthly', ['month' => '2026-09', 'drill' => 'leads.booked_others', 'user' => $b->id]))
+            ->assertOk()->assertSee('Дожал чужих: 2')->assertSee('← к отчёту')->assertSee(route('deals.show', $old), false);
+        $this->actingAs($main)->get(route('reports.monthly', ['month' => '2026-09', 'drill' => 'nope', 'user' => $a->id]))->assertNotFound();
+        $this->actingAs($a)->get(route('reports.monthly', ['month' => '2026-09', 'drill' => 'leads.taken', 'user' => $b->id]))->assertNotFound();
+        $this->actingAs($a)->get(route('reports.monthly', ['month' => '2026-09', 'drill' => 'leads.taken', 'user' => $a->id, 'partial' => 1]))->assertOk()->assertSee('Взял новых лидов: 3');
 
         // сводка владельца
         $owner = User::create(['account_id' => User::where('role', 'sneaker_head')->firstOrFail()->account_id, 'name' => 'Владелец (тест)', 'email' => 'dial_owner_'.uniqid(), 'password' => Hash::make('password'), 'role' => 'sneaker_owner', 'is_active' => true]);

@@ -218,7 +218,9 @@ class OwnerCeilingsTest extends TestCase
             ])];
         };
         try {
-            $res = $this->actingAs($owner)->get(route('owner.ceilings', ['period' => 'custom', 'from' => '2026-09-01', 'to' => '2026-09-30']));
+            // блоки CRM БлагоДар догружаются отдельным запросом (страница их не ждёт)
+            $res = $this->actingAs($owner)->get(route('owner.ceilings', ['period' => 'custom', 'from' => '2026-09-01', 'to' => '2026-09-30', 'part' => 'blagodar']));
+            $page = $this->actingAs($owner)->get(route('owner.ceilings', ['period' => 'custom', 'from' => '2026-09-01', 'to' => '2026-09-30']));
         } finally {
             \App\Services\Owner\Marketing\Http::$fake = null;
             \Illuminate\Support\Facades\Cache::forget('owner.nonclosures.2026-09-01.2026-09-30');
@@ -229,6 +231,7 @@ class OwnerCeilingsTest extends TestCase
         $this->assertSame(25.0, $nc['data']['blocks'][0]['rows'][0]['percent']);
         $this->assertSame(30.0, $nc['data']['blocks'][0]['total']['percent']);
         $res->assertSee('Иванов')->assertSee('полный отчёт');
+        $page->assertOk()->assertSee('Иванов')->assertDontSee('class="bd-lazy"', false);   // теперь из кэша — сразу на странице
     }
 
     public function test_switch_only_for_owner_of_all_businesses(): void

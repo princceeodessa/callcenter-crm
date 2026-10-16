@@ -6,6 +6,24 @@
 @push('scripts')
   <script src="{{ asset('js/bd-daterange.js') }}?v={{ @filemtime(public_path('js/bd-daterange.js')) ?: 1 }}"></script>
   <script>window.bdDateRange.init();</script>
+  <script>
+  // числа таблицы «Операторы» — список сделок окном (без скриптов ссылка откроет его отдельной страницей)
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest('a.drill-link');
+    if (!a || e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
+    e.preventDefault();
+    var body = document.getElementById('drillBody');
+    body.textContent = 'Загружаю…';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('drillModal')).show();
+    fetch(a.href + '&partial=1', { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function (r) { return r.ok ? r.text() : Promise.reject(r.status); })
+      .then(function (html) { body.innerHTML = html; })
+      .catch(function () { body.textContent = 'Не получилось загрузить список — попробуйте ещё раз.'; });
+  });
+  </script>
+@endpush
+@push('styles')
+  <style>a.drill-link{color:inherit;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px}a.drill-link:hover{text-decoration-style:solid}</style>
 @endpush
 
 @section('content')
@@ -13,6 +31,15 @@
   $thisMonth = now()->format('Y-m');
   $prevMonth = now()->subMonthNoOverflow()->format('Y-m');
   $exportQuery = $period['custom'] ? ['from' => $period['from'], 'to' => $period['to'], 'export' => 'contacts'] : ['month' => $month, 'export' => 'contacts'];
+  // число таблицы «Операторы» → ссылка на список его сделок (ReportController::drill); ноль — просто текст
+  $drillQuery = $period['custom'] ? ['from' => $period['from'], 'to' => $period['to']] : ['month' => $month];
+  $dl = function (string $metric, array $row, $value) use ($drillQuery) {
+      if ((int) $value === 0 || ! isset($row['id'])) {
+          return e($value);
+      }
+
+      return '<a class="drill-link" title="Показать сделки" href="'.e(route('reports.monthly', $drillQuery + ['drill' => $metric, 'user' => $row['id']])).'">'.e($value).'</a>';
+  };
 @endphp
 <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
   <div>
@@ -187,19 +214,19 @@
               @endif
               @if(!empty($showLeads))
                 @if($row['leads'] !== null)
-                  <td class="fw-semibold">{{ $row['leads']['taken'] }}</td>
-                  <td class="text-success fw-semibold">{{ $row['leads']['booked_self'] }}</td>
-                  <td class="text-danger fw-semibold">{{ $row['leads']['not_booked'] }}@if($row['leads']['rescued'] > 0) <span class="text-muted small fw-normal">(записали другие: {{ $row['leads']['rescued'] }})</span>@endif</td>
-                  <td class="fw-semibold">{{ $row['leads']['booked_others'] }}</td>
+                  <td class="fw-semibold">{!! $dl('leads.taken', $row, $row['leads']['taken']) !!}</td>
+                  <td class="text-success fw-semibold">{!! $dl('leads.booked_self', $row, $row['leads']['booked_self']) !!}</td>
+                  <td class="text-danger fw-semibold">{!! $dl('leads.not_booked', $row, $row['leads']['not_booked']) !!}@if($row['leads']['rescued'] > 0) <span class="text-muted small fw-normal">(записали другие: {{ $row['leads']['rescued'] }})</span>@endif</td>
+                  <td class="fw-semibold">{!! $dl('leads.booked_others', $row, $row['leads']['booked_others']) !!}</td>
                 @else
                   <td>—</td><td>—</td><td>—</td><td>—</td>
                 @endif
               @endif
-              <td>{{ $row['created'] }}</td>
-              <td class="text-success fw-semibold">{{ $row['closedWon'] }}</td>
-              <td class="text-danger fw-semibold">{{ $row['closedLost'] }}</td>
-              <td class="text-warning fw-semibold">{{ $row['closedExtraNonTarget'] }}</td>
-              <td>{{ $row['callActivities'] }}</td>
+              <td>{!! $dl('created', $row, $row['created']) !!}</td>
+              <td class="text-success fw-semibold">{!! $dl('closedWon', $row, $row['closedWon']) !!}</td>
+              <td class="text-danger fw-semibold">{!! $dl('closedLost', $row, $row['closedLost']) !!}</td>
+              <td class="text-warning fw-semibold">{!! $dl('closedExtraNonTarget', $row, $row['closedExtraNonTarget']) !!}</td>
+              <td>{!! $dl('callActivities', $row, $row['callActivities']) !!}</td>
               <td>{{ $row['winRate'] !== null ? $row['winRate'].'%' : '—' }}</td>
             </tr>
           @empty
@@ -308,4 +335,12 @@
     </div>
   @endif
 @endif
+<div class="modal fade" id="drillModal" tabindex="-1" aria-label="Сделки">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2"><span class="fw-semibold">Сделки</span><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button></div>
+      <div class="modal-body" id="drillBody"></div>
+    </div>
+  </div>
+</div>
 @endsection
