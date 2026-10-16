@@ -185,12 +185,12 @@ class OwnerCeilingsTest extends TestCase
         $html = preg_replace('/\s+/u', ' ', strip_tags(str_replace('<', ' <', $res->getContent())));   // ячейки — через пробел
         $this->assertStringContainsString('Написали в соцсети и чаты 3 нецелевые 1 (33%) · ВК 2, чат Авито 1 записались 0 0%', $html);
         $this->assertStringContainsString('Позвонили 1 нецелевые 0 (0%) записались 1 100%', $html);
-        // колонки: обратились | целевой записанный | целевой отказ | 7 категорий нецелевых | в работе | % записи
-        $this->assertStringContainsString('Обратились Целевой записанный Целевой отказ Дилерский Запись на монтаж Сливы и доп. работы Реклама и спам Запрос на связь с замерщиком Претензии Отдел светотехники В работе % записи', $html);
+        // колонки: обратились | целевой записанный | целевой отказ | 8 категорий нецелевых | в работе | % записи
+        $this->assertStringContainsString('Обратились Целевой записанный Целевой отказ Дилерский Запись на монтаж Сливы и доп. работы Реклама и спам Запрос на связь с замерщиком Претензии Отдел светотехники Дозвон В работе % записи', $html);
         $this->assertStringNotContainsString('Нецелевые без категории', $html);   // все нецелевые периода — с категорией
-        $this->assertStringContainsString('Авито написали в чат 1 0 0 0 0 0 1 0 0 0 0 0%', $html);
-        $this->assertStringContainsString('ВКонтакте 3 1 0 0 0 0 0 0 0 0 2 33% написали в сообщения 2 0 0 0 0 0 0 0 0 0 2 0% позвонили 1 1 0 0 0 0 0 0 0 0 0 100%', $html);
-        $this->assertStringContainsString('Итого 4 1 0 0 0 0 1 0 0 0 2 25%', $html);
+        $this->assertStringContainsString('Авито написали в чат 1 0 0 0 0 0 1 0 0 0 0 0 0%', $html);
+        $this->assertStringContainsString('ВКонтакте 3 1 0 0 0 0 0 0 0 0 0 2 33% написали в сообщения 2 0 0 0 0 0 0 0 0 0 0 2 0% позвонили 1 1 0 0 0 0 0 0 0 0 0 0 100%', $html);
+        $this->assertStringContainsString('Итого 4 1 0 0 0 0 1 0 0 0 0 2 25%', $html);
     }
 
     public function test_nonclosures_from_blagodar_summary(): void

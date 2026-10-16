@@ -60,6 +60,11 @@ class NonTargetCategoryTest extends TestCase
         $this->actingAs($this->op)->get(route('deals.show', $light))->assertOk()->assertSee('Отдел светотехники');
         $this->actingAs($this->op)->post(route('deals.close', $light), ['result' => 'extra_non_target', 'category' => 'lighting']);
         $this->assertSame('lighting', DB::table('deals')->where('id', $light)->value('non_target_category'));
+        // «Дозвон» — клиент уже записан, звонили перенести время
+        $again = $this->deal();
+        $this->actingAs($this->op)->get(route('deals.show', $again))->assertOk()->assertSee('Дозвон');
+        $this->actingAs($this->op)->post(route('deals.close', $again), ['result' => 'extra_non_target', 'category' => 'callback']);
+        $this->assertSame('callback', DB::table('deals')->where('id', $again)->value('non_target_category'));
 
         // «Отказ» и «Успешно» — без категории
         $lost = $this->deal();
@@ -110,7 +115,7 @@ class NonTargetCategoryTest extends TestCase
         $old = $this->deal('done', ['closed_at' => $at, 'closed_result' => 'extra_non_target']);      // закрыта до категорий
 
         $res = $this->actingAs($this->op)->get(route('deals.closed'))->assertOk();
-        $this->assertSame(['booked' => 2, 'lost' => 1, 'dealer' => 0, 'installation' => 0, 'extra_works' => 0, 'spam' => 0, 'measurer' => 0, 'claim' => 1, 'lighting' => 0, 'none' => 1], $res->viewData('outcomeCounts'));
+        $this->assertSame(['booked' => 2, 'lost' => 1, 'dealer' => 0, 'installation' => 0, 'extra_works' => 0, 'spam' => 0, 'measurer' => 0, 'claim' => 1, 'lighting' => 0, 'callback' => 0, 'none' => 1], $res->viewData('outcomeCounts'));
         $res->assertSee('Целевой записанный')->assertSee('Нецелевые без категории');
 
         $ids = collect($this->actingAs($this->op)->get(route('deals.closed', ['category' => 'claim']))->viewData('deals')->items())->pluck('id')->all();
