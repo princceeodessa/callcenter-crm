@@ -47,7 +47,7 @@ class NonClosureSummary
             [$status, $text] = Http::request('GET', rtrim($cfg['url'], '/').'/api/reports/nonclosures/summary?'.http_build_query([
                 'from' => $from->toDateString(),
                 'to' => $to->toDateString(),
-            ]), ['Authorization' => 'Bearer '.$cfg['token'], 'Accept' => 'application/json'], null, 8);
+            ]), ['Authorization' => 'Bearer '.$cfg['token'], 'Accept' => 'application/json'], null, 20);
         } catch (\Throwable $e) {
             return self::failed($key, 'CRM БлагоДар не ответила: '.$e->getMessage());
         }

@@ -61,7 +61,9 @@ class MegafonVatsDealSync
 
         // Блокировка по номеру: два одновременных события одного звонка не создадут дубль.
         $deal = \App\Support\Leads\LeadDeduplicator::withPhoneLock($accountId, $clientPhone, function () use ($accountId, $clientPhone, $p) {
-            $contact = self::resolveContactByPhone($accountId, $clientPhone);
+            // номер уже был в CRM (контакт есть) — старый клиент; нет — новый
+            $knownContact = self::findContactByPhone($accountId, $clientPhone);
+            $contact = $knownContact ?? self::resolveContactByPhone($accountId, $clientPhone);
             $existing = self::findOpenDealByPhone($accountId, $clientPhone, $contact?->id);
             if ($existing) {
                 return $existing;
@@ -83,10 +85,15 @@ class MegafonVatsDealSync
                 return null;
             }
 
-            // Потолки: на исходящий звонок оператора (дозвон клиенту, незаключёнка) — не в «Поступил лид»,
-            // а в «Нецелевое дозвон»: это не новый лид.
+            // Потолки: на исходящий звонок оператора старому клиенту (дозвон, незаключёнка) — не в «Поступил лид»,
+            // а в «Нецелевое дозвон»: это не новый лид. Номер новый (в CRM его не было) — клиент где-то оставил номер,
+            // и мы звоним первыми: это лид, в «Поступил лид» с пометкой «первым звонили мы» (outbound_lead).
             $outbound = !Deal::isIncomingClientCallPayload($p);
             $dialStageId = $outbound ? OutboundDialStage::id($accountId) : null;
+            $ourLead = $dialStageId !== null && $knownContact === null;
+            if ($ourLead) {
+                $dialStageId = null;
+            }
             if ($dialStageId !== null) {
                 $stage = PipelineStage::query()->find($dialStageId) ?? $stage;
             }
@@ -118,9 +125,12 @@ class MegafonVatsDealSync
                 'deal_id' => $created->id,
                 'author_user_id' => null,
                 'type' => 'system',
-                'body' => $dialStageId !== null
-                    ? 'Сделка создана автоматически из исходящего звонка (МегаФон ВАТС) — этап «Нецелевое дозвон».'
-                    : 'Сделка создана автоматически из звонка (МегаФон ВАТС).',
+                'body' => match (true) {
+                    $ourLead => 'Сделка создана из исходящего звонка (МегаФон ВАТС): номер новый — клиент оставил его, первыми позвонили мы.',
+                    $dialStageId !== null => 'Сделка создана автоматически из исходящего звонка (МегаФон ВАТС) — этап «Нецелевое дозвон».',
+                    default => 'Сделка создана автоматически из звонка (МегаФон ВАТС).',
+                },
+                'payload' => $ourLead ? ['outbound_lead' => true] : null,
             ]);
 
             return $created;
@@ -317,7 +327,7 @@ class MegafonVatsDealSync
             return $contactDeal;
         }
 
-        return Deal::query()
+        $byActivity = Deal::query()
             ->where('account_id', $accountId)
             ->whereNull('closed_at')
             ->whereHas('activities', function ($query) use ($variants) {
@@ -339,6 +349,22 @@ class MegafonVatsDealSync
             ->orderByDesc('updated_at')
             ->orderByDesc('id')
             ->first();
+        if ($byActivity) {
+            return $byActivity;
+        }
+
+        // клиент написал номер в чате как угодно («8 (912) 345-67-89») — открытая сделка этого чата
+        $chatDealId = \Illuminate\Support\Facades\DB::table('messages')
+            ->join('conversations', 'conversations.id', '=', 'messages.conversation_id')
+            ->join('deals', 'deals.id', '=', 'conversations.deal_id')
+            ->where('messages.account_id', $accountId)->where('messages.direction', 'in')
+            ->where('messages.created_at', '>=', now()->subDays(60))
+            ->whereNull('deals.closed_at')
+            ->whereRaw("REGEXP_REPLACE(messages.body, '[^0-9]', '') LIKE ?", ['%'.substr($clientPhone, -10).'%'])
+            ->orderByDesc('messages.id')
+            ->value('deals.id');
+
+        return $chatDealId ? Deal::query()->find($chatDealId) : null;
     }
 
     private static function firstString(array $payload, array $keys): ?string

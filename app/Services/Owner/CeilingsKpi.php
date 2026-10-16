@@ -42,6 +42,7 @@ class CeilingsKpi
         'chat_telegram' => 'написали в Telegram',
         'form_tilda' => 'форма на сайте',
         'form_vk' => 'лид-форма',
+        'call_ours' => 'позвонили мы (клиент оставил номер)',
     ];
 
     private ?array $stageIds = null;
@@ -218,6 +219,9 @@ class CeilingsKpi
             foreach (DB::table('conversations')->whereIn('deal_id', $chunk)->get(['deal_id', 'channel', 'created_at']) as $c) {
                 $note((int) $c->deal_id, $c->created_at, 'chat_'.mb_strtolower((string) $c->channel));
             }
+            foreach ($this->ourLeads($chunk) as $dealId => $at) {
+                $note($dealId, $at, 'call_ours');
+            }
             $forms = DB::table('deal_activities')->whereIn('deal_id', $chunk)->whereIn('type', ['lead_form', 'import'])
                 ->get(['deal_id', 'type', 'created_at', DB::raw("JSON_UNQUOTE(JSON_EXTRACT(payload, '$.provider')) as provider")]);
             foreach ($forms as $f) {
@@ -248,6 +252,19 @@ class CeilingsKpi
         return $out;
     }
 
+    /** Сделки «новый номер, первыми позвонили мы» (метка outbound_lead от МегаФона). @return array<int, string> [сделка => когда] */
+    private function ourLeads(array $dealIds): array
+    {
+        if ($dealIds === []) {
+            return [];
+        }
+
+        return DB::table('deal_activities')->whereIn('deal_id', $dealIds)->where('type', 'system')
+            ->whereRaw("JSON_UNQUOTE(JSON_EXTRACT(payload, '$.outbound_lead')) = 'true'")
+            ->groupBy('deal_id')->pluck(DB::raw('MIN(created_at)'), 'deal_id')
+            ->mapWithKeys(fn ($at, $id) => [(int) $id => (string) $at])->all();
+    }
+
     public static function channelLabel(string $key): string
     {
         $phones = Deal::incomingPhoneSourceOptions();
@@ -264,6 +281,7 @@ class CeilingsKpi
             $key === 'chat_telegram' => 'Telegram',
             $key === 'form_tilda' || $key === 'chat_tilda' => 'Сайт · форма (Tilda)',
             $key === 'form_vk' => 'ВК · лид-форма',
+            $key === 'call_ours' => 'Звонок от нас (клиент оставил номер)',
             $key === 'import_bitrix' => 'Импорт из Битрикса',
             str_starts_with($key, 'chat_') => 'Чат · '.substr($key, 5),
             str_starts_with($key, 'form_') => 'Форма · '.substr($key, 5),
@@ -424,6 +442,8 @@ class CeilingsKpi
             $outbound = DB::table('deal_activities')->whereIn('id', $firstCallIds)
                 ->whereRaw("LOWER(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.type'))) IN ('out', 'outgoing')")
                 ->pluck('deal_id')->map(fn ($id) => (int) $id)->flip()->all();
+            // кроме новых номеров: клиент оставил номер, первыми позвонили мы — это лид
+            $outbound = array_diff_key($outbound, $this->ourLeads($chunk));
             foreach ($chunk as $id) {
                 if ((! $withOutbound && isset($outbound[$id])) || ! isset($deals[$id])) {
                     continue;
@@ -676,6 +696,15 @@ class CeilingsKpi
         foreach ($chats as $c) {
             $kind = 'chat_'.mb_strtolower((string) $c->channel);
             $touches[] = [(int) $c->deal_id, (string) $c->at, $kind, $kind];
+        }
+        // новый номер, первыми позвонили мы (клиент оставил номер) — тоже обращение
+        $ours = DB::table('deal_activities')
+            ->where('account_id', $this->accountId)->where('type', 'system')
+            ->where('created_at', '>=', $from)->where('created_at', '<', $to)
+            ->whereRaw("JSON_UNQUOTE(JSON_EXTRACT(payload, '$.outbound_lead')) = 'true'")
+            ->get(['deal_id', 'created_at']);
+        foreach ($ours as $o) {
+            $touches[] = [(int) $o->deal_id, (string) $o->created_at, 'call_ours', 'call_ours'];
         }
         $forms = DB::table('deal_activities')
             ->where('account_id', $this->accountId)->where('type', 'lead_form')

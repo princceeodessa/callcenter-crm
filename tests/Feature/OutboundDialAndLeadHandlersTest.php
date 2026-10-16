@@ -53,7 +53,8 @@ class OutboundDialAndLeadHandlersTest extends TestCase
     public function test_outgoing_call_deals_go_to_the_dial_stage_and_come_back_when_the_client_calls(): void
     {
         $this->user('Admin', 'admin');
-        // оператор звонит клиенту, которого нет в открытых сделках (незаключёнка)
+        // оператор звонит старому клиенту (номер уже есть в CRM), у которого нет открытых сделок (незаключёнка)
+        DB::table('contacts')->insert(['account_id' => $this->acc, 'name' => 'Старый клиент', 'phone' => '79001234567', 'created_at' => '2026-05-01 10:00:00', 'updated_at' => '2026-05-01 10:00:00']);
         $this->vats(['cmd' => 'event', 'type' => 'OUTGOING', 'callid' => 'o1', 'phone' => '79001234567', 'diversion' => '79225174552']);
         $this->vats(['cmd' => 'event', 'type' => 'ACCEPTED', 'callid' => 'o1', 'phone' => '79001234567', 'diversion' => '79225174552']);
         $deal = DB::table('deals')->where('account_id', $this->acc)->first();
@@ -74,6 +75,44 @@ class OutboundDialAndLeadHandlersTest extends TestCase
         $op = $this->user('Оператор');
         $id = DB::table('deals')->where('account_id', $this->acc)->where('title', 'Звонки: 79007654321')->value('id');
         $this->actingAs($op)->postJson(route('deals.move', $id), ['to_stage_id' => $this->stage['dial']])->assertOk()->assertJson(['ok' => true]);
+    }
+
+    /** Клиент оставил номер, первыми звоним мы: новый номер — лид в «Поступил лид» и обращение «позвонили мы». */
+    public function test_first_outgoing_call_to_a_new_number_is_a_lead(): void
+    {
+        $this->user('Admin', 'admin');
+        $op = $this->user('Оператор');
+        $this->vats(['cmd' => 'event', 'type' => 'OUTGOING', 'callid' => 'n1', 'phone' => '79005550011', 'diversion' => '79225174552']);
+        $deal = DB::table('deals')->where('account_id', $this->acc)->where('title', 'Звонки: 79005550011')->first();
+        $this->assertSame([$this->stage['lead'], 1], [(int) $deal->stage_id, (int) $deal->is_unread]);
+        $sys = DB::table('deal_activities')->where('deal_id', $deal->id)->where('type', 'system')->first();
+        $this->assertStringContainsString('первыми позвонили мы', $sys->body);
+        $this->assertSame(['outbound_lead' => true], json_decode($sys->payload, true));
+
+        // оператор взял лид и записал — в «Операторах» это его лид; в сводке — обращение с источником «звонок от нас»
+        DB::table('deal_stage_history')->insert(['account_id' => $this->acc, 'deal_id' => $deal->id, 'from_stage_id' => $this->stage['lead'], 'to_stage_id' => $this->stage['measure'], 'changed_by_user_id' => $op->id, 'changed_at' => now()->addMinute()]);
+        $kpi = new CeilingsKpi($this->acc);
+        $s = $kpi->handlerStats(now()->startOfDay(), now()->addDay());
+        $this->assertSame([1, 1], [$s[$op->id]['taken'], $s[$op->id]['booked_self']]);
+        $list = $kpi->contactList(now()->startOfDay(), now()->addDay());
+        $this->assertSame('позвонили мы (клиент оставил номер)', \App\Services\Owner\CeilingsKpi::contactKindLabel('call_ours'));
+        $this->assertSame(1, collect($list)->filter(fn ($r) => str_contains(json_encode($r, JSON_UNESCAPED_UNICODE), '005550011') || str_contains(json_encode($r, JSON_UNESCAPED_UNICODE), '(900) 555-00-11'))->count());
+        $this->assertSame('Звонок от нас (клиент оставил номер)', \App\Services\Owner\CeilingsKpi::channelLabel($kpi->channelsFor([(int) $deal->id])[(int) $deal->id]));
+    }
+
+    /** Клиент написал номер в чате с пробелами и скобками — наш звонок ложится в сделку этого чата, а не в новую. */
+    public function test_outgoing_call_finds_the_chat_where_the_client_wrote_the_number(): void
+    {
+        $this->user('Admin', 'admin');
+        $chat = DB::table('deals')->insertGetId(['account_id' => $this->acc, 'pipeline_id' => $this->pipeline, 'stage_id' => $this->stage['work'], 'title' => 'Мария — Avito',
+            'contact_id' => DB::table('contacts')->insertGetId(['account_id' => $this->acc, 'name' => 'Мария', 'phone' => null, 'created_at' => now(), 'updated_at' => now()]),
+            'created_at' => now()->subHour(), 'updated_at' => now()->subHour()]);
+        $conv = DB::table('conversations')->insertGetId(['account_id' => $this->acc, 'deal_id' => $chat, 'channel' => 'avito', 'created_at' => now()->subHour(), 'updated_at' => now()->subHour()]);
+        DB::table('messages')->insert(['account_id' => $this->acc, 'conversation_id' => $conv, 'direction' => 'in', 'body' => 'Перезвоните, пожалуйста: 8 (900) 777-12-34', 'created_at' => now()->subMinutes(30), 'updated_at' => now()->subMinutes(30)]);
+
+        $this->vats(['cmd' => 'event', 'type' => 'OUTGOING', 'callid' => 'm1', 'phone' => '79007771234', 'diversion' => '79225174552']);
+        $this->assertSame(1, DB::table('deals')->where('account_id', $this->acc)->count());
+        $this->assertSame(1, DB::table('deal_activities')->where('deal_id', $chat)->where('type', 'call')->count());
     }
 
     /** Звонок сотруднику (наш номер из ignored_phone_numbers) — внутренний: не прилипает к сделке клиента через общую линию. */

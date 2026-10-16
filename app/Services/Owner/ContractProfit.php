@@ -84,7 +84,7 @@ class ContractProfit
             [$status, $text] = Http::request('GET', $base.'/api/reports/contract-profit/summary?'.http_build_query([
                 'from' => $from->toDateString(),
                 'to' => $to->toDateString(),
-            ]), ['Authorization' => 'Bearer '.$token, 'Accept' => 'application/json'], null, 10);
+            ]), ['Authorization' => 'Bearer '.$token, 'Accept' => 'application/json'], null, 20);
         } catch (\Throwable $e) {
             Log::warning('owner contract profit: no answer', ['error' => class_basename($e)]);
 
