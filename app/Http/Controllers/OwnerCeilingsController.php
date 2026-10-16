@@ -28,11 +28,14 @@ class OwnerCeilingsController extends Controller
         if ($request->query('export') === 'contacts') {
             return ContactsExport::download((int) config('owner.ceilings_account_id'), $from, $to);
         }
-        if ($request->query('part') === 'blagodar') {
-            return view('owner._blagodar_blocks', [
-                'profit' => ContractProfit::forPeriod($from, $to),
-                'nonclosures' => NonClosureSummary::forPeriod($from, $to),
-            ]);
+        // блоки CRM БлагоДар по одному (страница догружает их параллельно); blagodar — оба, для уже открытых страниц
+        switch ($request->query('part')) {
+            case 'profit':
+                return view('owner._contract_profit', ['profit' => ContractProfit::forPeriod($from, $to)]);
+            case 'nonclosures':
+                return view('owner._nonclosures', ['nonclosures' => NonClosureSummary::forPeriod($from, $to)]);
+            case 'blagodar':
+                return view('owner._blagodar_blocks', ['profit' => ContractProfit::forPeriod($from, $to), 'nonclosures' => NonClosureSummary::forPeriod($from, $to)]);
         }
         // CRM БлагоДар отвечает по 3–5 с: нет ответа в кэше — страница открывается без него, блоки догружаются следом
         $profit = ContractProfit::cached($from, $to);
@@ -47,7 +50,6 @@ class OwnerCeilingsController extends Controller
             'nonclosures' => $nonclosures,
             // прибыль договоров — готовые итоги CRM БлагоДар (страница и так только владельца всех бизнесов)
             'profit' => $profit,
-            'blagodarReady' => $profit !== null && $nonclosures !== null,
             'period' => $period,
             'periods' => self::PERIODS,
             'fromValue' => $from->format('Y-m-d'),

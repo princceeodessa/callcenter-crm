@@ -219,7 +219,7 @@ class OwnerCeilingsTest extends TestCase
         };
         try {
             // блоки CRM БлагоДар догружаются отдельным запросом (страница их не ждёт)
-            $res = $this->actingAs($owner)->get(route('owner.ceilings', ['period' => 'custom', 'from' => '2026-09-01', 'to' => '2026-09-30', 'part' => 'blagodar']));
+            $res = $this->actingAs($owner)->get(route('owner.ceilings', ['period' => 'custom', 'from' => '2026-09-01', 'to' => '2026-09-30', 'part' => 'nonclosures']));
             $page = $this->actingAs($owner)->get(route('owner.ceilings', ['period' => 'custom', 'from' => '2026-09-01', 'to' => '2026-09-30']));
         } finally {
             \App\Services\Owner\Marketing\Http::$fake = null;

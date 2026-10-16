@@ -423,15 +423,22 @@
         </div>
     @endif
 
-    {{-- Блоки из CRM БлагоДар: прибыль договоров и незаключённые. Нет в кэше — подгружаются после открытия страницы. --}}
-    @if($blagodarReady)
-        @include('owner._blagodar_blocks')
+    {{-- Блоки из CRM БлагоДар: прибыль договоров и незаключённые. Нет в кэше — догружаются после открытия страницы,
+         каждый своим запросом (БлагоДар отвечает по 3–5 с). --}}
+    @if($profit !== null)
+        @include('owner._contract_profit')
     @else
-        <div class="bd-lazy" data-lazy-src="{{ request()->fullUrlWithQuery(['part' => 'blagodar']) }}">
+        <div class="bd-lazy" data-lazy-src="{{ request()->fullUrlWithQuery(['part' => 'profit']) }}">
             <div class="sec" id="profit"><h2>Прибыль договоров</h2><span class="note">итоги CRM БлагоДар</span></div>
             <div class="card empty-card">Загружаю итоги из CRM БлагоДар…</div>
-            <div class="sec" id="nonclosures"><h2>Незаключённые договоры по замерщикам</h2></div>
-            <div class="card empty-card">Загружаю…</div>
+        </div>
+    @endif
+    @if($nonclosures !== null)
+        @include('owner._nonclosures')
+    @else
+        <div class="bd-lazy" data-lazy-src="{{ request()->fullUrlWithQuery(['part' => 'nonclosures']) }}">
+            <div class="sec" id="nonclosures"><h2>Незаключённые договоры по замерщикам</h2><span class="note">сверка таблицы КЦ с 1С</span></div>
+            <div class="card empty-card">Загружаю сверку из CRM БлагоДар…</div>
         </div>
     @endif
 

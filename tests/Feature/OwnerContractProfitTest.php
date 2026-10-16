@@ -53,7 +53,7 @@ class OwnerContractProfitTest extends TestCase
     /** Блоки CRM БлагоДар — фрагмент ?part=blagodar (страница его догружает, если в кэше нет). */
     private function page(User $u)
     {
-        return $this->actingAs($u)->get(route('owner.ceilings', ['period' => 'custom', 'from' => '2026-10-01', 'to' => '2026-10-16', 'part' => 'blagodar']))->assertOk();
+        return $this->actingAs($u)->get(route('owner.ceilings', ['period' => 'custom', 'from' => '2026-10-01', 'to' => '2026-10-16', 'part' => 'profit']))->assertOk();
     }
 
     private function answer(array $over = []): string
@@ -145,7 +145,7 @@ class OwnerContractProfitTest extends TestCase
         $owner = $this->owner();
         $url = route('owner.ceilings', ['period' => 'custom', 'from' => '2026-10-01', 'to' => '2026-10-16']);
         // в кэше нет — страница без запроса в БлагоДар, с заглушкой, которая догрузит блоки
-        $this->actingAs($owner)->get($url)->assertOk()->assertSee('class="bd-lazy"', false)->assertSee('part=blagodar', false)
+        $this->actingAs($owner)->get($url)->assertOk()->assertSee('class="bd-lazy"', false)->assertSee('part=profit', false)->assertDontSee('part=nonclosures', false)   // незаключённые не настроены — их слова сразу, без догрузки
             ->assertSee('Загружаю итоги из CRM БлагоДар')->assertDontSee('Заработаем');
         $this->assertSame(0, $calls);
         // фрагмент сходил в БлагоДар; дальше страница рисует блоки сразу, из кэша

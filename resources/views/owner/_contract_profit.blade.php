@@ -1,8 +1,17 @@
 {{--
     «Прибыль договоров (потолки)» — готовые итоги CRM БлагоДар (App\Services\Owner\ContractProfit), только на странице владельца.
-    Нет итогов — пишем словами, нули не рисуем. Помощники $money, $n, $pct, $plural — из owner/ceilings.
+    Нет итогов — пишем словами, нули не рисуем. Помощники $money, $n, $pct, $plural — из owner/ceilings, а отдельно (?part=profit) — свои.
 --}}
 @php
+    $n ??= fn ($v) => number_format((float) $v, 0, ',', ' ');
+    $pct ??= fn ($v) => $v === null ? '—' : number_format((float) $v, 1, ',', ' ').'%';
+    $money ??= fn ($v) => $v === null ? '—' : number_format((float) $v, 0, ',', ' ').' ₽';
+    $plural ??= function (int $k, string $one, string $few, string $many) {
+        $k = abs($k) % 100;
+        $k1 = $k % 10;
+
+        return $k > 10 && $k < 20 ? $many : ($k1 > 1 && $k1 < 5 ? $few : ($k1 === 1 ? $one : $many));
+    };
     $pf = $profit['data'] ?? null;
     $pfT = $pf['totals'] ?? null;
     [$pfWord, $pfTone] = \App\Services\Owner\ContractProfit::verdict($pfT['margin'] ?? null);

@@ -813,12 +813,20 @@ class ReportController extends Controller
         ]);
     }
 
+    /** Сотрудник из звонка (по объекту записи) и «подпись ↔ пользователь» — считаются один раз на запрос. */
+    private array $callEmployee = [];
+    private array $labelMatchesUser = [];
+
     private function callActivityBelongsToUser(DealActivity $activity, User $user, array $dealResponsibleMap): bool
     {
-        $payload = is_array($activity->payload ?? null) ? $activity->payload : [];
-        $employee = Deal::resolveCallEmployeeFromPayload($payload);
+        $key = spl_object_id($activity);
+        if (! array_key_exists($key, $this->callEmployee)) {
+            $payload = is_array($activity->payload ?? null) ? $activity->payload : [];
+            $this->callEmployee[$key] = Deal::resolveCallEmployeeFromPayload($payload);
+        }
+        $employee = $this->callEmployee[$key];
 
-        if ($employee !== null && $this->operatorLabelMatchesUser($employee, $user)) {
+        if ($employee !== null && ($this->labelMatchesUser[$employee.'|'.$user->id] ??= $this->operatorLabelMatchesUser($employee, $user))) {
             return true;
         }
 
