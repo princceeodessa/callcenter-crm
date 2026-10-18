@@ -120,6 +120,18 @@ class SaleImport
     private function applySale(int $accountId, OnecSaleImport $rec): void
     {
         [$item, $how, $mark] = $this->findItem($accountId, $rec);
+        if (! $item && ($dup = $this->alreadySoldInCrm($accountId, $rec))) {
+            DealActivity::create([
+                'account_id' => $accountId, 'deal_id' => $dup->id, 'author_user_id' => null, 'type' => 'system',
+                'body' => 'Чек 1С: '.(OnecSaleImport::TYPE_LABELS[$rec->doc_type] ?? $rec->doc_type).' № '.$rec->onec_number
+                    .' от '.$rec->onec_date->format('d.m.Y H:i').' · '.$rec->card_name.' — это та же продажа, второй раз не списано',
+            ]);
+            $rec->deal_id = $dup->id;
+            $rec->status = 'linked';
+            $rec->note = 'та же продажа уже была в CRM (сделка #'.$dup->id.') — чек привязан к ней, второй раз не списано';
+
+            return;
+        }
         $pipeline = Pipeline::withoutGlobalScopes()->where('account_id', $accountId)->orderByDesc('is_default')->first();
         $stage = $pipeline ? PipelineStage::withoutGlobalScopes()->where('account_id', $accountId)->where('pipeline_id', $pipeline->id)
             ->where('is_final', 1)->orderBy('sort')->first() : null;
@@ -248,17 +260,65 @@ class SaleImport
             return [null, 'в CRM нет белой закупки артикула '.$article.' — пару выберите на складе', null];
         }
         $splits = $this->warehouse->whiteSplits($items);
-        $hasWhite = fn (WarehouseItem $i) => ($splits[$i->id]['white'] ?? 0) >= $rec->qty;
-        $sameSize = fn (WarehouseItem $i) => $size !== null && ($s = self::sizeNumber((string) $i->size)) !== null && abs($s - $size) < 0.02;
+        $white = $items->filter(fn (WarehouseItem $i) => ($splits[$i->id]['white'] ?? 0) >= $rec->qty)->values();
 
-        if ($found = $items->first(fn ($i) => $sameSize($i) && $hasWhite($i))) {
+        if ($size === null) {
+            return $white->count() === 1
+                ? [$white->first(), 'пара по артикулу '.$article.' (в карточке 1С нет размера, белая пара в CRM одна — р.'.$white->first()->size.')', null]
+                : [null, 'в карточке 1С нет размера, а белых пар '.$article.' в CRM '.$white->count().' — пару выберите на складе', null];
+        }
+        $gap = fn (WarehouseItem $i) => ($s = self::sizeNumber((string) $i->size)) === null ? INF : abs($s - $size);
+        if ($found = $white->first(fn ($i) => $gap($i) < 0.02)) {
             return [$found, 'пара по артикулу '.$article.' и размеру', null];
         }
-        if ($found = $items->first($hasWhite)) {
-            return [$found, 'пара по артикулу '.$article.' (размер '.$found->size.'; в 1С карточка «размер '.($size ?? '?').'»)', null];
+        // Пара этого размера в CRM есть, но белая уже продана: чужой размер не списываем — так задваивались продажи
+        // и с полки «пропадали» непроданные белые пары (15.10.2026).
+        if ($items->contains(fn ($i) => $gap($i) < 0.02)) {
+            return [null, 'белая пара '.$article.' р.'.self::sizeLabel($size).' в CRM уже продана — проверьте, не задвоена ли продажа, и выберите пару на складе', null];
+        }
+        // Такого размера в CRM нет: «Пойзон» пишет 40 / 44 там, где у нас 40.5 / 44.5 — берём соседний полуразмер, если он один.
+        $near = $white->filter(fn ($i) => $gap($i) <= 0.5)->sortBy($gap)->values();
+        if ($near->isNotEmpty() && ($near->count() === 1 || $gap($near[1]) - $gap($near[0]) > 0.01)) {
+            return [$near[0], 'пара по артикулу '.$article.' (в CRM р.'.$near[0]->size.', в 1С карточка «размер '.self::sizeLabel($size).'»)', null];
         }
 
-        return [null, 'белых пар артикула '.$article.' на складе CRM не осталось — пару выберите на складе', null];
+        return [null, 'белой пары '.$article.' р.'.self::sizeLabel($size).' в CRM нет'.($near->count() > 1 ? ' (рядом несколько размеров)' : '').' — пару выберите на складе', null];
+    }
+
+    /**
+     * Та же продажа уже есть в CRM: продавцы пробивают в 1С чеком продажу, внесённую в CRM раньше (до 13.10 белые
+     * продавали в CRM). Белая сделка этого артикула и размера, той же суммы, за 30 дней до чека, ещё без чека 1С.
+     */
+    private function alreadySoldInCrm(int $accountId, OnecSaleImport $rec): ?Deal
+    {
+        [$article, $size] = self::articleAndSize((string) $rec->card_name);
+        if ($article === '' || $size === null) {
+            return null;
+        }
+        $itemIds = Purchase::withoutGlobalScopes()->where('account_id', $accountId)->where('is_white', true)
+            ->whereRaw('UPPER(TRIM(article)) = ?', [mb_strtoupper($article)])->whereNotNull('warehouse_item_id')
+            ->distinct()->pluck('warehouse_item_id')->all();
+        $same = WarehouseItem::withoutGlobalScopes()->where('account_id', $accountId)->whereIn('id', $itemIds ?: [0])->get()
+            ->filter(fn (WarehouseItem $i) => ($s = self::sizeNumber((string) $i->size)) !== null && abs($s - $size) < 0.02);
+        if ($same->isEmpty()) {
+            return null;
+        }
+        $splits = $this->warehouse->whiteSplits($same);
+        if ($same->contains(fn ($i) => ($splits[$i->id]['white'] ?? 0) >= $rec->qty)) {
+            return null;                                                  // белая пара этого размера ещё есть — обычная продажа
+        }
+        $withCheck = OnecSaleImport::withoutGlobalScopes()->where('account_id', $accountId)->whereNotNull('deal_id')->select('deal_id');
+
+        return Deal::withoutGlobalScopes()->where('account_id', $accountId)->whereIn('warehouse_item_id', $same->pluck('id'))
+            ->where('stock_white', true)->whereNotNull('stock_deducted_at')->whereNull('returned_at')
+            ->where('sold_quantity', $rec->qty)->where('amount', $rec->amount)
+            ->whereBetween('stock_deducted_at', [$rec->onec_date->copy()->subDays(30), $rec->onec_date->copy()->addDay()])
+            ->whereNotIn('id', $withCheck)->orderByDesc('stock_deducted_at')->first();
+    }
+
+    private static function sizeLabel(float $size): string
+    {
+        return rtrim(rtrim(number_format($size, 2, '.', ''), '0'), '.');
     }
 
     private function markFor(int $accountId, string $key): ?StockMark
@@ -298,7 +358,8 @@ class SaleImport
             $article = trim($b[1]);                                   // карточки вида «BRAND MODEL ARTICLE SIZE р-р»
         }
         $size = null;
-        if (preg_match('/размер\s*([\d.,]+(?:\s+\d\/\d)?)/u', $name, $m) || preg_match('/([\d.,]+(?:\s+\d\/\d)?)\s*р-р/u', $name, $m)) {
+        // «размер 39.5, цвет …»: запятая после числа — не часть размера
+        if (preg_match('/размер\s*(\d+(?:[.,]\d+)?(?:\s+\d\/\d)?)/u', $name, $m) || preg_match('/(\d+(?:[.,]\d+)?(?:\s+\d\/\d)?)\s*р-р/u', $name, $m)) {
             $size = self::sizeNumber($m[1]);
         }
 
