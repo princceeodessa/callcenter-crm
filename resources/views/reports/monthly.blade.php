@@ -32,7 +32,10 @@
   $prevMonth = now()->subMonthNoOverflow()->format('Y-m');
   $exportQuery = $period['custom'] ? ['from' => $period['from'], 'to' => $period['to'], 'export' => 'contacts'] : ['month' => $month, 'export' => 'contacts'];
   // число таблицы «Операторы» → ссылка на список его сделок (ReportController::drill); ноль — просто текст
-  $drillQuery = $period['custom'] ? ['from' => $period['from'], 'to' => $period['to']] : ['month' => $month];
+  $periodQuery = $period['custom'] ? ['from' => $period['from'], 'to' => $period['to']] : ['month' => $month];
+  $leadSource = $leadSource ?? null;
+  $leadSourceTotals = $leadSourceTotals ?? [];
+  $drillQuery = $periodQuery + ($leadSource !== null ? ['src' => $leadSource] : []);
   $dl = function (string $metric, array $row, $value) use ($drillQuery) {
       if ((int) $value === 0 || ! isset($row['id'])) {
           return e($value);
@@ -40,6 +43,16 @@
 
       return '<a class="drill-link" title="Показать сделки" href="'.e(route('reports.monthly', $drillQuery + ['drill' => $metric, 'user' => $row['id']])).'">'.e($value).'</a>';
   };
+  // графы «Новых лидов»: ключ handlerStats → заголовок, подсказка, цвет
+  $leadCols = [
+      'taken' => ['Взял', 'первым перетащил новый лид с «Поступил лид»', 'fw-semibold'],
+      'booked_self' => ['Записал сам', 'из взятых им — сам записал на замер', 'text-success fw-semibold'],
+      'rescued' => ['Записали другие', 'из взятых им — на замер записал другой оператор (это не «не записал»)', 'text-success'],
+      'not_booked' => ['Не записал', 'из взятых им — сделка закрыта отказом, на замер не записана', 'text-danger fw-semibold'],
+      'in_work' => ['Незавершённые', 'из взятых им — сделка ещё в работе: не записана, не отказ и не нецелевой', 'text-primary fw-semibold'],
+      'non_target' => ['Нецелевые', 'из взятых им — нецелевой: отмечена категория, закрыта «Доп.работы / Не целевой» или лежит на этапе «Нецелевое…»', 'text-warning fw-semibold'],
+      'booked_others' => ['Дожал чужих', 'записал на замер лиды, которые первым брал другой', 'fw-semibold'],
+  ];
 @endphp
 <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
   <div>
@@ -182,20 +195,37 @@
   </div>
 
   <div class="card shadow-sm mb-4">
-    <div class="card-header fw-semibold">
-      {{ $mode === 'manager' ? 'Операторы' : 'Твой результат' }}
+    <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+      <span class="fw-semibold">{{ $mode === 'manager' ? 'Операторы' : 'Твой результат' }}</span>
+      @if(!empty($showLeads))
+        {{-- новые лиды по источнику: звонки, Авито, ВК — отдельно (по Авито много игнора) --}}
+        <div class="d-flex align-items-center gap-1 flex-wrap small" role="group" aria-label="Источник новых лидов">
+          <span class="text-muted me-1">Новые лиды:</span>
+          @foreach(['all' => 'Все'] + \App\Services\Owner\CeilingsKpi::LEAD_SOURCES as $srcKey => $srcLabel)
+            @php $on = ($leadSource ?? 'all') === $srcKey; @endphp
+            <a href="{{ route('reports.monthly', $periodQuery + ($srcKey === 'all' ? [] : ['src' => $srcKey])) }}"
+               class="btn btn-sm py-0 {{ $on ? 'btn-primary' : 'btn-outline-secondary' }}" @if($on) aria-current="true" @endif>{{ $srcLabel }} <span class="{{ $on ? '' : 'text-muted' }}">{{ $leadSourceTotals[$srcKey] ?? 0 }}</span></a>
+          @endforeach
+        </div>
+      @endif
     </div>
     <div class="table-responsive">
       <table class="table table-sm align-middle mb-0">
         <thead>
+          @if(!empty($showLeads))
+            <tr class="small text-muted">
+              <th colspan="{{ $mode === 'manager' ? 2 : 1 }}" class="border-bottom-0"></th>
+              <th colspan="{{ count($leadCols) }}" class="border-bottom-0 fw-normal">Новые лиды{{ $leadSource !== null ? ' · '.\App\Services\Owner\CeilingsKpi::LEAD_SOURCES[$leadSource] : '' }} — каждый взятый лид ровно в одной графе</th>
+              <th colspan="6" class="border-bottom-0 fw-normal">Сделки за период — все источники</th>
+            </tr>
+          @endif
           <tr>
             <th>Пользователь</th>
             @if($mode === 'manager')<th>Роль</th>@endif
             @if(!empty($showLeads))
-              <th title="первым перетащил новый лид с «Поступил лид»">Взял новых лидов</th>
-              <th>Записал сам</th>
-              <th title="из взятых им — не записал он сам (в том числе если потом записал другой)">Не записал</th>
-              <th title="записал на замер лиды, которые первым брал другой">Дожал чужих</th>
+              @foreach($leadCols as [$colLabel, $colHint])
+                <th title="{{ $colHint }}">{{ $colLabel }}</th>
+              @endforeach
             @endif
             <th>Обработано сделок</th>
             <th>Успешно</th>
@@ -213,14 +243,13 @@
                 <td><span class="badge text-bg-secondary">{{ $row['role'] }}</span></td>
               @endif
               @if(!empty($showLeads))
-                @if($row['leads'] !== null)
-                  <td class="fw-semibold">{!! $dl('leads.taken', $row, $row['leads']['taken']) !!}</td>
-                  <td class="text-success fw-semibold">{!! $dl('leads.booked_self', $row, $row['leads']['booked_self']) !!}</td>
-                  <td class="text-danger fw-semibold">{!! $dl('leads.not_booked', $row, $row['leads']['not_booked']) !!}@if($row['leads']['rescued'] > 0) <span class="text-muted small fw-normal">(записали другие: {{ $row['leads']['rescued'] }})</span>@endif</td>
-                  <td class="fw-semibold">{!! $dl('leads.booked_others', $row, $row['leads']['booked_others']) !!}</td>
-                @else
-                  <td>—</td><td>—</td><td>—</td><td>—</td>
-                @endif
+                @foreach($leadCols as $colKey => [$colLabel, $colHint, $colClass])
+                  @if($row['leads'] !== null)
+                    <td class="{{ $colClass }}">{!! $dl('leads.'.$colKey, $row, $row['leads'][$colKey] ?? 0) !!}</td>
+                  @else
+                    <td>—</td>
+                  @endif
+                @endforeach
               @endif
               <td>{!! $dl('created', $row, $row['created']) !!}</td>
               <td class="text-success fw-semibold">{!! $dl('closedWon', $row, $row['closedWon']) !!}</td>
@@ -230,7 +259,7 @@
               <td>{{ $row['winRate'] !== null ? $row['winRate'].'%' : '—' }}</td>
             </tr>
           @empty
-            <tr><td colspan="{{ ($mode === 'manager' ? 8 : 7) + (!empty($showLeads) ? 4 : 0) }}" class="text-muted">Данных за месяц нет.</td></tr>
+            <tr><td colspan="{{ ($mode === 'manager' ? 8 : 7) + (!empty($showLeads) ? count($leadCols) : 0) }}" class="text-muted">Данных за месяц нет.</td></tr>
           @endforelse
         </tbody>
       </table>

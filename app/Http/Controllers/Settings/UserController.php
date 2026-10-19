@@ -71,10 +71,17 @@ class UserController extends Controller
         return redirect()->route('settings.users.index')->with('status', 'Пользователь добавлен.');
     }
 
-    public function toggleActive(User $user)
+    public function toggleActive(Request $request, User $user)
     {
         $me = Auth::user();
         abort_unless($user->account_id === $me->account_id, 403);
+
+        // what=reports — показывать ли сотрудника в «Отчётах» (строки и итоги таблиц колл-центра); учётка не отключается
+        if ($request->input('what') === 'reports') {
+            $user->forceFill(['hide_in_reports' => ! $user->hide_in_reports])->save();
+
+            return back()->with('status', '«'.$user->name.'» '.($user->hide_in_reports ? 'больше не показывается в отчётах.' : 'снова показывается в отчётах.'));
+        }
 
         // Safety: admin can't disable himself.
         if ($user->id === $me->id) {

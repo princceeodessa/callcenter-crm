@@ -23,6 +23,7 @@ class User extends Authenticatable
 
     protected $casts = [
         'is_active' => 'boolean',
+        'hide_in_reports' => 'boolean',
     ];
 
     public function account()

@@ -64,7 +64,9 @@ class ReportController extends Controller
             ->whereIn('role', $operatorRoles)
             ->orderByRaw("FIELD(role,'operator','main_operator','admin')")
             ->orderBy('name')
-            ->get(['id', 'account_id', 'name', 'role']);
+            ->get(['id', 'account_id', 'name', 'role', 'hide_in_reports']);
+        // «Новые лиды» — по одному источнику (?src=): звонки, Авито, ВК отдельно
+        $leadSource = $showLeads && isset(CeilingsKpi::LEAD_SOURCES[$request->query('src')]) ? (string) $request->query('src') : null;
 
         $measurerUsers = User::query()
             ->where('account_id', $user->account_id)
@@ -99,9 +101,10 @@ class ReportController extends Controller
         }
 
         if ($isManager) {
-            $operatorRows = $this->operatorRows($operatorUsers, $from, $to);
+            // сотрудники с отметкой «не показывать в отчётах» (Admin, руководитель) — не в таблицах и не в итогах
+            $operatorRows = $this->operatorRows($operatorUsers->reject(fn (User $u) => (bool) $u->hide_in_reports)->values(), $from, $to, $leadSource);
             if ($request->filled('drill')) {
-                return $this->drill($request, $operatorRows, $period);
+                return $this->drill($request, $operatorRows, $period, $leadSource);
             }
             $operatorSummary = $this->summarizeOperatorRows($operatorRows);
             $measurementRows = $this->measurementRows($measurerUsers, $from, $to);
@@ -114,6 +117,8 @@ class ReportController extends Controller
                 'mode' => 'manager',
                 'isManager' => true,
                 'showLeads' => $showLeads,
+                'leadSource' => $leadSource,
+                'leadSourceTotals' => $this->leadSourceTotals,
                 'callSourceOptions' => $callSourceOptions,
                 'dataPeriodHint' => $dataPeriodHint,
                 'operatorSummary' => $operatorSummary,
@@ -123,9 +128,9 @@ class ReportController extends Controller
             ]);
         }
 
-        $operatorRows = $this->operatorRows($operatorUsers->where('id', $user->id), $from, $to);
+        $operatorRows = $this->operatorRows($operatorUsers->where('id', $user->id), $from, $to, $leadSource);
         if ($request->filled('drill')) {
-            return $this->drill($request, $operatorRows, $period);
+            return $this->drill($request, $operatorRows, $period, $leadSource);
         }
         $operatorSummary = $this->summarizeOperatorRows($operatorRows);
         $dataPeriodHint = $customRange ? null : $this->operatorDataPeriodHint($requestedMonth, $month, $operatorSummary, $user);
@@ -136,6 +141,8 @@ class ReportController extends Controller
             'mode' => 'operator',
             'isManager' => false,
             'showLeads' => $showLeads,
+            'leadSource' => $leadSource,
+            'leadSourceTotals' => $this->leadSourceTotals,
             'callSourceOptions' => $callSourceOptions,
             'dataPeriodHint' => $dataPeriodHint,
             'operatorSummary' => $operatorSummary,
@@ -149,7 +156,10 @@ class ReportController extends Controller
     public const DRILL = [
         'leads.taken' => 'Взял новых лидов',
         'leads.booked_self' => 'Записал сам',
+        'leads.rescued' => 'Записали другие',
         'leads.not_booked' => 'Не записал',
+        'leads.in_work' => 'Незавершённые',
+        'leads.non_target' => 'Нецелевые',
         'leads.booked_others' => 'Дожал чужих',
         'created' => 'Обработано сделок',
         'closedWon' => 'Успешно',
@@ -162,7 +172,7 @@ class ReportController extends Controller
      * Сделки за числом таблицы «Операторы» (?drill=метрика&user=id, 0 — «Не распределено»): окно на странице отчёта
      * (?partial=1) или отдельная страница. Берутся те же сделки, что посчитаны в числе; сотрудник видит только свою строку.
      */
-    private function drill(Request $request, Collection $operatorRows, array $period)
+    private function drill(Request $request, Collection $operatorRows, array $period, ?string $leadSource = null)
     {
         $metric = (string) $request->query('drill');
         abort_unless(isset(self::DRILL[$metric]), 404);
@@ -174,14 +184,15 @@ class ReportController extends Controller
             ->with(['contact:id,name,phone', 'stage:id,name', 'responsible:id,name'])
             ->orderByDesc('created_at')->orderByDesc('id')->get();
 
+        $source = $lead && $leadSource !== null ? CeilingsKpi::LEAD_SOURCES[$leadSource] : null;
+
         return view($request->boolean('partial') ? 'reports._drill' : 'reports.drill', [
             'deals' => $deals,
-            'title' => self::DRILL[$metric],
+            'title' => self::DRILL[$metric].($source !== null ? ' · '.$source : ''),
             'who' => $row['name'],
             'period' => $period,
-            // «Не записал»: кого из них потом записали другие
-            'rescued' => $metric === 'leads.not_booked' ? array_flip((array) ($row['leads']['ids']['rescued'] ?? [])) : [],
-            'backUrl' => route('reports.monthly', $period['custom'] ? ['from' => $period['from'], 'to' => $period['to']] : ['month' => substr($period['from'], 0, 7)]),
+            'backUrl' => route('reports.monthly', ($period['custom'] ? ['from' => $period['from'], 'to' => $period['to']] : ['month' => substr($period['from'], 0, 7)])
+                + ($leadSource !== null ? ['src' => $leadSource] : [])),
         ]);
     }
 
@@ -239,7 +250,10 @@ class ReportController extends Controller
         ];
     }
 
-    private function operatorRows(Collection $users, $from, $to): Collection
+    /** Сколько новых лидов взяли сотрудники таблицы — всего и по каждому источнику (для переключателя). */
+    private array $leadSourceTotals = [];
+
+    private function operatorRows(Collection $users, $from, $to, ?string $leadSource = null): Collection
     {
         $accountId = (int) $users->first()?->account_id;
 
@@ -251,6 +265,18 @@ class ReportController extends Controller
         $leadHandlers = NonTargetCategory::appliesTo($accountId)
             ? (new CeilingsKpi($accountId))->handlerStats($from->copy(), $to->copy())
             : null;
+        if ($leadHandlers !== null) {
+            $leadHandlers = array_intersect_key($leadHandlers, array_flip($users->pluck('id')->map(fn ($id) => (int) $id)->all()));
+            $sourceOf = (new CeilingsKpi($accountId))->leadSourcesFor(collect($leadHandlers)
+                ->flatMap(fn ($s) => array_merge($s['ids']['taken'], $s['ids']['booked_others']))->all());
+            $this->leadSourceTotals = ['all' => (int) collect($leadHandlers)->sum('taken')];
+            foreach (array_keys(CeilingsKpi::LEAD_SOURCES) as $src) {
+                $this->leadSourceTotals[$src] = (int) collect($leadHandlers)->sum(fn ($s) => count(array_filter($s['ids']['taken'], fn ($id) => ($sourceOf[(int) $id] ?? 'other') === $src)));
+            }
+            if ($leadSource !== null) {
+                $leadHandlers = array_map(fn ($s) => CeilingsKpi::handlerRowForSource($s, $sourceOf, $leadSource), $leadHandlers);
+            }
+        }
 
         $reportUserIdSet = array_fill_keys(
             $users
@@ -422,7 +448,7 @@ class ReportController extends Controller
                 'uncategorizedCallActivities' => $callSourceStats['uncategorized'],
                 'winRate' => $winBase > 0 ? round(($closedWon / $winBase) * 100, 1) : null,
                 'leads' => $leadHandlers === null ? null
-                    : ($leadHandlers[(int) $u->id] ?? ['taken' => 0, 'booked_self' => 0, 'not_booked' => 0, 'rescued' => 0, 'non_target' => 0, 'booked_others' => 0, 'ids' => []]),
+                    : ($leadHandlers[(int) $u->id] ?? CeilingsKpi::emptyHandlerRow() + ['ids' => []]),
                 // сделки за каждым числом — для списка по клику (?drill=…&user=…)
                 'ids' => [
                     'created' => $processedDealIds->all(),

@@ -452,9 +452,10 @@
     {{-- Операторы --}}
     <div class="card tbl-card" id="operators">
         <div class="tbl-head"><h2>Операторы</h2><span class="note">лид — за тем, кто первым его перетащил; «дожал чужих» — записал лиды, которые первым брал другой</span></div>
-        <div class="tbl-wrap"><table class="t sortable" data-sorted="6">
+        <div class="tbl-wrap"><table class="t sortable" data-sorted="8">
             <thead><tr>
-                <th>Сотрудник</th><th class="num cat">Взял новых лидов</th><th class="num cat">Записал сам</th><th class="num cat">Не записал</th>
+                <th>Сотрудник</th><th class="num cat">Взял новых лидов</th><th class="num cat">Записал сам</th><th class="num cat" title="на замер записал другой оператор">Записали другие</th>
+                <th class="num cat" title="отказ">Не записал</th><th class="num cat" title="сделка ещё в работе">Незавершённые</th>
                 <th class="num cat">Нецелевые</th><th class="num cat">Дожал чужих</th><th class="num cat">Всего на замер</th><th class="num cat">Обработано сделок</th>
             </tr></thead>
             <tbody>
@@ -463,14 +464,16 @@
                     <td>@include('owner._op_ava', ['name' => $o['name']])</td>
                     <td class="num">{{ $n($o['taken']) }}</td>
                     <td class="num">{{ $n($o['booked_self']) }}</td>
-                    <td class="num">{{ $n($o['not_booked']) }}@if($o['rescued'] > 0) <span class="note">записали другие: {{ $n($o['rescued']) }}</span>@endif</td>
+                    <td class="num">{{ $n($o['rescued']) }}</td>
+                    <td class="num">{{ $n($o['not_booked']) }}</td>
+                    <td class="num">{{ $n($o['in_work']) }}</td>
                     <td class="num">{{ $n($o['non_target_taken']) }}</td>
                     <td class="num">{{ $n($o['booked_others']) }}</td>
                     <td class="num">{{ $n($o['bookings']) }}</td>
                     <td class="num">{{ $n($o['handled']) }}</td>
                 </tr>
             @empty
-                <tr><td colspan="8" class="muted">За период по сделкам никто не работал.</td></tr>
+                <tr><td colspan="10" class="muted">За период по сделкам никто не работал.</td></tr>
             @endforelse
             </tbody>
         </table></div>
@@ -485,7 +488,7 @@
             <div class="how-item"><span class="ni-ic green"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l9 5-9 5-9-5 9-5z"/><path d="M3 12l9 5 9-5"/></svg></span><div><b>Источник</b><p>Первое обращение клиента за период: рекламный номер, чат или форма. «Прочее» — звонки на нерекламные номера.</p></div></div>
             <div class="how-item"><span class="ni-ic red"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg></span><div><b>Нецелевые, отказ, в работе, записались</b><p>По сделкам этих клиентов в CRM. Категорию нецелевого выбирает оператор (с 15.10.2026). «Записались» — тоже по CRM, поэтому может отличаться от плитки «Замеры».</p></div></div>
             <div class="how-item"><span class="ni-ic violet"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 01-2.2 2 19.8 19.8 0 01-8.6-3 19.5 19.5 0 01-6-6 19.8 19.8 0 01-3-8.6A2 2 0 014.1 2h3a2 2 0 012 1.7c.1.9.4 1.8.7 2.7a2 2 0 01-.5 2.1L8.1 9.9a16 16 0 006 6"/></svg></span><div><b>Звонки</b><p>События МегаФона. Пропущенный — входящий, который никто не принял.</p></div></div>
-            <div class="how-item"><span class="ni-ic green"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></span><div><b>Операторы</b><p>Лид закреплён за тем, кто первым взял его из «Поступил лид». «Дожал чужих» — записал лиды, которые первым брал другой. Дозвоны («Нецелевое дозвон») — не лиды.</p></div></div>
+            <div class="how-item"><span class="ni-ic green"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></span><div><b>Операторы</b><p>Лид закреплён за тем, кто первым взял его из «Поступил лид», и стоит ровно в одной графе: записал сам, записали другие, не записал (отказ), незавершённые (ещё в работе) или нецелевые. «Дожал чужих» — записал лиды, которые первым брал другой. Дозвоны («Нецелевое дозвон») — не лиды.</p></div></div>
             <div class="how-item"><span class="ni-ic violet"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20M6 15h4"/></svg></span><div><b>Реклама</b><p>Расход — из кабинетов: Директ и VK каждые 2 часа (без НДС), Авито — каждый час, только объявления потолков. В таблицу Авито вносят до конца дня, поэтому там он обычно меньше.</p></div></div>
             <div class="how-item"><span class="ni-ic green"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 11-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></span><div><b>Обновление</b><p>Страница обновляется сама каждые 30 секунд, пока открыта; свернутая вкладка догоняет при возврате.</p></div></div>
         </div>

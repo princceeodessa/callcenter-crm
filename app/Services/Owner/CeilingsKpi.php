@@ -34,6 +34,14 @@ class CeilingsKpi
         'other' => 'Прочее',
     ];
 
+    /** Новые лиды по тому, как клиент обратился, — «Отчёты» показывают их отдельно (по Авито много игнора). */
+    public const LEAD_SOURCES = [
+        'call' => 'Звонки',
+        'avito' => 'Авито',
+        'vk' => 'ВКонтакте',
+        'other' => 'Сайт и прочее',
+    ];
+
     /** Как клиент обратился впервые за период — для разбивки источника. */
     public const CONTACT_KINDS = [
         'call' => 'позвонили',
@@ -120,14 +128,16 @@ class CeilingsKpi
         ];
     }
 
-    /** @return array{measure: ?int, non_target: ?int} */
+    /** @return array{measure: ?int, non_target: ?int, non_target_any: list<int>} */
     private function stages(): array
     {
         if ($this->stageIds === null) {
             $rows = DB::table('pipeline_stages')->where('account_id', $this->accountId)->get(['id', 'name']);
             // «Нецелевое дозвон» (исходящие дозвоны) — не «Нецелевое»
             $find = fn (string $needle) => $rows->first(fn ($s) => mb_stripos((string) $s->name, $needle) !== false && mb_stripos((string) $s->name, 'дозвон') === false)?->id;
-            $this->stageIds = ['measure' => $find('Замер назначен'), 'non_target' => $find('Нецелев')];
+            $this->stageIds = ['measure' => $find('Замер назначен'), 'non_target' => $find('Нецелев'),
+                // взятый лид, переложенный на любой «Нецелев…» этап (и «Нецелевое дозвон»), — для оператора нецелевой
+                'non_target_any' => $rows->filter(fn ($s) => mb_stripos((string) $s->name, 'Нецелев') !== false)->pluck('id')->map(fn ($id) => (int) $id)->values()->all()];
         }
 
         return $this->stageIds;
@@ -289,6 +299,23 @@ class CeilingsKpi
         };
     }
 
+    /** Ключ канала (channelsFor) → источник нового лида: звонок (на любой номер, и «позвонили мы»), чат Авито, ВК, прочее. */
+    public static function leadSource(string $channelKey): string
+    {
+        return match (true) {
+            $channelKey === 'chat_avito' => 'avito',
+            $channelKey === 'chat_vk', $channelKey === 'form_vk' => 'vk',
+            $channelKey === 'phone_other', $channelKey === 'call_ours', isset(Deal::incomingPhoneSourceOptions()[$channelKey]) => 'call',
+            default => 'other',
+        };
+    }
+
+    /** @return array<int, string> [сделка => источник лида из LEAD_SOURCES] */
+    public function leadSourcesFor(array $dealIds): array
+    {
+        return array_map(fn (string $key) => self::leadSource($key), $this->channelsFor(array_values(array_unique($dealIds))));
+    }
+
     public static function contactKindLabel(string $kind): string
     {
         return self::CONTACT_KINDS[$kind] ?? match (true) {
@@ -353,11 +380,13 @@ class CeilingsKpi
 
     /**
      * Кто первым взял новый лид — тот за него и отвечает (решение руководства 15.10.2026). «Взял» — первым из людей
-     * перетащил сделку с первого этапа («Поступил лид») или закрыл, не двигая. По лидам, взятым в периоде: записал сам;
-     * не записал — в том числе если потом записал другой (rescued); нецелевые. «Дожал чужих» — замеры в периоде по
-     * лидам, которые первым брал другой. Сделки из исходящих звонков (дозвоны, «Нецелевое дозвон») — не лиды.
+     * перетащил сделку с первого этапа («Поступил лид») или закрыл, не двигая. Каждый взятый в периоде лид — ровно в
+     * одной графе (колл-центр 19.10.2026: «чтобы не висело всё где попало»): записал сам; записали другие (на замер
+     * записал не он — в «не записал» не идёт); нецелевой (категория, итог или любой «Нецелев…» этап); не записал —
+     * отказ; незавершённые — сделка ещё в работе. «Дожал чужих» — замеры в периоде по лидам, которые первым брал другой.
+     * Сделки из исходящих звонков (дозвоны, «Нецелевое дозвон») — не лиды.
      *
-     * @return array<int, array{taken:int, booked_self:int, not_booked:int, rescued:int, non_target:int, booked_others:int}>
+     * @return array<int, array{taken:int, booked_self:int, rescued:int, not_booked:int, in_work:int, non_target:int, booked_others:int}>
      */
     public function handlerStats(Carbon $from, Carbon $to, ?Collection $bookings = null): array
     {
@@ -377,13 +406,13 @@ class CeilingsKpi
         $booked = $this->bookedAtFor(array_keys($handler));
         $stats = [];
         $row = function (int $user) use (&$stats) {
-            $stats[$user] ??= ['taken' => 0, 'booked_self' => 0, 'not_booked' => 0, 'rescued' => 0, 'non_target' => 0, 'booked_others' => 0,
-                'ids' => ['taken' => [], 'booked_self' => [], 'not_booked' => [], 'rescued' => [], 'non_target' => [], 'booked_others' => []]];
+            $stats[$user] ??= self::emptyHandlerRow() + ['ids' => array_fill_keys(self::HANDLER_KEYS, [])];
         };
         $add = function (int $user, string $key, int $dealId) use (&$stats) {
             $stats[$user][$key]++;
             $stats[$user]['ids'][$key][] = $dealId;
         };
+        $nonTargetStages = array_flip($this->stages()['non_target_any']);
         foreach ($handler as $id => $h) {
             if ($h['at']->lt($from) || $h['at']->gte($to)) {
                 continue;
@@ -392,15 +421,18 @@ class CeilingsKpi
             $row($user);
             $add($user, 'taken', (int) $id);
             $b = $booked[$id] ?? null;
+            $d = $deals[$id];
+            $outcome = $this->outcome($d, $b !== null);
             if ($b !== null && $b->by === $user) {
                 $add($user, 'booked_self', (int) $id);
-            } elseif ($this->outcome($deals[$id], $b !== null) === 'non_target') {
+            } elseif ($outcome === 'non_target' || ($outcome === 'open' && $d->closed_at === null && isset($nonTargetStages[(int) $d->stage_id]))) {
                 $add($user, 'non_target', (int) $id);
-            } else {
+            } elseif ($b !== null) {
+                $add($user, 'rescued', (int) $id);
+            } elseif ($outcome === 'lost') {
                 $add($user, 'not_booked', (int) $id);
-                if ($b !== null) {
-                    $add($user, 'rescued', (int) $id);
-                }
+            } else {
+                $add($user, 'in_work', (int) $id);
             }
         }
         foreach ($bookings as $b) {
@@ -412,6 +444,32 @@ class CeilingsKpi
         }
 
         return $stats;
+    }
+
+    /** Графы handlerStats в порядке таблиц. */
+    public const HANDLER_KEYS = ['taken', 'booked_self', 'rescued', 'not_booked', 'in_work', 'non_target', 'booked_others'];
+
+    /** @return array<string, int> строка handlerStats без лидов */
+    public static function emptyHandlerRow(): array
+    {
+        return array_fill_keys(self::HANDLER_KEYS, 0);
+    }
+
+    /**
+     * Строка handlerStats только по лидам одного источника (LEAD_SOURCES): числа пересчитаны по сделкам за ними.
+     *
+     * @param  array<int, string>  $sourceOf  [сделка => источник] (leadSourcesFor)
+     */
+    public static function handlerRowForSource(array $row, array $sourceOf, string $source): array
+    {
+        $out = self::emptyHandlerRow() + ['ids' => []];
+        foreach (self::HANDLER_KEYS as $key) {
+            $ids = array_values(array_filter((array) ($row['ids'][$key] ?? []), fn ($id) => ($sourceOf[(int) $id] ?? 'other') === $source));
+            $out[$key] = count($ids);
+            $out['ids'][$key] = $ids;
+        }
+
+        return $out;
     }
 
     /** Кто первым взял каждую из сделок (см. leadHandlers, дозвоны тоже): [сделка => пользователь]. */
@@ -557,7 +615,7 @@ class CeilingsKpi
         return collect($rows)
             ->map(function ($r) use ($names, $leads) {
                 $handled = count($r['handled']);
-                $l = $leads[(int) $r['user_id']] ?? ['taken' => 0, 'booked_self' => 0, 'not_booked' => 0, 'rescued' => 0, 'non_target' => 0, 'booked_others' => 0];
+                $l = $leads[(int) $r['user_id']] ?? self::emptyHandlerRow();
 
                 return [
                     'user_id' => $r['user_id'],
@@ -569,8 +627,9 @@ class CeilingsKpi
                     'conversion' => $handled > 0 ? $r['bookings'] / $handled * 100 : null,
                     'taken' => $l['taken'],
                     'booked_self' => $l['booked_self'],
-                    'not_booked' => $l['not_booked'],
                     'rescued' => $l['rescued'],
+                    'not_booked' => $l['not_booked'],
+                    'in_work' => $l['in_work'],
                     'non_target_taken' => $l['non_target'],
                     'booked_others' => $l['booked_others'],
                 ];

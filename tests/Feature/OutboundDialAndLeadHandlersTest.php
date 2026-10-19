@@ -178,26 +178,31 @@ class OutboundDialAndLeadHandlersTest extends TestCase
         $move($old, 'work', 'measure', $b, '2026-09-10 10:00:00');
 
         $s = (new CeilingsKpi($this->acc))->handlerStats(Carbon::parse('2026-09-01'), Carbon::parse('2026-10-01'));
-        $this->assertSame(['taken' => 3, 'booked_self' => 2, 'not_booked' => 1, 'rescued' => 1, 'non_target' => 0, 'booked_others' => 0], array_diff_key($s[$a->id], ['ids' => 0]));
-        $this->assertSame(['taken' => 2, 'booked_self' => 0, 'not_booked' => 1, 'rescued' => 0, 'non_target' => 1, 'booked_others' => 2], array_diff_key($s[$b->id], ['ids' => 0]));
+        // записанный другим — «записали другие», не «не записал» (колл-центр 19.10.2026); Борис: l5 ещё в работе
+        $this->assertSame(['taken' => 3, 'booked_self' => 2, 'rescued' => 1, 'not_booked' => 0, 'in_work' => 0, 'non_target' => 0, 'booked_others' => 0], array_diff_key($s[$a->id], ['ids' => 0]));
+        $this->assertSame(['taken' => 2, 'booked_self' => 0, 'rescued' => 0, 'not_booked' => 0, 'in_work' => 1, 'non_target' => 1, 'booked_others' => 2], array_diff_key($s[$b->id], ['ids' => 0]));
         // за каждым числом — его сделки (для списка по клику в «Отчётах»)
         $this->assertEqualsCanonicalizing([$l1, $l2, $l3], $s[$a->id]['ids']['taken']);
-        $this->assertSame([$l1], $s[$a->id]['ids']['not_booked']);
+        $this->assertSame([$l1], $s[$a->id]['ids']['rescued']);
+        $this->assertSame([$l5], $s[$b->id]['ids']['in_work']);
         $this->assertEqualsCanonicalizing([$l1, $old], $s[$b->id]['ids']['booked_others']);
 
         // «Отчёты» руководителя КЦ
         $main = $this->user('Руководитель', 'main_operator');
         $rows = collect($this->actingAs($main)->get(route('reports.monthly', ['month' => '2026-09']))->assertOk()
-            ->assertSee('Взял новых лидов')->assertSee('Дожал чужих')->viewData('operatorRows'))->keyBy('id');
+            ->assertSee('Взял')->assertSee('Записали другие')->assertSee('Незавершённые')->assertSee('Дожал чужих')->viewData('operatorRows'))->keyBy('id');
         $this->assertSame(3, $rows[$a->id]['leads']['taken']);
         $this->assertSame(2, $rows[$b->id]['leads']['booked_others']);
 
         // провалиться в число: окно со списком сделок; ссылки только у ненулевых чисел; чужая строка — нет
         $page = $this->actingAs($main)->get(route('reports.monthly', ['month' => '2026-09']))->getContent();
-        $this->assertStringContainsString(e(route('reports.monthly', ['month' => '2026-09', 'drill' => 'leads.not_booked', 'user' => $a->id])), $page);
-        $list = $this->actingAs($main)->get(route('reports.monthly', ['month' => '2026-09', 'drill' => 'leads.not_booked', 'user' => $a->id, 'partial' => 1]))
-            ->assertOk()->assertSee('Не записал: 1')->assertSee('Анна')->assertSee(route('deals.show', $l1), false)->assertSee('потом записали другие');
+        $this->assertStringContainsString(e(route('reports.monthly', ['month' => '2026-09', 'drill' => 'leads.rescued', 'user' => $a->id])), $page);
+        $this->assertStringNotContainsString(e(route('reports.monthly', ['month' => '2026-09', 'drill' => 'leads.not_booked', 'user' => $a->id])), $page);
+        $list = $this->actingAs($main)->get(route('reports.monthly', ['month' => '2026-09', 'drill' => 'leads.rescued', 'user' => $a->id, 'partial' => 1]))
+            ->assertOk()->assertSee('Записали другие: 1')->assertSee('Анна')->assertSee(route('deals.show', $l1), false);
         $this->assertStringNotContainsString('<html', $list->getContent());
+        $this->actingAs($main)->get(route('reports.monthly', ['month' => '2026-09', 'drill' => 'leads.in_work', 'user' => $b->id, 'partial' => 1]))
+            ->assertOk()->assertSee('Незавершённые: 1')->assertSee(route('deals.show', $l5), false);
         $this->actingAs($main)->get(route('reports.monthly', ['month' => '2026-09', 'drill' => 'leads.booked_others', 'user' => $b->id]))
             ->assertOk()->assertSee('Дожал чужих: 2')->assertSee('← к отчёту')->assertSee(route('deals.show', $old), false);
         $this->actingAs($main)->get(route('reports.monthly', ['month' => '2026-09', 'drill' => 'nope', 'user' => $a->id]))->assertNotFound();
@@ -209,8 +214,89 @@ class OutboundDialAndLeadHandlersTest extends TestCase
         $owner->forceFill(['all_businesses' => true])->save();
         $res = $this->actingAs($owner)->get(route('owner.ceilings', ['period' => 'custom', 'from' => '2026-09-01', 'to' => '2026-09-30']))->assertOk();
         $ops = collect($res->viewData('kpi')['operators'])->keyBy('user_id');
-        $this->assertSame([3, 2, 1, 1, 0], [$ops[$a->id]['taken'], $ops[$a->id]['booked_self'], $ops[$a->id]['not_booked'], $ops[$a->id]['rescued'], $ops[$a->id]['booked_others']]);
-        $res->assertSee('Взял новых лидов')->assertSee('записали другие: 1');
+        $this->assertSame([3, 2, 0, 1, 0], [$ops[$a->id]['taken'], $ops[$a->id]['booked_self'], $ops[$a->id]['not_booked'], $ops[$a->id]['rescued'], $ops[$a->id]['booked_others']]);
+        $this->assertSame(1, $ops[$b->id]['in_work']);
+        $res->assertSee('Взял новых лидов')->assertSee('Записали другие')->assertSee('Незавершённые');
+    }
+
+    /** Отказ — «не записал»; лид, переложенный на «Нецелевое дозвон», — нецелевой, а не «в работе». */
+    public function test_refusal_is_not_booked_and_dial_stage_is_non_target(): void
+    {
+        $a = $this->user('Анна');
+        $deal = fn (array $extra = []) => DB::table('deals')->insertGetId($extra + ['account_id' => $this->acc, 'pipeline_id' => $this->pipeline, 'stage_id' => $this->stage['lead'], 'title' => 'Лид', 'created_at' => '2026-09-01 09:00:00', 'updated_at' => '2026-09-01 09:00:00']);
+        $move = fn (int $d, string $from, string $to, string $at) => DB::table('deal_stage_history')->insert(['account_id' => $this->acc, 'deal_id' => $d, 'from_stage_id' => $this->stage[$from], 'to_stage_id' => $this->stage[$to], 'changed_by_user_id' => $a->id, 'changed_at' => $at]);
+
+        $lost = $deal();
+        $move($lost, 'lead', 'work', '2026-09-02 10:00:00');
+        DB::table('deals')->where('id', $lost)->update(['stage_id' => $this->stage['done'], 'closed_at' => '2026-09-03 10:00:00', 'closed_result' => 'lost', 'closed_by_user_id' => $a->id]);
+        $dial = $deal();
+        $move($dial, 'lead', 'dial', '2026-09-04 10:00:00');
+        DB::table('deals')->where('id', $dial)->update(['stage_id' => $this->stage['dial']]);
+
+        $s = (new CeilingsKpi($this->acc))->handlerStats(Carbon::parse('2026-09-01'), Carbon::parse('2026-10-01'))[$a->id];
+        $this->assertSame([2, 1, 0, 1], [$s['taken'], $s['not_booked'], $s['in_work'], $s['non_target']]);
+        $this->assertSame([$lost], $s['ids']['not_booked']);
+        $this->assertSame([$dial], $s['ids']['non_target']);
+    }
+
+    /** Новые лиды по источникам: звонки, Авито, ВК — отдельно (?src=), числа и списки — только этого источника. */
+    public function test_new_leads_split_by_source(): void
+    {
+        $a = $this->user('Анна');
+        $main = $this->user('Руководитель', 'main_operator');
+        $lead = fn () => DB::table('deals')->insertGetId(['account_id' => $this->acc, 'pipeline_id' => $this->pipeline, 'stage_id' => $this->stage['work'], 'title' => 'Лид', 'created_at' => '2026-09-01 09:00:00', 'updated_at' => '2026-09-01 09:00:00']);
+        $take = fn (int $d, string $to, string $at) => DB::table('deal_stage_history')->insert(['account_id' => $this->acc, 'deal_id' => $d, 'from_stage_id' => $this->stage['lead'], 'to_stage_id' => $this->stage[$to], 'changed_by_user_id' => $a->id, 'changed_at' => $at]);
+
+        $call = $lead();                                     // позвонил — Анна записала
+        DB::table('deal_activities')->insert(['account_id' => $this->acc, 'deal_id' => $call, 'type' => 'call', 'payload' => json_encode(['type' => 'INCOMING', 'callid' => 'c1']), 'created_at' => '2026-09-01 09:00:00', 'updated_at' => '2026-09-01 09:00:00']);
+        $take($call, 'measure', '2026-09-02 10:00:00');
+        foreach (['2026-09-03 10:00:00', '2026-09-04 10:00:00'] as $at) {   // два чата Авито — молчат
+            $chat = $lead();
+            DB::table('conversations')->insert(['account_id' => $this->acc, 'deal_id' => $chat, 'channel' => 'avito', 'created_at' => '2026-09-01 09:00:00', 'updated_at' => '2026-09-01 09:00:00']);
+            $take($chat, 'work', $at);
+        }
+        $vk = $lead();
+        DB::table('conversations')->insert(['account_id' => $this->acc, 'deal_id' => $vk, 'channel' => 'vk', 'created_at' => '2026-09-01 09:00:00', 'updated_at' => '2026-09-01 09:00:00']);
+        $take($vk, 'work', '2026-09-05 10:00:00');
+
+        $res = $this->actingAs($main)->get(route('reports.monthly', ['month' => '2026-09']))->assertOk();
+        $this->assertSame(['all' => 4, 'call' => 1, 'avito' => 2, 'vk' => 1, 'other' => 0], $res->viewData('leadSourceTotals'));
+        $res->assertSee(e(route('reports.monthly', ['month' => '2026-09', 'src' => 'avito'])), false);
+
+        $avito = $this->actingAs($main)->get(route('reports.monthly', ['month' => '2026-09', 'src' => 'avito']))->assertOk();
+        $row = collect($avito->viewData('operatorRows'))->firstWhere('id', $a->id);
+        $this->assertSame([2, 0, 2], [$row['leads']['taken'], $row['leads']['booked_self'], $row['leads']['in_work']]);
+        $avito->assertSee(e(route('reports.monthly', ['month' => '2026-09', 'src' => 'avito', 'drill' => 'leads.in_work', 'user' => $a->id])), false);
+        $calls = collect($this->actingAs($main)->get(route('reports.monthly', ['month' => '2026-09', 'src' => 'call']))->viewData('operatorRows'))->firstWhere('id', $a->id);
+        $this->assertSame([1, 1, 0], [$calls['leads']['taken'], $calls['leads']['booked_self'], $calls['leads']['in_work']]);
+        $this->actingAs($main)->get(route('reports.monthly', ['month' => '2026-09', 'src' => 'avito', 'drill' => 'leads.taken', 'user' => $a->id, 'partial' => 1]))
+            ->assertOk()->assertSee('Взял новых лидов · Авито: 2')->assertDontSee(route('deals.show', $call), false);
+    }
+
+    /** «Скрыть из отчётов» в настройках пользователей: строки нет ни в таблице, ни в итогах; учётка работает. */
+    public function test_hidden_users_are_not_in_reports(): void
+    {
+        $admin = $this->user('Admin', 'admin');
+        $a = $this->user('Анна');
+        $boss = $this->user('Кошевникова', 'main_operator');
+        DB::table('deals')->insert(['account_id' => $this->acc, 'pipeline_id' => $this->pipeline, 'stage_id' => $this->stage['work'], 'title' => 'Сделка Admin',
+            'responsible_user_id' => $admin->id, 'created_at' => '2026-09-02 09:00:00', 'updated_at' => '2026-09-02 09:00:00']);
+
+        $names = fn () => collect($this->actingAs($admin)->get(route('reports.monthly', ['month' => '2026-09']))->viewData('operatorRows'))->pluck('name')->all();
+        $this->assertContains('Admin', $names());
+
+        foreach ([$admin, $boss] as $u) {
+            $this->actingAs($admin)->post(route('settings.users.toggle', $u), ['what' => 'reports'])->assertRedirect();
+            $this->assertTrue($u->fresh()->hide_in_reports);
+            $this->assertTrue($u->fresh()->is_active, 'учётка не отключается');
+        }
+        $res = $this->actingAs($admin)->get(route('reports.monthly', ['month' => '2026-09']))->assertOk();
+        $this->assertSame(['Анна'], collect($res->viewData('operatorRows'))->pluck('name')->all());
+        $this->assertSame(0, $res->viewData('operatorSummary')['created'], 'сделки Admin не в итогах');
+        $this->actingAs($admin)->get(route('settings.users.index'))->assertOk()->assertSee('не в отчётах')->assertSee('Показать в отчётах');
+
+        $this->actingAs($admin)->post(route('settings.users.toggle', $boss), ['what' => 'reports']);
+        $this->assertFalse($boss->fresh()->hide_in_reports);
     }
 
     /** Выгрузка обращений в Excel: номер, менеджер (кто первым взял), записался; без нецелевых и исходящих дозвонов. */

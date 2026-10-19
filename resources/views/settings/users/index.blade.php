@@ -57,6 +57,9 @@
                     @else
                       <span class="badge text-bg-danger">Отключён</span>
                     @endif
+                    @if($u->hide_in_reports)
+                      <span class="badge text-bg-light border" title="Не показывается в «Отчётах»">не в отчётах</span>
+                    @endif
                   </td>
                   <td class="text-end">
                     <div class="d-flex gap-1 justify-content-end align-items-center flex-wrap">
@@ -65,6 +68,14 @@
                         <input type="password" name="password" class="form-control form-control-sm" placeholder="новый пароль" minlength="6" style="width:140px" required>
                         <button class="btn btn-sm btn-outline-secondary" title="Сменить пароль">Пароль</button>
                       </form>
+                      @if(in_array($u->role, ['admin', 'main_operator', 'operator'], true))
+                        {{-- строки «Отчётов» колл-центра: технические учётки и руководителя можно убрать из статистики --}}
+                        <form method="POST" action="{{ route('settings.users.toggle', $u) }}">
+                          @csrf
+                          <input type="hidden" name="what" value="reports">
+                          <button class="btn btn-sm btn-outline-secondary" title="Показывать ли сотрудника в «Отчётах»">{{ $u->hide_in_reports ? 'Показать в отчётах' : 'Скрыть из отчётов' }}</button>
+                        </form>
+                      @endif
                       @if(auth()->id() !== $u->id)
                         <form method="POST" action="{{ route('settings.users.toggle', $u) }}">
                           @csrf

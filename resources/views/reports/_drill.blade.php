@@ -25,8 +25,7 @@
             $cat = \App\Support\Deals\NonTargetCategory::label($deal->non_target_category);
           @endphp
           <tr>
-            <td><a href="{{ route('deals.show', $deal) }}" target="_blank" rel="noopener">{{ $deal->title ?: 'Сделка №'.$deal->id }}</a> <span class="text-muted small">№{{ $deal->id }}</span>
-              @isset($rescued[$deal->id])<div class="small text-success">потом записали другие</div>@endisset</td>
+            <td><a href="{{ route('deals.show', $deal) }}" target="_blank" rel="noopener">{{ $deal->title ?: 'Сделка №'.$deal->id }}</a> <span class="text-muted small">№{{ $deal->id }}</span></td>
             <td>{{ $deal->contact?->name }}@if($deal->contact?->phone)<div class="small text-muted">{{ $drPhone($deal->contact->phone) }}</div>@endif</td>
             <td>
               @if($res)<span class="badge text-bg-{{ $res[1] }}">{{ $res[0] }}</span>@else{{ $deal->stage?->name }}@endif
