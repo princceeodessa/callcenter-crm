@@ -136,7 +136,7 @@ class OwnerSmmTest extends TestCase
             ->assertRedirect(route('owner.smm', ['business' => 'ceilings']));
 
         $page = $this->actingAs($smm)->get(route('owner.smm', ['business' => 'ceilings', 'days' => 30]))->assertOk()
-            ->assertSee('Результат для бизнеса')->assertSee('Клиентов из ВК')->assertSee('Цена замера')->assertSee('Каждый клип')
+            ->assertSee('Результат для бизнеса')->assertSee('Обратились из ВК')->assertSee('Цена целевого клиента')->assertSee('Цена замера')->assertSee('Каждый клип')
             ->assertSee('ВК · Шаговый')->assertSee('SMM-специалист')
             ->assertDontSee('id="bdSearchBox"', false)->assertDontSee('id="bdBell"', false)->assertDontSee(route('owner.ceilings'));
         $this->assertStringContainsString('window.bdFeedUrl = null', $page->getContent());
@@ -179,7 +179,7 @@ class OwnerSmmTest extends TestCase
         $chat('vk', '2026-09-01 10:00:00');                                 // до периода
 
         $r = \App\Services\Owner\SmmResults::forBusiness('ceilings', Carbon::parse('2026-10-01'), Carbon::parse('2026-10-21'), 3000.0);
-        $this->assertSame([2, 1, 0, 50, 1500.0, 3000.0], [$r['leads'], $r['booked'], $r['non_target'], (int) $r['conversion'], (float) $r['per_lead'], (float) $r['per_booked']]);
+        $this->assertSame([2, 1, 0, 2, 50, 1500.0, 1500.0, 3000.0], [$r['leads'], $r['booked'], $r['non_target'], $r['target'], (int) $r['conversion'], (float) $r['per_lead'], (float) $r['per_target'], (float) $r['per_booked']]);
         $this->assertEqualsCanonicalizing(['ВК · сообщения', 'ВК · лид-форма'], array_column($r['sources'], 'label'));
     }
 
@@ -197,6 +197,6 @@ class OwnerSmmTest extends TestCase
         $deal('2020-01-01 11:00:00', '2020-01-01 16:00:00', 'Avito');             // не ВК
 
         $r = \App\Services\Owner\SmmResults::forBusiness('sneakers', Carbon::parse('2020-01-01'), Carbon::parse('2020-01-02'), 1000.0);
-        $this->assertSame([1, 2, 1000.0, 500.0], [$r['leads'], $r['sales'], (float) $r['per_lead'], (float) $r['per_sale']]);
+        $this->assertSame([1, 2, 3, 0, true, 1000.0, 500.0], [$r['leads'], $r['sales'], $r['sales_total'], $r['no_source'], $r['vk_connected'], (float) $r['per_lead'], (float) $r['per_sale']]);
     }
 }

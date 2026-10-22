@@ -8,9 +8,9 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * «SMM-контент» → «Результат для бизнеса»: что продвижение во ВКонтакте дало в CRM за период — без имён и телефонов.
- * Потолки: клиенты, пришедшие из ВК (сообщения, лид-формы, звонки на номер из ВК), сколько записано на замер,
- * нецелевые, цена клиента и замера по расходу кабинета VK Рекламы. Кроссовки: обращения из ВК (сообщения
- * сообществу, лид-формы) и продажи из ВК (источник «ВК» или сделка из сообщений ВК), цена продажи.
+ * Потолки: обратившиеся из ВК (сообщения, лид-формы, звонки на номер из ВК), нецелевые, записанные на замер, цена
+ * целевого клиента и замера по расходу кабинета VK Рекламы. Кроссовки: продажи из ВК (источник «ВК» или сделка из
+ * сообщений ВК) и цена продажи; сколько продаж без источника; обращения из сообщений ВК — если они подключены к CRM.
  */
 class SmmResults
 {
@@ -30,6 +30,7 @@ class SmmResults
     private static function ceilings(Carbon $from, Carbon $to, float $spend): array
     {
         $r = (new CeilingsKpi((int) config('owner.ceilings_account_id')))->groupResults($from, $to, 'vk');
+        $target = $r['leads'] - $r['non_target'];
 
         return [
             'business' => 'ceilings',
@@ -37,8 +38,10 @@ class SmmResults
             'leads' => $r['leads'],
             'booked' => $r['booked'],
             'non_target' => $r['non_target'],
-            'conversion' => $r['leads'] > 0 ? round($r['booked'] / $r['leads'] * 100) : null,
+            'target' => $target,
+            'conversion' => $target > 0 ? round($r['booked'] / $target * 100) : null,      // доля целевых
             'per_lead' => $r['leads'] > 0 && $spend > 0 ? round($spend / $r['leads']) : null,
+            'per_target' => $target > 0 && $spend > 0 ? round($spend / $target) : null,
             'per_booked' => $r['booked'] > 0 && $spend > 0 ? round($spend / $r['booked']) : null,
             'sources' => $r['sources'],
         ];
@@ -60,8 +63,12 @@ class SmmResults
         return [
             'business' => 'sneakers',
             'spend' => $spend,
+            // сообщения сообщества приходят в CRM? Если нет — обращений из ВК не посчитать (не «0»)
+            'vk_connected' => DB::table('conversations')->where('account_id', $acc)->where('channel', 'vk')->exists(),
             'leads' => $leads,
             'sales' => $sales,
+            'sales_total' => $sold->count(),
+            'no_source' => $sold->filter(fn ($d) => trim((string) $d->manual_source) === '' && ! isset($fromChat[$d->id]))->count(),
             'per_lead' => $leads > 0 && $spend > 0 ? round($spend / $leads) : null,
             'per_sale' => $sales > 0 && $spend > 0 ? round($spend / $sales) : null,
         ];

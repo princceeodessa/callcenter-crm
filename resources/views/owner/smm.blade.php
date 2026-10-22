@@ -53,27 +53,27 @@
     <div class="sec" id="results"><h2>Результат для бизнеса</h2><span class="note">клиенты, пришедшие из ВКонтакте, по CRM за выбранный период · цена — расход кабинета VK Рекламы, делённый на них</span></div>
     <div class="minis">
         @if($results['business'] === 'ceilings')
-            <div class="card mini"><div class="lbl">Клиентов из ВК</div><div class="val num">{{ $rn($results['leads']) }}</div>
+            <div class="card mini"><div class="lbl">Обратились из ВК</div><div class="val num">{{ $rn($results['leads']) }}</div>
                 <div class="sub">@forelse($results['sources'] as $s){{ $s['label'] }} — {{ $rn($s['leads']) }}@if(!$loop->last) · @endif @empty сообщения, лид-формы и звонки на номер из ВК @endforelse</div></div>
-            <div class="card mini"><div class="lbl">Записаны на замер</div><div class="val num">{{ $rn($results['booked']) }}</div>
-                <div class="sub">{{ $results['conversion'] !== null ? $results['conversion'].'% клиентов из ВК' : 'клиентов из ВК пока нет' }}</div></div>
             <div class="card mini"><div class="lbl">Нецелевые</div><div class="val num">{{ $rn($results['non_target']) }}</div>
-                <div class="sub">колл-центр отметил их нецелевыми</div></div>
-            <div class="card mini"><div class="lbl">Цена клиента</div><div class="val num {{ $results['per_lead'] === null ? 'muted' : '' }}">{{ $rm($results['per_lead']) }}</div>
-                <div class="sub">расход {{ $results['spend'] > 0 ? $rm($results['spend']) : '—' }}</div></div>
+                <div class="sub">колл-центр отметил их нецелевыми · целевых {{ $rn($results['target']) }}</div></div>
+            <div class="card mini"><div class="lbl">Записаны на замер</div><div class="val num">{{ $rn($results['booked']) }}</div>
+                <div class="sub">{{ $results['conversion'] !== null ? $results['conversion'].'% целевых клиентов' : 'целевых клиентов из ВК пока нет' }}</div></div>
+            <div class="card mini"><div class="lbl">Цена целевого клиента</div><div class="val num {{ $results['per_target'] === null ? 'muted' : '' }}">{{ $rm($results['per_target']) }}</div>
+                <div class="sub">расход {{ $results['spend'] > 0 ? $rm($results['spend']) : '—' }}@if($results['per_lead'] !== null) · на любого обратившегося {{ $rm($results['per_lead']) }}@endif</div></div>
             <div class="card mini"><div class="lbl">Цена замера</div><div class="val num {{ $results['per_booked'] === null ? 'muted' : '' }}">{{ $rm($results['per_booked']) }}</div>
                 <div class="sub">расход на одного записанного</div></div>
         @else
-            <div class="card mini"><div class="lbl">Обращений из ВК</div><div class="val num">{{ $rn($results['leads']) }}</div>
-                <div class="sub">сообщения сообществу и лид-формы</div></div>
             <div class="card mini"><div class="lbl">Продаж из ВК</div><div class="val num">{{ $rn($results['sales']) }}</div>
-                <div class="sub">источник «ВК» или покупатель из сообщений ВК</div></div>
+                <div class="sub">источник «ВК» в продаже@if($results['vk_connected']) или покупатель из сообщений ВК@endif</div></div>
+            <div class="card mini"><div class="lbl">Цена продажи</div><div class="val num {{ $results['per_sale'] === null ? 'muted' : '' }}">{{ $rm($results['per_sale']) }}</div>
+                <div class="sub">расход на одну продажу из ВК</div></div>
             <div class="card mini"><div class="lbl">Расход</div><div class="val num {{ $results['spend'] > 0 ? '' : 'muted' }}">{{ $results['spend'] > 0 ? $rm($results['spend']) : '—' }}</div>
                 <div class="sub">кабинет VK Рекламы за период</div></div>
-            <div class="card mini"><div class="lbl">Цена обращения</div><div class="val num {{ $results['per_lead'] === null ? 'muted' : '' }}">{{ $rm($results['per_lead']) }}</div>
-                <div class="sub">расход на одно обращение</div></div>
-            <div class="card mini"><div class="lbl">Цена продажи</div><div class="val num {{ $results['per_sale'] === null ? 'muted' : '' }}">{{ $rm($results['per_sale']) }}</div>
-                <div class="sub">расход на одну продажу</div></div>
+            <div class="card mini"><div class="lbl">Всего продаж</div><div class="val num">{{ $rn($results['sales_total']) }}</div>
+                <div class="sub">@if($results['no_source'] > 0)у {{ $rn($results['no_source']) }} источник не указан — часть может быть из ВК@else у всех указан источник@endif</div></div>
+            <div class="card mini"><div class="lbl">Обращений из ВК</div><div class="val num {{ $results['vk_connected'] ? '' : 'muted' }}">{{ $results['vk_connected'] ? $rn($results['leads']) : '—' }}</div>
+                <div class="sub">{{ $results['vk_connected'] ? 'сообщения сообществу и лид-формы' : 'сообщения сообщества «Шаговый» в CRM не подключены' }}</div></div>
         @endif
     </div>
 @endif
