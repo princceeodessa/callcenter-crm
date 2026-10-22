@@ -16,10 +16,13 @@
 @section('nav')
     @if($isSmm)
         {{-- SMM-специалисту — только его сообщества: сводки бизнеса ему не открываются --}}
+        {{-- сообщество выбирается вкладками сверху; здесь — разделы страницы (подсвечивает прокрутка) --}}
+        <a href="#results" class="active"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg> Результат</a>
+        <a href="#brief"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="M10 8l5 4-5 4V8z"/></svg> Реклама клипов</a>
         @foreach($smmBusinesses as $b)
-            <a href="{{ route('owner.smm', ['business' => $b]) }}" class="{{ $b === $business ? 'active' : '' }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="M10 8l5 4-5 4V8z"/></svg> {{ $b === 'ceilings' ? 'ВК · БлагоДар' : 'ВК · Шаговый' }}</a>
+            @continue($b === $business)
+            <a href="{{ route('owner.smm', ['business' => $b]) }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg> {{ $b === 'ceilings' ? 'ВК · БлагоДар' : 'ВК · Шаговый' }}</a>
         @endforeach
-        <a href="#results"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg> Результат</a>
     @else
         <a href="{{ $back }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg> Сводка</a>
         <a href="#top" class="active"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="M10 8l5 4-5 4V8z"/></svg> Клипы</a>
