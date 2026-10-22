@@ -1,6 +1,7 @@
 /* Шапка страниц владельца (layouts/owner): поиск по сделкам и клиентам, уведомления, карточка сделки или клиента
    (только просмотр) и плеер клипа VK. Данные — JSON с window.bdFeedUrl (OwnerDashboardController, ?feed=…).
-   Что из уведомлений прочитано — помнит браузер (localStorage bdNotifSeen). */
+   Что из уведомлений прочитано — помнит браузер (localStorage bdNotifSeen). У SMM-специалиста поиска и колокольчика
+   в шапке нет (layouts/owner) — тогда эти части не запускаются. */
 window.bdHead = (function () {
     'use strict';
     const FEED = window.bdFeedUrl || '/owner';
@@ -132,10 +133,12 @@ window.bdHead = (function () {
         runSearch();
     }
     function closeSearch() {
+        if (!sBox) return;
         sPop.hidden = true;
         sBox.classList.remove('open');
         document.body.classList.remove('search-open');
     }
+    if (sBox) {
     sInput.addEventListener('focus', openSearch);
     sInput.addEventListener('input', () => {
         if (document.activeElement !== sInput) return;
@@ -153,6 +156,7 @@ window.bdHead = (function () {
         d ? openDeal(d.dataset.deal) : openClient(c.dataset.client);
     });
     document.addEventListener('click', e => { if (!sBox.contains(e.target)) closeSearch(); });
+    }
 
     /* ---------- уведомления ---------- */
     const nList = $('bdNotifList'), nRead = $('bdNotifRead'), nDot = $('bdBellDot');
@@ -185,12 +189,13 @@ window.bdHead = (function () {
             : '<div class="sr-empty">За последние 3 дня событий нет</div>';
     }
     function loadNotifs() {
-        if (nBusy || document.hidden) return;
+        if (!nList || nBusy || document.hidden) return;
         nBusy = true;
         get({ feed: 'notifications' }).then(d => { nItems = d.items || []; renderNotifs(); })
             .catch(() => { if (!nItems) nList.innerHTML = '<div class="sr-empty">Не получилось загрузить — попробуем ещё раз через минуту</div>'; })
             .finally(() => { nBusy = false; });
     }
+    if (nList) {
     nRead.addEventListener('click', e => {
         e.stopPropagation();
         const last = Math.max(Date.now(), ...(nItems || []).map(i => Date.parse(i.at)));
@@ -208,6 +213,7 @@ window.bdHead = (function () {
     document.addEventListener('visibilitychange', () => { if (!document.hidden) loadNotifs(); });
     // прочитано в другой вкладке — точка гаснет и здесь
     window.addEventListener('storage', e => { if (e.key === SEEN) renderNotifs(); });
+    }
 
     document.addEventListener('keydown', e => {
         if (e.key !== 'Escape') return;

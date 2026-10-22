@@ -3,6 +3,10 @@
 @php
     $titles = ['ceilings' => 'Потолки · БлагоДар', 'sneakers' => 'Кроссовки · Шаговый'];
     $back = $business === 'ceilings' ? route('owner.ceilings') : route('owner.dashboard');
+    $isSmm = $isSmm ?? false;
+    $smmBusinesses = $smmBusinesses ?? [$business];
+    $rn = fn ($v) => number_format((float) $v, 0, ',', ' ');
+    $rm = fn ($v) => $v === null ? '—' : number_format((float) $v, 0, ',', ' ').' ₽';
 @endphp
 
 @section('brand', $business === 'sneakers' ? 'shag' : 'blagodar')
@@ -10,13 +14,31 @@
 @section('subtitle')SMM-контент · {{ $titles[$business] }} · реклама клипов VK: что идёт, какие клипы тянут, что заменить@endsection
 
 @section('nav')
-    <a href="{{ $back }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg> Сводка</a>
-    <a href="#top" class="active"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="M10 8l5 4-5 4V8z"/></svg> Клипы</a>
+    @if($isSmm)
+        {{-- SMM-специалисту — только его сообщества: сводки бизнеса ему не открываются --}}
+        @foreach($smmBusinesses as $b)
+            <a href="{{ route('owner.smm', ['business' => $b]) }}" class="{{ $b === $business ? 'active' : '' }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="M10 8l5 4-5 4V8z"/></svg> {{ $b === 'ceilings' ? 'ВК · БлагоДар' : 'ВК · Шаговый' }}</a>
+        @endforeach
+        <a href="#results"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg> Результат</a>
+    @else
+        <a href="{{ $back }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg> Сводка</a>
+        <a href="#top" class="active"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="M10 8l5 4-5 4V8z"/></svg> Клипы</a>
+    @endif
 @endsection
 
 @section('content')
 <div class="filters" id="top">
-    @include('owner._biz_tabs', ['biz' => $business, 'tab' => 'smm'])
+    @if($isSmm)
+        @if(count($smmBusinesses) > 1)
+            <div class="seg accent">
+                @foreach($smmBusinesses as $b)
+                    <a href="{{ route('owner.smm', ['business' => $b] + request()->only(['days', 'from', 'to'])) }}" class="{{ $b === $business ? 'active' : '' }}">{{ $b === 'ceilings' ? 'ВК · БлагоДар' : 'ВК · Шаговый' }}</a>
+                @endforeach
+            </div>
+        @endif
+    @else
+        @include('owner._biz_tabs', ['biz' => $business, 'tab' => 'smm'])
+    @endif
     <div class="seg">
         @foreach($periods as $d => $label)
             <a href="{{ route('owner.smm', ['business' => $business, 'days' => $d]) }}" class="{{ $days === $d ? 'active' : '' }}">{{ $label }}</a>
@@ -25,6 +47,36 @@
     <div class="spacer"></div>
     @include('owner._daterange', ['action' => route('owner.smm', ['business' => $business]), 'params' => [], 'from' => $report['date_from'], 'to' => $report['date_to']])
 </div>
+
+{{-- Результат для бизнеса: что продвижение ВК дало в CRM за этот же период (SmmResults) — без имён и телефонов --}}
+@if(!empty($results))
+    <div class="sec" id="results"><h2>Результат для бизнеса</h2><span class="note">клиенты, пришедшие из ВКонтакте, по CRM за выбранный период · цена — расход кабинета VK Рекламы, делённый на них</span></div>
+    <div class="minis">
+        @if($results['business'] === 'ceilings')
+            <div class="card mini"><div class="lbl">Клиентов из ВК</div><div class="val num">{{ $rn($results['leads']) }}</div>
+                <div class="sub">@forelse($results['sources'] as $s){{ $s['label'] }} — {{ $rn($s['leads']) }}@if(!$loop->last) · @endif @empty сообщения, лид-формы и звонки на номер из ВК @endforelse</div></div>
+            <div class="card mini"><div class="lbl">Записаны на замер</div><div class="val num">{{ $rn($results['booked']) }}</div>
+                <div class="sub">{{ $results['conversion'] !== null ? $results['conversion'].'% клиентов из ВК' : 'клиентов из ВК пока нет' }}</div></div>
+            <div class="card mini"><div class="lbl">Нецелевые</div><div class="val num">{{ $rn($results['non_target']) }}</div>
+                <div class="sub">колл-центр отметил их нецелевыми</div></div>
+            <div class="card mini"><div class="lbl">Цена клиента</div><div class="val num {{ $results['per_lead'] === null ? 'muted' : '' }}">{{ $rm($results['per_lead']) }}</div>
+                <div class="sub">расход {{ $results['spend'] > 0 ? $rm($results['spend']) : '—' }}</div></div>
+            <div class="card mini"><div class="lbl">Цена замера</div><div class="val num {{ $results['per_booked'] === null ? 'muted' : '' }}">{{ $rm($results['per_booked']) }}</div>
+                <div class="sub">расход на одного записанного</div></div>
+        @else
+            <div class="card mini"><div class="lbl">Обращений из ВК</div><div class="val num">{{ $rn($results['leads']) }}</div>
+                <div class="sub">сообщения сообществу и лид-формы</div></div>
+            <div class="card mini"><div class="lbl">Продаж из ВК</div><div class="val num">{{ $rn($results['sales']) }}</div>
+                <div class="sub">источник «ВК» или покупатель из сообщений ВК</div></div>
+            <div class="card mini"><div class="lbl">Расход</div><div class="val num {{ $results['spend'] > 0 ? '' : 'muted' }}">{{ $results['spend'] > 0 ? $rm($results['spend']) : '—' }}</div>
+                <div class="sub">кабинет VK Рекламы за период</div></div>
+            <div class="card mini"><div class="lbl">Цена обращения</div><div class="val num {{ $results['per_lead'] === null ? 'muted' : '' }}">{{ $rm($results['per_lead']) }}</div>
+                <div class="sub">расход на одно обращение</div></div>
+            <div class="card mini"><div class="lbl">Цена продажи</div><div class="val num {{ $results['per_sale'] === null ? 'muted' : '' }}">{{ $rm($results['per_sale']) }}</div>
+                <div class="sub">расход на одну продажу</div></div>
+        @endif
+    </div>
+@endif
 
 {{-- SMM-контент в дизайн-системе сводок (прототип дизайнера): итог, 6 плиток, кампании, расход по дням, клипы,
      лид-формы, что улучшить. Считает и рисует скрипт ниже из JSON отчёта (App\Services\Owner\SmmReport). --}}

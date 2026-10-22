@@ -310,6 +310,40 @@ class CeilingsKpi
         };
     }
 
+    /**
+     * Лиды одной группы каналов (GROUPS: vk, avito…), созданные в периоде, и что с ними стало: записаны на замер
+     * (когда угодно), нецелевые. Для «SMM-контента»: результат продвижения в CRM. По источникам внутри группы.
+     *
+     * @return array{leads:int, booked:int, non_target:int, sources: list<array{key:string, label:string, leads:int, booked:int}>}
+     */
+    public function groupResults(Carbon $from, Carbon $to, string $group): array
+    {
+        $leads = DB::table('deals')->where('account_id', $this->accountId)
+            ->where('created_at', '>=', $from)->where('created_at', '<', $to)
+            ->get(['id', 'stage_id', 'closed_at', 'closed_result', 'non_target_category']);
+        $channels = $this->channelsFor($leads->pluck('id')->all());
+        $leads = $leads->filter(fn ($d) => self::channelGroup($channels[(int) $d->id] ?? 'crm') === $group)->values();
+        $booked = $this->bookedAtFor($leads->pluck('id')->map(fn ($id) => (int) $id)->all());
+
+        $out = ['leads' => 0, 'booked' => 0, 'non_target' => 0, 'sources' => []];
+        foreach ($leads as $d) {
+            $outcome = $this->outcome($d, isset($booked[(int) $d->id]));
+            $key = $channels[(int) $d->id];
+            $out['sources'][$key] ??= ['key' => $key, 'label' => self::channelLabel($key), 'leads' => 0, 'booked' => 0];
+            $out['leads']++;
+            $out['sources'][$key]['leads']++;
+            if ($outcome === 'booked') {
+                $out['booked']++;
+                $out['sources'][$key]['booked']++;
+            } elseif ($outcome === 'non_target') {
+                $out['non_target']++;
+            }
+        }
+        $out['sources'] = collect($out['sources'])->sortByDesc('leads')->values()->all();
+
+        return $out;
+    }
+
     /** @return array<int, string> [сделка => источник лида из LEAD_SOURCES] */
     public function leadSourcesFor(array $dealIds): array
     {

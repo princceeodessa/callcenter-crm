@@ -16,7 +16,7 @@ class UserController extends Controller
 
         $users = User::query()
             ->where('account_id', $accountId)
-            ->orderByRaw("FIELD(role,'admin','main_operator','operator','documents_operator','measurer','constructor','sneaker_head','sneaker_operator','sneaker_owner')")
+            ->orderByRaw("FIELD(role,'admin','main_operator','operator','documents_operator','measurer','constructor','sneaker_head','sneaker_operator','sneaker_owner','smm')")
             ->orderBy('name')
             ->get();
 
@@ -51,7 +51,7 @@ class UserController extends Controller
             'name' => [$usesSplitName ? 'nullable' : 'required', 'string', 'max:255'],
             'login' => ['required', 'string', 'max:255', 'regex:/^\S+$/u', 'unique:users,email'],
             'password' => ['required', 'string', 'min:6'],
-            'role' => ['required', 'in:admin,main_operator,operator,documents_operator,measurer,constructor,sneaker_head,sneaker_operator,sneaker_owner'],
+            'role' => ['required', 'in:admin,main_operator,operator,documents_operator,measurer,constructor,sneaker_head,sneaker_operator,sneaker_owner,smm'],
             'is_active' => ['nullable'],
         ]);
 
@@ -59,7 +59,7 @@ class UserController extends Controller
             ? preg_replace('/\s+/u', ' ', trim(($data['first_name'] ?? '').' '.($data['last_name'] ?? '')))
             : preg_replace('/\s+/u', ' ', trim($data['name']));
 
-        User::create([
+        $user = User::create([
             'account_id' => $accountId,
             'name' => $name,
             'email' => strtolower(trim($data['login'])),
@@ -67,6 +67,10 @@ class UserController extends Controller
             'role' => $data['role'],
             'is_active' => (bool) ($data['is_active'] ?? false),
         ]);
+        // SMM-специалист продвигает оба сообщества ВК — видит «SMM-контент» БлагоДара и «Шагового» (больше ничего)
+        if ($data['role'] === 'smm') {
+            $user->forceFill(['all_businesses' => true])->save();
+        }
 
         return redirect()->route('settings.users.index')->with('status', 'Пользователь добавлен.');
     }

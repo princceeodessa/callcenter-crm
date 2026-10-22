@@ -33,10 +33,14 @@ class AuthController extends Controller
                 'documents_operator' => 'nonclosures.index',
                 'sneaker_owner' => 'owner.dashboard',
                 'sneaker_head', 'sneaker_operator' => 'sale.quick',
+                'smm' => 'owner.smm',
                 default => 'deals.kanban',
             };
+            $home = $homeRoute === 'owner.smm'
+                ? route($homeRoute, ['business' => $request->user()->smmBusinesses()[0] ?? 'ceilings'])
+                : route($homeRoute);
 
-            return redirect()->intended(route($homeRoute));
+            return redirect()->intended($home);
         }
 
         return back()->withErrors(['login' => 'Неверный логин или пароль'])->onlyInput('login');

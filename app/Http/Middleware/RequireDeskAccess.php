@@ -11,6 +11,11 @@ class RequireDeskAccess
     {
         $user = $request->user();
 
+        // SMM-специалисту CRM не открывается: его страница — «SMM-контент» (сюда попадает и главная «/»)
+        if ($user && $user->role === 'smm') {
+            return redirect()->route('owner.smm', ['business' => $user->smmBusinesses()[0] ?? 'ceilings']);
+        }
+
         if (! $user || !in_array($user->role, ['admin', 'main_operator', 'operator', 'sneaker_head', 'sneaker_operator'], true)) {
             abort(403);
         }

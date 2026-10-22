@@ -10,7 +10,9 @@
     $hour = (int) now()->format('G');
     $greeting = $hour < 5 ? 'Доброй ночи' : ($hour < 12 ? 'Доброе утро' : ($hour < 18 ? 'Добрый день' : 'Добрый вечер'));
     $css = fn (string $f) => asset('css/'.$f).'?v='.(@filemtime(public_path('css/'.$f)) ?: 1);
-    $roleLabel = ['sneaker_owner' => 'Владелец · БлагоДар', 'sneaker_head' => 'Руководитель · Кроссовки'][$ownerUser?->role] ?? 'Сотрудник';
+    $roleLabel = ['sneaker_owner' => 'Владелец · БлагоДар', 'sneaker_head' => 'Руководитель · Кроссовки', 'smm' => 'SMM-специалист'][$ownerUser?->role] ?? 'Сотрудник';
+    // SMM-специалисту — без поиска по сделкам и клиентам и без уведомлений о событиях CRM (только его страницы)
+    $headFeed = $ownerUser?->role !== 'smm';
     // страницы кроссовок (@section('brand', 'shag')) — логотип и название магазина «Шаговый»
     $isShag = trim($__env->yieldContent('brand')) === 'shag';
     $brandName = $isShag ? 'Шаговый' : 'БлагоДар';
@@ -43,7 +45,7 @@
             @else
                 <span class="logo-sq">@include('owner._brand_logo')</span>
             @endif
-            <span class="brand-tx">{{ $brandName }}<small>Сводка бизнеса</small></span>
+            <span class="brand-tx">{{ $brandName }}<small>{{ $headFeed ? 'Сводка бизнеса' : 'SMM-контент' }}</small></span>
         </div>
         <nav class="nav" id="bdNav">
             @yield('nav')
@@ -65,6 +67,7 @@
                     <button class="iconbtn m-menu" id="bdMenu" type="button" title="Меню" aria-label="Меню" aria-controls="bdSide" aria-expanded="false">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
                     </button>
+                    @if($headFeed)
                     {{-- поиск по сделкам и клиентам (на телефоне — кнопкой, поле открывается поверх) --}}
                     <div class="searchbox" id="bdSearchBox">
                         <label class="search" title="Поиск по сделкам и клиентам">
@@ -73,9 +76,11 @@
                         </label>
                         <div class="search-pop" id="bdSearchPop" hidden></div>
                     </div>
+                    @endif
                     <button class="iconbtn" id="bdTheme" type="button" title="Светлая / тёмная тема">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg>
                     </button>
+                    @if($headFeed)
                     <div class="pop-wrap">
                         <button class="iconbtn" id="bdBell" type="button" title="Уведомления" aria-label="Уведомления"><span class="dot" id="bdBellDot" hidden></span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg></button>
                         <div class="menu-pop notif-pop" id="bdNotifPop" hidden>
@@ -83,6 +88,7 @@
                             <div class="notif-list" id="bdNotifList"><div class="sr-empty">Загружаю…</div></div>
                         </div>
                     </div>
+                    @endif
                     <div class="pop-wrap">
                         <button class="avatar" id="bdAvatar" type="button" title="{{ $ownerUser?->name }}">{{ mb_strtoupper(mb_substr($ownerFirst !== '' ? $ownerFirst : 'В', 0, 1)) }}</button>
                         <div class="menu-pop acc-pop" id="bdAccPop" hidden>
@@ -131,7 +137,7 @@
 </div>
 
 <script src="{{ asset('js/bd-daterange.js') }}?v={{ @filemtime(public_path('js/bd-daterange.js')) ?: 1 }}"></script>
-<script>window.bdFeedUrl = @json(route('owner.dashboard'));</script>
+<script>window.bdFeedUrl = @json($headFeed ? route('owner.dashboard') : null);</script>
 <script src="{{ asset('js/bd-owner-head.js') }}?v={{ @filemtime(public_path('js/bd-owner-head.js')) ?: 1 }}"></script>
 <script>
 /* Графики дизайн-системы: <canvas data-spark='{"data":[…],"labels":[…],"unit":["замер","замера","замеров"]}' data-on-accent="1">
@@ -264,7 +270,8 @@ window.bdCharts = (function () {
         window.bdCharts.draw();
     });
     // всплывашки шапки: личный кабинет и уведомления — открыта одна, закрываются кликом мимо и Esc
-    const pops = [['bdAvatar', 'bdAccPop'], ['bdBell', 'bdNotifPop']].map(([b, p]) => ({ btn: document.getElementById(b), pop: document.getElementById(p) }));
+    const pops = [['bdAvatar', 'bdAccPop'], ['bdBell', 'bdNotifPop']].map(([b, p]) => ({ btn: document.getElementById(b), pop: document.getElementById(p) }))
+        .filter(m => m.btn && m.pop); // у SMM-специалиста колокольчика нет
     const closePops = except => pops.forEach(m => { if (m.pop !== except) m.pop.hidden = true; });
     pops.forEach(m => m.btn.addEventListener('click', e => {
         e.stopPropagation();

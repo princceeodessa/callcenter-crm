@@ -30,4 +30,22 @@ class User extends Authenticatable
     {
         return $this->belongsTo(Account::class);
     }
+
+    /**
+     * Чьи страницы «SMM-контент» видит пользователь: ceilings (БлагоДар) и/или sneakers («Шаговый»).
+     * Владелец всех бизнесов — оба; владелец и руководитель кроссовок — кроссовки. SMM-специалист (роль smm) видит
+     * только эти страницы: с all_businesses — оба сообщества, иначе — сообщество своего пространства.
+     *
+     * @return list<string>
+     */
+    public function smmBusinesses(): array
+    {
+        return match ($this->role) {
+            'sneaker_owner' => $this->all_businesses ? ['ceilings', 'sneakers'] : ['sneakers'],
+            'sneaker_head' => ['sneakers'],
+            'smm' => $this->all_businesses ? ['ceilings', 'sneakers']
+                : [(int) $this->account_id === (int) config('owner.ceilings_account_id', 1) ? 'ceilings' : 'sneakers'],
+            default => [],
+        };
+    }
 }

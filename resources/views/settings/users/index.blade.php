@@ -11,6 +11,7 @@
         'sneaker_head' => 'sneaker_head (рук. кроссовок)',
         'sneaker_operator' => 'sneaker_operator (кроссовки)',
         'sneaker_owner' => 'sneaker_owner (владелец — только сводка)',
+        'smm' => 'smm (SMM-специалист — только статистика ВК обоих сообществ)',
     ];
 @endphp
 
@@ -138,6 +139,7 @@
                 <option value="sneaker_operator" @selected(old('role', 'sneaker_operator') === 'sneaker_operator')>{{ $roleLabels['sneaker_operator'] }}</option>
                 <option value="sneaker_head" @selected(old('role') === 'sneaker_head')>{{ $roleLabels['sneaker_head'] }}</option>
                 <option value="sneaker_owner" @selected(old('role') === 'sneaker_owner')>{{ $roleLabels['sneaker_owner'] }}</option>
+                <option value="smm" @selected(old('role') === 'smm')>{{ $roleLabels['smm'] }}</option>
               @else
                 <option value="operator" @selected(old('role', 'operator') === 'operator')>{{ $roleLabels['operator'] }}</option>
                 <option value="main_operator" @selected(old('role') === 'main_operator')>{{ $roleLabels['main_operator'] }}</option>
@@ -145,6 +147,7 @@
                 <option value="measurer" @selected(old('role') === 'measurer')>{{ $roleLabels['measurer'] }}</option>
                 <option value="constructor" @selected(old('role') === 'constructor')>{{ $roleLabels['constructor'] }}</option>
                 <option value="admin" @selected(old('role') === 'admin')>{{ $roleLabels['admin'] }}</option>
+                <option value="smm" @selected(old('role') === 'smm')>{{ $roleLabels['smm'] }}</option>
               @endif
             </select>
           </div>

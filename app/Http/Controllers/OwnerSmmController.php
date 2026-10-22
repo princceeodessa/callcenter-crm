@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\Owner\SmmReport;
+use App\Services\Owner\SmmResults;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -10,7 +11,8 @@ use Illuminate\Support\Facades\Auth;
 /**
  * Сводка владельца — «SMM-контент»: реклама клипов VK по бизнесу (потолки — БлагоДар, кроссовки — «Шаговый»),
  * с оценкой каждого клипа и рекомендациями, как в отчёте SMM-специалиста. Потолки — только владельцу всех бизнесов
- * (как вкладка «Потолки»), кроссовки — тем, кому открыта сводка кроссовок.
+ * (как вкладка «Потолки»), кроссовки — тем, кому открыта сводка кроссовок. SMM-специалист (роль smm) видит только
+ * эти страницы своих сообществ (User::smmBusinesses) и «Результат для бизнеса» — что продвижение дало в CRM.
  */
 class OwnerSmmController extends Controller
 {
@@ -20,9 +22,8 @@ class OwnerSmmController extends Controller
     {
         abort_unless(isset(SmmReport::BUSINESSES[$business]), 404);
         $user = Auth::user();
-        if ($business === 'ceilings') {
-            abort_unless($user && $user->role === 'sneaker_owner' && $user->all_businesses, 403);
-        }
+        // потолки — владельцу всех бизнесов, кроссовки — тем, кому открыта сводка кроссовок; SMM-специалисту — свои сообщества
+        abort_unless($user && in_array($business, $user->smmBusinesses(), true), 403);
         $days = (int) $request->query('days', 60);
         if (! isset(self::PERIODS[$days])) {
             $days = 60;
@@ -41,12 +42,13 @@ class OwnerSmmController extends Controller
             }
         } catch (\Throwable) {
         }
+        $cabinet = SmmReport::cabinet($business, $from, $toExclusive);
         $report = [
             'generated' => now()->format('Y-m-d H:i'),
             'date_from' => $from->toDateString(),
             'date_to' => $toExclusive->copy()->subDay()->toDateString(),
             'period_days' => $days,
-            'cabinets' => [SmmReport::cabinet($business, $from, $toExclusive)],
+            'cabinets' => [$cabinet],
         ];
 
         return view('owner.smm', [
@@ -54,6 +56,10 @@ class OwnerSmmController extends Controller
             'days' => $custom ? null : $days,
             'periods' => self::PERIODS,
             'report' => $report,
+            // что продвижение дало в CRM за тот же период (клиенты из ВК, замеры / продажи) — без имён и телефонов
+            'results' => SmmResults::forBusiness($business, $from, $toExclusive, SmmResults::spend($cabinet)),
+            'isSmm' => $user->role === 'smm',
+            'smmBusinesses' => $user->smmBusinesses(),
         ]);
     }
 }
