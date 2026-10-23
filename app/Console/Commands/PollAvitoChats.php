@@ -53,6 +53,8 @@ class PollAvitoChats extends Command
             $ingestedCount = 0;
             $scannedChats = 0;
             $offset = 0;
+            $scannedIds = [];
+            $pages = 0;
 
             while (true) {
                 try {
@@ -66,6 +68,13 @@ class PollAvitoChats extends Command
                 if (empty($chats)) {
                     break;
                 }
+                // Авито (v2 без параметров) отдаёт первую страницу, не глядя на offset: страница без новых чатов — конец
+                // списка. Раньше опрос листал её по кругу, пока Авито не начинал отказывать, — 4–16 минут на запуск.
+                $fresh = self::freshChatIds($chats, $scannedIds);
+                if ($fresh === []) {
+                    break;
+                }
+                $scannedIds += array_fill_keys($fresh, true);
 
                 foreach ($chats as $chat) {
                     $scannedChats++;
@@ -219,7 +228,7 @@ class PollAvitoChats extends Command
                     }
                 }
 
-                if (count($chats) < $limit) {
+                if (count($chats) < $limit || ++$pages >= self::MAX_PAGES) {
                     break;
                 }
 
@@ -239,13 +248,36 @@ class PollAvitoChats extends Command
         return self::SUCCESS;
     }
 
-    /** Сколько чатов помнить: все (с запасом). Порог раньше был 1000 — см. rememberSeen(). */
+    /** Сколько чатов помнить (с запасом; было 1000 — забытый чат выкачивается заново). */
     public const SEEN_LIMIT = 20000;
 
+    /** Предохранитель: не больше стольких страниц списка чатов за запуск. */
+    public const MAX_PAGES = 50;
+
     /**
-     * Последнее увиденное сообщение по каждому чату. Помним все чаты: опрос каждый раз листает весь список, а забытый
-     * чат выкачивается заново (карточка + история) и его сообщения снова пишутся событиями. При пороге 1000 и 2790
-     * чатах (23.10.2026) запуск шёл 10–16 минут и держал весь планировщик — сбор рекламы «в :20» пропускался.
+     * Чаты страницы, которых в этом запуске ещё не было. Пусто — Авито вернул ту же страницу (offset он не учитывает):
+     * дальше листать нечего. 23.10.2026 опрос листал одну и ту же страницу по 4 раза в секунду, пока Авито не начинал
+     * отказывать, — запуск шёл 4–16 минут и держал весь планировщик: сбор рекламы «в :20» пропускался с полуночи.
+     *
+     * @param  array<int, array<string, mixed>>  $chats
+     * @param  array<string, true>  $scanned
+     * @return list<string>
+     */
+    public static function freshChatIds(array $chats, array $scanned): array
+    {
+        $ids = [];
+        foreach ($chats as $chat) {
+            $id = (string) ($chat['id'] ?? $chat['chat_id'] ?? '');
+            if ($id !== '' && ! isset($scanned[$id])) {
+                $ids[] = $id;
+            }
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
+     * Последнее увиденное сообщение по каждому чату; лишнее отрезается со старых.
      *
      * @param  array<string, string>  $seen
      * @return array<string, string>
