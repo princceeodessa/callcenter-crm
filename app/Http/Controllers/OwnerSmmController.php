@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\Owner\SmmReport;
+use App\Services\Owner\InstagramStats;
 use App\Services\Owner\SmmResults;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -58,6 +59,8 @@ class OwnerSmmController extends Controller
             'report' => $report,
             // что продвижение дало в CRM за тот же период (клиенты из ВК, замеры / продажи) — без имён и телефонов
             'results' => SmmResults::forBusiness($business, $from, $toExclusive, SmmResults::spend($cabinet)),
+            // Instagram сообщества бизнеса: подписчики и публикации периода (InstagramSource собирает раз в 2 часа)
+            'instagram' => InstagramStats::forBusiness($business, $from, $toExclusive),
             'isSmm' => $user->role === 'smm',
             'smmBusinesses' => $user->smmBusinesses(),
         ]);

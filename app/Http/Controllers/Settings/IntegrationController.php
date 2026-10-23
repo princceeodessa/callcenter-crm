@@ -10,6 +10,7 @@ use App\Services\Integrations\AvitoOAuthService;
 use App\Services\Integrations\AvitoTokenManager;
 use App\Services\Integrations\TelegramApiClient;
 use App\Services\Integrations\VkApiClient;
+use App\Services\Owner\Marketing\InstagramSource;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
@@ -22,6 +23,8 @@ class IntegrationController extends Controller
         'avito' => 'Avito',
         'telegram' => 'Telegram',
         'tilda' => 'Tilda',
+        // статистика Instagram БлагоДара и «Шагового» для «SMM-контента» — только в пространстве потолков
+        'instagram' => 'Instagram (статистика)',
     ];
 
     public function index()
@@ -33,7 +36,8 @@ class IntegrationController extends Controller
             ->get()
             ->keyBy('provider');
 
-        $providers = collect(self::PROVIDERS)->map(function ($title, $provider) use ($connections, $accountId) {
+        $providers = collect(self::PROVIDERS)->reject(fn ($title, $provider) => $provider === 'instagram' && ! $this->instagramHere())
+            ->map(function ($title, $provider) use ($connections, $accountId) {
             $conn = $connections->get($provider);
             if (! $conn) {
                 $conn = new IntegrationConnection([
@@ -90,6 +94,9 @@ class IntegrationController extends Controller
     {
         $this->assertProvider($provider);
         $accountId = Auth::user()->account_id;
+        if ($provider === 'instagram') {
+            return $this->connectInstagram($request);
+        }
 
         $data = match ($provider) {
             'megafon_vats' => $request->validate([
@@ -401,9 +408,68 @@ class IntegrationController extends Controller
 
     private function assertProvider(string $provider): void
     {
-        if (! array_key_exists($provider, self::PROVIDERS)) {
+        if (! array_key_exists($provider, self::PROVIDERS) || ($provider === 'instagram' && ! $this->instagramHere())) {
             abort(404);
         }
+    }
+
+    /** Instagram подключается в пространстве потолков: оттуда сводка владельца и «SMM-контент» читают токены. */
+    private function instagramHere(): bool
+    {
+        return (int) Auth::user()->account_id === (int) config('owner.ceilings_account_id');
+    }
+
+    /**
+     * Токены Instagram БлагоДара и «Шагового» (API с входом через Instagram, 60 дней, дальше продлевает сборщик).
+     * Каждый проверяется запросом профиля; сохраняется вместе с именем аккаунта. Пустое поле — токен не трогаем.
+     */
+    private function connectInstagram(Request $request)
+    {
+        $data = $request->validate([
+            'ig_ceilings' => ['nullable', 'string', 'max:2000'],
+            'ig_sneakers' => ['nullable', 'string', 'max:2000'],
+        ]);
+        $connection = IntegrationConnection::query()->firstOrNew(['account_id' => Auth::user()->account_id, 'provider' => 'instagram']);
+        $settings = is_array($connection->settings) ? $connection->settings : [];
+        $errors = [];
+        $saved = [];
+        foreach (['ceilings' => 'БлагоДар', 'sneakers' => 'Шаговый'] as $business => $label) {
+            $token = preg_replace('/\s+/', '', (string) ($data['ig_'.$business] ?? ''));
+            if ($token === '') {
+                continue;
+            }
+            try {
+                $p = InstagramSource::profile($token);
+                $settings['accounts'][$business] = [
+                    'token' => $token,
+                    'user_id' => (string) ($p['user_id'] ?? ''),
+                    'username' => (string) ($p['username'] ?? ''),
+                    'account_type' => (string) ($p['account_type'] ?? ''),
+                    'followers' => (int) ($p['followers_count'] ?? 0),
+                    'saved_at' => now()->toDateTimeString(),
+                    'expires_at' => now()->addDays(60)->toDateTimeString(),
+                ];
+                $saved[] = $label.' — @'.($p['username'] ?? '?');
+            } catch (\Throwable $e) {
+                $errors[] = $label.': токен не подошёл ('.$e->getMessage().')';
+            }
+        }
+        $hasAny = collect($settings['accounts'] ?? [])->contains(fn ($a) => ! empty($a['token']));
+        $connection->fill([
+            'account_id' => Auth::user()->account_id,
+            'provider' => 'instagram',
+            'status' => $hasAny ? 'active' : 'disabled',
+            'settings' => $settings,
+            'last_error' => $errors ? implode(' · ', $errors) : null,
+        ])->save();
+
+        if ($errors) {
+            return back()->withErrors(['instagram' => implode(' · ', $errors)])->with('status', $saved ? 'Сохранено: '.implode(', ', $saved) : null);
+        }
+
+        return redirect()->route('settings.integrations.index')->with('status', $saved
+            ? 'Instagram подключён: '.implode(', ', $saved).'. Статистика появится в «SMM-контенте» в течение двух часов.'
+            : 'Токены не введены — ничего не изменилось.');
     }
 
     private function resolveConnectionStatus(string $provider, array $settings): string

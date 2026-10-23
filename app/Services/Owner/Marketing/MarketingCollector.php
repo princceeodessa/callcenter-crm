@@ -18,9 +18,11 @@ class MarketingCollector
         'vk_shag' => 'VK Реклама · Шаговый',
         'avito' => 'Авито',
         'sheet' => 'Таблица замеров',
+        'ig' => 'Instagram · БлагоДар',
+        'ig_shag' => 'Instagram · Шаговый',
     ];
 
-    /** @return array<string, VkAdsSource|DirectSource|AvitoSource|LeadsSheetSource> */
+    /** @return array<string, VkAdsSource|DirectSource|AvitoSource|LeadsSheetSource|InstagramSource> */
     public static function sources(): array
     {
         $cfg = (array) config('owner.marketing');
@@ -31,6 +33,9 @@ class MarketingCollector
             'vk_shag' => new VkAdsSource((array) ($cfg['vk_ads_shag'] ?? [])),
             'avito' => new AvitoSource((array) ($cfg['avito'] ?? [])),
             'sheet' => new LeadsSheetSource((array) ($cfg['leads_sheet'] ?? [])),
+            // Instagram — не реклама: подписчики и публикации для «SMM-контента» (токены — в «Интеграции → Instagram»)
+            'ig' => new InstagramSource('ceilings', 'ig'),
+            'ig_shag' => new InstagramSource('sneakers', 'ig_shag'),
         ];
     }
 

@@ -130,8 +130,8 @@ class MarketingStats
         $status = DB::table('owner_marketing_sources')->get()->keyBy('source');
         $sources = [];
         foreach (MarketingCollector::sources() as $key => $src) {
-            if ($key === 'vk_shag') {
-                continue;   // реклама «Шагового» — у кроссовок, не в сводке потолков
+            if (in_array($key, ['vk_shag', 'ig', 'ig_shag'], true)) {
+                continue;   // реклама «Шагового» — у кроссовок; Instagram — не реклама (он в «SMM-контенте»)
             }
             $s = $status[$key] ?? null;
             $sources[$key] = [

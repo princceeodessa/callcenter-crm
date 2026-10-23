@@ -29,6 +29,11 @@ class Kernel extends ConsoleKernel
             ->cron('20 */2 * * *')
             ->withoutOverlapping(30);
 
+        // Instagram БлагоДара и «Шагового» для «SMM-контента»: подписчики и публикации (маркеры — «Интеграции → Instagram»).
+        $schedule->command('owner:marketing-collect --source=ig --source=ig_shag --days=30')
+            ->cron('40 */2 * * *')
+            ->withoutOverlapping(30);
+
         // Таблица замеров — чаще: число замеров в сводке владельца берётся из неё.
         $schedule->command('owner:marketing-collect --source=sheet --days=40')
             ->everyFifteenMinutes()

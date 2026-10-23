@@ -7,7 +7,7 @@ use Illuminate\Console\Command;
 
 class OwnerMarketingCollect extends Command
 {
-    protected $signature = 'owner:marketing-collect {--days=14 : сколько последних дней перезабрать} {--source=* : direct|vk|avito|sheet}';
+    protected $signature = 'owner:marketing-collect {--days=14 : сколько последних дней перезабрать} {--source=* : direct|vk|vk_shag|avito|sheet|ig|ig_shag}';
 
     protected $description = 'Реклама потолков для сводки владельца: VK Реклама, Яндекс Директ, Авито, таблица заявок';
 

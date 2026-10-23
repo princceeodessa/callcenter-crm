@@ -19,6 +19,7 @@
         {{-- сообщество выбирается вкладками сверху; здесь — разделы страницы (подсвечивает прокрутка) --}}
         <a href="#results" class="active"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg> Результат</a>
         <a href="#brief"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="M10 8l5 4-5 4V8z"/></svg> Реклама клипов</a>
+        <a href="#instagram"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1"/></svg> Instagram</a>
         @foreach($smmBusinesses as $b)
             @continue($b === $business)
             <a href="{{ route('owner.smm', ['business' => $b]) }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg> {{ $b === 'ceilings' ? 'ВК · БлагоДар' : 'ВК · Шаговый' }}</a>
@@ -26,6 +27,7 @@
     @else
         <a href="{{ $back }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg> Сводка</a>
         <a href="#top" class="active"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="M10 8l5 4-5 4V8z"/></svg> Клипы</a>
+        <a href="#instagram"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1"/></svg> Instagram</a>
     @endif
 @endsection
 
@@ -79,6 +81,61 @@
                 <div class="sub">{{ $results['vk_connected'] ? 'сообщения сообществу и лид-формы' : 'сообщения сообщества «Шаговый» в CRM не подключены' }}</div></div>
         @endif
     </div>
+@endif
+
+{{-- Instagram сообщества: подписчики и публикации периода (App\Services\Owner\InstagramStats) --}}
+@if(!empty($instagram))
+    @php
+        $ig = $instagram;
+        $igName = $business === 'ceilings' ? 'БлагоДар' : '«Шаговый»';
+        $igTypes = ['REELS' => 'Reels', 'VIDEO' => 'Видео', 'IMAGE' => 'Фото', 'CAROUSEL_ALBUM' => 'Карусель'];
+        $igN = fn ($v) => $v === null ? '—' : number_format((float) $v, 0, ',', ' ');
+    @endphp
+    <div class="sec" id="instagram"><h2>Instagram{{ !empty($ig['username']) ? ' · @'.$ig['username'] : '' }}</h2>
+        <span class="note">@if($ig['connected'] && $ig['updated'])обновлено {{ $ig['updated'] }} · @endif просмотры, охват и реакции — за всё время публикации</span></div>
+    @if(! $ig['connected'])
+        <div class="card empty-card">Instagram {{ $igName }} ещё не подключён. Подключает администратор: «Настройки → Интеграции → Instagram (статистика)».</div>
+    @elseif(! $ig['collected'])
+        <div class="card empty-card">Instagram подключён — первые цифры появятся после ближайшего сбора (раз в два часа).@if($ig['error']) Ошибка: {{ $ig['error'] }}@endif</div>
+    @else
+        @if($ig['error'])<div class="card smm-alert">Последний сбор не удался: {{ $ig['error'] }} — показаны прошлые цифры.</div>@endif
+        <div class="minis">
+            <div class="card mini"><div class="lbl">Подписчики</div><div class="val num">{{ $igN($ig['followers']) }}</div>
+                <div class="sub">@if($ig['growth'] !== null){{ $ig['growth'] >= 0 ? '+' : '' }}{{ $igN($ig['growth']) }} с {{ $ig['growth_since'] }}@elseif($ig['new_followers'] !== null)новых за период: {{ $igN($ig['new_followers']) }}@else прирост — когда накопятся ежедневные снимки@endif</div></div>
+            <div class="card mini"><div class="lbl">Публикаций</div><div class="val num">{{ $igN($ig['count']) }}</div>
+                <div class="sub">за выбранный период</div></div>
+            <div class="card mini"><div class="lbl">Просмотры</div><div class="val num {{ $ig['views'] === null ? 'muted' : '' }}">{{ $igN($ig['views']) }}</div>
+                <div class="sub">{{ $ig['avg_views'] !== null ? 'в среднем '.$igN($ig['avg_views']).' на публикацию' : 'публикаций периода нет' }}</div></div>
+            <div class="card mini"><div class="lbl">Охват</div><div class="val num {{ $ig['reach'] === null ? 'muted' : '' }}">{{ $igN($ig['reach']) }}</div>
+                <div class="sub">уникальные аккаунты, сумма по публикациям</div></div>
+            <div class="card mini"><div class="lbl">Реакции</div><div class="val num {{ $ig['engagement'] === null ? 'muted' : '' }}">{{ $igN($ig['engagement']) }}</div>
+                <div class="sub">лайки, комментарии, сохранения, репосты</div></div>
+        </div>
+        @php($igList = $ig['posts'] ?: $ig['latest'])
+        @if($igList)
+            <div class="card tbl-card">
+                <div class="tbl-head"><h2>{{ $ig['posts'] ? 'Публикации за период' : 'Последние публикации' }}</h2><span class="note">{{ $ig['posts'] ? 'сначала самые просматриваемые' : 'за выбранный период публикаций не было' }}</span></div>
+                <div class="tbl-wrap"><table class="t sortable">
+                    <thead><tr><th>Дата</th><th>Тип</th><th>Публикация</th><th class="num">Просмотры</th><th class="num">Охват</th><th class="num">Лайки</th><th class="num">Комм.</th><th class="num">Сохр.</th><th class="num">Репосты</th></tr></thead>
+                    <tbody>
+                    @foreach($igList as $p)
+                        <tr>
+                            <td class="nowrap">{{ $p['at'] ? \Carbon\Carbon::parse($p['at'])->format('d.m H:i') : '—' }}</td>
+                            <td>{{ $igTypes[$p['type']] ?? $p['type'] }}</td>
+                            <td>@if($p['permalink'])<a href="{{ $p['permalink'] }}" target="_blank" rel="noopener">{{ $p['caption'] !== '' ? \Illuminate\Support\Str::limit($p['caption'], 70) : 'без подписи' }}</a>@else{{ \Illuminate\Support\Str::limit($p['caption'], 70) }}@endif</td>
+                            <td class="num">{{ $igN($p['views']) }}</td>
+                            <td class="num">{{ $igN($p['reach']) }}</td>
+                            <td class="num">{{ $igN($p['likes']) }}</td>
+                            <td class="num">{{ $igN($p['comments']) }}</td>
+                            <td class="num">{{ $igN($p['saved']) }}</td>
+                            <td class="num">{{ $igN($p['shares']) }}</td>
+                        </tr>
+                    @endforeach
+                    </tbody>
+                </table></div>
+            </div>
+        @endif
+    @endif
 @endif
 
 {{-- SMM-контент в дизайн-системе сводок (прототип дизайнера): итог, 6 плиток, кампании, расход по дням, клипы,

@@ -171,6 +171,31 @@
                     <input class="form-control form-control-sm" readonly value="{{ $settings['confirmation_code'] }}">
                   </div>
                 @endif
+              @elseif($p['provider'] === 'instagram')
+                {{-- токены не показываются: только чей аккаунт подключён и до какого числа действует --}}
+                <div class="alert alert-info small">
+                  <div class="fw-semibold mb-1">Статистика Instagram для «SMM-контента»: подписчики, просмотры и охват публикаций</div>
+                  <ol class="mb-0">
+                    <li>Аккаунт Instagram — профессиональный (Бизнес или Автор).</li>
+                    <li>На <b>developers.facebook.com</b> (нужен VPN): «Мои приложения» → «Создать приложение» → вариант «Другое» → тип «Компания».</li>
+                    <li>В приложении добавьте продукт <b>Instagram</b> → «Настройка API со входом через Instagram».</li>
+                    <li>«Роли приложения» → «Роли» → «Добавить людей» → <b>тестировщик Instagram</b> → ваш аккаунт. Примите приглашение в Instagram: Настройки → «Приложения и сайты» → «Приглашения тестировщиков».</li>
+                    <li>В «Настройке API со входом через Instagram» → «Сгенерировать маркеры доступа» → «Добавить аккаунт» → войдите → скопируйте маркер и вставьте ниже.</li>
+                  </ol>
+                  <div class="mt-1">Маркер действует 60 дней, дальше CRM продлевает его сама. Никому его не пересылайте.</div>
+                </div>
+                @foreach(['ceilings' => 'БлагоДар (потолки)', 'sneakers' => '«Шаговый» (кроссовки)'] as $igBiz => $igLabel)
+                  @php($igAcc = $settings['accounts'][$igBiz] ?? null)
+                  <div class="mb-2">
+                    <label class="form-label small">Маркер Instagram — {{ $igLabel }}</label>
+                    @if(!empty($igAcc['token']))
+                      <div class="small text-success mb-1">подключён {{ '@'.($igAcc['username'] ?? '?') }} · подписчиков {{ number_format((int) ($igAcc['followers'] ?? 0), 0, ',', ' ') }} · маркер до {{ \Carbon\Carbon::parse($igAcc['expires_at'])->format('d.m.Y') }}</div>
+                    @endif
+                    <input name="ig_{{ $igBiz }}" type="password" autocomplete="off" class="form-control form-control-sm"
+                           placeholder="{{ !empty($igAcc['token']) ? 'вставьте новый маркер, чтобы заменить' : 'вставьте маркер доступа' }}">
+                  </div>
+                @endforeach
+                @error('instagram')<div class="alert alert-danger small">{{ $message }}</div>@enderror
               @elseif($p['provider'] === 'avito')
                 <div class="alert alert-info small">
                   <div class="fw-semibold mb-1">Как подключить Avito</div>
