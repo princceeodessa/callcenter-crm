@@ -226,11 +226,7 @@ class PollAvitoChats extends Command
                 $offset += $limit;
             }
 
-            if (count($seen) > 1000) {
-                $seen = array_slice($seen, -1000, null, true);
-            }
-
-            $settings['last_seen_message_id_by_chat'] = $seen;
+            $settings['last_seen_message_id_by_chat'] = self::rememberSeen($seen);
             $conn->update([
                 'settings' => $settings,
                 'last_synced_at' => now(),
@@ -241,6 +237,22 @@ class PollAvitoChats extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    /** Сколько чатов помнить: все (с запасом). Порог раньше был 1000 — см. rememberSeen(). */
+    public const SEEN_LIMIT = 20000;
+
+    /**
+     * Последнее увиденное сообщение по каждому чату. Помним все чаты: опрос каждый раз листает весь список, а забытый
+     * чат выкачивается заново (карточка + история) и его сообщения снова пишутся событиями. При пороге 1000 и 2790
+     * чатах (23.10.2026) запуск шёл 10–16 минут и держал весь планировщик — сбор рекламы «в :20» пропускался.
+     *
+     * @param  array<string, string>  $seen
+     * @return array<string, string>
+     */
+    public static function rememberSeen(array $seen): array
+    {
+        return count($seen) > self::SEEN_LIMIT ? array_slice($seen, -self::SEEN_LIMIT, null, true) : $seen;
     }
 
     private function isIncomingMessage(array $message, string $ownerUserId): bool
