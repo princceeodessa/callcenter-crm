@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Controllers\Concerns\OwnerPeriod;
 use App\Services\Owner\CeilingsKpi;
 use App\Services\Owner\ContractProfit;
+use App\Services\Owner\HeadWork;
 use App\Services\Owner\Marketing\MarketingStats;
 use App\Services\Owner\NonClosureSummary;
 use App\Support\Export\ContactsExport;
@@ -34,12 +35,15 @@ class OwnerCeilingsController extends Controller
                 return view('owner._contract_profit', ['profit' => ContractProfit::forPeriod($from, $to)]);
             case 'nonclosures':
                 return view('owner._nonclosures', ['nonclosures' => NonClosureSummary::forPeriod($from, $to)]);
+            case 'headwork':
+                return view('owner._head_work', ['headwork' => HeadWork::forPeriod($from, $to)]);
             case 'blagodar':
                 return view('owner._blagodar_blocks', ['profit' => ContractProfit::forPeriod($from, $to), 'nonclosures' => NonClosureSummary::forPeriod($from, $to)]);
         }
         // CRM БлагоДар отвечает по 3–5 с: нет ответа в кэше — страница открывается без него, блоки догружаются следом
         $profit = ContractProfit::cached($from, $to);
         $nonclosures = NonClosureSummary::cached($from, $to);
+        $headwork = HeadWork::cached($from, $to);
         $kpi = (new CeilingsKpi((int) config('owner.ceilings_account_id')))->compute($from, $to);
 
         return view('owner.ceilings', [
@@ -48,6 +52,8 @@ class OwnerCeilingsController extends Controller
             // число замеров — по таблице замеров (решение владельца 09.10.2026)
             'measures' => MarketingStats::measurements($from, $to),
             'nonclosures' => $nonclosures,
+            // работа главного по замерщикам — готовые итоги CRM БлагоДар (под незаключёнными)
+            'headwork' => $headwork,
             // прибыль договоров — готовые итоги CRM БлагоДар (страница и так только владельца всех бизнесов)
             'profit' => $profit,
             'period' => $period,

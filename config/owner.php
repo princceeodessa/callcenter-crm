@@ -46,4 +46,10 @@ return [
         'url' => env('BLAGODAR_PROFIT_URL'),
         'token' => env('BLAGODAR_PROFIT_TOKEN'),
     ],
+
+    // Работа главного по замерщикам — готовые итоги CRM БлагоДар (тот же адрес, свой токен на чтение, только в .env).
+    'head_work' => [
+        'url' => env('BLAGODAR_HEAD_WORK_URL'),
+        'token' => env('BLAGODAR_HEAD_WORK_TOKEN'),
+    ],
 ];

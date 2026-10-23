@@ -318,3 +318,21 @@ button.export{border:0;cursor:pointer;font-family:inherit}
 
 /* «Топ моделей» кроссовок: фото модели из склада CRM (обложка карточки товара) */
 .prod-thumb.prod-photo{object-fit:cover;background:var(--tile);padding:0}
+
+/* «Работа главного по замерщикам» (owner/_head_work): карточка на человека — крупно и словами */
+.hw-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:16px;margin-bottom:26px}
+.hw-card{padding:18px 20px}
+.hw-head{margin-bottom:10px;font-weight:700}
+.hw-line{font-size:15px}
+.hw-main{font-size:19px;font-weight:700;margin:8px 0 14px;line-height:1.35}
+.hw-main.good{color:var(--accent)}
+.hw-rows{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.hw-rows>div{background:var(--tile);border-radius:12px;padding:10px 12px;min-width:0}
+.hw-rows span{display:block;font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)}
+.hw-rows b{display:block;font-size:22px;font-weight:800;margin-top:4px}
+.hw-note{font-size:13px;line-height:1.45;margin-top:6px}
+.hw-note.muted{color:var(--muted)}
+.hw-card .profit-more{margin:14px 0 0}
+.hw-stale{padding:12px 16px;margin-bottom:12px;font-weight:600;border:1px solid #f0a26c;background:rgba(240,162,108,.14);color:#c2620a}
+:root[data-theme="dark"] .hw-stale{color:#f5b27a}
+@media(max-width:620px){.hw-rows{grid-template-columns:repeat(2,minmax(0,1fr))}}

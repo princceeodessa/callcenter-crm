@@ -177,6 +177,7 @@
     <a href="#profit"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg> Прибыль договоров</a>
     <a href="#months" data-months-open><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 9h18M8 2v4M16 2v4M7 14h4M7 18h7"/></svg> Отчёт по месяцам</a>
     <a href="#nonclosures"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h4"/></svg> Незаключённые</a>
+    <a href="#headwork"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 01-2.2 2 19.8 19.8 0 01-8.6-3 19.5 19.5 0 01-6-6 19.8 19.8 0 01-3-8.6A2 2 0 014.1 2h3a2 2 0 012 1.7c.1.9.4 1.8.7 2.7a2 2 0 01-.5 2.1L8.1 9.9a16 16 0 006 6"/></svg> Главный по замерщикам</a>
     <a href="#operators"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.9"/></svg> Операторы</a>
     <span class="lbl">Бизнес</span>
     <a href="{{ route('owner.smm', ['business' => 'ceilings']) }}" class="sub"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="M10 8l5 4-5 4V8z"/></svg> SMM-контент</a>
@@ -446,6 +447,14 @@
         <div class="bd-lazy" data-lazy-src="{{ request()->fullUrlWithQuery(['part' => 'nonclosures']) }}">
             <div class="sec" id="nonclosures"><h2>Незаключённые договоры по замерщикам</h2><span class="note">сверка таблицы КЦ с 1С</span></div>
             <div class="card empty-card">Загружаю сверку из CRM БлагоДар…</div>
+        </div>
+    @endif
+    @if($headwork !== null)
+        @include('owner._head_work')
+    @else
+        <div class="bd-lazy" data-lazy-src="{{ request()->fullUrlWithQuery(['part' => 'headwork']) }}">
+            <div class="sec" id="headwork"><h2>Работа главного по замерщикам</h2><span class="note">итоги CRM БлагоДар</span></div>
+            <div class="card empty-card">Загружаю итоги из CRM БлагоДар…</div>
         </div>
     @endif
 
