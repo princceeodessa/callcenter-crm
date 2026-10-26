@@ -56,7 +56,7 @@ class MarketingCollector
             }
             $this->status($key, ['last_attempt_at' => now()]);
             try {
-                $daily = $source->daily($from, $to);
+                $daily = self::corrected($key, $source->daily($from, $to), $from, $to);
                 DB::transaction(function () use ($key, $daily, $from, $to) {
                     // API отдают окно целиком — дни без активности просто не приходят, поэтому окно заменяется.
                     // Таблицу замеров заменяем только по прочитанным дням: недоступный лист не должен стирать месяц.
@@ -91,6 +91,22 @@ class MarketingCollector
         }
 
         return $result;
+    }
+
+    /**
+     * Ручные поправки руководства (config owner.marketing.corrections: источник => день => поля): площадка отдала
+     * не ту цифру — пишем названную. Остальные поля дня — как пришли; перечитывание окна поправку не стирает.
+     */
+    public static function corrected(string $key, array $daily, Carbon $from, Carbon $to): array
+    {
+        foreach ((array) config('owner.marketing.corrections.'.$key, []) as $day => $fields) {
+            if ($day >= $from->toDateString() && $day <= $to->toDateString()) {
+                $daily[$day] = (array) $fields + ($daily[$day] ?? []);
+            }
+        }
+        ksort($daily);
+
+        return $daily;
     }
 
     private function status(string $key, array $values): void

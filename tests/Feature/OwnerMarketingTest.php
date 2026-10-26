@@ -9,6 +9,7 @@ use App\Services\Owner\Marketing\DirectSource;
 use App\Services\Owner\Marketing\Http;
 use App\Services\Owner\Marketing\LeadsSheetSource;
 use App\Services\Owner\Marketing\MarketingCollector;
+use App\Services\Owner\Marketing\MarketingStats;
 use App\Services\Owner\Marketing\VkAdsSource;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -175,6 +176,20 @@ class OwnerMarketingTest extends TestCase
 
             return [404, 'unexpected '.$url];
         };
+    }
+
+    public function test_manual_correction_of_a_day_survives_recollect(): void
+    {
+        // Директ отдал за 08.10 4 100,40 ₽, руководство говорит — 3 000: расход поправлен, клики и показы — из API
+        config(['owner.marketing.corrections' => ['direct' => ['2026-10-08' => ['cost' => 3000], '2026-09-01' => ['cost' => 1]]]]);
+        $this->fakeAll();
+        (new MarketingCollector())->run(14);
+        (new MarketingCollector())->run(14);
+        $day = fn (string $d) => json_decode((string) DB::table('owner_marketing_daily')->where('source', 'direct')->where('day', $d)->value('metrics'), true);
+        $this->assertEquals(['cost' => 3000, 'impr' => 3000, 'clicks' => 60], $day('2026-10-08'));
+        $this->assertEquals(['impr' => 1000, 'clicks' => 20, 'cost' => 1500], $day('2026-10-09'));
+        $this->assertNull($day('2026-09-01'));      // вне окна сбора — не трогаем
+        $this->assertEqualsWithDelta(4500, MarketingStats::forPeriod(Carbon::parse('2026-10-08'), Carbon::parse('2026-10-10'))['spend']['direct']['value'], 0.001);
     }
 
     public function test_parsers(): void
