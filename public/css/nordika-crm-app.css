@@ -70,3 +70,108 @@ html.nd-html{background:var(--bg)}
 
 /* выбранный чат: у Bootstrap белый текст на синем, а фон у чатов светлый — текст цветом темы */
 html.nd-html .list-group-item.active.ccrm-chat-item{color:var(--ink);background:var(--accent-soft);border-color:var(--line)}
+
+/* ===== карточка сделки (этап 2): окно сделки из прототипа — страницей ===== */
+.nd-deal{overflow:hidden}
+.nd-deal .nd-m-head{align-items:center}
+.nd-deal-headtext{min-width:0;flex:1}
+.nd-deal-chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.nd-deal .nd-mt{margin-top:8px;font-size:19px;word-break:break-word}
+.nd-deal-lead{color:var(--muted);font-weight:600}
+.nd-deal-project{flex:none}
+.nd-deal-grid{grid-template-columns:minmax(0,1fr) 330px}
+.nd-deal .nd-m-main{min-width:0}
+.nd-deal .nd-actrow a.nd-act{text-decoration:none}
+.nd-deal .nd-act .nd-icon{width:16px;height:16px}
+.nd-lbl{font-size:12px;font-weight:600;color:var(--muted);margin:4px 0 7px}
+.nd-faint{color:var(--faint)}
+.nd-deal-small{font-size:12px}
+.nd-deal-contact{display:flex;align-items:center;gap:9px;font-size:15px;font-weight:700}
+.nd-deal-contact .nd-icon{color:var(--muted)}
+.nd-deal-contact-sub{font-size:12.5px;color:var(--muted);margin-top:5px}
+.nd-deal-voice{flex-wrap:wrap}
+.nd-deal-voice input[type=file]{flex:1 1 220px;min-width:0;font-size:12.5px;padding:7px 10px}
+.nd-deal-voice input[name=voice_note_comment]{flex:2 1 220px}
+.nd-deal-sec{margin-bottom:16px}
+.nd-deal-task{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;background:var(--panel)}
+.nd-deal-task.nd-editing{border-color:var(--accent)}
+.nd-deal-task-row{display:flex;gap:10px;align-items:flex-start}
+.nd-deal-task-check{width:18px;height:18px;border-radius:6px;border:2px solid var(--line);flex:none;margin-top:1px;display:grid;place-items:center;color:#fff}
+.nd-deal-task.nd-done .nd-deal-task-check{background:var(--accent);border-color:var(--accent)}
+.nd-deal-task-check .nd-icon{width:12px;height:12px;stroke-width:3}
+.nd-deal-task-text{flex:1;min-width:0}
+.nd-deal-task-title{font-size:13.5px;font-weight:700;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.nd-deal-task.nd-done .nd-deal-task-title{text-decoration:line-through;color:var(--muted)}
+.nd-deal-task-meta{font-size:11.5px;color:var(--muted);margin-top:2px}
+.nd-deal-task-desc{font-size:12.5px;margin-top:5px;white-space:pre-wrap}
+.nd-deal-task-btns{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.nd-deal-task-btns form{margin:0}
+.nd-deal-task-btns a.nd-btn{text-decoration:none}
+.nd-deal-err{font-size:12px;color:var(--red);margin-top:4px}
+.nd-deal-note{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.4}
+.nd-deal-note.nd-tone-amber{background:color-mix(in srgb,var(--amber) 14%,var(--panel));color:var(--ink);padding:8px 10px;border-radius:10px}
+details.nd-deal-addtask,details.nd-deal-edit{margin-top:4px}
+details.nd-deal-addtask>summary,details.nd-deal-edit>summary{cursor:pointer;font-size:12.5px;font-weight:700;color:var(--accent);list-style:none;padding:6px 0}
+details.nd-deal-addtask>summary::-webkit-details-marker,details.nd-deal-edit>summary::-webkit-details-marker{display:none}
+.nd-deal-form{margin-top:6px}
+.nd-deal-form .nd-field{margin-bottom:9px}
+.nd-deal-form .nd-field input,.nd-deal-form .nd-field select,.nd-deal-form .nd-field textarea{padding:8px 11px;font-size:13px}
+.nd-deal-form-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.nd-deal-select,.nd-deal-input{width:100%;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:8px 11px;font:inherit;font-size:13px;color:var(--ink);outline:none;margin-top:8px}
+.nd-deal-select:focus,.nd-deal-input:focus{border-color:var(--accent)}
+.nd-deal-select[hidden]{display:none}
+.nd-m-aside .nd-st-opt{width:100%;background:var(--panel);color:var(--ink);text-align:left;font:inherit;font-size:12.5px;font-weight:600}
+.nd-m-aside .nd-st-opt.nd-on{background:var(--accent-soft);color:var(--accent)}
+.nd-deal-person{display:flex;align-items:center;gap:8px}
+.nd-deal-srclabel{font-size:12px;color:var(--muted);font-weight:500;margin-top:5px}
+.nd-deal-facts{display:flex;flex-direction:column;gap:6px;font-size:12.5px}
+.nd-deal-facts>div{display:flex;justify-content:space-between;gap:10px}
+.nd-deal-facts span{color:var(--muted)}
+.nd-deal-facts b{text-align:right;font-weight:600}
+.nd-deal-result{display:flex;width:100%}
+.nd-deal-result label{flex:1;text-align:center;font-size:12px;font-weight:600;color:var(--muted);padding:7px 6px;border-radius:8px;cursor:pointer;margin:0}
+.nd-deal-result input{position:absolute;opacity:0;pointer-events:none}
+.nd-deal-result label:has(input:checked){background:var(--panel);color:var(--ink);box-shadow:var(--shadow-sm)}
+.nd-deal-closebtn{margin-top:8px;width:100%;justify-content:center;color:#fff;border-color:transparent;background:var(--accent)}
+.nd-deal-closebtn[data-tone=lost]{background:var(--red)}
+.nd-deal-closebtn[data-tone=extra_non_target]{background:var(--amber)}
+.nd-deal-closebtn:hover{filter:brightness(1.06);background:var(--accent)}
+.nd-deal-closebtn[data-tone=lost]:hover{background:var(--red)}
+.nd-deal-closebtn[data-tone=extra_non_target]:hover{background:var(--amber)}
+a.nd-deal-chat{display:block;text-decoration:none;color:inherit;border:1px solid var(--line);background:var(--panel);border-radius:11px;padding:8px 10px;margin-bottom:6px}
+a.nd-deal-chat:hover{border-color:color-mix(in srgb,var(--accent) 35%,var(--line))}
+.nd-deal-chat-name{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:700}
+.nd-deal-chat-name .source-icon{width:1.3rem;height:1.3rem;font-size:.6rem}
+.nd-deal-chat-body{display:block;font-size:12px;color:var(--muted);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nd-deal-chat-meta{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--faint);margin-top:3px}
+.nd-deal-chat-meta .nd-cnt-badge{height:18px;margin-left:auto}
+
+/* цветные метки (статусы звонков, результат, синхронизация) */
+.nd-tag.nd-tone-green{background:color-mix(in srgb,var(--accent) 15%,transparent);color:var(--accent)}
+.nd-tag.nd-tone-red{background:color-mix(in srgb,var(--red) 14%,transparent);color:var(--red)}
+.nd-tag.nd-tone-amber{background:color-mix(in srgb,var(--amber) 18%,transparent);color:color-mix(in srgb,var(--amber) 70%,var(--ink))}
+.nd-tag.nd-tone-blue{background:color-mix(in srgb,var(--blue) 14%,transparent);color:var(--blue)}
+a.nd-tag{text-decoration:none}
+
+/* лента: точка цвета события, звонок с полями, запись и расшифровка */
+.nd-deal-tl .nd-tl-i::before{background:var(--dot,var(--accent))}
+.nd-tl-head{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.nd-tl-time{font-size:11.5px;color:var(--faint);white-space:nowrap}
+.nd-tl-body{font-size:12.5px;margin-top:5px;line-height:1.45;word-break:break-word}
+.nd-call{margin-top:8px;border:1px solid var(--line);background:var(--panel-2);border-radius:12px;padding:10px 12px}
+.nd-call-top{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11.5px}
+.nd-call-id{margin-left:auto;color:var(--faint);font-size:11px;word-break:break-all}
+.nd-call-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px 14px;margin-top:9px}
+.nd-call-grid .nd-k{font-size:10.5px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:var(--faint)}
+.nd-call-grid .nd-v{font-size:12.5px;font-weight:600;word-break:break-word}
+.nd-call audio,.nd-deal-tl audio{width:100%;height:36px;margin-top:9px}
+.nd-call-links{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;margin-top:6px}
+.nd-call-links a{color:var(--accent)}
+.nd-call-links form{margin:0}
+details.nd-transcript{width:100%}
+details.nd-transcript>summary{cursor:pointer;font-weight:700;color:var(--accent)}
+details.nd-transcript>div{margin-top:6px;white-space:pre-wrap;font-size:12.5px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+
+@media (max-width:1100px){.nd-deal-grid{grid-template-columns:minmax(0,1fr) 290px}}
+@media (max-width:900px){.nd-deal-grid{grid-template-columns:1fr}}
+@media (max-width:600px){.nd-deal .nd-m-head{flex-wrap:wrap}.nd-deal-form-2{grid-template-columns:1fr}.nd-deal-task-row{flex-wrap:wrap}}

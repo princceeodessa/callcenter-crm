@@ -37,6 +37,8 @@
 @endpush
 
 @php
+  // редизайн «Nordika» (этап 2) — у колл-центра потолков; у кроссовок прежняя карточка
+  $nd = \App\Support\Ui\Nordika::enabled();
   $editingTaskId = max(0, (int) request()->query('edit_task', 0));
   $canUseCeilingProjects = auth()->user()?->role === 'admin';
 
@@ -312,9 +314,107 @@
       'failed' => ['label' => 'Ошибка расшифровки', 'badge' => 'danger'],
       default => null,
   };
+
+  // запись ленты: звонок собирается из всех событий с тем же callid (повтор того же звонка — null, пропустить);
+  // общая для прежней разметки и карточки Nordika
+  $prepareActivity = function ($a) use (&$renderedCallKeys, $callGroupKey, $callActivityGroups, $normalizeActivityText,
+      $pickPayloadValue, $recordingsByCallid, $resolveCallTypeKey, $resolveCallTypeLabel, $resolveCallStatusMeta,
+      $pickEmployeeFromPayloads, $pickIncomingPhoneSourceFromPayloads, $deal, $formatPhone, $formatEmployee,
+      $hasDisplayValue, $formatCallMoment, $formatDuration) {
+      $payload = is_array($a->payload ?? null) ? $a->payload : [];
+      $callGroupKeyValue = $a->type === 'call' ? $callGroupKey($a) : null;
+      if ($a->type === 'call' && isset($renderedCallKeys[$callGroupKeyValue])) {
+          return null;
+      }
+
+      $actorName = $normalizeActivityText($a->author?->name ?? '');
+      $activityBody = $normalizeActivityText($a->body ?? '');
+      $callActivities = collect([$a]);
+      $callid = $payload['callid'] ?? null;
+      $recModel = null;
+      $recUrl = null;
+      $callTypeKey = null;
+      $callTypeLabel = null;
+      $callTypeBadge = 'success';
+      $callStatusMeta = null;
+      $callFields = [];
+      $hiddenCallEvents = 0;
+
+      if ($a->type === 'call') {
+          $renderedCallKeys[$callGroupKeyValue] = true;
+          $callActivities = $callActivityGroups[$callGroupKeyValue] ?? collect([$a]);
+          $callPayloads = $callActivities
+              ->map(fn ($activity) => is_array($activity->payload ?? null) ? $activity->payload : [])
+              ->values();
+
+          $callid = $pickPayloadValue($callPayloads, ['callid', 'call_id', 'callId', 'uuid', 'id']);
+          $recModel = ($callid && isset($recordingsByCallid[$callid])) ? $recordingsByCallid[$callid] : null;
+          $recUrl = $recModel?->recording_url ?? $pickPayloadValue($callPayloads, ['recording_url', 'record_url', 'recordUrl', 'recording', 'record', 'link', 'file_url', 'url']);
+          $callTypeKey = $resolveCallTypeKey($callPayloads);
+          $callTypeLabel = $resolveCallTypeLabel($callTypeKey);
+          $callTypeBadge = match ($callTypeKey) {
+              'out' => 'primary',
+              'missed' => 'danger',
+              default => 'success',
+          };
+          $callStatusMeta = $resolveCallStatusMeta($callPayloads, $callTypeKey);
+          $throughPhone = $pickPayloadValue($callPayloads, ['telnum', 'diversion', 'to', 'dst', 'number', 'did']);
+          $clientPhone = $pickPayloadValue($callPayloads, ['phone', 'client_phone', 'phone_client', 'caller', 'callerid', 'caller_id']) ?? $deal->contact?->phone;
+          $callEmployee = $pickEmployeeFromPayloads($callPayloads);
+          $callNumberSource = $pickIncomingPhoneSourceFromPayloads($callPayloads);
+          $startRaw = $pickPayloadValue($callPayloads, ['start']);
+          $waitRaw = $pickPayloadValue($callPayloads, ['wait']);
+          $durationRaw = $pickPayloadValue($callPayloads, ['duration']);
+          $hiddenCallEvents = max(0, $callActivities->count() - 1);
+
+          $callFields = array_values(array_filter([
+              [
+                  'label' => 'Клиент',
+                  'value' => $formatPhone($clientPhone),
+                  'show' => $hasDisplayValue($clientPhone),
+              ],
+              [
+                  'label' => 'Сотрудник',
+                  'value' => $formatEmployee($callEmployee),
+                  'show' => $hasDisplayValue($callEmployee),
+              ],
+              [
+                  'label' => 'Через',
+                  'value' => $formatPhone($throughPhone),
+                  'show' => $hasDisplayValue($throughPhone),
+              ],
+              [
+                  'label' => 'Источник номера',
+                  'value' => $callNumberSource ? ($callNumberSource['label'].' - '.$formatPhone($callNumberSource['number'])) : '',
+                  'show' => $callNumberSource !== null,
+              ],
+              [
+                  'label' => 'Начало',
+                  'value' => $formatCallMoment($startRaw),
+                  'show' => $hasDisplayValue($startRaw),
+              ],
+              [
+                  'label' => 'Ожидание',
+                  'value' => $formatDuration($waitRaw),
+                  'show' => $hasDisplayValue($waitRaw),
+              ],
+              [
+                  'label' => 'Длительность',
+                  'value' => $formatDuration($durationRaw),
+                  'show' => $hasDisplayValue($durationRaw),
+              ],
+          ], fn ($field) => $field['show']));
+      }
+
+      return compact('payload', 'actorName', 'activityBody', 'callActivities', 'callid', 'recModel', 'recUrl',
+          'callTypeKey', 'callTypeLabel', 'callTypeBadge', 'callStatusMeta', 'callFields', 'hiddenCallEvents');
+  };
 @endphp
 
 @section('content')
+@if($nd)
+@include('deals._show_nordika')
+@else
 <div class="d-flex align-items-start justify-content-between mb-3 flex-wrap gap-3">
   <div>
     <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
@@ -812,90 +912,11 @@
       <div class="card-body">
         @forelse($deal->activities as $a)
           @php
-            $payload = is_array($a->payload ?? null) ? $a->payload : [];
-            $callGroupKeyValue = $a->type === 'call' ? $callGroupKey($a) : null;
+            $feedItem = $prepareActivity($a);
           @endphp
-          @continue($a->type === 'call' && isset($renderedCallKeys[$callGroupKeyValue]))
-
+          @continue($feedItem === null)
           @php
-            $actorName = $normalizeActivityText($a->author?->name ?? '');
-            $activityBody = $normalizeActivityText($a->body ?? '');
-            $callActivities = collect([$a]);
-            $callid = $payload['callid'] ?? null;
-            $recModel = null;
-            $recUrl = null;
-            $callTypeKey = null;
-            $callTypeLabel = null;
-            $callTypeBadge = 'success';
-            $callStatusMeta = null;
-            $callFields = [];
-            $hiddenCallEvents = 0;
-
-            if ($a->type === 'call') {
-                $renderedCallKeys[$callGroupKeyValue] = true;
-                $callActivities = $callActivityGroups[$callGroupKeyValue] ?? collect([$a]);
-                $callPayloads = $callActivities
-                    ->map(fn ($activity) => is_array($activity->payload ?? null) ? $activity->payload : [])
-                    ->values();
-
-                $callid = $pickPayloadValue($callPayloads, ['callid', 'call_id', 'callId', 'uuid', 'id']);
-                $recModel = ($callid && isset($recordingsByCallid[$callid])) ? $recordingsByCallid[$callid] : null;
-                $recUrl = $recModel?->recording_url ?? $pickPayloadValue($callPayloads, ['recording_url', 'record_url', 'recordUrl', 'recording', 'record', 'link', 'file_url', 'url']);
-                $callTypeKey = $resolveCallTypeKey($callPayloads);
-                $callTypeLabel = $resolveCallTypeLabel($callTypeKey);
-                $callTypeBadge = match ($callTypeKey) {
-                    'out' => 'primary',
-                    'missed' => 'danger',
-                    default => 'success',
-                };
-                $callStatusMeta = $resolveCallStatusMeta($callPayloads, $callTypeKey);
-                $throughPhone = $pickPayloadValue($callPayloads, ['telnum', 'diversion', 'to', 'dst', 'number', 'did']);
-                $clientPhone = $pickPayloadValue($callPayloads, ['phone', 'client_phone', 'phone_client', 'caller', 'callerid', 'caller_id']) ?? $deal->contact?->phone;
-                $callEmployee = $pickEmployeeFromPayloads($callPayloads);
-                $callNumberSource = $pickIncomingPhoneSourceFromPayloads($callPayloads);
-                $startRaw = $pickPayloadValue($callPayloads, ['start']);
-                $waitRaw = $pickPayloadValue($callPayloads, ['wait']);
-                $durationRaw = $pickPayloadValue($callPayloads, ['duration']);
-                $hiddenCallEvents = max(0, $callActivities->count() - 1);
-
-                $callFields = array_values(array_filter([
-                    [
-                        'label' => 'Клиент',
-                        'value' => $formatPhone($clientPhone),
-                        'show' => $hasDisplayValue($clientPhone),
-                    ],
-                    [
-                        'label' => 'Сотрудник',
-                        'value' => $formatEmployee($callEmployee),
-                        'show' => $hasDisplayValue($callEmployee),
-                    ],
-                    [
-                        'label' => 'Через',
-                        'value' => $formatPhone($throughPhone),
-                        'show' => $hasDisplayValue($throughPhone),
-                    ],
-                    [
-                        'label' => 'Источник номера',
-                        'value' => $callNumberSource ? ($callNumberSource['label'].' - '.$formatPhone($callNumberSource['number'])) : '',
-                        'show' => $callNumberSource !== null,
-                    ],
-                    [
-                        'label' => 'Начало',
-                        'value' => $formatCallMoment($startRaw),
-                        'show' => $hasDisplayValue($startRaw),
-                    ],
-                    [
-                        'label' => 'Ожидание',
-                        'value' => $formatDuration($waitRaw),
-                        'show' => $hasDisplayValue($waitRaw),
-                    ],
-                    [
-                        'label' => 'Длительность',
-                        'value' => $formatDuration($durationRaw),
-                        'show' => $hasDisplayValue($durationRaw),
-                    ],
-                ], fn ($field) => $field['show']));
-            }
+            extract($feedItem);
           @endphp
 
           <div class="activity-item border-bottom pb-3 mb-3">
@@ -1005,4 +1026,5 @@
     </div>
   </div>
 </div>
+@endif
 @endsection

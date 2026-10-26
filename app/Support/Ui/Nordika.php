@@ -124,8 +124,14 @@ class Nordika
     /** Ключ источника сделки: Лемана ПРО (заказы через hands.ru) — по счётчику канбана, остальное — по lead_source_surface_class. */
     public static function sourceKey(Deal $deal): string
     {
-        if ((int) ($deal->getAttributes()['lemana_lead_form_activities_count'] ?? 0) > 0) {
-            return 'lemana';
+        $attributes = $deal->getAttributes();
+        if (array_key_exists('lemana_lead_form_activities_count', $attributes)) {
+            if ((int) $attributes['lemana_lead_form_activities_count'] > 0) {
+                return 'lemana';
+            }
+        } elseif ($deal->relationLoaded('activities')
+            && $deal->activities->contains(fn ($a) => $a->type === 'lead_form' && data_get($a->payload, 'provider') === 'hands')) {
+            return 'lemana';   // карточка сделки: лента уже загружена
         }
 
         // класс вида «source-surface source-surface-vk» (канал переписки или запасной источник сделки)
