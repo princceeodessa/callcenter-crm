@@ -17,6 +17,11 @@ class Kernel extends ConsoleKernel
             ->everyMinute()
             ->withoutOverlapping();
 
+        // Заказы «Руки» (hands.ru, Леруа Мерлен) → лиды потолков. Один запрос за прогон, 1–2 с.
+        $schedule->command('integrations:hands-poll')
+            ->everyFiveMinutes()
+            ->withoutOverlapping(10);
+
         // Дайджест низкого остатка склада кроссовок.
         $schedule->command('warehouse:low-stock-digest')
             ->dailyAt('09:00')

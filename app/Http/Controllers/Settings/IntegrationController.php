@@ -9,6 +9,7 @@ use App\Services\Integrations\AvitoApiClient;
 use App\Services\Integrations\AvitoOAuthService;
 use App\Services\Integrations\AvitoTokenManager;
 use App\Services\Integrations\TelegramApiClient;
+use App\Services\Integrations\HandsLeadSync;
 use App\Services\Integrations\VkApiClient;
 use App\Services\Owner\Marketing\InstagramSource;
 use Illuminate\Http\Request;
@@ -25,6 +26,8 @@ class IntegrationController extends Controller
         'tilda' => 'Tilda',
         // статистика Instagram БлагоДара и «Шагового» для «SMM-контента» — только в пространстве потолков
         'instagram' => 'Instagram (статистика)',
+        // заказы «Руки» (hands.ru, Леруа Мерлен) → лиды потолков
+        'hands' => 'Руки (hands.ru)',
     ];
 
     public function index()
@@ -36,7 +39,7 @@ class IntegrationController extends Controller
             ->get()
             ->keyBy('provider');
 
-        $providers = collect(self::PROVIDERS)->reject(fn ($title, $provider) => $provider === 'instagram' && ! $this->instagramHere())
+        $providers = collect(self::PROVIDERS)->reject(fn ($title, $provider) => in_array($provider, ['instagram', 'hands'], true) && ! $this->instagramHere())
             ->map(function ($title, $provider) use ($connections, $accountId) {
             $conn = $connections->get($provider);
             if (! $conn) {
@@ -96,6 +99,9 @@ class IntegrationController extends Controller
         $accountId = Auth::user()->account_id;
         if ($provider === 'instagram') {
             return $this->connectInstagram($request);
+        }
+        if ($provider === 'hands') {
+            return $this->connectHands($request);
         }
 
         $data = match ($provider) {
@@ -408,9 +414,34 @@ class IntegrationController extends Controller
 
     private function assertProvider(string $provider): void
     {
-        if (! array_key_exists($provider, self::PROVIDERS) || ($provider === 'instagram' && ! $this->instagramHere())) {
+        if (! array_key_exists($provider, self::PROVIDERS) || (in_array($provider, ['instagram', 'hands'], true) && ! $this->instagramHere())) {
             abort(404);
         }
+    }
+
+    /**
+     * Ключ API «Рук» (hands.ru): проверяется запросом заказов за сегодня. Заказы берутся с даты подключения минус
+     * HandsLeadSync::START_DAYS дней — историю, уже обработанную в Руках, лидами не заводим.
+     */
+    private function connectHands(Request $request)
+    {
+        $data = $request->validate(['api_key' => ['nullable', 'string', 'max:255']]);
+        $key = preg_replace('/\s+/', '', (string) ($data['api_key'] ?? ''));
+        $connection = IntegrationConnection::query()->firstOrNew(['account_id' => Auth::user()->account_id, 'provider' => 'hands']);
+        $settings = is_array($connection->settings) ? $connection->settings : [];
+        if ($key === '') {
+            return back()->withErrors(['hands' => 'Вставьте ключ API из бэкофиса Рук (раздел «API»).']);
+        }
+        try {
+            HandsLeadSync::check($key);
+        } catch (\Throwable $e) {
+            return back()->withErrors(['hands' => 'Ключ не подошёл: '.$e->getMessage()]);
+        }
+        $settings['api_key'] = $key;
+        $settings['import_since'] ??= now()->subDays(HandsLeadSync::START_DAYS)->toDateString();
+        $connection->fill(['account_id' => Auth::user()->account_id, 'provider' => 'hands', 'status' => 'active', 'settings' => $settings, 'last_error' => null])->save();
+
+        return redirect()->route('settings.integrations.index')->with('status', 'Руки подключены: новые заказы будут приходить лидами в «Поступил лид» каждые 5 минут.');
     }
 
     /** Instagram подключается в пространстве потолков: оттуда сводка владельца и «SMM-контент» читают токены. */
