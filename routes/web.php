@@ -203,6 +203,10 @@ Route::middleware('auth')->group(function () {
         Route::get('/owner/ceilings', [\App\Http\Controllers\OwnerCeilingsController::class, 'index'])
             ->withoutMiddleware('purchases')->middleware('owner')
             ->name('owner.ceilings');
+        // ставки руководства для строк договоров без цены в 1С (страница — owner.ceilings?rates=1)
+        Route::post('/owner/ceilings/rates', [\App\Http\Controllers\OwnerCeilingsController::class, 'saveRates'])
+            ->withoutMiddleware('purchases')->middleware('owner')
+            ->name('owner.ceilings.rates');
         // «SMM-контент»: реклама клипов VK по бизнесу (потолки — владельцу всех бизнесов, кроссовки — как сводка)
         Route::get('/owner/smm/{business}', [\App\Http\Controllers\OwnerSmmController::class, 'show'])
             ->withoutMiddleware('purchases')->middleware('owner')

@@ -178,6 +178,30 @@ body.cm-open{overflow:hidden}
 .net-item i{font-style:normal;font-size:11px;color:var(--muted);margin-top:2px}
 .net-item b{margin-left:auto;font-weight:700;white-space:nowrap}
 @media(max-width:700px){.net-card{grid-template-columns:1fr}}
+/* «Досчитано у нас»: строки без ставки монтажникам или цены закупки (ContractProfitFill) и страница ставок к ним */
+.fill-card{display:flex;align-items:center;justify-content:space-between;gap:12px 20px;flex-wrap:wrap;padding:14px 20px;margin-bottom:16px}
+.fill-tx{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1 1 420px}
+.fill-tx b{font-size:13.5px;font-weight:800}
+.fill-tx>span{font-size:12px;color:var(--muted);line-height:1.45}
+.fill-stale{color:var(--neg);font-weight:600}
+.rates-intro{padding:16px 20px;margin-bottom:16px;font-size:13px;line-height:1.55}
+.rates-intro p{margin:0 0 8px}
+.rates-intro p:last-child{margin:0}
+.rates-intro .muted{color:var(--muted);font-size:12px}
+.empty-card.rates-ok{color:var(--pos);font-weight:600;margin-bottom:16px}
+.rates-t td{vertical-align:middle}
+.rates-t td.rates-name{min-width:260px;white-space:normal;line-height:1.4}
+.rates-name .tag{margin-right:4px}
+.rates-t td small{display:block;font-size:11px;color:var(--muted);font-weight:500}
+.rates-in{white-space:nowrap}
+.rates-in input,.rates-in select{padding:7px 10px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;font-size:13px}
+.rates-in input{width:92px;text-align:right}
+.rates-in select{margin-left:6px;font-size:12.5px;padding:7px 8px}
+.rates-in input:focus,.rates-in select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+tr.rates-dirty td{background:var(--accent-soft)}
+.rates-bar{position:sticky;bottom:12px;display:flex;align-items:center;justify-content:flex-end;gap:14px;margin:12px 0 26px;padding:10px 14px;border-radius:16px;background:var(--card);box-shadow:var(--shadow)}
+.rates-bar .note{font-size:12.5px;color:var(--muted)}
+button.export:disabled{opacity:.45;cursor:default}
 .profit-flow{padding:18px 20px;margin-bottom:16px}
 .pf-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .pf-head b{font-size:15px;font-weight:800}

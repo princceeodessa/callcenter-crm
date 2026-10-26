@@ -1,0 +1,18 @@
+[Unit]
+Description=Callcenter CRM: BlagoDar contract lines without an installer rate or purchase price, for the owner summary (read-only)
+After=network.target blagodar-crm.service
+
+[Service]
+Type=oneshot
+# Read-only: the same calculation as the BlagoDar «Прибыль договоров» report, without customers and addresses;
+# nothing in BlagoDar is changed. Runs as the BlagoDar user with its environment (database) — like blagodar-crm.service.
+# /var/lib/callcenter-crm-owner is blagodar:www-data 2750, so the site (www-data) can read the file.
+User=blagodar
+Group=blagodar
+WorkingDirectory=/opt/blagodar-crm/apps/api
+EnvironmentFile=/opt/blagodar-crm/apps/api/.env
+Environment=TZ=Europe/Samara
+UMask=0027
+ExecStart=/usr/bin/node /var/www/callcenter-crm/scripts/blagodar/cp_uncosted.js /var/lib/callcenter-crm-owner/cp_uncosted.json
+TimeoutStartSec=180
+Nice=10

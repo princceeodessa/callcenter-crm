@@ -45,6 +45,9 @@ return [
     'contract_profit' => [
         'url' => env('BLAGODAR_PROFIT_URL'),
         'token' => env('BLAGODAR_PROFIT_TOKEN'),
+        // строки без ставки или цены закупки — выгрузка scripts/blagodar/cp_uncosted.js (раз в час, только чтение);
+        // по ним прибыль досчитывается у нас (ContractProfitFill). Нет файла — досчёта нет.
+        'uncosted_file' => env('BLAGODAR_UNCOSTED_FILE', '/var/lib/callcenter-crm-owner/cp_uncosted.json'),
     ],
 
     // Общие расходы потолков сверх расходов договоров (со слов руководства 26.10.2026) — «Заработаем» минус они = «Чистыми».

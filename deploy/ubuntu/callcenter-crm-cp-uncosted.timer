@@ -1,0 +1,10 @@
+[Unit]
+Description=Re-read BlagoDar contract lines without a rate or purchase price every hour
+
+[Timer]
+OnCalendar=*-*-* *:07:00
+Persistent=true
+Unit=callcenter-crm-cp-uncosted.service
+
+[Install]
+WantedBy=timers.target

@@ -76,6 +76,18 @@ sudo systemctl enable --now callcenter-crm-avito-stats.timer
 `callcenter-crm-avito-stats.timer` collects Avito spend and contacts by direction every hour: Avito allows one stats
 request a minute, so a run takes 3–4 minutes and stays out of the scheduler.
 
+Only where CRM БлагоДар runs on the same server (`/opt/blagodar-crm`, user `blagodar`): `callcenter-crm-cp-uncosted.timer`
+re-reads, every hour and read-only, the lines of contracts that BlagoDar could not cost (work without an installer rate,
+goods without a purchase price). The owner summary fills their cost with the owner's rates:
+
+```bash
+sudo install -d -o blagodar -g www-data -m 2750 /var/lib/callcenter-crm-owner
+sudo cp deploy/ubuntu/callcenter-crm-cp-uncosted.service deploy/ubuntu/callcenter-crm-cp-uncosted.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now callcenter-crm-cp-uncosted.timer
+sudo systemctl start callcenter-crm-cp-uncosted.service
+```
+
 Useful checks:
 
 ```bash

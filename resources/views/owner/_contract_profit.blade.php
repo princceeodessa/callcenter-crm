@@ -17,6 +17,10 @@
     // общие расходы сверх расходов договоров (App\Services\Owner\Overhead) — «Чистыми останется»
     $overhead ??= null;
     $net = $pfT && $overhead && $overhead['days'] > 0 ? (float) $pfT['profit'] - (float) $overhead['total'] : null;
+    // досчёт у нас строк без ставки или цены закупки (App\Services\Owner\ContractProfitFill)
+    $fill = $pf['fill'] ?? null;
+    $sharePct = fn ($v) => number_format((float) $v * 100, 1, ',', ' ').'%';
+    $ratesUrl = route('owner.ceilings', ['rates' => 1] + request()->only(['period', 'from', 'to']));
     [$pfWord, $pfTone] = \App\Services\Owner\ContractProfit::verdict($pfT['margin'] ?? null);
     $pfKindsSum = $pf ? array_sum(array_map(fn ($k) => max(0, $k['sum']), $pf['kinds'])) : 0;
     $pfMargin = fn (?float $m) => $m === null ? '—' : $pct($m);
@@ -60,6 +64,19 @@
             @endif
         </div>
     </div>
+
+    @if($fill)
+        <div class="card fill-card">
+            <div class="fill-tx">
+                <b>Досчитано у нас: −{{ $money($fill['delta']) }} к прибыли по {{ $n($fill['contracts']) }} {{ $plural($fill['contracts'], 'договору', 'договорам', 'договорам') }}</b>
+                <span>в 1С у них нет ставки монтажникам или цены закупки, в CRM БлагоДар прибыль {{ $money($fill['blagodar_profit']) }} ·
+                    @if($fill['rate_lines'] > 0)по ставкам руководства — {{ $n($fill['rate_lines']) }} {{ $plural($fill['rate_lines'], 'строка', 'строки', 'строк') }} на {{ $money($fill['rate_sum']) }}@if($fill['share_lines'] > 0), @endif @endif
+                    @if($fill['share_lines'] > 0)по средней доле (работы {{ $sharePct($fill['shares']['work'] ?? 0) }} цены, товары {{ $sharePct($fill['shares']['goods'] ?? 0) }}) — {{ $n($fill['share_lines']) }} {{ $plural($fill['share_lines'], 'строка', 'строки', 'строк') }} на {{ $money($fill['share_sum']) }}@endif
+                    · <span class="{{ $fill['stale'] ? 'fill-stale' : '' }}">строки на {{ $fill['at']->format($fill['at']->isToday() ? 'H:i' : 'd.m H:i') }}</span></span>
+            </div>
+            <a class="export" href="{{ $ratesUrl }}">Ставки для строк без цены</a>
+        </div>
+    @endif
 
     @if($net !== null)
         <div class="card net-card">

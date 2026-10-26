@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Controllers\Concerns\OwnerPeriod;
 use App\Services\Owner\CeilingsKpi;
 use App\Services\Owner\ContractProfit;
+use App\Services\Owner\ContractProfitFill;
 use App\Services\Owner\HeadWork;
 use App\Services\Owner\Marketing\MarketingStats;
 use App\Services\Owner\NonClosureSummary;
@@ -30,19 +31,28 @@ class OwnerCeilingsController extends Controller
         if ($request->query('export') === 'contacts') {
             return ContactsExport::download((int) config('owner.ceilings_account_id'), $from, $to);
         }
+        // ставки руководства для строк без цены в 1С — по ним прибыль договоров досчитывается у нас
+        if ($request->boolean('rates')) {
+            return view('owner.cost_rates', [
+                'positions' => ContractProfitFill::positions($from, $to),
+                'period' => $period,
+                'periodQuery' => $request->only(['period', 'from', 'to']),
+                'periodLabel' => $from->format('d.m.Y').' — '.$to->copy()->subDay()->format('d.m.Y'),
+            ]);
+        }
         // блоки CRM БлагоДар по одному (страница догружает их параллельно); blagodar — оба, для уже открытых страниц
         switch ($request->query('part')) {
             case 'profit':
-                return view('owner._contract_profit', ['profit' => ContractProfit::forPeriod($from, $to), 'overhead' => self::overhead($from, $to)]);
+                return view('owner._contract_profit', ['profit' => ContractProfitFill::apply(ContractProfit::forPeriod($from, $to), $from, $to), 'overhead' => self::overhead($from, $to)]);
             case 'nonclosures':
                 return view('owner._nonclosures', ['nonclosures' => NonClosureSummary::forPeriod($from, $to)]);
             case 'headwork':
                 return view('owner._head_work', ['headwork' => HeadWork::forPeriod($from, $to)]);
             case 'blagodar':
-                return view('owner._blagodar_blocks', ['profit' => ContractProfit::forPeriod($from, $to), 'nonclosures' => NonClosureSummary::forPeriod($from, $to), 'overhead' => self::overhead($from, $to)]);
+                return view('owner._blagodar_blocks', ['profit' => ContractProfitFill::apply(ContractProfit::forPeriod($from, $to), $from, $to), 'nonclosures' => NonClosureSummary::forPeriod($from, $to), 'overhead' => self::overhead($from, $to)]);
         }
         // CRM БлагоДар отвечает по 3–5 с: нет ответа в кэше — страница открывается без него, блоки догружаются следом
-        $profit = ContractProfit::cached($from, $to);
+        $profit = ContractProfitFill::apply(ContractProfit::cached($from, $to), $from, $to);
         $nonclosures = NonClosureSummary::cached($from, $to);
         $headwork = HeadWork::cached($from, $to);
         $kpi = (new CeilingsKpi((int) config('owner.ceilings_account_id')))->compute($from, $to);
@@ -67,6 +77,18 @@ class OwnerCeilingsController extends Controller
             // весь календарный месяц («Отчёт по месяцам») — «отчёт за сентябрь 2026»
             'monthReport' => $from->day === 1 && $to->equalTo($from->copy()->addMonthNoOverflow()) ? $from->translatedFormat('F Y') : null,
         ]);
+    }
+
+    /** Ставки со страницы «Ставки для договоров без цены»: items — JSON [{kind, name, unit, mode, value}], пустое — убрать */
+    public function saveRates(Request $request)
+    {
+        $user = $request->user();
+        abort_unless($user && $user->role === 'sneaker_owner' && $user->all_businesses, 403);
+        $items = json_decode((string) $request->input('items', '[]'), true);
+        $changed = ContractProfitFill::save(is_array($items) ? array_slice($items, 0, 2000) : [], (int) $user->id);
+
+        return redirect()->route('owner.ceilings', ['rates' => 1] + $request->only(['period', 'from', 'to']))
+            ->with('status', $changed > 0 ? 'Ставки сохранены: '.$changed.'. Прибыль договоров пересчитана.' : 'Изменений нет.');
     }
 
     /** Общие расходы периода для блока прибыли, который страница догружает отдельно */
