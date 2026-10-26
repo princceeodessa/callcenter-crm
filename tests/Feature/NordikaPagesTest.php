@@ -109,7 +109,7 @@ class NordikaPagesTest extends TestCase
         $this->assertStringContainsString('id="sendForm"', $html);
         $this->assertStringContainsString('id="sendInput"', $html);
         $this->assertStringContainsString('id="ndEmojiPop"', $html);                                     // эмодзи в чатах
-        $this->assertStringContainsString('data-emoji="👍"', $html);
+        $this->assertStringContainsString('js/nordika-emoji.js', $html);                               // набор в стиле iPhone — скриптом
 
         $html = $this->actingAs($head)->get(route('settings.users.index'))->assertOk()->getContent();
         $this->assertStringContainsString('class="nd-tbl nd-users"', $html);
@@ -148,6 +148,7 @@ class NordikaPagesTest extends TestCase
         $list = $this->actingAs($op)->getJson(route('notifications.index', ['list' => 1]))->assertOk()->json();
         $this->assertSame(2, $list['unread_count']);
         $this->assertSame(route('deals.show', $id), collect($list['items'])->firstWhere('id', $n1)['url']);
+        $this->assertSame('task_due', collect($list['items'])->firstWhere('id', $n1)['type']);       // для иконки в окне
         $this->actingAs($op)->postJson(route('notifications.read', $n1))->assertOk()->assertJson(['ok' => true]);
         $this->assertSame(1, (int) DB::table('user_notifications')->where('user_id', $op->id)->where('is_read', 0)->count());
         $this->actingAs($op)->postJson(route('notifications.read', ['notification' => $n1, 'all' => 1]))->assertOk();

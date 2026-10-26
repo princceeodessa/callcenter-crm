@@ -192,11 +192,8 @@
           @csrf
           <div class="nd-emoji-wrap">
             <button type="button" class="nd-btn nd-icon-only" id="ndEmojiBtn" title="Эмодзи" aria-label="Эмодзи" aria-haspopup="true"><svg class="nd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 007 0M9 9.5h.01M15 9.5h.01"/></svg></button>
-            <div class="nd-emoji-pop" id="ndEmojiPop" hidden>
-              @foreach(['😊','🙂','😉','😀','😁','😂','🤗','🙏','👍','👌','👋','🤝','❤️','🔥','✅','⭐','🎉','💯','📞','📩','📅','⏰','📍','🏠','💡','✨','🛠️','📐','💬','❗','❓','🤔','👀','🙌','💪','😔','😢','😮','☀️','🎁','💳','💰','📸','🚗','🌟','😎','🥰','👏'] as $em)
-                <button type="button" data-emoji="{{ $em }}">{{ $em }}</button>
-              @endforeach
-            </div>
+            {{-- набор эмодзи в стиле iPhone строится при первом открытии (public/js/nordika-emoji.js) --}}
+            <div class="nd-emoji-pop" id="ndEmojiPop" hidden></div>
           </div>
           <label class="nd-btn nd-icon-only" title="Прикрепить файлы" aria-label="Прикрепить файлы">
             <svg class="nd-icon" viewBox="0 0 24 24"><path d="M21 12l-8.5 8.5a5 5 0 01-7-7L14 5a3.5 3.5 0 015 5l-8.5 8.5a2 2 0 01-3-3L15 8"/></svg>
@@ -367,6 +364,16 @@
 @endsection
 
 @push('scripts')
+@if($nd)
+<script src="{{ asset('js/nordika-emoji.js') }}?v={{ @filemtime(public_path('js/nordika-emoji.js')) }}"></script>
+<script>
+  // эмодзи в превью чатов и в сообщениях — картинками в стиле iPhone
+  if (window.ndEmoji) {
+    document.querySelectorAll('.nd-chat-list .nd-cm-text').forEach((el) => window.ndEmoji.decorate(el));
+    window.ndEmoji.decorate(document.getElementById('chatMessages'), '.nd-bub-text');
+  }
+</script>
+@endif
 @if($active)
 <script>
 (function() {
@@ -427,6 +434,7 @@
       bub.innerHTML = media
         + (m.body ? `<div class="nd-bub-text">${escapeHtml(m.body)}</div>` : '')
         + `<div class="nd-bt">${isOut ? 'Вы' : escapeHtml(m.author || 'Клиент')} · ${(m.created_at || '').toString().slice(11,16)}${isOut ? ` · ${escapeHtml(m.status || 'ok')}` : ''}</div>`;
+      window.ndEmoji?.decorate(bub, '.nd-bub-text');
       return bub;
     }
     const wrap = document.createElement('div');
@@ -526,18 +534,18 @@
   // эмодзи (Nordika): вставка в поле сообщения туда, где курсор
   const emojiBtn = document.getElementById('ndEmojiBtn');
   const emojiPop = document.getElementById('ndEmojiPop');
-  if (emojiBtn && emojiPop) {
-    emojiBtn.addEventListener('click', (e) => { e.stopPropagation(); emojiPop.hidden = !emojiPop.hidden; });
-    emojiPop.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const b = e.target.closest('[data-emoji]');
-      if (!b) return;
-      const em = b.dataset.emoji;
+  if (emojiBtn && emojiPop && window.ndEmoji) {
+    const insertEmoji = (em) => {
       const start = inputEl.selectionStart ?? inputEl.value.length;
       const end = inputEl.selectionEnd ?? start;
       inputEl.value = inputEl.value.slice(0, start) + em + inputEl.value.slice(end);
       inputEl.focus();
       inputEl.setSelectionRange(start + em.length, start + em.length);
+    };
+    emojiBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (emojiPop.hidden) window.ndEmoji.picker(emojiPop, insertEmoji);   // «Недавние» — свежие при каждом открытии
+      emojiPop.hidden = !emojiPop.hidden;
     });
     document.addEventListener('click', () => { emojiPop.hidden = true; });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') emojiPop.hidden = true; });

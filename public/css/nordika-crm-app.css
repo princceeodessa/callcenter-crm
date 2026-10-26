@@ -565,3 +565,78 @@ a.nd-reason b{text-align:right;font-weight:800}
   .nd-cal-main{min-height:75vh}
 }
 @media (max-width:600px){.nd-closed-target{grid-template-columns:1fr}}
+
+/* ===== кнопки без обводки (правки 26.10, вечер) =====
+   на фоне страницы — белые с мягкой тенью; внутри карточек и окон — светло-серые (светлее прежних), без рамки */
+:root{--btn-soft:#f4f5f7;--btn-soft-hover:#eaedf1}
+:root[data-theme="dark"]{--btn-soft:#1f232a;--btn-soft-hover:#272c34}
+.nd-btn{border-color:transparent;box-shadow:var(--shadow-sm)}
+.nd-btn:hover{background:var(--hover)}
+.nd-panel .nd-btn:not(.nd-primary):not(.nd-danger):not(.nd-deal-closebtn),.nd-modal .nd-btn:not(.nd-primary):not(.nd-danger):not(.nd-deal-closebtn),.nd-card .nd-btn:not(.nd-primary),html.nd-embed .nd-btn:not(.nd-primary):not(.nd-danger):not(.nd-deal-closebtn),
+.nd-act:not(.nd-green){background:var(--btn-soft);border-color:transparent;box-shadow:none}
+.nd-panel .nd-btn:not(.nd-primary):not(.nd-danger):not(.nd-deal-closebtn):hover,.nd-modal .nd-btn:not(.nd-primary):not(.nd-danger):not(.nd-deal-closebtn):hover,.nd-card .nd-btn:not(.nd-primary):hover,html.nd-embed .nd-btn:not(.nd-primary):not(.nd-danger):not(.nd-deal-closebtn):hover,
+.nd-act:not(.nd-green):hover{background:var(--btn-soft-hover)}
+.nd-act{border-color:transparent;border-radius:999px;padding:0 14px}
+.nd-act.nd-green{box-shadow:0 2px 8px color-mix(in srgb,var(--accent) 30%,transparent)}
+.nd-btn.nd-danger{border-color:transparent;background:color-mix(in srgb,var(--red) 8%,var(--panel))}
+.nd-card .nd-btn.nd-tdone:hover{background:var(--accent);color:#fff}
+.nd-m-x,.nd-deal-newtab{background:var(--btn-soft)}
+.nd-m-x:hover,.nd-deal-newtab:hover{background:var(--btn-soft-hover)}
+/* этапы в окне сделки: без рамки, выбранный — зелёной заливкой */
+.nd-m-aside .nd-st-opt{border-color:transparent;background:var(--panel);box-shadow:var(--shadow-sm)}
+.nd-m-aside .nd-st-opt:hover{background:var(--hover)}
+.nd-m-aside .nd-st-opt.nd-on{background:var(--accent-soft);box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--accent) 45%,transparent)}
+/* переключатели — белая «таблетка» без обводки, выбранное — зелёная заливка */
+.nd-seg{background:var(--panel);box-shadow:var(--shadow-sm);border-radius:999px;padding:3px}
+.nd-seg a,.nd-seg button{border-radius:999px;color:var(--muted)}
+.nd-seg a.nd-on,.nd-seg button.nd-on{background:var(--accent-soft);color:var(--accent);box-shadow:none}
+:root[data-theme="dark"] .nd-seg{background:var(--panel)}
+.nd-panel .nd-seg,.nd-modal .nd-seg,html.nd-embed .nd-seg{background:var(--btn-soft);box-shadow:none}
+.nd-deal-result label{border-radius:999px}
+.nd-deal-result label:has(input:checked){background:var(--panel);box-shadow:var(--shadow-sm)}
+/* панель фильтров (канбан, дела, завершённые…): всё одной высоты 38px и скруглено */
+.nd-toolbar{--tb-h:38px;gap:8px}
+.nd-toolbar .nd-seg{height:var(--tb-h);display:inline-flex;align-items:center}
+.nd-toolbar .nd-seg a,.nd-toolbar .nd-seg button{height:calc(var(--tb-h) - 6px);display:inline-flex;align-items:center;padding:0 14px}
+.nd-toolbar .nd-chipf,.nd-toolbar .nd-btn,.nd-toolbar .nd-dr .chip,.nd-toolbar .nd-input,.nd-toolbar .nd-tag{height:var(--tb-h);border-radius:999px;border:0;box-shadow:var(--shadow-sm);background:var(--panel)}
+.nd-toolbar .nd-btn{padding:0 16px;font-size:12.5px}
+.nd-toolbar .nd-btn.nd-primary{background:var(--accent);color:#fff}
+.nd-toolbar .nd-input{padding:0 14px;font-weight:600}
+.nd-toolbar .nd-dr .chip{padding:0 16px}
+.nd-toolbar .nd-chipf{padding:0 16px}
+.nd-toolbar .nd-chipf.nd-on,.nd-toolbar label.nd-chipf:has(input:checked){background:var(--accent-soft);color:var(--accent);box-shadow:none}
+.nd-toolbar .nd-tag{display:inline-flex;align-items:center;padding:0 14px}
+.nd-toolbar .nd-vsp{height:22px;margin:0 4px}
+/* верхняя панель: иконки и поиск — без рамок, с мягкой тенью */
+.nd-top .nd-btn{height:40px}
+.nd-top .nd-btn.nd-icon-only{width:40px;border-radius:12px}
+.nd-search{border-color:transparent;box-shadow:var(--shadow-sm);height:40px;border-radius:12px}
+.nd-search:focus-within{border-color:transparent;box-shadow:0 0 0 2px var(--accent),0 0 0 6px var(--accent-soft)}
+
+/* уведомления — с иконками */
+.nd-notif-i{align-items:flex-start;gap:12px}
+.nd-notif-ic{width:38px;height:38px;border-radius:12px;flex:none;display:grid;place-items:center;color:var(--ic);background:color-mix(in srgb,var(--ic) 14%,var(--panel))}
+.nd-notif-ic svg{width:19px;height:19px}
+.nd-notif-i .nd-notif-txt{flex:1}
+.nd-notif-i .nd-notif-dot{margin-top:5px}
+.nd-notif-i:not(.nd-unread) .nd-notif-txt b{color:var(--ink)}
+
+/* эмодзи в стиле iPhone: набор с разделами и картинки в сообщениях */
+.nd-emoji-pop{display:flex;flex-direction:column;width:360px;height:360px;padding:0;grid-template-columns:none;overflow:hidden;border:0;border-radius:18px}
+.nd-emo-tabs{display:flex;gap:2px;padding:8px 8px 6px;border-bottom:1px solid var(--line);flex:none}
+.nd-emo-tabs button{width:38px;height:34px;border:0;background:transparent;border-radius:10px;display:grid;place-items:center;cursor:pointer;padding:0}
+.nd-emo-tabs button:hover{background:var(--hover)}
+.nd-emo-tabs img{width:22px;height:22px}
+.nd-emo-scroll{flex:1;overflow-y:auto;padding:4px 8px 10px;position:relative}
+.nd-emo-h{font-size:12px;font-weight:700;color:var(--muted);padding:10px 4px 6px;position:sticky;top:-4px;background:var(--panel);z-index:1}
+.nd-emo-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:2px}
+.nd-emo-grid button{border:0;background:transparent;border-radius:10px;padding:4px 0;cursor:pointer;display:grid;place-items:center;aspect-ratio:1}
+.nd-emo-grid button:hover{background:var(--hover);transform:scale(1.08)}
+.nd-emo-grid img{width:30px;height:30px}
+img.nd-emo-pick{display:block;user-select:none}
+img.nd-emo{width:1.3em;height:1.3em;vertical-align:-.3em;margin:0 .03em}
+.nd-cm-text img.nd-emo{width:1.15em;height:1.15em;vertical-align:-.22em}
+.nd-bub-text.nd-emo-only img.nd-emo{width:46px;height:46px;vertical-align:middle}
+.nd-bub:has(.nd-emo-only){background:transparent!important;box-shadow:none;padding:2px 0}
+.nd-bub.nd-out:has(.nd-emo-only) .nd-bt{color:var(--muted)}
+@media (max-width:600px){.nd-emoji-pop{width:calc(100vw - 32px)}}

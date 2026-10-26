@@ -117,6 +117,7 @@ class NotificationController extends Controller
             'unread_count' => UserNotification::query()->where('account_id', $user->account_id)->where('user_id', $user->id)->where('is_read', 0)->count(),
             'items' => $items->map(fn (UserNotification $n) => [
                 'id' => $n->id,
+                'type' => $n->type,
                 'title' => $n->title,
                 'body' => $n->body,
                 'is_read' => (bool) $n->is_read,

@@ -122,6 +122,28 @@
         badge.classList.toggle('d-none', !(n > 0));
     };
     const post = (url) => fetch(url, { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' } });
+    // иконка уведомления: по смыслу текста (звонок, замер, сообщение…), иначе по типу; цвет — по типу
+    const NI = {
+        clock: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M5 3L2 6M19 3l3 3"/>',
+        phone: '<path d="M5 4h3l1.5 5-2 1.5a12 12 0 006 6l1.5-2 5 1.5V20a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/>',
+        ruler: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M8 14h.01M12 14h.01M16 14h.01"/>',
+        chat: '<path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>',
+        doc: '<path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
+        task: '<path d="M9 11l3 3 8-8M4 12v6a2 2 0 002 2h12"/>',
+        bag: '<path d="M6 7h12l1 14H5zM9 7a3 3 0 016 0"/>',
+        box: '<path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',
+        bell: '<path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/>',
+    };
+    const iconFor = (n) => {
+        const t = ((n.title || '') + ' ' + (n.body || '')).toLowerCase();
+        const color = { task_due: 'var(--amber)', task_created: 'var(--blue)', sneaker_sale: 'var(--accent)', low_stock: 'var(--red)' }[n.type] || 'var(--lemana)';
+        const icon = /перезвон|звон|дозвон/.test(t) ? 'phone'
+            : /замер/.test(t) ? 'ruler'
+            : /сообщ|чат|напис/.test(t) ? 'chat'
+            : /договор|документ|счёт|счет/.test(t) ? 'doc'
+            : ({ task_due: 'clock', task_created: 'task', sneaker_sale: 'bag', low_stock: 'box' }[n.type] || 'bell');
+        return `<span class="nd-notif-ic" style="--ic:${color}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${NI[icon]}</svg></span>`;
+    };
     const loadNotifs = async () => {
         nList.innerHTML = '<div class="nd-notif-empty">Загружаю…</div>';
         try {
@@ -131,8 +153,9 @@
             const items = j.items || [];
             nList.innerHTML = items.length ? items.map((n) => `
                 <button type="button" class="nd-notif-i${n.is_read ? '' : ' nd-unread'}" data-url="${esc(n.url || '')}" data-read="${esc(n.read_url)}">
-                    <span class="nd-notif-dot"></span>
+                    ${iconFor(n)}
                     <span class="nd-notif-txt"><b>${esc(n.title)}</b>${n.body ? `<span>${esc(n.body)}</span>` : ''}<small>${esc(n.time)}</small></span>
+                    <span class="nd-notif-dot" title="Не прочитано"></span>
                 </button>`).join('') : '<div class="nd-notif-empty">Уведомлений пока нет</div>';
         } catch (e) {
             nList.innerHTML = '<div class="nd-notif-empty">Не получилось загрузить — попробуйте ещё раз</div>';
