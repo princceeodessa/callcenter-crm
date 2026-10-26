@@ -6,6 +6,7 @@ use App\Models\Account;
 use App\Models\User;
 use App\Services\Owner\ContractProfit;
 use App\Services\Owner\Marketing\Http;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -114,6 +115,26 @@ class OwnerContractProfitTest extends TestCase
             'stale' => ['1С не обновлялась больше суток']])];
         $this->page($owner)->assertSee('По месяцам')->assertSee('Сентябрь 2026')->assertSee('12,0% · мало')
             ->assertSee('Данные могут быть устаревшими: 1С не обновлялась больше суток');
+    }
+
+    public function test_net_after_overhead(): void
+    {
+        // 01–16.10 при «сегодня» 26.10: кассиры 16 × 4 700, месячные — 16/31, рекламы в CRM за период нет
+        Carbon::setTestNow('2026-10-26 12:00:00');
+        DB::table('owner_marketing_daily')->where('day', '>=', '2026-10-01')->where('day', '<', '2026-10-17')->delete();
+        config(['owner.contract_profit' => ['url' => 'https://blagodar.test', 'token' => 't'], 'owner.overhead' => ['cashiers_per_day' => 4700, 'monthly' => [
+            'marketing' => ['Маркетинг', 300000], 'radio' => ['Радио', 80000], 'newspapers' => ['Газеты', 20000],
+        ]]]);
+        Http::$fake = fn () => [200, $this->answer()];
+        try {
+            $this->page($this->owner())->assertSee('Чистыми останется')->assertSee('3 264 514 ₽')
+                ->assertSee('общие расходы 281 652 ₽')->assertSee('за 16 дней')
+                ->assertSee('Кассиры')->assertSee('4 700 ₽ × 16 дней')->assertSee('75 200 ₽')
+                ->assertSee('Маркетинг')->assertSee('154 839 ₽')->assertSee('Радио')->assertSee('41 290 ₽')->assertSee('Газеты')->assertSee('10 323 ₽')
+                ->assertSee('Реклама')->assertSee('Директ, VK, Авито — из CRM');
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     public function test_no_totals_means_words_not_zeros(): void

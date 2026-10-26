@@ -166,6 +166,18 @@ body.cm-open{overflow:hidden}
 .mini .sub{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.4}
 .mini .warn{font-size:11.5px;color:var(--neg);margin-top:6px;line-height:1.4;font-weight:600}
 .mini .val.neg{color:var(--neg)}
+/* «Чистыми останется»: «Заработаем» минус общие расходы (кассиры, маркетинг, радио, газеты, реклама) */
+.net-card{display:grid;grid-template-columns:minmax(220px,1fr) 2fr;gap:14px 28px;align-items:center;padding:18px 20px;margin-bottom:16px}
+.net-main .lbl{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.net-main .val{font-size:30px;font-weight:800;margin-top:6px;letter-spacing:-.5px;white-space:nowrap;color:var(--pos)}
+.net-main .val.neg{color:var(--neg)}
+.net-main .sub{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.4}
+.net-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,220px),1fr));gap:8px 24px}
+.net-item{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--ink);padding:9px 12px;border-radius:12px;background:var(--tile)}
+.net-item span{display:flex;flex-direction:column;min-width:0}
+.net-item i{font-style:normal;font-size:11px;color:var(--muted);margin-top:2px}
+.net-item b{margin-left:auto;font-weight:700;white-space:nowrap}
+@media(max-width:700px){.net-card{grid-template-columns:1fr}}
 .profit-flow{padding:18px 20px;margin-bottom:16px}
 .pf-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .pf-head b{font-size:15px;font-weight:800}

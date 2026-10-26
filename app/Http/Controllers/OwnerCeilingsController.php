@@ -8,6 +8,7 @@ use App\Services\Owner\ContractProfit;
 use App\Services\Owner\HeadWork;
 use App\Services\Owner\Marketing\MarketingStats;
 use App\Services\Owner\NonClosureSummary;
+use App\Services\Owner\Overhead;
 use App\Support\Export\ContactsExport;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -32,23 +33,26 @@ class OwnerCeilingsController extends Controller
         // блоки CRM БлагоДар по одному (страница догружает их параллельно); blagodar — оба, для уже открытых страниц
         switch ($request->query('part')) {
             case 'profit':
-                return view('owner._contract_profit', ['profit' => ContractProfit::forPeriod($from, $to)]);
+                return view('owner._contract_profit', ['profit' => ContractProfit::forPeriod($from, $to), 'overhead' => self::overhead($from, $to)]);
             case 'nonclosures':
                 return view('owner._nonclosures', ['nonclosures' => NonClosureSummary::forPeriod($from, $to)]);
             case 'headwork':
                 return view('owner._head_work', ['headwork' => HeadWork::forPeriod($from, $to)]);
             case 'blagodar':
-                return view('owner._blagodar_blocks', ['profit' => ContractProfit::forPeriod($from, $to), 'nonclosures' => NonClosureSummary::forPeriod($from, $to)]);
+                return view('owner._blagodar_blocks', ['profit' => ContractProfit::forPeriod($from, $to), 'nonclosures' => NonClosureSummary::forPeriod($from, $to), 'overhead' => self::overhead($from, $to)]);
         }
         // CRM БлагоДар отвечает по 3–5 с: нет ответа в кэше — страница открывается без него, блоки догружаются следом
         $profit = ContractProfit::cached($from, $to);
         $nonclosures = NonClosureSummary::cached($from, $to);
         $headwork = HeadWork::cached($from, $to);
         $kpi = (new CeilingsKpi((int) config('owner.ceilings_account_id')))->compute($from, $to);
+        $ads = MarketingStats::forPeriod($from, $to);
 
         return view('owner.ceilings', [
             'kpi' => $kpi,
-            'ads' => MarketingStats::forPeriod($from, $to),
+            'ads' => $ads,
+            // общие расходы (кассиры, маркетинг, радио, газеты, реклама) — «Чистыми» под прибылью договоров
+            'overhead' => Overhead::forPeriod($from, $to, (float) ($ads['spend_total'] ?? 0)),
             // число замеров — по таблице замеров (решение владельца 09.10.2026)
             'measures' => MarketingStats::measurements($from, $to),
             'nonclosures' => $nonclosures,
@@ -63,5 +67,11 @@ class OwnerCeilingsController extends Controller
             // весь календарный месяц («Отчёт по месяцам») — «отчёт за сентябрь 2026»
             'monthReport' => $from->day === 1 && $to->equalTo($from->copy()->addMonthNoOverflow()) ? $from->translatedFormat('F Y') : null,
         ]);
+    }
+
+    /** Общие расходы периода для блока прибыли, который страница догружает отдельно */
+    private static function overhead(Carbon $from, Carbon $to): array
+    {
+        return Overhead::forPeriod($from, $to, (float) (MarketingStats::forPeriod($from, $to)['spend_total'] ?? 0));
     }
 }

@@ -14,6 +14,9 @@
     };
     $pf = $profit['data'] ?? null;
     $pfT = $pf['totals'] ?? null;
+    // общие расходы сверх расходов договоров (App\Services\Owner\Overhead) — «Чистыми останется»
+    $overhead ??= null;
+    $net = $pfT && $overhead && $overhead['days'] > 0 ? (float) $pfT['profit'] - (float) $overhead['total'] : null;
     [$pfWord, $pfTone] = \App\Services\Owner\ContractProfit::verdict($pfT['margin'] ?? null);
     $pfKindsSum = $pf ? array_sum(array_map(fn ($k) => max(0, $k['sum']), $pf['kinds'])) : 0;
     $pfMargin = fn (?float $m) => $m === null ? '—' : $pct($m);
@@ -57,6 +60,22 @@
             @endif
         </div>
     </div>
+
+    @if($net !== null)
+        <div class="card net-card">
+            <div class="net-main">
+                <div class="lbl">Чистыми останется</div>
+                <div class="val num {{ $net < 0 ? 'neg' : '' }}">{{ $money($net) }}</div>
+                <div class="sub">заработаем {{ $money($pfT['profit']) }} − общие расходы {{ $money($overhead['total']) }}
+                    за {{ $overhead['days'] }} {{ $plural($overhead['days'], 'день', 'дня', 'дней') }}</div>
+            </div>
+            <div class="net-list">
+                @foreach($overhead['items'] as $it)
+                    <div class="net-item"><span>{{ $it['label'] }}<i>{{ $it['note'] }}</i></span><b class="num">{{ $money($it['sum']) }}</b></div>
+                @endforeach
+            </div>
+        </div>
+    @endif
 
     @if(count($pf['kinds']) > 0 && $pfKindsSum > 0)
         <div class="card profit-flow">
