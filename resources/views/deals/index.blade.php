@@ -2,9 +2,109 @@
 
 @php
   $productCategoryOptions = $productCategoryOptions ?? [];
+  // редизайн «Nordika» (этап 3) — у колл-центра потолков таблица как в прототипе; у кроссовок прежняя
+  $nd = \App\Support\Ui\Nordika::enabled();
+  $ndUi = \App\Support\Ui\Nordika::class;
+  $ndFiltered = ($q ?? '') !== '' || ($source ?? '') !== '' || ($productCategory ?? '') !== '' || ($today ?? false) || ($status ?? 'open') !== 'open';
+  $ndResult = [
+      'won' => ['Успешно', 'var(--accent)'],
+      'lost' => ['Отказ', 'var(--red)'],
+      'extra_non_target' => ['Доп. / нецелевая', 'var(--amber)'],
+  ];
 @endphp
 
+@if($nd)
+  @section('nd_search')
+    <div class="nd-search">
+      <svg class="nd-icon nd-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+      <input type="search" form="dealSearchForm" name="q" value="{{ $q }}" placeholder="Имя, телефон, название сделки" id="dealSearchInput">
+    </div>
+  @endsection
+  @section('nd_toolbar')
+    <form method="GET" action="{{ route('deals.index') }}" id="dealSearchForm">
+      <input type="hidden" name="auto_expand_search" value="1" id="dealAutoExpandSearch">
+      <select class="nd-input" name="status" id="dealStatusFilter" aria-label="Статус">
+        <option value="open" @selected(($status ?? 'open') === 'open')>Открытые</option>
+        <option value="closed" @selected(($status ?? 'open') === 'closed')>Завершённые</option>
+        <option value="all" @selected(($status ?? 'open') === 'all')>Все</option>
+      </select>
+      <select class="nd-input" name="source" aria-label="Источник">
+        <option value="">Все источники</option>
+        @foreach(($sourceOptions ?? []) as $sourceKey => $sourceLabel)
+          <option value="{{ $sourceKey }}" @selected(($source ?? '') === $sourceKey)>{{ $sourceLabel }}</option>
+        @endforeach
+      </select>
+      <select class="nd-input" name="product_category" aria-label="Категория">
+        <option value="">Все категории</option>
+        @foreach($productCategoryOptions as $categoryKey => $categoryLabel)
+          <option value="{{ $categoryKey }}" @selected(($productCategory ?? '') === $categoryKey)>{{ $categoryLabel }}</option>
+        @endforeach
+      </select>
+      <label class="nd-chipf"><input type="checkbox" name="today" value="1" id="dealTodayFilter" @checked($today ?? false)><span class="nd-sw"></span>Сегодня</label>
+      <button class="nd-btn nd-sm nd-primary">Показать</button>
+      @if($ndFiltered)
+        <a class="nd-btn nd-sm" href="{{ route('deals.index') }}">Сбросить</a>
+      @endif
+    </form>
+  @endsection
+@endif
+
 @section('content')
+@if($nd)
+  @if($today ?? false)
+    <div class="nd-tb-note mb-2">Показаны сделки, появившиеся или изменённые сегодня.</div>
+  @endif
+  @if(($q ?? '') !== '' && ($status ?? 'open') === 'all')
+    <div class="nd-tb-note mb-2">Поиск включает и завершённые сделки — для одних открытых выберите «Открытые».</div>
+  @endif
+  <div class="nd-panel">
+    <div class="nd-tbl-wrap">
+      <table class="nd-tbl">
+        <thead>
+          <tr><th>Клиент</th><th>Телефон</th><th>Источник</th><th>Этап</th><th>Категория</th><th>Ответственный</th><th>Создана</th></tr>
+        </thead>
+        <tbody>
+          @forelse ($deals as $deal)
+            @php
+              $leadName = $deal->lead_display_name ?? 'Без имени';
+              $dealTitle = $deal->title_is_custom ? $deal->title : ($deal->lead_display_name ?: $deal->title);
+              $attn = (int) ($deal->client_attention_count ?? 0);
+              $stageName = (string) ($deal->stage?->name ?? '—');
+              $closed = $deal->closed_at ? ($ndResult[$deal->closed_result] ?? ['Закрыта', 'var(--muted)']) : null;
+            @endphp
+            <tr data-nd-href="{{ route('deals.show', $deal) }}">
+              <td>
+                <a class="nd-tname" href="{{ route('deals.show', $deal) }}">{{ $dealTitle }}</a>
+                @if($attn > 0)<span class="nd-cnt-badge nd-attn" title="Новых сообщений">{{ $attn }}</span>@endif
+                @if($leadName && $leadName !== $dealTitle)<div class="nd-sub2">{{ $leadName }}</div>@endif
+                @if($deal->has_script_deviation)<span class="nd-tag nd-tone-red">отклонения</span>@endif
+                @if(!$deal->is_ready)<span class="nd-tag nd-tone-amber">не заполнено</span>@endif
+              </td>
+              <td class="nd-nowrap">{{ $ndUi::phone($deal->contact?->phone) ?? '—' }}</td>
+              <td>
+                {!! $ndUi::sourceChip($ndUi::sourceKey($deal)) !!}
+                @if($deal->incoming_phone_source_display)<div class="nd-sub2">{{ $deal->incoming_phone_source_display }}</div>@endif
+              </td>
+              <td>
+                @if($closed)
+                  <span class="nd-stage-pill" style="color:{{ $closed[1] }}"><span class="nd-d" style="background:{{ $closed[1] }}"></span>{{ $closed[0] }}</span>
+                @else
+                  <span class="nd-stage-pill" title="{{ $stageName }}"><span class="nd-d" style="background:{{ $ndUi::stageDot($stageName, 0) }}"></span>{{ trim(explode('/', $stageName)[0]) }}</span>
+                @endif
+              </td>
+              <td>{{ $deal->product_category_label ?? '—' }}</td>
+              <td>@if($deal->responsible)<span class="nd-person">{!! $ndUi::avatar($deal->responsible->name) !!}{{ $ndUi::firstName($deal->responsible->name) }}</span>@else<span class="nd-faint">—</span>@endif</td>
+              <td class="nd-nowrap nd-faint">{{ optional($deal->created_at)->format('d.m.Y H:i') }}</td>
+            </tr>
+          @empty
+            <tr><td colspan="7" class="nd-faint">Сделок не найдено</td></tr>
+          @endforelse
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {{ $deals->links('pagination.nordika') }}
+@else
 <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
   <h4 class="mb-0">Список сделок</h4>
   <form class="d-flex gap-2 flex-wrap" method="GET" action="{{ route('deals.index') }}" id="dealSearchForm">
@@ -115,6 +215,7 @@
 <div class="mt-3">
   {{ $deals->links() }}
 </div>
+@endif
 @endsection
 
 @push('scripts')

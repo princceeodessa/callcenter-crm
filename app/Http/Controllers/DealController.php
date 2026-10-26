@@ -67,6 +67,8 @@ class DealController extends Controller
                 'activities as tilda_lead_form_activities_count' => fn($q) => $q
                     ->where('type', 'lead_form')
                     ->where('payload->provider', 'tilda'),
+                // чип «Лемана» в списке (заказы Лемана ПРО через hands.ru)
+                'activities as lemana_lead_form_activities_count' => fn($q) => $q->where('type', 'lead_form')->where('payload->provider', 'hands'),
             ])
             ->where('account_id', $user->account_id)
             ->when($status === 'open', fn($qq) => $qq->whereNull('closed_at'))
@@ -789,6 +791,8 @@ class DealController extends Controller
                 'activities as tilda_lead_form_activities_count' => fn($q) => $q
                     ->where('type', 'lead_form')
                     ->where('payload->provider', 'tilda'),
+                // чип «Лемана» в списке (заказы Лемана ПРО через hands.ru)
+                'activities as lemana_lead_form_activities_count' => fn($q) => $q->where('type', 'lead_form')->where('payload->provider', 'hands'),
             ])
             ->orderByDesc('closed_at')
             ->paginate(25)

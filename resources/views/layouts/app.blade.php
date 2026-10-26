@@ -356,7 +356,7 @@
                     <div class="nd-alerts">@include('partials.flash')</div>
                     @yield('content')
                 @else
-                    <div class="nd-page">
+                    <div class="nd-page" data-route="{{ request()->route()?->getName() }}">
                         @include('partials.flash')
                         @yield('content')
                     </div>
@@ -479,6 +479,12 @@
     document.getElementById('ndBurger')?.addEventListener('click', () => { side?.classList.add('nd-open'); scrim?.classList.add('nd-on'); });
     scrim?.addEventListener('click', closeMenu);
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+    // строки таблиц (список сделок, завершённые, дела…) открываются кликом в любом месте строки
+    document.addEventListener('click', (e) => {
+        const row = e.target.closest('[data-nd-href]');
+        if (!row || e.target.closest('a, button, input, select, textarea, label, form')) return;
+        window.location.href = row.dataset.ndHref;
+    });
     document.getElementById('ndThemeBtn')?.addEventListener('click', () => {
         const theme = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
         root.setAttribute('data-theme', theme);

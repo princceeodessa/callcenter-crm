@@ -43,10 +43,23 @@
 </style>
 @endpush
 
+@php
+  // редизайн «Nordika» (этап 3) — у колл-центра потолков чаты как в прототипе (список + переписка пузырями)
+  $nd = \App\Support\Ui\Nordika::enabled();
+@endphp
+@if($nd)
+  @section('nd_fullbleed', '1')
+  @section('nd_sub', ($unreadConversationCount ?? 0) > 0 ? '— '.($unreadMessageCount ?? 0).' новых в '.($unreadConversationCount ?? 0).' чатах' : '— новых нет')
+@endif
+
 @section('content')
 @php
   $active = $activeConversation;
   $activeId = $active?->id;
+  // цвет кружка чата — как у чипа источника на канбане
+  $ndChatSrc = fn ($c) => \App\Support\Ui\Nordika::source(match ((string) $c?->channel) {
+      'vk' => 'vk', 'telegram' => 'tg', 'avito' => 'avito', 'tilda' => 'site', 'megafon_vats' => 'call', default => 'crm',
+  });
 
   $displayAuthor = function($message, $conversation) {
     $author = trim((string) ($message->author ?? ''));
@@ -90,6 +103,110 @@
     : "\u{041D}\u{0435}\u{043F}\u{0440}\u{043E}\u{0447}\u{0438}\u{0442}\u{0430}\u{043D}\u{043D}\u{044B}\u{0445} \u{0447}\u{0430}\u{0442}\u{043E}\u{0432} \u{043D}\u{0435}\u{0442}";
 @endphp
 
+@if($nd)
+<div @class(['nd-chats', 'nd-has-active' => (bool) $active])>
+  <div class="nd-chat-list">
+    <div class="nd-chat-listhd">
+      <span>{{ $unreadSummaryText }}</span>
+      @if(($unreadConversationCount ?? 0) > 0)
+        <form method="POST" action="{{ route('chats.read-all') }}">
+          @csrf
+          @if($activeId)
+            <input type="hidden" name="c" value="{{ $activeId }}">
+          @endif
+          <button type="submit" class="nd-btn nd-sm">{{ $markAllReadLabel }}</button>
+        </form>
+      @endif
+    </div>
+    @forelse($conversations as $c)
+      @php
+        $ndLast = $c->lastMessage;
+        $ndSrc = $ndChatSrc($c);
+        $ndName = trim((string) $c->display_title);
+      @endphp
+      <a href="{{ route('chats.index', ['c' => $c->id]) }}" @class(['nd-chat-i', 'nd-on' => (int) $c->id === (int) $activeId])>
+        <div class="nd-ca" style="background:{{ $ndSrc[1] }}">{{ mb_strtoupper(mb_substr($ndName !== '' ? $ndName : '?', 0, 1)) }}</div>
+        <div class="nd-chat-txt">
+          <div class="nd-cn"><span class="nd-cn-name">{{ $ndName !== '' ? $ndName : 'Без имени' }}</span><span class="nd-tm">{{ $c->last_message_at ? ($c->last_message_at->isToday() ? $c->last_message_at->format('H:i') : $c->last_message_at->format('d.m')) : '' }}</span></div>
+          <div class="nd-cm"><span class="nd-cm-text">{{ $ndLast?->direction === 'out' ? 'Вы: ' : '' }}{{ \Illuminate\Support\Str::limit($ndLast?->body ?? '—', 80) }}</span>@if(($c->unread_count ?? 0) > 0)<span class="nd-un">{{ $c->unread_count }}</span>@endif</div>
+          <div class="nd-chat-src">{{ $c->display_subtitle ?: $c->source_label }}</div>
+        </div>
+      </a>
+    @empty
+      <div class="nd-empty nd-empty-sm"><b>Пока нет диалогов</b>Как только кто-то напишет из VK, Telegram или Avito, чат появится здесь.</div>
+    @endforelse
+    @if($conversations->hasPages())
+      <div class="nd-chat-pager">{{ $conversations->onEachSide(1)->links('pagination.nordika') }}</div>
+    @endif
+  </div>
+
+  <div class="nd-chat-main">
+    @if(!$active)
+      <div class="nd-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">{!! \App\Support\Ui\Nordika::ICONS['chats'] !!}</svg><b>Выберите чат</b>Слева — все диалоги из VK, Telegram и Avito.</div>
+    @else
+      @php
+        $ndActiveSrc = $ndChatSrc($active);
+        $ndActiveName = trim((string) $active->display_title);
+      @endphp
+      <div class="nd-chat-hd">
+        <a class="nd-btn nd-icon-only nd-sm nd-chat-back" href="{{ route('chats.index') }}" aria-label="К списку чатов">‹</a>
+        <div class="nd-ca" style="background:{{ $ndActiveSrc[1] }}">{{ mb_strtoupper(mb_substr($ndActiveName !== '' ? $ndActiveName : '?', 0, 1)) }}</div>
+        <div class="nd-chat-hdtext">
+          <div class="nd-chat-hdname">{{ $ndActiveName !== '' ? $ndActiveName : 'Без имени' }}</div>
+          <div class="nd-chat-hdsub">{{ $active->display_subtitle ?: $active->source_label }}@if($active->external_id) · id: {{ $active->external_id }}@endif · {{ $messages->count() }} сообщ.</div>
+        </div>
+        <a class="nd-btn nd-sm" href="{{ route('deals.show', $active->deal_id) }}">Открыть сделку</a>
+      </div>
+      <div class="nd-chat-body" id="chatScroll">
+        <div id="chatMessages" class="nd-chat-msgs">
+          @forelse($messages as $m)
+            @php
+              $ndOut = $m->direction === 'out';
+              $ndMedia = $mediaFor($active, $m);
+            @endphp
+            <div @class(['nd-bub', 'nd-out' => $ndOut, 'nd-in' => ! $ndOut])>
+              @foreach($ndMedia as $it)
+                @php
+                  $ndT = strtolower((string) ($it['type'] ?? 'file'));
+                @endphp
+                @if(str_contains($ndT, 'photo') || str_contains($ndT, 'image'))
+                  <img src="{{ $it['url'] }}" class="nd-bub-img" alt="Фото">
+                @elseif(str_contains($ndT, 'video'))
+                  <video src="{{ $it['url'] }}" controls class="nd-bub-img"></video>
+                @else
+                  <a href="{{ $it['url'] }}" target="_blank" rel="noopener" class="nd-bub-file">📎 {{ $it['file_name'] ?? 'Файл' }}</a>
+                @endif
+              @endforeach
+              @if(($m->body ?? '') !== '')
+                <div class="nd-bub-text">{{ $m->body }}</div>
+              @endif
+              <div class="nd-bt">{{ $ndOut ? 'Вы' : $displayAuthor($m, $active) }} · {{ optional($m->created_at)->format('H:i') }}@if($ndOut) · {{ $m->status ?? 'ok' }}@endif</div>
+            </div>
+          @empty
+            <div class="nd-faint">Пока нет сообщений.</div>
+          @endforelse
+        </div>
+      </div>
+      <div class="nd-chat-foot">
+        <form id="sendForm" method="POST" action="{{ route('chats.send', $active) }}" enctype="multipart/form-data">
+          @csrf
+          <label class="nd-btn nd-icon-only" title="Прикрепить файлы" aria-label="Прикрепить файлы">
+            <svg class="nd-icon" viewBox="0 0 24 24"><path d="M21 12l-8.5 8.5a5 5 0 01-7-7L14 5a3.5 3.5 0 015 5l-8.5 8.5a2 2 0 01-3-3L15 8"/></svg>
+            <input id="sendMedia" type="file" name="media[]" class="d-none" accept="*/*" multiple>
+          </label>
+          <input id="sendInput" name="text" placeholder="Сообщение или подпись к первому файлу…" autocomplete="off" maxlength="4000">
+          <button class="nd-btn nd-primary nd-icon-only" type="submit" title="Отправить" aria-label="Отправить"><svg class="nd-icon nd-sm" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg></button>
+        </form>
+        <div class="nd-chat-footnote">
+          <span id="sendFilesInfo">Можно отправлять текст, фото, видео и файлы.</span>
+          <button id="sendFilesClear" type="button" class="nd-btn nd-sm d-none">Очистить файлы</button>
+          <span id="sendError" class="nd-deal-err" style="display:none"></span>
+        </div>
+      </div>
+    @endif
+  </div>
+</div>
+@else
 <div class="d-flex gap-3 ccrm-chat-wrap flex-column flex-lg-row">
   <div class="card shadow-sm ccrm-chat-list flex-shrink-0 d-flex flex-column">
     <div class="card-header d-flex align-items-center justify-content-between">
@@ -238,12 +355,14 @@
     @endif
   </div>
 </div>
+@endif
 @endsection
 
 @push('scripts')
 @if($active)
 <script>
 (function() {
+  const nd = @json($nd);
   const pollUrl = @json(route('chats.poll', $active));
   const sendUrl = @json(route('chats.send', $active));
   const csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
@@ -264,7 +383,7 @@
   }
 
   function escapeHtml(s) {
-    return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
   function renderMedia(items, isOut) {
@@ -285,6 +404,23 @@
   }
 
   function renderMessage(m) {
+    if (nd) {
+      // Nordika: пузырь как в прототипе
+      const isOut = m.direction === 'out';
+      const bub = document.createElement('div');
+      bub.className = 'nd-bub ' + (isOut ? 'nd-out' : 'nd-in');
+      const media = (m.media || []).map(it => {
+        const t = (it.type || 'file').toLowerCase();
+        if (!it.url) return '';
+        if (t.includes('photo') || t.includes('image')) return `<img src="${escapeHtml(it.url)}" class="nd-bub-img" alt="Фото">`;
+        if (t.includes('video')) return `<video src="${escapeHtml(it.url)}" controls class="nd-bub-img"></video>`;
+        return `<a href="${escapeHtml(it.url)}" target="_blank" rel="noopener" class="nd-bub-file">📎 ${escapeHtml(it.file_name || 'Файл')}</a>`;
+      }).join('');
+      bub.innerHTML = media
+        + (m.body ? `<div class="nd-bub-text">${escapeHtml(m.body)}</div>` : '')
+        + `<div class="nd-bt">${isOut ? 'Вы' : escapeHtml(m.author || 'Клиент')} · ${(m.created_at || '').toString().slice(11,16)}${isOut ? ` · ${escapeHtml(m.status || 'ok')}` : ''}</div>`;
+      return bub;
+    }
     const wrap = document.createElement('div');
     wrap.className = 'd-flex ' + (m.direction === 'out' ? 'justify-content-end' : 'justify-content-start');
     const isOut = m.direction === 'out';

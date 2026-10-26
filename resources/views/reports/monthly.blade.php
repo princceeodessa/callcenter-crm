@@ -28,6 +28,8 @@
 
 @section('content')
 @php
+  // редизайн «Nordika» (этап 3): у колл-центра потолков период и выгрузка — в панели над страницей
+  $nd = \App\Support\Ui\Nordika::enabled();
   $thisMonth = now()->format('Y-m');
   $prevMonth = now()->subMonthNoOverflow()->format('Y-m');
   $exportQuery = $period['custom'] ? ['from' => $period['from'], 'to' => $period['to'], 'export' => 'contacts'] : ['month' => $month, 'export' => 'contacts'];
@@ -54,6 +56,19 @@
       'booked_others' => ['Дожал чужих', 'записал на замер лиды, которые первым брал другой', 'fw-semibold'],
   ];
 @endphp
+@if($nd)
+  @section('nd_sub', $mode === 'manager' ? '— операторы и замерщики' : ($mode === 'measurer' ? '— твои замеры по календарю' : '— твои сделки и звонки'))
+  @section('nd_toolbar')
+    <a href="{{ route('reports.monthly', ['month' => $thisMonth]) }}" class="nd-btn nd-sm {{ ! $period['custom'] && $month === $thisMonth ? 'nd-primary' : '' }}">Этот месяц</a>
+    <a href="{{ route('reports.monthly', ['month' => $prevMonth]) }}" class="nd-btn nd-sm {{ ! $period['custom'] && $month === $prevMonth ? 'nd-primary' : '' }}">Прошлый месяц</a>
+    @include('owner._daterange', ['crm' => true, 'action' => route('reports.monthly'), 'params' => [], 'from' => $period['from'], 'to' => $period['to']])
+    @if($mode === 'manager' && !empty($showLeads))
+      <span class="nd-vsp"></span>
+      <a href="{{ route('reports.monthly', $exportQuery) }}" class="nd-btn nd-sm"
+         title="Номер телефона, менеджер (кто первым взял лид), записался ли. Без нецелевых и исходящих дозвонов.">⬇ Обращения в Excel</a>
+    @endif
+  @endsection
+@else
 <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
   <div>
     <h4 class="mb-0">Отчёты</h4>
@@ -78,6 +93,7 @@
     @endif
   </div>
 </div>
+@endif
 
 @if(!empty($dataPeriodHint))
   <div class="alert alert-info py-2">
