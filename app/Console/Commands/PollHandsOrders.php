@@ -19,7 +19,7 @@ class PollHandsOrders extends Command
         foreach ($conns as $conn) {
             try {
                 $r = $sync->poll($conn);
-                $this->info("[account {$conn->account_id}] заказов {$r['orders']}, новых лидов {$r['created']}");
+                $this->info("[account {$conn->account_id}] заказов {$r['orders']}, новых лидов {$r['created']}, договорились (→ «Замер назначен») {$r['moved']}");
             } catch (\Throwable $e) {
                 // сеть или ключ — ошибка видна в «Интеграциях», планировщик не падает
                 $conn->forceFill(['last_error' => 'Руки: '.mb_substr($e->getMessage(), 0, 300)])->save();

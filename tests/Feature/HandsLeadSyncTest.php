@@ -32,7 +32,7 @@ class HandsLeadSyncTest extends TestCase
         Carbon::setTestNow('2026-10-26 10:00:00');
         $this->acc = Account::create(['name' => 'Потолки (тест Рук)'])->id;
         $pipeline = DB::table('pipelines')->insertGetId(['account_id' => $this->acc, 'name' => 'Колл-центр', 'is_default' => 1, 'created_at' => now(), 'updated_at' => now()]);
-        foreach (['lead' => ['Поступил лид', 10], 'work' => ['Взяли в работу', 20]] as $k => [$name, $sort]) {
+        foreach (['lead' => ['Поступил лид', 10], 'work' => ['Взяли в работу', 20], 'measure' => ['Замер назначен', 40]] as $k => [$name, $sort]) {
             $this->stage[$k] = DB::table('pipeline_stages')->insertGetId(['account_id' => $this->acc, 'pipeline_id' => $pipeline, 'name' => $name, 'sort' => $sort, 'is_final' => 0, 'created_at' => now(), 'updated_at' => now()]);
         }
         $this->orders = [$this->order('7001', '2026-10-26 09:12:00', '+7 (912) 000-11-22'), $this->order('6900', '2026-10-20 12:00:00', '+79120003344')];
@@ -42,7 +42,9 @@ class HandsLeadSyncTest extends TestCase
                 return [403, json_encode(['error' => 'Неверный ключ'])];
             }
             parse_str((string) parse_url($url, PHP_URL_QUERY), $q);
-            $list = array_values(array_filter($this->orders, fn ($o) => substr($o['creation_time'], 0, 10) >= $q['date_from'] && substr($o['creation_time'], 0, 10) <= $q['date_to']));
+            $list = ($q['status'] ?? '') === 'ACTIVE'
+                ? array_values(array_filter($this->orders, fn ($o) => in_array($o['status'], ['Назначен', 'Договорились'], true)))
+                : array_values(array_filter($this->orders, fn ($o) => substr($o['creation_time'], 0, 10) >= $q['date_from'] && substr($o['creation_time'], 0, 10) <= $q['date_to']));
 
             return [200, json_encode(['orders' => $list, 'page' => 1, 'per_page' => 500, 'pages' => 1, 'total' => count($list)])];
         };
@@ -92,6 +94,36 @@ class HandsLeadSyncTest extends TestCase
         $this->artisan('integrations:hands-poll')->assertExitCode(0);
         $this->assertSame(1, DB::table('deals')->where('account_id', $this->acc)->count(), 'повторный опрос не задваивает');
         $this->assertStringContainsString('date_from=2026-10-24', $this->calls[0], 'окно — последние дни, не раньше подключения');
+    }
+
+    /** Мастер в Руках уже договорился — сразу «Замер назначен»; договорился позже — нетронутая сделка переходит сама. */
+    public function test_agreed_orders_go_straight_to_measurement(): void
+    {
+        $this->conn();
+        $this->orders[] = ['status' => 'Договорились', 'id' => '7002', 'work_time' => '2026-10-28 15:00:00'] + $this->order('7002', '2026-10-25 11:00:00', '+79120005566');
+        $this->orders[] = $this->order('7003', '2026-10-25 12:00:00', '+79120007788');
+        $this->artisan('integrations:hands-poll')->assertExitCode(0);
+
+        $deal = fn (string $order) => DB::table('deals')->where('id', DB::table('deal_activities')->where('type', 'lead_form')->where('payload->external_id', $order)->value('deal_id'))->first();
+        $this->assertSame($this->stage['measure'], (int) $deal('7002')->stage_id);
+        $this->assertSame($this->stage['lead'], (int) $deal('7001')->stage_id, '«Назначен» — колл-центру');
+        $this->assertSame(1, DB::table('deal_stage_history')->where('deal_id', $deal('7002')->id)->where('to_stage_id', $this->stage['measure'])->whereNull('changed_by_user_id')->count());
+        $this->assertStringContainsString('Руки: мастер договорился с клиентом, замер 28.10.2026 15:00 — этап «Замер назначен»',
+            DB::table('deal_activities')->where('deal_id', $deal('7002')->id)->where('type', 'stage_changed')->value('body'));
+
+        // позже: по 7001 договорились — сделка ещё на первом этапе, переходит; 7003 оператор уже взял в работу — не трогаем
+        DB::table('deals')->where('id', $deal('7003')->id)->update(['stage_id' => $this->stage['work']]);
+        foreach ($this->orders as &$o) {
+            if (in_array($o['id'], ['7001', '7003'], true)) {
+                $o['status'] = 'Договорились';
+            }
+        }
+        unset($o);
+        $this->artisan('integrations:hands-poll')->assertExitCode(0);
+        $this->assertSame($this->stage['measure'], (int) $deal('7001')->stage_id);
+        $this->assertSame($this->stage['work'], (int) $deal('7003')->stage_id, 'работу оператора не перебиваем');
+        $this->artisan('integrations:hands-poll')->assertExitCode(0);
+        $this->assertSame(1, DB::table('deal_stage_history')->where('deal_id', $deal('7001')->id)->where('to_stage_id', $this->stage['measure'])->count(), 'один раз');
     }
 
     public function test_order_for_a_number_with_an_open_deal_goes_into_it(): void
