@@ -7,6 +7,10 @@
 --}}
 @php
     $n = fn ($v) => number_format((float) $v, 0, ',', ' ');
+    $plural = function (int $k, string $one, string $few, string $many) {
+        $m10 = $k % 10; $m100 = $k % 100;
+        return ($m10 === 1 && $m100 !== 11) ? $one : (($m10 >= 2 && $m10 <= 4 && ($m100 < 12 || $m100 > 14)) ? $few : $many);
+    };
     $q = fn ($v) => rtrim(rtrim(number_format((float) $v, 2, ',', ' '), '0'), ',');
     $money = fn ($v) => number_format((float) $v, 0, ',', ' ').' ₽';
     $sharePct = fn ($v) => number_format((float) $v * 100, 1, ',', ' ').'%';
@@ -57,11 +61,11 @@
         <input type="hidden" name="items" id="ratesItems" value="[]">
         <div class="card tbl-card">
             <div class="tbl-head"><h2>Строки без цены</h2>
-                <span class="note">{{ $n(count($rows)) }} позиций · своя ставка у {{ $n($rated) }} · за {{ $periodLabel }} досчитано {{ $money($periodCost) }}</span></div>
+                <span class="note">{{ $n(count($rows)) }} {{ $plural(count($rows), 'позиция', 'позиции', 'позиций') }} · своя ставка у {{ $n($rated) }} · за {{ $periodLabel }} досчитано {{ $money($periodCost) }}</span></div>
             <div class="tbl-wrap"><table class="t rates-t">
                 <thead><tr>
                     <th>Позиция</th>
-                    <th class="num" title="договоров с этой строкой: за выбранный период / всего в списке">Договоров</th>
+                    <th class="num" title="договоров с этой строкой: за выбранный период / всего в списке">Договоров<small>за период / всего</small></th>
                     <th class="num">Кол-во</th>
                     <th class="num">Сумма строк</th>
                     <th class="num" title="сколько расхода досчитано по этой позиции за всё в списке">Расход</th>
