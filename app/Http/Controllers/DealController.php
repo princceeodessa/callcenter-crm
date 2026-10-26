@@ -176,6 +176,8 @@ class DealController extends Controller
                 'callRecordings as phone_call_recordings_count',
                 'activities as phone_call_activities_count' => fn ($query) => $query->where('type', 'call'),
                 'activities as tilda_lead_form_activities_count' => fn ($query) => $query->where('type', 'lead_form')->where('payload->provider', 'tilda'),
+                // чип «Лемана» на карточке канбана (заказы Лемана ПРО через hands.ru)
+                'activities as lemana_lead_form_activities_count' => fn ($query) => $query->where('type', 'lead_form')->where('payload->provider', 'hands'),
             ])
             ->where('account_id', $user->account_id)
             ->whereNull('closed_at')

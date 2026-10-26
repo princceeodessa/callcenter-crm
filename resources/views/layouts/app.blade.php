@@ -1,11 +1,16 @@
-﻿<!doctype html>
-<html lang="ru">
+<!doctype html>
+@php($isSneakerSpace = in_array(auth()->user()?->role, ['sneaker_head','sneaker_operator','sneaker_owner'], true))
+{{-- редизайн «Nordika» (архив дизайнера 26.10.2026): каркас с боковым меню и светлой/тёмной темой — у сотрудников потолков --}}
+@php($nd = \App\Support\Ui\Nordika::enabled())
+<html lang="ru" @if($nd) class="nd-html" data-theme="light" data-bs-theme="light" @endif>
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ config('app.name') }}</title>
-    @php($isSneakerSpace = in_array(auth()->user()?->role, ['sneaker_head','sneaker_operator','sneaker_owner'], true))
+    @if($nd)
+        <script>try{if(localStorage.getItem('ndTheme')==='dark'){document.documentElement.setAttribute('data-theme','dark');document.documentElement.setAttribute('data-bs-theme','dark');}}catch(e){}</script>
+    @endif
     @if($isSneakerSpace)
         <link rel="apple-touch-icon" href="{{ asset('icons/sneaker-touch-icon-180.png') }}">
         <link rel="icon" type="image/png" href="{{ asset('icons/sneaker-favicon-32.png') }}">
@@ -274,11 +279,16 @@
             display: none !important;
         }
     </style>
+    @if($nd)
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+        <link href="{{ asset('css/nordika-crm.css') }}?v={{ @filemtime(public_path('css/nordika-crm.css')) }}" rel="stylesheet">
+        <link href="{{ asset('css/nordika-crm-app.css') }}?v={{ @filemtime(public_path('css/nordika-crm-app.css')) }}" rel="stylesheet">
+    @endif
     @stack('styles')
 </head>
 <body data-theme="sky" data-role="{{ auth()->user()?->role ?? 'guest' }}">
-<nav class="navbar navbar-expand-lg navbar-dark">
-    <div class="container-fluid">
         @php($navUser = auth()->user())
         @php($isPriv = in_array($navUser?->role, ['admin','main_operator'], true))
         @php($isAdmin = $navUser?->role === 'admin')
@@ -292,6 +302,73 @@
         @php($lowStock = $isSneaker ? \App\Models\WarehouseItem::where('account_id', $navUser->account_id)->where('low_stock_threshold', '>', 0)->whereRaw('(quantity - reserved) <= low_stock_threshold')->count() : 0)
         @php($canUseProjecting = $isConstructor)
         @php($homeRoute = $isSneakerOwner ? 'owner.dashboard' : ($isMeasurer ? 'calendar.index' : ($isConstructor ? 'ceiling-projects.index' : ($isDocumentsOperator ? 'nonclosures.index' : ($isSneaker ? 'sale.quick' : 'deals.kanban')))))
+@if($nd)
+    @php([$ndTitle, $ndSub] = \App\Support\Ui\Nordika::title())
+    @php($ndDesk = in_array($navUser->role, ['admin','main_operator','operator'], true))
+    @php($ndBell = in_array($navUser->role, ['admin','main_operator','operator','documents_operator'], true))
+    @php($ndFull = trim($__env->yieldContent('nd_fullbleed')) !== '')
+    <div class="nd-app">
+        <aside class="nd-side" id="ndSide">
+            <a class="nd-brand" href="{{ route($homeRoute) }}"><div class="nd-lg">Б</div><div><div class="nd-bt">БлагоДар</div><div class="nd-bs">Callcenter CRM</div></div></a>
+            @foreach(\App\Support\Ui\Nordika::nav($navUser) as $ndGroup => $ndItems)
+                <div class="nd-nav-h">{{ $ndGroup }}</div>
+                <nav class="nd-nav">
+                    @foreach($ndItems as [$ndRoute, $ndLabel, $ndIcon, $ndActive])
+                        <a href="{{ route($ndRoute) }}" @class(['nd-active' => request()->routeIs($ndActive)])><svg class="nd-icon" viewBox="0 0 24 24">{!! \App\Support\Ui\Nordika::ICONS[$ndIcon] !!}</svg>{{ $ndLabel }}</a>
+                    @endforeach
+                </nav>
+            @endforeach
+            <div class="nd-sp"></div>
+            <div class="nd-side-user">
+                {!! \App\Support\Ui\Nordika::avatar($navUser->name, 34) !!}
+                <div class="min-w-0"><div class="nd-un">{{ \App\Support\Ui\Nordika::shortName($navUser->name) }}</div><div class="nd-ur">{{ \App\Support\Ui\Nordika::roleLabel($navUser->role) }}</div></div>
+                <a class="nd-out" href="{{ route('logout') }}" title="Выйти" aria-label="Выйти"><svg class="nd-icon nd-sm" viewBox="0 0 24 24">{!! \App\Support\Ui\Nordika::ICONS['logout'] !!}</svg></a>
+            </div>
+        </aside>
+        <main class="nd-main">
+            <header class="nd-top">
+                <button type="button" class="nd-btn nd-icon-only nd-burger" id="ndBurger" aria-label="Меню"><svg class="nd-icon" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button>
+                <h1>@hasSection('nd_title')@yield('nd_title')@else{{ $ndTitle }}@endif @hasSection('nd_sub')<span class="nd-sub">@yield('nd_sub')</span>@elseif($ndSub !== '')<span class="nd-sub">{{ $ndSub }}</span>@endif</h1>
+                <div class="nd-grow"></div>
+                @hasSection('nd_search')
+                    @yield('nd_search')
+                @elseif($ndDesk)
+                    <form class="nd-search" method="GET" action="{{ route('deals.index') }}" role="search">
+                        <svg class="nd-icon nd-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+                        <input type="hidden" name="status" value="all">
+                        <input type="search" name="q" value="{{ request()->routeIs('deals.index') ? request('q') : '' }}" placeholder="Поиск по имени, телефону, сделке">
+                    </form>
+                @endif
+                <button type="button" class="nd-btn nd-icon-only" id="ndThemeBtn" title="Светлая / тёмная тема" aria-label="Тема"><span class="nd-theme-ic"><svg class="nd-icon nd-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg><svg class="nd-icon nd-moon" viewBox="0 0 24 24"><path d="M21 13a8.5 8.5 0 01-10-10A8.5 8.5 0 1021 13z"/></svg></span></button>
+                @if($ndBell)
+                    <a class="nd-btn nd-icon-only" href="{{ route('notifications.index') }}" title="Уведомления" aria-label="Уведомления"><svg class="nd-icon" viewBox="0 0 24 24"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/></svg><span id="navNotifBadge" class="nd-badge d-none">0</span></a>
+                    <button type="button" class="nd-btn nd-icon-only d-none" id="enableNotifBtn" title="Включить системные уведомления">🔊</button>
+                @endif
+                @if($ndDesk)
+                    <a class="nd-btn nd-primary" href="{{ route('deals.create') }}"><svg class="nd-icon nd-sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Сделка</a>
+                @endif
+            </header>
+            @hasSection('nd_toolbar')
+                <div class="nd-toolbar">@yield('nd_toolbar')</div>
+            @endif
+            <div class="nd-view">
+                @if($ndFull)
+                    <div class="nd-alerts">@include('partials.flash')</div>
+                    @yield('content')
+                @else
+                    <div class="nd-page">
+                        @include('partials.flash')
+                        @yield('content')
+                    </div>
+                @endif
+            </div>
+        </main>
+    </div>
+    <div class="nd-mscrim" id="ndMscrim"></div>
+    <div class="toast-container position-fixed bottom-0 end-0 p-3" id="toastContainer" style="z-index: 1080;"></div>
+@else
+<nav class="navbar navbar-expand-lg navbar-dark">
+    <div class="container-fluid">
         <a class="navbar-brand fw-semibold" href="{{ route($homeRoute) }}">{{ config('app.name') }}</a>
         <div class="d-flex gap-2 flex-wrap align-items-center">
             @auth
@@ -385,23 +462,32 @@
 @endauth
 
 <main class="container-fluid py-3">
-    @if ($errors->any())
-        <div class="alert alert-danger">
-            <ul class="mb-0">
-                @foreach ($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </div>
-    @endif
-    @if (session('status'))
-        <div class="alert alert-success">{{ session('status') }}</div>
-    @endif
+    @include('partials.flash')
 
     @yield('content')
 </main>
+@endif
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+@if($nd)
+<script>
+(() => {
+    const root = document.documentElement;
+    const side = document.getElementById('ndSide');
+    const scrim = document.getElementById('ndMscrim');
+    const closeMenu = () => { side?.classList.remove('nd-open'); scrim?.classList.remove('nd-on'); };
+    document.getElementById('ndBurger')?.addEventListener('click', () => { side?.classList.add('nd-open'); scrim?.classList.add('nd-on'); });
+    scrim?.addEventListener('click', closeMenu);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+    document.getElementById('ndThemeBtn')?.addEventListener('click', () => {
+        const theme = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        root.setAttribute('data-theme', theme);
+        root.setAttribute('data-bs-theme', theme);
+        try { localStorage.setItem('ndTheme', theme); } catch (e) {}
+    });
+})();
+</script>
+@else
 <script>
 (() => {
     const storageKey = 'crmTheme';
@@ -417,6 +503,7 @@
     });
 })();
 </script>
+@endif
 
 @auth
 @if(!in_array(auth()->user()?->role, ['measurer', 'constructor'], true))

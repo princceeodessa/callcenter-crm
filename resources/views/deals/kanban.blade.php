@@ -1,26 +1,8 @@
 @extends('layouts.app')
 
-@push('styles')
-    <style>
-        .kanban-toolbar{ gap: .5rem; }
-        .kanban-board{ align-items: start; }
-        .kanban-board.mode-row{ display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 1rem; padding-bottom: .25rem; }
-        .kanban-board.mode-row .kanban-col{ flex: 0 0 360px; }
-        .kanban-board.mode-wrap{ display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
-        .kanban-list{ min-height: 64px; }
-        .kanban-card{ cursor: grab; user-select: none; }
-        .kanban-card:active{ cursor: grabbing; }
-        .nt-picker{ position: fixed; inset: 0; background: rgba(15, 23, 42, .45); display: flex; align-items: center; justify-content: center; z-index: 2000; padding: 16px; }
-        .nt-picker[hidden]{ display: none; }
-        .nt-picker-box{ background: var(--bs-body-bg, #fff); border-radius: 14px; padding: 1rem 1.1rem; width: 320px; max-width: 100%; box-shadow: 0 20px 45px rgba(15, 23, 42, .25); }
-        .drag-ghost{ opacity: .5; }
-        .drag-chosen{ outline: 2px dashed rgba(13,110,253,.6); outline-offset: 2px; }
-        .kanban-card .deal-title { line-height: 1.25; }
-    </style>
-@endpush
-
-@section('content')
     @php
+        // редизайн «Nordika» — у колл-центра потолков; у кроссовок прежняя доска
+        $nd = \App\Support\Ui\Nordika::enabled();
         $focusDateValue = $focusDate?->format('Y-m-d');
         $kanbanParamsWithoutSpam = array_filter([
             'q' => $q !== '' ? $q : null,
@@ -74,6 +56,168 @@
             $ui['tomorrow'] => now()->copy()->addDay()->format('Y-m-d'),
         ];
     @endphp
+
+@unless($nd)
+@push('styles')
+    <style>
+        .kanban-toolbar{ gap: .5rem; }
+        .kanban-board{ align-items: start; }
+        .kanban-board.mode-row{ display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 1rem; padding-bottom: .25rem; }
+        .kanban-board.mode-row .kanban-col{ flex: 0 0 360px; }
+        .kanban-board.mode-wrap{ display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+        .kanban-list{ min-height: 64px; }
+        .kanban-card{ cursor: grab; user-select: none; }
+        .kanban-card:active{ cursor: grabbing; }
+        .nt-picker{ position: fixed; inset: 0; background: rgba(15, 23, 42, .45); display: flex; align-items: center; justify-content: center; z-index: 2000; padding: 16px; }
+        .nt-picker[hidden]{ display: none; }
+        .nt-picker-box{ background: var(--bs-body-bg, #fff); border-radius: 14px; padding: 1rem 1.1rem; width: 320px; max-width: 100%; box-shadow: 0 20px 45px rgba(15, 23, 42, .25); }
+        .drag-ghost{ opacity: .5; }
+        .drag-chosen{ outline: 2px dashed rgba(13,110,253,.6); outline-offset: 2px; }
+        .kanban-card .deal-title { line-height: 1.25; }
+    </style>
+@endpush
+@endunless
+
+@if($nd)
+    {{-- каркас Nordika: поиск — в верхней панели, фильтры — в панели под ней, доска — во всю ширину --}}
+    @section('nd_fullbleed', '1')
+    @section('nd_search')
+        <form class="nd-search" method="GET" action="{{ route('deals.kanban') }}" role="search">
+            <svg class="nd-icon nd-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+            @if(!empty($showSpam))
+                <input type="hidden" name="show_spam" value="1">
+            @endif
+            @if($focusDateValue)
+                <input type="hidden" name="focus_date" value="{{ $focusDateValue }}">
+            @endif
+            <input type="search" id="kanbanSearch" name="q" value="{{ $q }}" placeholder="{{ $ui['search_placeholder'] }}">
+        </form>
+    @endsection
+    @section('nd_toolbar')
+        <div class="nd-seg">
+            @foreach($focusDatePresets as $label => $presetDate)
+                <a @class(['nd-on' => $focusDateValue === $presetDate]) href="{{ route('deals.kanban', array_merge($kanbanParamsWithoutDate, ['focus_date' => $presetDate])) }}">{{ $label }}</a>
+            @endforeach
+            @if($focusDateValue)
+                <a href="{{ route('deals.kanban', $kanbanParamsWithoutDate) }}">{{ $ui['all_dates'] }}</a>
+            @endif
+        </div>
+        <form method="GET" action="{{ route('deals.kanban') }}">
+            @if(!empty($showSpam))
+                <input type="hidden" name="show_spam" value="1">
+            @endif
+            @if($q !== '')
+                <input type="hidden" name="q" value="{{ $q }}">
+            @endif
+            <input type="date" class="nd-date" id="kanbanFocusDate" name="focus_date" value="{{ $focusDateValue }}" aria-label="Дата">
+            <button type="submit" class="nd-btn nd-sm"><svg class="nd-icon nd-sm" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>{{ $ui['apply'] }}</button>
+        </form>
+        @if($q !== '' || $focusDateValue)
+            <a class="nd-btn nd-sm" href="{{ route('deals.kanban', $kanbanResetParams) }}">{{ $ui['reset'] }}</a>
+        @endif
+        <span class="nd-vsp"></span>
+        <div class="nd-seg nd-kb-mode" role="group" aria-label="Вид доски">
+            <button type="button" id="kbModeRow">{{ $ui['mode_row'] }}</button>
+            <button type="button" id="kbModeWrap">{{ $ui['mode_wrap'] }}</button>
+        </div>
+        <span class="nd-vsp"></span>
+        <a class="nd-chipf" href="{{ route('deals.closed') }}"><svg class="nd-icon nd-sm" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>{{ $ui['closed'] }}</a>
+        <a @class(['nd-chipf', 'nd-on' => !empty($showSpam)]) href="{{ route('deals.kanban', empty($showSpam) ? array_merge($kanbanParamsWithoutDate, ['show_spam' => 1]) : $kanbanParamsWithoutSpam) }}"><span class="nd-sw"></span>{{ $ui['show_non_target'] }}</a>
+        @if($q !== '')
+            <a class="nd-chipf" href="{{ route('deals.index', $allDealsSearchParams) }}">Все по запросу</a>
+        @endif
+    @endsection
+@endif
+
+@section('content')
+@if($nd)
+    <div class="nd-board" id="kanbanBoard">
+        @foreach ($stages as $stage)
+            @php($stageDeals = $dealsByStage[$stage->id] ?? collect())
+            <div class="nd-col">
+                <div class="nd-col-h">
+                    <span class="nd-col-dot" style="background:{{ \App\Support\Ui\Nordika::stageDot($stage->name, $loop->index) }}"></span>
+                    <span class="nd-col-t">{{ $stage->name }}</span>
+                    <span class="nd-col-n"><span class="kanban-count" data-stage-id="{{ $stage->id }}">{{ $stageDeals->count() }}</span> {{ $ui['count_suffix'] }}</span>
+                    <a class="nd-col-add" href="{{ route('deals.create') }}" title="{{ $ui['create_deal_title'] }}">+</a>
+                </div>
+                @if(in_array($stage->id, $dateFilteredStageIds ?? [], true))
+                    <div class="nd-col-note">
+                        @if($focusDateValue)
+                            {{ $ui['stage_hint_prefix'] }}{{ optional($focusDate)->format('d.m.Y') }}. {{ $ui['stage_hint_suffix'] }}
+                        @else
+                            {{ $ui['stage_hint_all'] }}
+                        @endif
+                    </div>
+                    <input type="search" class="nd-col-search kanban-stage-search" data-stage-id="{{ $stage->id }}" placeholder="{{ $ui['stage_search_placeholder'] }}">
+                @endif
+
+                <div class="nd-col-body kanban-list" data-stage-id="{{ $stage->id }}">
+                    @foreach ($stageDeals as $deal)
+                        @php($leadName = $deal->lead_display_name ?? $ui['no_name'])
+                        @php($dealTitle = $deal->title_is_custom ? $deal->title : ($deal->lead_display_name ?: $deal->title))
+                        @php($answeredBy = $deal->latest_call_answered_by_label)
+                        @php($clientAttentionCount = (int) ($deal->client_attention_count ?? 0))
+                        @php($callsCount = (int) ($deal->phone_call_activities_count ?? 0))
+                        @php($srcKey = \App\Support\Ui\Nordika::sourceKey($deal))
+                        @php($phone = \App\Support\Ui\Nordika::phone($deal->contact?->phone))
+                        @php($ntLabel = \App\Support\Deals\NonTargetCategory::label($deal->non_target_category))
+                        @php($movedBy = $deal->latestStageHistory ? ($deal->latestStageHistory->changedBy?->name ?? 'Система') : null)
+                        @php($searchParts = array_filter([
+                            $dealTitle,
+                            $leadName,
+                            $deal->contact?->phone,
+                            $deal->responsible?->name,
+                            $answeredBy,
+                            $canSeeKanbanIds ? $deal->id : null,
+                        ]))
+                        <div class="nd-card kanban-card" style="--src:{{ \App\Support\Ui\Nordika::source($srcKey)[1] }}" data-deal-id="{{ $deal->id }}" data-href="{{ route('deals.show', $deal) }}" data-search="{{ mb_strtolower(trim(implode(' ', $searchParts))) }}">
+                            <div class="nd-c-top">
+                                {!! \App\Support\Ui\Nordika::sourceChip($srcKey) !!}
+                                @if($callsCount > 0)
+                                    <span class="nd-cnt-badge" title="Звонков: {{ $callsCount }}"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 4h3l1.5 5-2 1.5a12 12 0 006 6l1.5-2 5 1.5V20a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/></svg>{{ $callsCount }}</span>
+                                @endif
+                                @if($clientAttentionCount > 0)
+                                    <span class="nd-cnt-badge nd-attn" title="Новых сообщений: {{ $clientAttentionCount }}"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>{{ $clientAttentionCount }}</span>
+                                @endif
+                                @if($canSeeKanbanIds)
+                                    <span class="nd-cid">#{{ $deal->id }}</span>
+                                @endif
+                            </div>
+                            <div class="nd-c-title"><a href="{{ route('deals.show', $deal) }}">@if($leadName && $leadName !== $dealTitle)<span style="color:var(--muted);font-weight:600">{{ $leadName }} · </span>@endif{{ $dealTitle }}</a></div>
+                            <div @class(['nd-c-phone', 'nd-noph' => ! $phone])><svg class="nd-icon" viewBox="0 0 24 24"><path d="M5 4h3l1.5 5-2 1.5a12 12 0 006 6l1.5-2 5 1.5V20a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/></svg>{{ $phone ?? $ui['no_phone'] }}</div>
+                            <div class="nd-c-foot">
+                                @if(!empty($canSeeKanbanCreatedAt))
+                                    <div class="nd-c-row"><span class="nd-k">{{ $ui['created_at'] }}:</span> {{ optional($deal->created_at)->format('d.m.Y H:i') }}</div>
+                                @endif
+                                @if($answeredBy)
+                                    <div class="nd-c-row"><span class="nd-k">Ответил:</span> {{ $answeredBy }}</div>
+                                @endif
+                                <div class="nd-c-nt kanban-nt" @if(! $ntLabel) hidden @endif>Нецелевая: {{ $ntLabel }}</div>
+                                <div class="nd-c-row kanban-last-moved"><span class="nd-k">Перенос:</span> @if($movedBy){!! \App\Support\Ui\Nordika::avatar($movedBy) !!} {{ \App\Support\Ui\Nordika::firstName($movedBy) }}@else<span style="color:var(--faint)">ещё не перемещали</span>@endif</div>
+                            </div>
+                        </div>
+                    @endforeach
+
+                    <div class="nd-col-empty kanban-empty-note" @if(!$stageDeals->isEmpty()) style="display:none" @endif>{{ $ui['empty'] }}</div>
+                </div>
+            </div>
+        @endforeach
+    </div>
+
+    @if(!empty($nonTargetCategories) && $nonTargetStageId)
+        {{-- потолки: перенос на «Нецелевое» — только с категорией (по ним статистика) --}}
+        <div id="ntPicker" class="nd-nt-picker" hidden>
+            <div class="nd-nt-box">
+                <div class="fw-semibold">Почему сделка нецелевая?</div>
+                @foreach($nonTargetCategories as $key => $label)
+                    <button type="button" class="nd-btn nd-sm" data-cat="{{ $key }}">{{ $label }}</button>
+                @endforeach
+                <button type="button" class="nd-btn nd-sm" style="justify-content:center;color:var(--muted)" data-cat="">Отмена</button>
+            </div>
+        </div>
+    @endif
+@else
 
     <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap kanban-toolbar">
         <div class="d-flex flex-column gap-2">
@@ -227,6 +371,7 @@
             </div>
         </div>
     @endif
+@endif
 @endsection
 
 @push('scripts')
@@ -260,17 +405,37 @@
                 document.addEventListener('keydown', onKey);
             });
 
-            const applyMode = (mode) => {
-                board.classList.remove('mode-row','mode-wrap');
-                board.classList.add(mode === 'wrap' ? 'mode-wrap' : 'mode-row');
+            const nd = board.classList.contains('nd-board');
+            // каркас Nordika: «Перенос: [кружок] Имя» — переносит всегда тот, кто сейчас на странице
+            const ndMovedByMe = @json($nd ? '<span class="nd-k">Перенос:</span> '.\App\Support\Ui\Nordika::avatar(auth()->user()->name).' '.e(\App\Support\Ui\Nordika::firstName(auth()->user()->name)) : null);
 
-                btnRow.classList.toggle('btn-outline-secondary', mode === 'wrap');
-                btnRow.classList.toggle('btn-secondary', mode !== 'wrap');
-                btnWrap.classList.toggle('btn-outline-secondary', mode !== 'wrap');
-                btnWrap.classList.toggle('btn-secondary', mode === 'wrap');
+            const applyMode = (mode) => {
+                if (nd) {
+                    board.classList.toggle('nd-wrap', mode === 'wrap');
+                    btnRow.classList.toggle('nd-on', mode !== 'wrap');
+                    btnWrap.classList.toggle('nd-on', mode === 'wrap');
+                } else {
+                    board.classList.remove('mode-row','mode-wrap');
+                    board.classList.add(mode === 'wrap' ? 'mode-wrap' : 'mode-row');
+
+                    btnRow.classList.toggle('btn-outline-secondary', mode === 'wrap');
+                    btnRow.classList.toggle('btn-secondary', mode !== 'wrap');
+                    btnWrap.classList.toggle('btn-outline-secondary', mode !== 'wrap');
+                    btnWrap.classList.toggle('btn-secondary', mode === 'wrap');
+                }
 
                 localStorage.setItem('kanbanMode', mode);
             };
+
+            // Nordika: карточка открывает сделку по клику в любом месте (не сразу после перетаскивания)
+            let justDragged = false;
+            if (nd) {
+                board.addEventListener('click', (e) => {
+                    const card = e.target.closest('.kanban-card');
+                    if (!card || justDragged || e.target.closest('a, button, input, select, textarea')) return;
+                    if (card.dataset.href) window.location.href = card.dataset.href;
+                });
+            }
 
             const saved = localStorage.getItem('kanbanMode') || 'row';
             applyMode(saved);
@@ -287,9 +452,13 @@
                 const list = document.querySelector(`.kanban-list[data-stage-id="${stageId}"]`);
                 const countEl = document.querySelector(`.kanban-count[data-stage-id="${stageId}"]`);
                 if (!list || !countEl) return;
-                countEl.textContent = Array.from(list.querySelectorAll('.kanban-card'))
+                const visible = Array.from(list.querySelectorAll('.kanban-card'))
                     .filter((card) => card.style.display !== 'none')
                     .length;
+                countEl.textContent = visible;
+                // «Пусто» — только у колонки без карточек (и после переноса карточки туда/оттуда)
+                const emptyEl = list.querySelector('.kanban-empty-note');
+                if (emptyEl) emptyEl.style.display = visible ? 'none' : '';
             };
 
             const applySearch = () => {
@@ -325,8 +494,11 @@
                     animation: 150,
                     ghostClass: 'drag-ghost',
                     chosenClass: 'drag-chosen',
+                    draggable: '.kanban-card',
+                    onStart: () => { justDragged = true; },
 
                     onEnd: async (evt) => {
+                        setTimeout(() => { justDragged = false; }, 60);
                         const cardEl = evt.item;
                         const dealId = cardEl?.dataset?.dealId;
                         const fromStageId = evt.from?.dataset?.stageId;
@@ -374,7 +546,8 @@
 
                             const lastMovedEl = cardEl?.querySelector('.kanban-last-moved');
                             if (lastMovedEl && payload.last_moved_by_label) {
-                                lastMovedEl.textContent = payload.last_moved_by_label;
+                                if (nd && ndMovedByMe) lastMovedEl.innerHTML = ndMovedByMe;
+                                else lastMovedEl.textContent = payload.last_moved_by_label;
                             }
                             const ntEl = cardEl?.querySelector('.kanban-nt');
                             if (ntEl) {
