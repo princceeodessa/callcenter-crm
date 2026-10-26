@@ -2,7 +2,9 @@
 @php($isSneakerSpace = in_array(auth()->user()?->role, ['sneaker_head','sneaker_operator','sneaker_owner'], true))
 {{-- редизайн «Nordika» (архив дизайнера 26.10.2026): каркас с боковым меню и светлой/тёмной темой — у сотрудников потолков --}}
 @php($nd = \App\Support\Ui\Nordika::enabled())
-<html lang="ru" @if($nd) class="nd-html" data-theme="light" data-bs-theme="light" @endif>
+{{-- сделка во всплывающем окне: страница в iframe (и всё, куда она ведёт после форм) — без меню и верхней панели --}}
+@php($ndEmbed = $nd && (request()->header('Sec-Fetch-Dest') === 'iframe' || request()->boolean('embed')))
+<html lang="ru" @if($nd) class="nd-html{{ $ndEmbed ? ' nd-embed' : '' }}" data-theme="light" data-bs-theme="light" @endif>
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -285,6 +287,8 @@
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
         <link href="{{ asset('css/nordika-crm.css') }}?v={{ @filemtime(public_path('css/nordika-crm.css')) }}" rel="stylesheet">
         <link href="{{ asset('css/nordika-crm-app.css') }}?v={{ @filemtime(public_path('css/nordika-crm-app.css')) }}" rel="stylesheet">
+        {{-- календарь выбора дня/периода из дизайн-системы (как в сводке владельца) — в панелях фильтров --}}
+        <link href="{{ asset('css/bd-daterange.css') }}?v={{ @filemtime(public_path('css/bd-daterange.css')) }}" rel="stylesheet">
     @endif
     @stack('styles')
 </head>
@@ -302,7 +306,12 @@
         @php($lowStock = $isSneaker ? \App\Models\WarehouseItem::where('account_id', $navUser->account_id)->where('low_stock_threshold', '>', 0)->whereRaw('(quantity - reserved) <= low_stock_threshold')->count() : 0)
         @php($canUseProjecting = $isConstructor)
         @php($homeRoute = $isSneakerOwner ? 'owner.dashboard' : ($isMeasurer ? 'calendar.index' : ($isConstructor ? 'ceiling-projects.index' : ($isDocumentsOperator ? 'nonclosures.index' : ($isSneaker ? 'sale.quick' : 'deals.kanban')))))
-@if($nd)
+@if($ndEmbed)
+    <div class="nd-embed-page">
+        @include('partials.flash')
+        @yield('content')
+    </div>
+@elseif($nd)
     @php([$ndTitle, $ndSub] = \App\Support\Ui\Nordika::title())
     @php($ndDesk = in_array($navUser->role, ['admin','main_operator','operator'], true))
     @php($ndBell = in_array($navUser->role, ['admin','main_operator','operator','documents_operator'], true))
@@ -341,8 +350,19 @@
                 @endif
                 <button type="button" class="nd-btn nd-icon-only" id="ndThemeBtn" title="Светлая / тёмная тема" aria-label="Тема"><span class="nd-theme-ic"><svg class="nd-icon nd-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg><svg class="nd-icon nd-moon" viewBox="0 0 24 24"><path d="M21 13a8.5 8.5 0 01-10-10A8.5 8.5 0 1021 13z"/></svg></span></button>
                 @if($ndBell)
-                    <a class="nd-btn nd-icon-only" href="{{ route('notifications.index') }}" title="Уведомления" aria-label="Уведомления"><svg class="nd-icon" viewBox="0 0 24 24"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/></svg><span id="navNotifBadge" class="nd-badge d-none">0</span></a>
-                    <button type="button" class="nd-btn nd-icon-only d-none" id="enableNotifBtn" title="Включить системные уведомления">🔊</button>
+                    {{-- звук уведомлений: включить/выключить (запоминается в браузере); при включении — разрешение на системные --}}
+                    <button type="button" class="nd-btn nd-icon-only" id="ndSoundBtn" title="Звук уведомлений включён — нажмите, чтобы выключить" aria-label="Звук уведомлений" aria-pressed="false">
+                        <svg class="nd-icon nd-snd-on" viewBox="0 0 24 24"><path d="M11 5L6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 010 7M18.5 5.5a9 9 0 010 13"/></svg>
+                        <svg class="nd-icon nd-snd-off" viewBox="0 0 24 24"><path d="M11 5L6 9H3v6h3l5 4z"/><path d="M22 9l-6 6M16 9l6 6"/></svg>
+                    </button>
+                    <div class="nd-notif-wrap">
+                        <a class="nd-btn nd-icon-only" href="{{ route('notifications.index') }}" id="ndBellBtn" title="Уведомления" aria-label="Уведомления" aria-haspopup="true"><svg class="nd-icon" viewBox="0 0 24 24"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/></svg><span id="navNotifBadge" class="nd-badge d-none">0</span></a>
+                        <div class="nd-notif-pop" id="ndNotifPop" hidden>
+                            <div class="nd-notif-hd"><b>Уведомления</b><button type="button" class="nd-notif-all" id="ndNotifReadAll">Прочитать все</button></div>
+                            <div class="nd-notif-list" id="ndNotifList"><div class="nd-notif-empty">Загружаю…</div></div>
+                            <a class="nd-notif-ft" href="{{ route('notifications.index') }}">Все уведомления →</a>
+                        </div>
+                    </div>
                 @endif
                 @if($ndDesk)
                     <a class="nd-btn nd-primary" href="{{ route('deals.create') }}"><svg class="nd-icon nd-sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Сделка</a>
@@ -365,6 +385,15 @@
         </main>
     </div>
     <div class="nd-mscrim" id="ndMscrim"></div>
+    {{-- сделка во всплывающем окне (карточка — та же страница в iframe) --}}
+    <div class="nd-scrim" id="ndDealScrim" aria-hidden="true">
+        <div class="nd-modal nd-deal-modal" role="dialog" aria-modal="true" aria-label="Сделка">
+            <button type="button" class="nd-m-x nd-deal-close" id="ndDealClose" aria-label="Закрыть"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+            <a class="nd-deal-newtab" id="ndDealNewTab" href="#" target="_blank" rel="noopener" title="Открыть отдельной страницей" aria-label="Открыть отдельной страницей"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5"/></svg></a>
+            <div class="nd-deal-loading" id="ndDealLoading">Открываю сделку…</div>
+            <iframe id="ndDealFrame" title="Сделка"></iframe>
+        </div>
+    </div>
     <div class="toast-container position-fixed bottom-0 end-0 p-3" id="toastContainer" style="z-index: 1080;"></div>
 @else
 <nav class="navbar navbar-expand-lg navbar-dark">
@@ -470,29 +499,17 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 @if($nd)
+{{-- @json режет выражение по запятым — значения готовим заранее --}}
+@php($ndCfg = [
+    'suggestUrl' => in_array(auth()->user()?->role, ['admin', 'main_operator', 'operator'], true) ? route('deals.index') : null,
+    'notifListUrl' => auth()->check() ? route('notifications.index', ['list' => 1]) : null,
+    'searchHint' => request()->routeIs('deals.kanban') ? 'на доске' : (request()->routeIs('tasks.*') ? 'в делах' : (request()->routeIs('deals.closed') ? 'в завершённых' : 'в списке сделок')),
+])
 <script>
-(() => {
-    const root = document.documentElement;
-    const side = document.getElementById('ndSide');
-    const scrim = document.getElementById('ndMscrim');
-    const closeMenu = () => { side?.classList.remove('nd-open'); scrim?.classList.remove('nd-on'); };
-    document.getElementById('ndBurger')?.addEventListener('click', () => { side?.classList.add('nd-open'); scrim?.classList.add('nd-on'); });
-    scrim?.addEventListener('click', closeMenu);
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
-    // строки таблиц (список сделок, завершённые, дела…) открываются кликом в любом месте строки
-    document.addEventListener('click', (e) => {
-        const row = e.target.closest('[data-nd-href]');
-        if (!row || e.target.closest('a, button, input, select, textarea, label, form')) return;
-        window.location.href = row.dataset.ndHref;
-    });
-    document.getElementById('ndThemeBtn')?.addEventListener('click', () => {
-        const theme = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-        root.setAttribute('data-theme', theme);
-        root.setAttribute('data-bs-theme', theme);
-        try { localStorage.setItem('ndTheme', theme); } catch (e) {}
-    });
-})();
+    window.ndConfig = @json($ndCfg);
 </script>
+<script src="{{ asset('js/bd-daterange.js') }}?v={{ @filemtime(public_path('js/bd-daterange.js')) }}"></script>
+<script src="{{ asset('js/nordika-crm.js') }}?v={{ @filemtime(public_path('js/nordika-crm.js')) }}"></script>
 @else
 <script>
 (() => {
@@ -512,7 +529,7 @@
 @endif
 
 @auth
-@if(!in_array(auth()->user()?->role, ['measurer', 'constructor'], true))
+@if(!in_array(auth()->user()?->role, ['measurer', 'constructor'], true) && empty($ndEmbed))
 <script>
 (() => {
     const badgeEl = document.getElementById('navNotifBadge');
@@ -535,6 +552,7 @@
 
     const playBeep = async () => {
         if (!supportsAudio) return;
+        if (window.ndSoundMuted && window.ndSoundMuted()) return;   // кнопка звука в верхней панели
         await ensureAudio();
         if (!audioCtx || !audioEnabled) return;
         try {
@@ -597,6 +615,7 @@
 
     const showSystem = (title, body, url) => {
         if (!supportsSystemNotif) return;
+        if (window.ndSoundMuted && window.ndSoundMuted()) return;
         if (Notification.permission !== 'granted') return;
         try {
             const n = new Notification(title, { body: body || '' });

@@ -125,13 +125,8 @@
     $nextSectionTitle = $isTodayFocusDate ? 'Ближайшие' : 'После выбранной даты';
     $nextSectionEmpty = $isTodayFocusDate ? 'Ближайших дел нет.' : 'После выбранной даты дел нет.';
 
-    // редизайн «Nordika» (этап 3) — у колл-центра потолков дела строками, как в прототипе; у кроссовок прежняя страница
+    // редизайн «Nordika» — у колл-центра потолков дела карточками в трёх колонках (как канбан); у кроссовок прежняя страница
     $nd = \App\Support\Ui\Nordika::enabled();
-    $ndSections = [
-        [$daySectionTitle, $selectedTasks, $daySectionEmpty],
-        [$previousSectionTitle, $previousTasks, $previousSectionEmpty],
-        [$nextSectionTitle, $nextTasks, $nextSectionEmpty],
-    ];
 @endphp
 
 @if($nd)
@@ -144,8 +139,9 @@
   @endsection
   @section('nd_toolbar')
     <form method="GET" action="{{ route('tasks.index') }}" id="tasksFilterForm">
+      <input type="hidden" name="focus_date" value="{{ $focusDate }}">
       @if(!$isDocumentsTaskView)
-        <select class="nd-input" name="assigned_user_id" aria-label="Сотрудник">
+        <select class="nd-input" name="assigned_user_id" aria-label="Сотрудник" onchange="this.form.submit()">
           <option value="0">Все сотрудники</option>
           <option value="-1" @selected($assignedUserId === -1)>Только «{{ $assignAllLabel }}»</option>
           @foreach($users as $worker)
@@ -155,86 +151,117 @@
       @else
         <span class="nd-tag">Только мои дела</span>
       @endif
-      <input type="date" class="nd-input" name="focus_date" value="{{ $focusDate }}" aria-label="Дата">
-      <button class="nd-btn nd-sm nd-primary">Показать</button>
-      @if($showResetFilters)
-        <a class="nd-btn nd-sm" href="{{ route('tasks.index') }}">Сбросить</a>
-      @endif
     </form>
+    @include('partials.nd-datepick', ['mode' => 'day', 'param' => 'focus_date', 'action' => route('tasks.index'), 'params' => array_filter(['assigned_user_id' => $assignedUserId ?: null, 'q' => $search !== '' ? $search : null]), 'from' => $focusDate])
+    @if($showResetFilters)
+      <a class="nd-btn nd-sm" href="{{ route('tasks.index') }}">Сбросить</a>
+    @endif
+    <span class="nd-grow"></span>
+    @if($canUseBroadcastPanel)
+      <button type="button" class="nd-btn nd-sm" data-nd-open="#ndBroadcastModal"><svg class="nd-icon nd-sm" viewBox="0 0 24 24">{!! \App\Support\Ui\Nordika::ICONS['chats'] !!}</svg>Рассылка</button>
+    @endif
+    @if($canCreatePageTask)
+      <button type="button" class="nd-btn nd-sm nd-primary" data-nd-open="#ndTaskNewModal"><svg class="nd-icon nd-sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Новое дело</button>
+    @endif
   @endsection
 @endif
 
 @section('content')
 @if($nd)
-<div class="nd-tasks">
-  <div class="nd-tk-stats">
-    <div class="nd-tk-stat"><div class="nd-si" style="background:var(--blue)"><svg class="nd-icon" viewBox="0 0 24 24" stroke="#fff">{!! \App\Support\Ui\Nordika::ICONS['tasks'] !!}</svg></div><div><div class="nd-sv">{{ $selectedTasks->count() }}</div><div class="nd-sl">{{ $daySectionTitle }}</div></div></div>
-    <div class="nd-tk-stat"><div class="nd-si" style="background:var(--red)"><svg class="nd-icon" viewBox="0 0 24 24" stroke="#fff"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><div><div class="nd-sv">{{ $previousTasks->count() }}</div><div class="nd-sl">{{ $previousSectionTitle }}</div></div></div>
-    <div class="nd-tk-stat"><div class="nd-si" style="background:var(--accent)"><svg class="nd-icon" viewBox="0 0 24 24" stroke="#fff">{!! \App\Support\Ui\Nordika::ICONS['calendar'] !!}</svg></div><div><div class="nd-sv">{{ $nextTasks->count() }}</div><div class="nd-sl">{{ $nextSectionTitle }}</div></div></div>
+  @php
+    $ndColumns = [
+        [$previousSectionTitle, $previousTasks, $previousSectionEmpty, 'var(--red)'],
+        [$daySectionTitle, $selectedTasks, $daySectionEmpty, 'var(--amber)'],
+        [$nextSectionTitle, $nextTasks, $nextSectionEmpty, 'var(--blue)'],
+    ];
+    $ndEditTask = $editingTaskId ? $previousTasks->concat($selectedTasks)->concat($nextTasks)->firstWhere('id', $editingTaskId) : null;
+  @endphp
+  <div class="nd-tboard">
+    @foreach($ndColumns as [$ndColTitle, $ndColTasks, $ndColEmpty, $ndColTone])
+      <section class="nd-tcol">
+        <div class="nd-col-h">
+          <span class="nd-col-dot" style="background:{{ $ndColTone }}"></span>
+          <span class="nd-col-t">{{ $ndColTitle }}</span>
+          <span class="nd-col-n">{{ $ndColTasks->count() }}</span>
+        </div>
+        <div class="nd-tcol-body">
+          @forelse($ndColTasks as $task)
+            @include('tasks._nd_task')
+          @empty
+            <div class="nd-col-empty">{{ $ndColEmpty }}</div>
+          @endforelse
+        </div>
+      </section>
+    @endforeach
   </div>
 
   @if($canCreatePageTask)
-    <details class="nd-panel nd-tk-new" @if($errors->any()) open @endif>
-      <summary>{!! '<svg class="nd-icon nd-sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>' !!}Новое дело</summary>
-      <div class="nd-panel-body">
-        <form method="POST" action="{{ route('tasks.page.store') }}" class="row g-2">
-          @csrf
-          <div class="col-12 col-lg-6">
-            <label class="form-label">Сделка</label>
-            <select name="deal_id" class="form-select" required>
-              <option value="">Выберите сделку</option>
-              @foreach($deals as $deal)
-                <option value="{{ $deal->id }}" @selected((int) old('deal_id') === (int) $deal->id)>{{ $dealLabel($deal) }}</option>
-              @endforeach
-            </select>
-          </div>
-          <div class="col-6 col-lg-3">
-            <label class="form-label">Кому</label>
-            <select name="assigned_user_id" class="form-select">
-              @if($canAssignToAll ?? false)
-                <option value="0" @selected((string) old('assigned_user_id', '0') === '0')>{{ $assignAllLabel }}</option>
-              @endif
-              @foreach($users as $worker)
-                <option value="{{ $worker->id }}" @selected($defaultPageAssignedUserId === (int) $worker->id)>{{ $worker->name }}</option>
-              @endforeach
-            </select>
-          </div>
-          <div class="col-6 col-lg-3">
-            <label class="form-label">Когда напомнить</label>
-            <input type="datetime-local" name="due_at" class="form-control" value="{{ old('due_at', now()->addHour()->format('Y-m-d\\TH:i')) }}" required>
-          </div>
-          <div class="col-12">
-            <label class="form-label">Что сделать</label>
-            <input name="title" class="form-control" value="{{ old('title') }}" placeholder="Например: связаться с клиентом" required>
-          </div>
-          <div class="col-12">
-            <label class="form-label">Комментарий</label>
-            <textarea name="description" class="form-control" rows="2" placeholder="Необязательно">{{ old('description') }}</textarea>
-          </div>
-          <div class="col-12"><button class="nd-btn nd-sm nd-primary">Добавить дело</button></div>
-        </form>
+    <div class="nd-scrim" id="ndTaskNewModal" data-nd-modal @if($errors->hasAny(['deal_id', 'title', 'due_at', 'assigned_user_id', 'description'])) data-nd-autoopen @endif>
+      <div class="nd-modal nd-sm-modal" role="dialog" aria-modal="true" aria-label="Новое дело">
+        <div class="nd-m-head"><div class="nd-mt">Новое дело</div><button type="button" class="nd-m-x" data-nd-close aria-label="Закрыть"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+        <div class="nd-m-body nd-m-pad">
+          <form method="POST" action="{{ route('tasks.page.store') }}" class="nd-deal-form">
+            @csrf
+            <div class="nd-field">
+              <label>Сделка</label>
+              <select name="deal_id" required>
+                <option value="">Выберите сделку</option>
+                @foreach($deals as $deal)
+                  <option value="{{ $deal->id }}" @selected((int) old('deal_id') === (int) $deal->id)>{{ $dealLabel($deal) }}</option>
+                @endforeach
+              </select>
+            </div>
+            <div class="nd-field"><label>Что сделать</label><input name="title" value="{{ old('title') }}" placeholder="Например: связаться с клиентом" required></div>
+            <div class="nd-deal-form-2">
+              <div class="nd-field">
+                <label>Кому</label>
+                <select name="assigned_user_id">
+                  @if($canAssignToAll ?? false)
+                    <option value="0" @selected((string) old('assigned_user_id', '0') === '0')>{{ $assignAllLabel }}</option>
+                  @endif
+                  @foreach($users as $worker)
+                    <option value="{{ $worker->id }}" @selected($defaultPageAssignedUserId === (int) $worker->id)>{{ $worker->name }}</option>
+                  @endforeach
+                </select>
+              </div>
+              <div class="nd-field"><label>Когда напомнить</label><input type="datetime-local" name="due_at" value="{{ old('due_at', now()->addHour()->format('Y-m-d\\TH:i')) }}" required></div>
+            </div>
+            <div class="nd-field"><label>Комментарий</label><textarea name="description" rows="3" placeholder="Необязательно">{{ old('description') }}</textarea></div>
+            <div class="nd-m-actions"><button type="button" class="nd-btn" data-nd-close>Отмена</button><button class="nd-btn nd-primary">Добавить дело</button></div>
+          </form>
+        </div>
       </div>
-    </details>
+    </div>
   @endif
 
   @if($canUseBroadcastPanel)
-    <details class="nd-panel nd-tk-new" @if($broadcastReport || $errors->has('broadcast_text') || $errors->has('broadcast_deal_ids')) open @endif>
-      <summary>{!! '<svg class="nd-icon nd-sm" viewBox="0 0 24 24">'.\App\Support\Ui\Nordika::ICONS['chats'].'</svg>' !!}Рассылка по делам на сегодня</summary>
-      <div class="nd-panel-body d-flex flex-column gap-3">
-        @include('tasks._broadcast_panel')
+    <div class="nd-scrim" id="ndBroadcastModal" data-nd-modal @if($broadcastReport || $errors->has('broadcast_text') || $errors->has('broadcast_deal_ids') || $errors->has('broadcast_category')) data-nd-autoopen @endif>
+      <div class="nd-modal nd-wide-modal" role="dialog" aria-modal="true" aria-label="Рассылка по делам на сегодня">
+        <div class="nd-m-head"><div class="nd-mt">Рассылка по делам на сегодня</div><button type="button" class="nd-m-x" data-nd-close aria-label="Закрыть"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+        <div class="nd-m-body nd-m-pad d-flex flex-column gap-3 nd-broadcast">
+          @include('tasks._broadcast_panel')
+        </div>
       </div>
-    </details>
+    </div>
   @endif
 
-  @foreach($ndSections as [$ndSecTitle, $ndTasks, $ndEmpty])
-    <div class="nd-sec-row"><h2 class="nd-sec-h">{{ $ndSecTitle }}</h2><span class="nd-sec-n">{{ $ndTasks->count() }} шт.</span></div>
-    @forelse($ndTasks as $task)
-      @include('tasks._nd_task')
-    @empty
-      <div class="nd-tk-empty">{{ $ndEmpty }}</div>
-    @endforelse
-  @endforeach
-</div>
+  @if($ndEditTask)
+    <div class="nd-scrim" data-nd-modal data-nd-autoopen data-nd-close-href="{{ $buildTasksUrl(['edit_task' => null]) }}">
+      <div class="nd-modal nd-sm-modal" role="dialog" aria-modal="true" aria-label="Изменить дело">
+        <div class="nd-m-head"><div class="nd-mt">Изменить дело</div><a class="nd-m-x" href="{{ $buildTasksUrl(['edit_task' => null]) }}" aria-label="Закрыть"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 6l12 12M18 6L6 18"/></svg></a></div>
+        <div class="nd-m-body nd-m-pad">
+          @include('tasks._edit_form', [
+            'task' => $ndEditTask,
+            'users' => $users,
+            'canAssignToAll' => $canAssignToAll ?? false,
+            'assignAllLabel' => $assignAllLabel,
+            'cancelUrl' => $buildTasksUrl(['edit_task' => null]),
+            'class' => 'row g-2',
+          ])
+        </div>
+      </div>
+    </div>
+  @endif
 @else
 <div class="d-flex flex-column gap-3">
     <div class="d-flex align-items-start justify-content-between flex-wrap gap-3">

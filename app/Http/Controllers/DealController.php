@@ -35,6 +35,10 @@ class DealController extends Controller
 
     public function index(Request $request)
     {
+        if ($request->boolean('suggest')) {
+            return $this->searchSuggest($request);
+        }
+
         $user = Auth::user();
         $q = $request->string('q')->toString();
         $status = $request->string('status')->toString(); // open|closed|all
@@ -123,6 +127,69 @@ class DealController extends Controller
             'productCategoryOptions',
             'today',
         ));
+    }
+
+    /**
+     * Подсказки поиска верхней панели (редизайн Nordika): до 8 сделок пространства по названию, имени, телефону
+     * (8… = 7…) или #id — открытые сначала. JSON для выпадающего списка; GET /deals?suggest=1&q=…
+     */
+    private function searchSuggest(Request $request)
+    {
+        $user = Auth::user();
+        $q = trim($request->string('q')->toString());
+        if (mb_strlen($q) < 2) {
+            return response()->json(['items' => []]);
+        }
+        $digits = preg_replace('/\D+/', '', $q);
+        if (strlen($digits) === 11 && $digits[0] === '8') {
+            $digits = '7'.substr($digits, 1);
+        }
+        $idText = ltrim($q, '#');
+        $id = ctype_digit($idText) && strlen($idText) <= 7 ? (int) $idText : null;
+
+        $deals = Deal::query()
+            ->where('account_id', $user->account_id)
+            ->where(function ($w) use ($q, $digits, $id) {
+                $w->where('title', 'like', "%{$q}%")
+                    ->orWhereHas('contact', fn ($c) => $c->where('name', 'like', "%{$q}%"));
+                if (strlen($digits) >= 4) {
+                    $w->orWhereHas('contact', fn ($c) => $c->where('phone', 'like', "%{$digits}%"));
+                }
+                if ($id) {
+                    $w->orWhere('id', $id);
+                }
+            })
+            ->with(['contact', 'stage', 'conversations' => fn ($c) => $c->orderByDesc('last_message_at')])
+            ->withCount([
+                'callRecordings as phone_call_recordings_count',
+                'activities as phone_call_activities_count' => fn ($a) => $a->where('type', 'call'),
+                'activities as tilda_lead_form_activities_count' => fn ($a) => $a->where('type', 'lead_form')->where('payload->provider', 'tilda'),
+                'activities as lemana_lead_form_activities_count' => fn ($a) => $a->where('type', 'lead_form')->where('payload->provider', 'hands'),
+            ])
+            ->orderByRaw('closed_at IS NOT NULL')
+            ->orderByDesc('updated_at')
+            ->limit(8)
+            ->get();
+
+        $results = ['won' => ['Успешно', 'var(--accent)'], 'lost' => ['Отказ', 'var(--red)'], 'extra_non_target' => ['Доп. / нецелевая', 'var(--amber)']];
+
+        return response()->json(['items' => $deals->map(function (Deal $deal) use ($results) {
+            $src = \App\Support\Ui\Nordika::source(\App\Support\Ui\Nordika::sourceKey($deal));
+            $stageName = (string) ($deal->stage?->name ?? '');
+            [$stage, $color] = $deal->closed_at
+                ? ($results[$deal->closed_result] ?? ['Закрыта', 'var(--muted)'])
+                : [trim(explode('/', $stageName)[0]), \App\Support\Ui\Nordika::stageDot($stageName, 0)];
+
+            return [
+                'id' => $deal->id,
+                'title' => $deal->title_is_custom ? $deal->title : ($deal->lead_display_name ?: $deal->title),
+                'phone' => \App\Support\Ui\Nordika::phone($deal->contact?->phone),
+                'stage' => $stage,
+                'stage_color' => $color,
+                'src' => ['label' => $src[0], 'color' => $src[1]],
+                'url' => route('deals.show', $deal),
+            ];
+        })->values()]);
     }
 
     public function kanban(Request $request)

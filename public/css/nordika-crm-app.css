@@ -378,3 +378,190 @@ button.nd-tkchk{background:var(--panel);padding:0;cursor:pointer}
   .nd-tk .nd-tkmid{flex:1 1 calc(100% - 60px)}
   .nd-tk-acts{margin-left:auto}
 }
+
+/* ===== правки 26.10 после показа ===== */
+/* переключатели (Вчера/Сегодня/Завтра, вид доски): подложка заметнее, выбранный — белый с зелёным текстом */
+.nd-seg{background:color-mix(in srgb,var(--ink) 8%,var(--bg));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ink) 6%,transparent)}
+.nd-seg a,.nd-seg button{color:color-mix(in srgb,var(--ink) 62%,var(--muted))}
+.nd-seg a:hover,.nd-seg button:hover{color:var(--ink)}
+.nd-seg a.nd-on,.nd-seg button.nd-on{background:var(--panel);color:var(--accent);box-shadow:0 1px 4px rgba(20,25,35,.14)}
+:root[data-theme="dark"] .nd-seg{background:#232831}
+
+/* календарь выбора дня/периода — чип как в сводке владельца */
+.nd-dr .chip{height:34px;padding:0 14px;font-weight:600;font-size:12.5px;box-shadow:none;background:var(--panel);border-color:var(--line)}
+.nd-dr .cal-pop{left:0;right:auto;width:300px;padding:16px}
+.nd-dr .cal-grid .d{height:36px;font-size:13px}
+
+/* кнопка звука уведомлений */
+#ndSoundBtn .nd-snd-off{display:none}
+#ndSoundBtn.nd-muted .nd-snd-on{display:none}
+#ndSoundBtn.nd-muted .nd-snd-off{display:block}
+#ndSoundBtn.nd-muted{color:var(--red);border-color:color-mix(in srgb,var(--red) 30%,var(--line))}
+
+/* окно уведомлений у колокольчика */
+.nd-notif-wrap{position:relative}
+.nd-notif-pop{position:absolute;top:calc(100% + 8px);right:0;width:380px;max-width:calc(100vw - 24px);background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-lg);z-index:70;overflow:hidden;animation:nd-pop .14s ease}
+.nd-notif-pop[hidden]{display:none}
+.nd-notif-hd{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid var(--line);font-size:14px}
+.nd-notif-all{border:0;background:transparent;color:var(--accent);font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;padding:0}
+.nd-notif-list{max-height:min(420px,60vh);overflow-y:auto}
+.nd-notif-i{display:flex;gap:10px;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);background:transparent;padding:11px 16px;cursor:pointer;color:var(--ink);font:inherit}
+.nd-notif-i:hover{background:var(--hover)}
+.nd-notif-dot{width:8px;height:8px;border-radius:50%;margin-top:6px;flex:none;background:transparent}
+.nd-notif-i.nd-unread .nd-notif-dot{background:var(--accent)}
+.nd-notif-txt{display:flex;flex-direction:column;gap:2px;min-width:0;font-size:13px}
+.nd-notif-txt b{font-weight:700}
+.nd-notif-i:not(.nd-unread) .nd-notif-txt b{font-weight:600;color:var(--muted)}
+.nd-notif-txt span{color:var(--muted);font-size:12.5px;word-break:break-word}
+.nd-notif-txt small{color:var(--faint);font-size:11.5px}
+.nd-notif-empty{padding:26px 16px;text-align:center;color:var(--faint);font-size:13px}
+a.nd-notif-ft{display:block;text-align:center;padding:11px;font-size:12.5px;font-weight:700;color:var(--accent);text-decoration:none}
+a.nd-notif-ft:hover{background:var(--hover)}
+
+/* поиск: недавние запросы и сделки */
+.nd-search{position:relative;transition:.15s}
+.nd-search:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);min-width:300px}
+.nd-sdrop{position:absolute;top:calc(100% + 8px);left:0;width:max(100%,460px);max-width:calc(100vw - 24px);background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-lg);z-index:70;padding:6px;animation:nd-pop .14s ease}
+.nd-sdrop[hidden]{display:none}
+.nd-sdrop-h{font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--faint);padding:8px 10px 4px}
+.nd-sdrop-i{display:flex;align-items:center;gap:10px;width:100%;border:0;background:transparent;border-radius:10px;padding:9px 10px;text-align:left;cursor:pointer;color:var(--ink);font:inherit;font-size:13.5px}
+.nd-sdrop-i:hover,.nd-sdrop-i.nd-on{background:var(--hover)}
+.nd-sdrop-i>.nd-icon{color:var(--muted);flex:none}
+.nd-sdrop-main{display:flex;flex-direction:column;min-width:0;flex:1}
+.nd-sdrop-main b{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nd-sdrop-main small{font-size:11.5px;color:var(--muted)}
+.nd-sdrop-deal .nd-src{flex:none}
+.nd-sdrop-deal .nd-stage-pill{flex:none;max-width:150px;overflow:hidden;text-overflow:ellipsis}
+.nd-sdrop-all{border-top:1px solid var(--line);border-radius:0 0 10px 10px;margin-top:4px;color:var(--accent);font-weight:600}
+.nd-sdrop-all span{flex:1}
+.nd-sdrop-all kbd{font:inherit;font-size:11px;color:var(--faint);border:1px solid var(--line);border-radius:6px;padding:1px 6px;background:var(--panel-2)}
+.nd-sdrop-none{padding:14px 10px;color:var(--muted);font-size:13px}
+
+/* сделка во всплывающем окне */
+.nd-deal-modal{position:relative;max-width:1180px;height:min(92vh,980px);padding:0}
+.nd-deal-modal iframe{width:100%;height:100%;border:0;display:block;background:var(--panel)}
+.nd-deal-close{position:absolute;top:14px;right:14px;z-index:2}
+.nd-deal-newtab{position:absolute;top:14px;right:58px;z-index:2;width:36px;height:36px;border-radius:10px;background:var(--pill);color:var(--ink);display:grid;place-items:center}
+.nd-deal-newtab:hover{background:var(--hover)}
+.nd-deal-newtab svg{width:16px;height:16px}
+.nd-deal-loading{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:13px;background:var(--panel)}
+.nd-deal-loading[hidden]{display:none}
+@media (max-width:700px){.nd-scrim#ndDealScrim{padding:0}.nd-deal-modal{height:100%;max-height:none;border-radius:0}}
+/* страница внутри окна (iframe): без каркаса, с прокруткой; место под крестик и «открыть отдельно» */
+html.nd-embed body{overflow:auto;height:auto;min-height:100%;background:var(--panel)}
+.nd-embed-page{padding:0}
+.nd-embed-page>.alert{margin:12px 16px}
+html.nd-embed .nd-deal{border:0;border-radius:0;box-shadow:none}
+html.nd-embed .nd-deal .nd-m-head{padding-right:110px}
+
+/* окна страниц (новое дело, рассылка, изменить дело) */
+.nd-modal.nd-sm-modal{max-width:560px}
+.nd-modal.nd-wide-modal{max-width:980px}
+.nd-m-pad{padding:18px 20px}
+.nd-m-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:6px}
+.nd-m-head a.nd-m-x{text-decoration:none}
+.nd-broadcast>.card{box-shadow:none}
+
+/* «Дела» — доска: просроченные / на сегодня / ближайшие, дела карточками */
+.nd-toolbar .nd-grow{flex:1}
+.nd-tboard{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:start}
+.nd-tcol{background:var(--panel-2);border:1px solid var(--line);border-radius:16px;min-width:0}
+.nd-tcol .nd-col-h{position:sticky;top:-4px;background:var(--panel-2);border-radius:16px 16px 0 0;z-index:1}
+.nd-tcol-body{padding:4px 10px 12px;display:flex;flex-direction:column;gap:9px}
+.nd-tcard{cursor:pointer}
+.nd-tcard .nd-c-top{gap:8px}
+.nd-tdue{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:999px;font-size:11.5px;font-weight:700;background:color-mix(in srgb,var(--blue) 13%,transparent);color:var(--blue);white-space:nowrap}
+.nd-tdue .nd-icon{width:13px;height:13px}
+.nd-tdue.nd-today{background:color-mix(in srgb,var(--amber) 18%,transparent);color:color-mix(in srgb,var(--amber) 80%,var(--ink))}
+.nd-tdue.nd-over{background:color-mix(in srgb,var(--red) 14%,transparent);color:var(--red)}
+.nd-twho{display:inline-flex;align-items:center;gap:5px;font-weight:600;color:var(--muted);overflow:hidden;white-space:nowrap}
+.nd-tdesc{font-size:12.5px;color:var(--muted);line-height:1.4;margin:-2px 0 8px;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.nd-tdeal{display:flex;gap:7px;align-items:flex-start;font-size:12.5px;margin-bottom:9px;min-width:0}
+.nd-tdeal .nd-icon{width:14px;height:14px;color:var(--muted);flex:none;margin-top:2px}
+.nd-tdeal>span{display:flex;flex-direction:column;min-width:0}
+.nd-tdeal a{color:var(--ink);font-weight:700;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nd-tdeal a:hover{color:var(--accent)}
+.nd-tdeal small{color:var(--muted);font-size:11.5px}
+.nd-tfoot{flex-direction:row!important;justify-content:flex-end;gap:6px!important}
+.nd-tfoot form{margin:0}
+.nd-tfoot a.nd-btn{text-decoration:none}
+.nd-tdone:hover{background:var(--accent);border-color:var(--accent);color:#fff}
+@media (max-width:1100px){.nd-tboard{grid-template-columns:1fr}.nd-tcol .nd-col-h{position:static}}
+
+/* «Завершённые»: итог периода (полоса записанные / отказы / нецелевые), целевые плитками, нецелевые — причины полосками */
+.nd-closed-sum{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px;margin-bottom:6px;align-items:start}
+.nd-closed-total{padding:18px 20px}
+.nd-closed-h{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:flex-end}
+.nd-closed-h .nd-kl{font-size:12px;color:var(--muted);font-weight:600}
+.nd-closed-n{font-size:32px;font-weight:800;letter-spacing:-.5px;line-height:1.1;margin-top:4px}
+.nd-closed-n small{font-size:13px;font-weight:600;color:var(--muted);letter-spacing:0}
+.nd-closed-legend{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--muted)}
+.nd-closed-legend span{display:flex;align-items:center;gap:7px}
+.nd-closed-legend i{width:10px;height:10px;border-radius:3px;flex:none}
+.nd-closed-legend b{color:var(--ink)}
+.nd-closed-bar{display:flex;height:12px;border-radius:999px;overflow:hidden;background:var(--pill);margin:14px 0 16px}
+.nd-closed-bar span{display:block;height:100%}
+.nd-closed-target{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+a.nd-closed-big{display:flex;flex-direction:column;gap:2px;text-decoration:none;color:inherit;border:1px solid var(--line);border-left:4px solid var(--c);border-radius:12px;padding:12px 14px;background:var(--panel)}
+a.nd-closed-big:hover{background:var(--hover)}
+a.nd-closed-big.nd-on{background:color-mix(in srgb,var(--c) 10%,var(--panel));border-color:var(--c)}
+.nd-closed-big .nd-kl{font-size:12px;color:var(--muted);font-weight:600}
+.nd-closed-big b{font-size:26px;font-weight:800;color:var(--c);line-height:1.15}
+.nd-closed-big small{font-size:11.5px;color:var(--faint)}
+.nd-closed-reasons{padding:14px 16px}
+.nd-closed-rh{display:flex;justify-content:space-between;gap:10px;align-items:baseline;margin-bottom:8px;flex-wrap:wrap}
+.nd-closed-rh b{font-size:14px}
+.nd-closed-rh span{font-size:11.5px;color:var(--faint)}
+a.nd-reason{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) 40px;gap:10px;align-items:center;padding:7px 8px;border-radius:9px;text-decoration:none;color:var(--ink);font-size:13px}
+a.nd-reason:hover{background:var(--hover)}
+a.nd-reason.nd-on{background:var(--accent-soft);color:var(--accent)}
+a.nd-reason.nd-zero{color:var(--faint)}
+.nd-reason-l{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nd-reason-bar{height:8px;border-radius:999px;background:var(--pill);overflow:hidden}
+.nd-reason-bar i{display:block;height:100%;background:var(--amber);border-radius:999px}
+a.nd-reason b{text-align:right;font-weight:800}
+.nd-closed-clear{margin-left:8px;font-size:11.5px;vertical-align:middle}
+.nd-closed-reason{max-width:420px}
+@media (max-width:1100px){.nd-closed-sum{grid-template-columns:1fr}}
+
+/* «Чаты»: эмодзи */
+.nd-emoji-wrap{position:relative;flex:none}
+.nd-emoji-pop{position:absolute;bottom:calc(100% + 8px);left:0;width:316px;display:grid;grid-template-columns:repeat(8,1fr);gap:2px;padding:8px;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow-lg);z-index:20;animation:nd-pop .14s ease}
+.nd-emoji-pop[hidden]{display:none}
+.nd-emoji-pop button{border:0;background:transparent;font-size:20px;line-height:1.25;padding:4px 0;border-radius:8px;cursor:pointer}
+.nd-emoji-pop button:hover{background:var(--hover)}
+
+/* «Календарь»: во всю высоту, слева — фильтр, статусы и замеры видимых дней */
+.nd-cal-page{flex:1;min-height:0;display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;padding:4px 22px 22px}
+.nd-cal-side{display:flex;flex-direction:column;gap:12px;padding:16px;min-height:0;overflow:hidden}
+.nd-cal-new{width:100%;justify-content:center;flex:none}
+.nd-cal-side .nd-field{margin:0;flex:none}
+.nd-cal-legend{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12px;color:var(--muted);flex:none}
+.nd-cal-legend span{display:inline-flex;align-items:center;gap:6px}
+.nd-cal-legend i{width:9px;height:9px;border-radius:50%}
+.nd-cal-agenda-h{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding-top:12px;font-size:13px;flex:none}
+.nd-cal-agenda-h span{background:var(--pill);color:var(--muted);border-radius:999px;font-size:11px;font-weight:700;padding:1px 8px}
+.nd-cal-agenda-h span:empty{display:none}
+.nd-cal-agenda{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:4px;margin:0 -6px;padding:0 6px}
+.nd-cal-day{font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--faint);margin:8px 0 2px}
+.nd-cal-item{display:flex;gap:9px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:8px 10px;cursor:pointer;color:var(--ink);font:inherit}
+.nd-cal-item:hover{border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}
+.nd-cal-item i{width:9px;height:9px;border-radius:50%;margin-top:5px;flex:none}
+.nd-cal-item span{display:flex;flex-direction:column;min-width:0;font-size:12.5px}
+.nd-cal-item small{color:var(--muted);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nd-cal-hint{font-size:11.5px;color:var(--faint);flex:none}
+.nd-cal-main{padding:12px;min-height:0;display:flex;flex-direction:column}
+.nd-cal-main #ccrmCalendar{flex:1;min-height:0;height:auto}
+.nd-cal-main .fc .fc-toolbar.fc-header-toolbar{margin-bottom:10px}
+.nd-cal-main .fc-timegrid-event{border-radius:8px;padding:2px 4px}
+.nd-cal-main .fc-event .ccrm-event-main{font-size:11.5px}
+.nd-cal-main .fc-event .ccrm-event-address{font-size:11px}
+.nd-cal-main .fc .fc-timegrid-slot{height:2.4em}
+.nd-cal-main .fc-day-today .fc-col-header-cell-cushion{color:var(--accent)!important}
+@media (max-width:900px){
+  .nd-cal-page{grid-template-columns:1fr;overflow-y:auto;padding:4px 14px 14px}
+  .nd-cal-side{max-height:none;overflow:visible}
+  .nd-cal-agenda{max-height:260px}
+  .nd-cal-main{min-height:75vh}
+}
+@media (max-width:600px){.nd-closed-target{grid-template-columns:1fr}}

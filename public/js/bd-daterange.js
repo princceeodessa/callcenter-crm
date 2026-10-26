@@ -18,6 +18,9 @@ window.bdDateRange = (function () {
         if (root.dataset.drReady) return;
         root.dataset.drReady = '1';
         const day = root.dataset.mode === 'day';
+        // data-param — имя параметра дня (по умолчанию date), data-allow-empty — «Применить» без даты = все даты
+        const key = root.dataset.param || 'date';
+        const allowEmpty = root.dataset.allowEmpty === '1';
         const btn = root.querySelector('[data-dr-btn]'), pop = root.querySelector('[data-dr-pop]');
         const max = parse(root.dataset.max);
         let selStart = parse(root.dataset.from), selEnd = parse(root.dataset.to) || selStart;
@@ -45,7 +48,7 @@ window.bdDateRange = (function () {
             }
             const trailing = (7 - ((startIdx + dim) % 7)) % 7;
             for (let i = 1; i <= trailing; i++) h += '<div class="d muted">' + i + '</div>';
-            const rng = selStart && selEnd ? rangeText(selStart, selEnd) : (selStart ? fmtD(selStart) + ' — …' : (day ? 'выберите день' : 'выберите период'));
+            const rng = selStart && selEnd ? rangeText(selStart, selEnd) : (selStart ? fmtD(selStart) + ' — …' : (allowEmpty ? (root.dataset.emptyLabel || 'все даты') : (day ? 'выберите день' : 'выберите период')));
             h += '</div><div class="cal-foot"><button type="button" class="cal-reset" data-dr-reset>Сбросить</button><span class="rng">' + rng + '</span>'
                 + '<button type="button" class="cal-apply" data-dr-apply>Применить</button></div>';
             pop.innerHTML = h;
@@ -79,9 +82,15 @@ window.bdDateRange = (function () {
             if (e.target.closest('[data-dr-reset]')) { selStart = null; selEnd = null; render(); return; }
             if (e.target.closest('[data-dr-apply]')) {
                 if (selStart && !selEnd) selEnd = selStart;
-                if (!selStart) return;
                 const q = new URLSearchParams(JSON.parse(root.dataset.params || '{}'));
-                if (day) q.set('date', iso(selStart)); else { q.set('from', iso(selStart)); q.set('to', iso(selEnd)); }
+                if (!selStart) {
+                    if (!allowEmpty) return;
+                    q.delete(key); q.delete('from'); q.delete('to');
+                    pop.hidden = true;
+                    location.href = root.dataset.action + (q.toString() ? '?' + q.toString() : '');
+                    return;
+                }
+                if (day) q.set(key, iso(selStart)); else { q.set('from', iso(selStart)); q.set('to', iso(selEnd)); }
                 root.querySelector('[data-dr-label]').textContent = day ? fmtFull(selStart) : rangeText(selStart, selEnd);
                 pop.hidden = true;
                 location.href = root.dataset.action + '?' + q.toString();

@@ -102,16 +102,7 @@
                 <a href="{{ route('deals.kanban', $kanbanParamsWithoutDate) }}">{{ $ui['all_dates'] }}</a>
             @endif
         </div>
-        <form method="GET" action="{{ route('deals.kanban') }}">
-            @if(!empty($showSpam))
-                <input type="hidden" name="show_spam" value="1">
-            @endif
-            @if($q !== '')
-                <input type="hidden" name="q" value="{{ $q }}">
-            @endif
-            <input type="date" class="nd-date" id="kanbanFocusDate" name="focus_date" value="{{ $focusDateValue }}" aria-label="Дата">
-            <button type="submit" class="nd-btn nd-sm"><svg class="nd-icon nd-sm" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>{{ $ui['apply'] }}</button>
-        </form>
+        @include('partials.nd-datepick', ['mode' => 'day', 'param' => 'focus_date', 'action' => route('deals.kanban'), 'params' => $kanbanParamsWithoutDate, 'from' => $focusDateValue, 'allowEmpty' => true])
         @if($q !== '' || $focusDateValue)
             <a class="nd-btn nd-sm" href="{{ route('deals.kanban', $kanbanResetParams) }}">{{ $ui['reset'] }}</a>
         @endif
@@ -433,7 +424,8 @@
                 board.addEventListener('click', (e) => {
                     const card = e.target.closest('.kanban-card');
                     if (!card || justDragged || e.target.closest('a, button, input, select, textarea')) return;
-                    if (card.dataset.href) window.location.href = card.dataset.href;
+                    // сделка — во всплывающем окне каркаса (public/js/nordika-crm.js)
+                    if (card.dataset.href) (window.ndOpenDeal || ((h) => { window.location.href = h; }))(card.dataset.href);
                 });
             }
 

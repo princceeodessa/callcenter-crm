@@ -30,12 +30,59 @@
   </style>
 @endpush
 
+@php
+  // редизайн «Nordika»: у колл-центра потолков календарь во всю высоту, статусы цветом, слева — замеры видимых дней
+  $nd = \App\Support\Ui\Nordika::enabled();
+  $ndStatusColors = ['planned' => 'var(--blue)', 'accepted' => 'var(--site)', 'concluded' => 'var(--accent)', 'not_concluded' => 'var(--red)', 'cancelled' => 'var(--faint)'];
+@endphp
+@if($nd)
+  @section('nd_fullbleed', '1')
+@endif
+
 @section('content')
 @php
   $isMeasurer = auth()->user()?->role === 'measurer';
   $measurerScope = $measurerScope ?? 'available';
 @endphp
 
+@if($nd)
+<div class="nd-cal-page">
+  <aside class="nd-panel nd-cal-side">
+    <button class="nd-btn nd-primary nd-cal-new" id="btnNew" type="button"><svg class="nd-icon nd-sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Записать на замер</button>
+    <div class="nd-field">
+      <label for="filterUser">Замерщик</label>
+      <select id="filterUser">
+        @unless($isMeasurer)
+          <option value="0">Все замерщики</option>
+        @endunless
+        @foreach($measurers as $u)
+          <option value="{{ $u->id }}" @selected((int) $selectedUserId === (int) $u->id)>{{ $u->name }}</option>
+        @endforeach
+      </select>
+    </div>
+    @if($isMeasurer)
+      <div class="nd-field">
+        <label>Показывать</label>
+        <div class="btn-group w-100" role="group" aria-label="Показ записей">
+          <button type="button" class="btn btn-sm {{ $measurerScope === 'available' ? 'btn-primary' : 'btn-outline-primary' }} js-scope" data-scope="available">Мои + свободные</button>
+          <button type="button" class="btn btn-sm {{ $measurerScope === 'mine' ? 'btn-primary' : 'btn-outline-primary' }} js-scope" data-scope="mine">Только мои</button>
+        </div>
+      </div>
+    @endif
+    <div class="nd-cal-legend">
+      @foreach($statuses as $k => $v)
+        <span><i style="background:{{ $ndStatusColors[$k] ?? 'var(--muted)' }}"></i>{{ $v }}</span>
+      @endforeach
+    </div>
+    <div class="nd-cal-agenda-h"><b>Замеры на экране</b><span id="ndCalAgendaN"></span></div>
+    <div class="nd-cal-agenda" id="ndCalAgenda"><div class="nd-faint">Загружаю…</div></div>
+    <div class="nd-cal-hint">Нажмите на свободное время в календаре — откроется запись на этот час.</div>
+  </aside>
+  <div class="nd-panel nd-cal-main">
+    <div id="ccrmCalendar"></div>
+  </div>
+</div>
+@else
 <div class="d-flex gap-3 ccrm-cal-wrap">
   <div class="card shadow-sm ccrm-cal-left flex-shrink-0">
     <div class="card-header d-flex align-items-center justify-content-between">
@@ -99,6 +146,7 @@
     </div>
   </div>
 </div>
+@endif
 
 <div class="modal fade" id="measurementModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
@@ -188,6 +236,9 @@
     const claimUrlTpl = @json(route('calendar.claim', ['measurement' => 0]));
     const releaseUrlTpl = @json(route('calendar.release', ['measurement' => 0]));
     const isMeasurer = @json($isMeasurer);
+    const nd = @json($nd);                                   // каркас Nordika: цвета статусов темы, список замеров слева
+    const statusColors = @json($ndStatusColors);
+    const escHtml = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const currentUserId = @json((int) auth()->id());
 
     const modalEl = document.getElementById('measurementModal');
@@ -287,7 +338,7 @@
       return activeBtn ? String(activeBtn.dataset.scope || 'available') : 'available';
     }
 
-    const calendar = new FullCalendar.Calendar(document.getElementById('ccrmCalendar'), {
+    const calOptions = {
       locale: 'ru',
       firstDay: 1,
       timeZone: 'local',
@@ -312,7 +363,10 @@
         if (isMeasurer) url.searchParams.set('scope', getScope());
         fetch(url.toString(), { headers: { 'Accept': 'application/json' } })
           .then(r => r.json())
-          .then(success)
+          .then(items => success(nd ? items.map((it) => {
+            const c = statusColors[(it.extendedProps || {}).status];
+            return c ? Object.assign(it, { backgroundColor: c, borderColor: c }) : it;
+          }) : items))
           .catch(failure);
       },
       dateClick: (info) => openCreate(info.date),
@@ -326,6 +380,7 @@
         if (p.assigned_user_name) mainParts.push(p.assigned_user_name + ':');
         if (p.phone) mainParts.push(p.phone);
         main.textContent = mainParts.join(' ') || arg.event.title || ('Замер #' + arg.event.id);
+        if (nd && arg.timeText) main.textContent = arg.timeText + ' · ' + main.textContent;
         wrap.appendChild(main);
 
         if (p.address) {
@@ -349,6 +404,46 @@
         info.jsEvent.preventDefault();
         openEdit(info.event);
       }
+    };
+    if (nd) {
+      // во всю высоту панели, рабочие часы, без строки «Весь день»; слева — замеры видимых дней
+      Object.assign(calOptions, {
+        height: '100%',
+        allDaySlot: false,
+        slotMinTime: '07:00:00',
+        slotMaxTime: '22:00:00',
+        scrollTime: '08:00:00',
+        dayMaxEvents: 3,
+        eventsSet: (events) => renderAgenda(events),
+      });
+    }
+    const calendar = new FullCalendar.Calendar(document.getElementById('ccrmCalendar'), calOptions);
+
+    const agendaEl = document.getElementById('ndCalAgenda');
+    const agendaN = document.getElementById('ndCalAgendaN');
+    function renderAgenda(events) {
+      if (!agendaEl) return;
+      const list = events.slice().sort((a, b) => a.start - b.start);
+      agendaN.textContent = list.length ? String(list.length) : '';
+      if (!list.length) { agendaEl.innerHTML = '<div class="nd-faint">На этих днях замеров нет</div>'; return; }
+      const fDay = new Intl.DateTimeFormat('ru-RU', { weekday: 'short', day: '2-digit', month: '2-digit' });
+      const fTime = new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' });
+      let html = '', day = '';
+      list.slice(0, 80).forEach((ev) => {
+        const d = fDay.format(ev.start);
+        if (d !== day) { day = d; html += `<div class="nd-cal-day">${escHtml(d)}</div>`; }
+        const p = ev.extendedProps || {};
+        html += `<button type="button" class="nd-cal-item" data-id="${escHtml(ev.id)}"><i style="background:${statusColors[p.status] || 'var(--muted)'}"></i>`
+          + `<span><b>${fTime.format(ev.start)}${p.phone ? ' · ' + escHtml(p.phone) : ''}</b>`
+          + (p.address ? `<small>${escHtml(p.address)}</small>` : '')
+          + `<small>${escHtml(p.assigned_user_name || 'замерщик не назначен')} · ${escHtml(p.status_label || '')}</small></span></button>`;
+      });
+      agendaEl.innerHTML = html;
+    }
+    agendaEl?.addEventListener('click', (e) => {
+      const b = e.target.closest('.nd-cal-item');
+      const ev = b ? calendar.getEventById(b.dataset.id) : null;
+      if (ev) openEdit(ev);
     });
 
     calendar.render();

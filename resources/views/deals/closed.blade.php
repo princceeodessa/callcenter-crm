@@ -22,42 +22,86 @@
   @endsection
   @section('nd_toolbar')
     <form method="GET" action="{{ route('deals.closed') }}" id="closedFilterForm">
-      <span class="nd-tb-note">с</span>
-      <input type="date" name="from" class="nd-input" value="{{ $fromValue }}" aria-label="С даты">
-      <span class="nd-tb-note">по</span>
-      <input type="date" name="to" class="nd-input" value="{{ $toValue }}" aria-label="По дату">
-      <select class="nd-input" name="result" aria-label="Результат">
-        <option value="all" @selected($result === 'all')>Все результаты</option>
-        <option value="won" @selected($result === 'won')>Успешно</option>
-        <option value="lost" @selected($result === 'lost')>Отказ</option>
-        <option value="extra_non_target" @selected($result === 'extra_non_target')>Доп.Работы / Не целевой</option>
-      </select>
-      @if($category !== '')
-        <input type="hidden" name="category" value="{{ $category }}">
-      @endif
-      <button class="nd-btn nd-sm nd-primary">Показать</button>
-      @if($q !== '' || $result !== 'all' || $category !== '')
-        <a class="nd-btn nd-sm" href="{{ route('deals.closed', ['from' => $fromValue, 'to' => $toValue]) }}">Сбросить</a>
-      @endif
+      <input type="hidden" name="from" value="{{ $fromValue }}">
+      <input type="hidden" name="to" value="{{ $toValue }}">
+      @if($result !== 'all')<input type="hidden" name="result" value="{{ $result }}">@endif
+      @if($category !== '')<input type="hidden" name="category" value="{{ $category }}">@endif
     </form>
+    @include('partials.nd-datepick', ['mode' => 'range', 'action' => route('deals.closed'), 'params' => array_filter(['result' => $result !== 'all' ? $result : null, 'category' => $category ?: null, 'q' => $q ?: null]), 'from' => $fromValue, 'to' => $toValue])
+    <div class="nd-seg" role="group" aria-label="Результат">
+      @foreach(['all' => 'Все', 'won' => 'Успешно', 'lost' => 'Отказ', 'extra_non_target' => 'Доп. / нецелевые'] as $rk => $rl)
+        <a @class(['nd-on' => $result === $rk]) href="{{ route('deals.closed', array_filter(['from' => $fromValue, 'to' => $toValue, 'q' => $q ?: null, 'result' => $rk !== 'all' ? $rk : null])) }}">{{ $rl }}</a>
+      @endforeach
+    </div>
+    @if($q !== '' || $result !== 'all' || $category !== '')
+      <a class="nd-btn nd-sm" href="{{ route('deals.closed', ['from' => $fromValue, 'to' => $toValue]) }}">Сбросить</a>
+    @endif
   @endsection
 @endif
 
 @section('content')
 @if($nd)
   @if(!empty($outcomeColumns))
-    {{-- потолки: исходы закрытых за период — плитка = фильтр списка --}}
-    <div class="nd-sec-row" style="margin-top:0"><h2 class="nd-sec-h">Исходы закрытых за {{ $ndPeriod }}</h2><span class="nd-sec-n">нажмите плитку — покажем эти сделки</span></div>
-    <div class="nd-kpis nd-kpis-auto">
-      @foreach($outcomeColumns as $key => $label)
-        @continue($key === 'none' && ($outcomeCounts['none'] ?? 0) === 0)
-        <a href="{{ route('deals.closed', array_filter(['from' => $fromValue, 'to' => $toValue, 'q' => $q, 'category' => $category === $key ? null : $key])) }}" @class(['nd-kpi', 'nd-on' => $category === $key])>
-          <div class="nd-kl">{{ $label }}</div>
-          <div class="nd-kv nd-sm">{{ $outcomeCounts[$key] ?? 0 }}</div>
-        </a>
-      @endforeach
+    @php
+      $ndCount = fn ($k) => (int) ($outcomeCounts[$k] ?? 0);
+      $ndTotal = array_sum(array_map('intval', $outcomeCounts));
+      $ndBooked = $ndCount('booked');
+      $ndLost = $ndCount('lost');
+      $ndNon = max(0, $ndTotal - $ndBooked - $ndLost);
+      $ndPct = fn ($n) => $ndTotal > 0 ? round($n * 100 / $ndTotal) : 0;
+      $ndLink = fn ($k) => route('deals.closed', array_filter(['from' => $fromValue, 'to' => $toValue, 'q' => $q ?: null, 'category' => $category === $k ? null : $k]));
+      $ndReasons = collect($outcomeColumns)->except(['booked', 'lost'])
+          ->map(fn ($label, $k) => ['key' => $k, 'label' => $label, 'n' => $ndCount($k)])
+          ->reject(fn ($r) => $r['key'] === 'none' && $r['n'] === 0)
+          ->sortByDesc('n')->values();
+      $ndMaxReason = max(1, (int) $ndReasons->max('n'));
+    @endphp
+    <div class="nd-closed-sum">
+      <div class="nd-panel nd-closed-total">
+        <div class="nd-closed-h">
+          <div><div class="nd-kl">Исходы закрытых за {{ $ndPeriod }}</div><div class="nd-closed-n">{{ $ndTotal }} <small>закрыто</small></div></div>
+          <div class="nd-closed-legend">
+            <span><i style="background:var(--accent)"></i>Записали на замер <b>{{ $ndBooked }}</b> · {{ $ndPct($ndBooked) }}%</span>
+            <span><i style="background:var(--red)"></i>Целевые отказы <b>{{ $ndLost }}</b> · {{ $ndPct($ndLost) }}%</span>
+            <span><i style="background:var(--amber)"></i>Нецелевые <b>{{ $ndNon }}</b> · {{ $ndPct($ndNon) }}%</span>
+          </div>
+        </div>
+        <div class="nd-closed-bar" role="img" aria-label="Записали {{ $ndPct($ndBooked) }}%, отказы {{ $ndPct($ndLost) }}%, нецелевые {{ $ndPct($ndNon) }}%">
+          <span style="width:{{ $ndPct($ndBooked) }}%;background:var(--accent)"></span><span style="width:{{ $ndPct($ndLost) }}%;background:var(--red)"></span><span style="width:{{ $ndPct($ndNon) }}%;background:var(--amber)"></span>
+        </div>
+        <div class="nd-closed-target">
+          <a href="{{ $ndLink('booked') }}" @class(['nd-closed-big', 'nd-on' => $category === 'booked']) style="--c:var(--accent)">
+            <span class="nd-kl">{{ $outcomeColumns['booked'] ?? 'Целевой записанный' }}</span><b>{{ $ndBooked }}</b><small>{{ $ndPct($ndBooked) }}% закрытых · записали на замер</small>
+          </a>
+          <a href="{{ $ndLink('lost') }}" @class(['nd-closed-big', 'nd-on' => $category === 'lost']) style="--c:var(--red)">
+            <span class="nd-kl">{{ $outcomeColumns['lost'] ?? 'Целевой отказ' }}</span><b>{{ $ndLost }}</b><small>{{ $ndPct($ndLost) }}% закрытых</small>
+          </a>
+        </div>
+      </div>
+      <div class="nd-panel nd-closed-reasons">
+        <div class="nd-closed-rh"><b>Нецелевые — почему</b><span>нажмите строку — покажем эти сделки</span></div>
+        @foreach($ndReasons as $r)
+          <a href="{{ $ndLink($r['key']) }}" @class(['nd-reason', 'nd-on' => $category === $r['key'], 'nd-zero' => $r['n'] === 0])>
+            <span class="nd-reason-l">{{ $r['label'] }}</span>
+            <span class="nd-reason-bar"><i style="width:{{ round($r['n'] * 100 / $ndMaxReason) }}%"></i></span>
+            <b>{{ $r['n'] }}</b>
+          </a>
+        @endforeach
+      </div>
     </div>
   @endif
+
+  <div class="nd-sec-row">
+    <h2 class="nd-sec-h">
+      @if($category !== '' && isset($outcomeColumns[$category]))
+        {{ $outcomeColumns[$category] }}
+        <a class="nd-tag nd-closed-clear" href="{{ route('deals.closed', array_filter(['from' => $fromValue, 'to' => $toValue, 'q' => $q ?: null, 'result' => $result !== 'all' ? $result : null])) }}">× снять фильтр</a>
+      @else
+        Сделки
+      @endif
+    </h2>
+    <span class="nd-sec-n">{{ number_format($deals->total(), 0, ',', ' ') }} шт.</span>
+  </div>
   <div class="nd-panel">
     <div class="nd-tbl-wrap">
       <table class="nd-tbl">
@@ -82,7 +126,7 @@
               <td>
                 <span class="nd-stage-pill" style="color:{{ $res[1] }}"><span class="nd-d" style="background:{{ $res[1] }}"></span>{{ $res[0] }}</span>
                 @if($ntLabel)<div class="nd-sub2">{{ $ntLabel }}</div>@endif
-                @if($deal->closed_reason)<div class="nd-sub2">{{ $deal->closed_reason }}</div>@endif
+                @if($deal->closed_reason)<div class="nd-sub2 nd-closed-reason">{{ $deal->closed_reason }}</div>@endif
               </td>
               <td>@if($deal->responsible)<span class="nd-person">{!! $ndUi::avatar($deal->responsible->name) !!}{{ $ndUi::firstName($deal->responsible->name) }}</span>@else<span class="nd-faint">—</span>@endif</td>
               <td class="nd-nowrap nd-faint">{{ optional($deal->closed_at)->format('d.m.Y H:i') }}</td>

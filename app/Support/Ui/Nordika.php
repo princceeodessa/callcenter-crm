@@ -182,7 +182,8 @@ class Nordika
     public static function avatar(?string $name, int $size = 18): string
     {
         $name = trim((string) $name);
-        $parts = preg_split('/\s+/u', $name) ?: [];
+        // инициалы — только из букв: «Всем (колл-центр)» → «ВК», а не «В(»
+        $parts = preg_split('/\s+/u', trim((string) preg_replace('/[^\p{L}\s]+/u', ' ', $name))) ?: [];
         $ini = mb_strtoupper(mb_substr($parts[0] ?? '', 0, 1).mb_substr($parts[1] ?? '', 0, 1));
         $hash = 0;
         foreach (mb_str_split($name) as $ch) {
