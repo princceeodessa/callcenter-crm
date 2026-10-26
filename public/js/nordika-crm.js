@@ -8,6 +8,147 @@
     const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const isDealUrl = (u) => u.origin === location.origin && /^\/deals\/\d+$/.test(u.pathname);
 
+    /* ---------- выпадающие списки в стиле Nordika ----------
+       Список <select> рисует система (синяя полоса, прямые углы) — поверх него наш: кнопка со стрелкой и всплывающий
+       список. Настоящий <select> остаётся источником значения: выбор ставит его value и шлёт input/change, а установка
+       select.value из скриптов страниц и hidden/disabled сразу видны на кнопке. */
+    const SEL_SCOPE = '.nd-toolbar select, .nd-deal select, .nd-modal select, .nd-field select, .nd-cal-page select, #measurementModal select, '
+        + '.nd-embed-page select, .nd-page[data-route^="deals."] select, .nd-page[data-route^="tasks."] select, '
+        + '.nd-page[data-route^="settings.users"] select, .nd-page[data-route^="reports."] select';
+    const valueDesc = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+    const indexDesc = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'selectedIndex');
+    const chevron = '<svg class="nd-sel-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+    const closeSelects = (except) => document.querySelectorAll('.nd-sel.nd-open').forEach((w) => { if (w !== except) w.ndClose(); });
+    const enhanceSelect = (sel) => {
+        if (sel.multiple || sel.size > 1 || sel.dataset.ndSel || sel.closest('.nd-no-enhance')) return;
+        sel.dataset.ndSel = '1';
+        const wrap = document.createElement('div');
+        wrap.className = 'nd-sel' + (sel.classList.contains('nd-input') ? ' nd-sel-tb' : '') + (sel.classList.contains('form-select-sm') ? ' nd-sel-sm' : '');
+        sel.parentNode.insertBefore(wrap, sel);
+        wrap.appendChild(sel);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'nd-sel-btn';
+        btn.setAttribute('aria-haspopup', 'listbox');
+        if (sel.getAttribute('aria-label')) btn.setAttribute('aria-label', sel.getAttribute('aria-label'));
+        btn.innerHTML = '<span class="nd-sel-val"></span>' + chevron;
+        wrap.appendChild(btn);
+        const list = document.createElement('div');
+        list.className = 'nd-sel-list';
+        list.setAttribute('role', 'listbox');
+        list.hidden = true;
+        wrap.appendChild(list);
+        sel.tabIndex = -1;
+        sel.classList.add('nd-sel-native');
+        if (sel.id) document.querySelectorAll(`label[for="${CSS.escape(sel.id)}"]`).forEach((l) => l.addEventListener('click', (e) => { e.preventDefault(); btn.focus(); }));
+
+        const paint = () => {
+            const o = sel.options[indexDesc.get.call(sel)];
+            btn.querySelector('.nd-sel-val').textContent = o ? o.textContent.trim() : '';
+            wrap.hidden = sel.hidden;
+            btn.disabled = sel.disabled;
+            wrap.classList.toggle('nd-sel-placeholder', !!o && o.value === '' && sel.required);
+        };
+        // значение, поставленное скриптом страницы (select.value = …), — сразу на кнопке
+        Object.defineProperty(sel, 'value', { configurable: true, get() { return valueDesc.get.call(this); }, set(v) { valueDesc.set.call(this, v); paint(); } });
+        Object.defineProperty(sel, 'selectedIndex', { configurable: true, get() { return indexDesc.get.call(this); }, set(v) { indexDesc.set.call(this, v); paint(); } });
+        new MutationObserver(paint).observe(sel, { attributes: true, attributeFilter: ['hidden', 'disabled'], childList: true, subtree: true });
+        sel.addEventListener('change', paint);
+
+        let active = -1;
+        const items = () => Array.from(list.querySelectorAll('.nd-sel-opt:not([disabled])'));
+        const mark = (i) => {
+            const all = items();
+            if (!all.length) return;
+            active = Math.max(0, Math.min(all.length - 1, i));
+            all.forEach((el, k) => el.classList.toggle('nd-on', k === active));
+            all[active].scrollIntoView({ block: 'nearest' });
+        };
+        const place = () => {
+            const r = btn.getBoundingClientRect();
+            const below = window.innerHeight - r.bottom - 12;
+            const above = r.top - 12;
+            const h = Math.min(list.scrollHeight, 320);
+            list.style.minWidth = r.width + 'px';
+            list.style.left = Math.min(r.left, window.innerWidth - Math.max(r.width, list.offsetWidth) - 8) + 'px';
+            if (below < h && above > below) { list.style.top = 'auto'; list.style.bottom = (window.innerHeight - r.top + 6) + 'px'; list.style.maxHeight = Math.min(320, above) + 'px'; }
+            else { list.style.bottom = 'auto'; list.style.top = (r.bottom + 6) + 'px'; list.style.maxHeight = Math.min(320, Math.max(below, 160)) + 'px'; }
+        };
+        wrap.ndClose = () => { list.hidden = true; wrap.classList.remove('nd-open'); btn.setAttribute('aria-expanded', 'false'); };
+        const open = () => {
+            closeSelects(wrap);
+            let html = '', idx = 0;
+            const cur = indexDesc.get.call(sel);
+            Array.from(sel.children).forEach((node) => {
+                const opts = node.tagName === 'OPTGROUP' ? Array.from(node.children) : [node];
+                if (node.tagName === 'OPTGROUP') html += `<div class="nd-sel-grp">${esc(node.label)}</div>`;
+                opts.forEach((o) => {
+                    const i = Array.prototype.indexOf.call(sel.options, o);
+                    if (o.hidden) return;
+                    html += `<button type="button" role="option" class="nd-sel-opt${i === cur ? ' nd-sel-cur' : ''}" data-i="${i}"${o.disabled ? ' disabled' : ''}>`
+                        + `<span>${esc(o.textContent.trim())}</span>${i === cur ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-11"/></svg>' : ''}</button>`;
+                    idx++;
+                });
+            });
+            list.innerHTML = html || '<div class="nd-sel-grp">Нет вариантов</div>';
+            list.hidden = false;
+            wrap.classList.add('nd-open');
+            btn.setAttribute('aria-expanded', 'true');
+            place();
+            mark(items().findIndex((el) => +el.dataset.i === cur));
+        };
+        const choose = (i) => {
+            if (indexDesc.get.call(sel) !== i) {
+                indexDesc.set.call(sel, i);
+                sel.dispatchEvent(new Event('input', { bubbles: true }));
+                sel.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            paint();
+            wrap.ndClose();
+            btn.focus();
+        };
+        btn.addEventListener('click', (e) => { e.stopPropagation(); list.hidden ? open() : wrap.ndClose(); });
+        list.addEventListener('mousedown', (e) => e.preventDefault());
+        list.addEventListener('click', (e) => { e.stopPropagation(); const o = e.target.closest('.nd-sel-opt'); if (o && !o.disabled) choose(+o.dataset.i); });
+        btn.addEventListener('keydown', (e) => {
+            if (list.hidden) {
+                if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(e.key)) { e.preventDefault(); open(); }
+                return;
+            }
+            if (e.key === 'ArrowDown') { e.preventDefault(); mark(active + 1); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); mark(active - 1); }
+            else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const o = items()[active]; if (o) choose(+o.dataset.i); }
+            else if (e.key === 'Escape' || e.key === 'Tab') { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); } wrap.ndClose(); }
+            else if (e.key.length === 1) {                        // по первой букве
+                const k = e.key.toLowerCase();
+                const all = items();
+                const from = active + 1;
+                const hit = [...all.slice(from), ...all.slice(0, from)].find((el) => el.textContent.trim().toLowerCase().startsWith(k));
+                if (hit) mark(all.indexOf(hit));
+            }
+        });
+        // select.focus() из скрипта страницы (например «почему нецелевая?» сразу после hidden = false) — открыть наш список
+        // (после текущего клика — иначе его «клик мимо» сразу закроет список)
+        sel.focus = () => { paint(); if (wrap.hidden) return; btn.focus(); setTimeout(() => { if (list.hidden) open(); }, 0); };
+        paint();
+    };
+    const enhanceSelects = (rootEl) => rootEl.querySelectorAll(SEL_SCOPE).forEach(enhanceSelect);
+    window.ndEnhanceSelects = enhanceSelects;
+    document.addEventListener('click', () => closeSelects());
+    window.addEventListener('resize', () => closeSelects());
+    document.addEventListener('scroll', (e) => { if (!e.target.closest?.('.nd-sel-list')) closeSelects(); }, true);
+    enhanceSelects(document);
+
+    /* ---------- поле «выбрать файл»: имя выбранного файла рядом с кнопкой ---------- */
+    document.addEventListener('change', (e) => {
+        const inp = e.target;
+        if (!(inp instanceof HTMLInputElement) || inp.type !== 'file' || !inp.closest('.nd-file')) return;
+        const name = inp.closest('.nd-file').querySelector('.nd-file-name');
+        const files = Array.from(inp.files || []);
+        name.textContent = files.length ? files.map((f) => f.name).join(', ') : name.dataset.empty;
+        inp.closest('.nd-file').classList.toggle('nd-has-file', files.length > 0);
+    });
+
     /* ---------- страница внутри окна сделки ---------- */
     if (root.classList.contains('nd-embed')) {
         document.addEventListener('click', (e) => {
@@ -21,7 +162,8 @@
             window.top.location.href = u.href;                    // чаты, проект и т.п. — в основном окне
         });
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && window.parent !== window) window.parent.postMessage({ nd: 'close' }, location.origin);
+            if (e.key !== 'Escape' || e.defaultPrevented) return;            // Esc в открытом списке закрывает только список
+            if (window.parent !== window) window.parent.postMessage({ nd: 'close' }, location.origin);
         });
         return;
     }
@@ -297,7 +439,7 @@
 
     /* ---------- Esc и календари выбора дат ---------- */
     document.addEventListener('keydown', (e) => {
-        if (e.key !== 'Escape') return;
+        if (e.key !== 'Escape' || e.defaultPrevented) return;            // Esc в открытом списке закрывает только список
         closeMenu();
         closeDeal();
         if (nPop) nPop.hidden = true;

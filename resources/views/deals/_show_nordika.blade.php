@@ -86,7 +86,11 @@
       <div class="nd-lbl">Голосовое сообщение в ленту</div>
       <form class="nd-composer nd-deal-voice" method="POST" action="{{ route('deals.voice-note.store', $deal) }}" enctype="multipart/form-data">
         @csrf
-        <input type="file" name="voice_note" accept="audio/*,.mp3,.wav,.ogg,.oga,.webm,.m4a,.aac,.amr,.3gp,.mp4" required aria-label="Файл">
+        <label class="nd-file">
+          <input type="file" name="voice_note" accept="audio/*,.mp3,.wav,.ogg,.oga,.webm,.m4a,.aac,.amr,.3gp,.mp4" required aria-label="Аудиофайл">
+          <span class="nd-file-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg>Выбрать запись</span>
+          <span class="nd-file-name" data-empty="Аудио не выбрано">Аудио не выбрано</span>
+        </label>
         <input name="voice_note_comment" maxlength="1000" placeholder="Комментарий к голосовому (необязательно)">
         <button class="nd-btn nd-primary">Добавить</button>
       </form>
