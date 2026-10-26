@@ -174,8 +174,8 @@
               @elseif($p['provider'] === 'hands')
                 {{-- ключ не показывается: только что он сохранён, когда был опрос и сколько заказов стало лидами --}}
                 <div class="alert alert-info small">
-                  <div class="fw-semibold mb-1">Заказы «Руки» (hands.ru) → лиды в «Поступил лид»</div>
-                  Ключ — в бэкофисе Рук: раздел «API» → «Ключ выпущен». CRM каждые 5 минут забирает новые заказы и заводит каждый один раз
+                  <div class="fw-semibold mb-1">Заказы Лемана ПРО (через hands.ru) → лиды в «Поступил лид»</div>
+                  Ключ — в бэкофисе hands.ru: раздел «API» → «Ключ выпущен». CRM каждые 5 минут забирает новые заказы и заводит каждый один раз
                   (если у номера уже есть открытая сделка — заказ ляжет в неё). Выпустили новый ключ в Руках — старый перестаёт работать, вставьте новый сюда.
                 </div>
                 @if(!empty($settings['api_key']))
@@ -184,7 +184,7 @@
                     @if($conn->last_synced_at) · опрос {{ $conn->last_synced_at->format('d.m H:i') }}@endif</div>
                 @endif
                 <div class="mb-2">
-                  <label class="form-label small">Ключ API Рук</label>
+                  <label class="form-label small">Ключ API hands.ru</label>
                   <input name="api_key" type="password" autocomplete="off" class="form-control form-control-sm" placeholder="{{ !empty($settings['api_key']) ? 'вставьте новый ключ, чтобы заменить' : 'ключ из раздела «API» бэкофиса Рук' }}">
                 </div>
                 @error('hands')<div class="alert alert-danger small">{{ $message }}</div>@enderror

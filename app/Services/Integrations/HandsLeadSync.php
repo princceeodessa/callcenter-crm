@@ -18,8 +18,8 @@ use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
- * Заказы «Руки» (hands.ru, API бэкофиса) → лиды потолков. Заказы Леруа Мерлен на замер потолка назначаются нашей
- * организации в Руках; CRM раз в 5 минут забирает новые (GET /api/v1/specialist/orders/, ключ в заголовке X-Api-Key)
+ * Заказы Лемана ПРО (бывш. Леруа Мерлен), приходящие через сервис «Руки» (hands.ru, API бэкофиса), → лиды потолков.
+ * Для людей источник — «Лемана ПРО» (просьба 26.10.2026). Заказы на замер потолка назначаются нашей организации в Руках; CRM раз в 5 минут забирает новые (GET /api/v1/specialist/orders/, ключ в заголовке X-Api-Key)
  * и заводит каждый один раз (журнал integration_events, provider hands, external_id — номер заказа): как заявка
  * с сайта — сделка в «Поступил лид» или, если у номера уже есть открытая сделка, в неё (LeadDeduplicator).
  * Заказ, по которому мастер в Руках уже «Договорились» с клиентом, — сразу на этап «Замер назначен» (решение 26.10.2026):
@@ -32,6 +32,9 @@ class HandsLeadSync
     public const PROVIDER = 'hands';
 
     public const API = 'https://api.hands.ru/api/v1/specialist';
+
+    /** Как источник называется для людей: в сделке, ленте, отчётах. */
+    public const SOURCE = 'Лемана ПРО';
 
     /** Со скольких дней назад берём заказы при подключении (историю не заводим — её уже обработали в Руках). */
     public const START_DAYS = 3;
@@ -106,7 +109,7 @@ class HandsLeadSync
         $when = trim((string) ($order['work_time'] ?? '')) !== '' ? ', замер '.Carbon::parse((string) $order['work_time'])->format('d.m.Y H:i') : '';
         DealActivity::withoutGlobalScopes()->create([
             'account_id' => $deal->account_id, 'deal_id' => $deal->id, 'author_user_id' => null, 'type' => 'stage_changed',
-            'body' => 'Руки: мастер договорился с клиентом'.$when.' — этап «'.$to->name.'»',
+            'body' => 'Лемана ПРО: мастер договорился с клиентом'.$when.' — этап «'.$to->name.'»',
             'payload' => ['from_stage_id' => $from, 'to_stage_id' => $to->id, 'provider' => self::PROVIDER, 'external_id' => (string) ($order['id'] ?? '')],
         ]);
         DealStageHistory::withoutGlobalScopes()->create([
@@ -176,7 +179,7 @@ class HandsLeadSync
                     'account_id' => $accountId,
                     'pipeline_id' => $pipelineId,
                     'stage_id' => $stageId,
-                    'title' => ($name !== '' ? $name : ($phone ?? 'Клиент')).' — Руки (hands.ru)',
+                    'title' => ($name !== '' ? $name : ($phone ?? 'Клиент')).' — '.self::SOURCE,
                     'title_is_custom' => 0,
                     'contact_id' => $contact?->id,
                     'responsible_user_id' => User::where('account_id', $accountId)->where('is_active', 1)->where('role', 'admin')->orderBy('id')->value('id'),
@@ -218,7 +221,7 @@ class HandsLeadSync
             return trim((string) ($w['name'] ?? '')).($qty !== '' && $qty !== '1' ? ' — '.$qty.($unit !== '' ? ' '.$unit : '') : '');
         })->filter()->values();
         $lines = [
-            'Заказ «Руки» (hands.ru) № '.$o['id'].(! empty($o['creation_time']) ? ' от '.$at((string) $o['creation_time']) : '')
+            'Заказ '.self::SOURCE.' № '.$o['id'].(! empty($o['creation_time']) ? ' от '.$at((string) $o['creation_time']) : '')
                 .(! empty($o['shop_name']) ? ' · магазин '.$o['shop_name'] : ''),
             'Что: '.($works->isNotEmpty() ? $works->implode('; ') : trim(preg_replace('/\s+/u', ' ', (string) ($o['title'] ?? '')))),
             'Адрес: '.trim((string) ($o['address'] ?? '')).(trim((string) ($o['directions'] ?? '')) !== '' ? ', '.trim((string) $o['directions']) : ''),
@@ -227,12 +230,12 @@ class HandsLeadSync
             $lines[] = 'Телефоны: '.implode(', ', $phones);
         }
         if (! empty($o['work_time'])) {
-            $lines[] = 'Время работ в Руках: '.$at((string) $o['work_time']);
+            $lines[] = 'Время работ: '.$at((string) $o['work_time']);
         }
         if (! empty($o['delivery_date'])) {
             $lines[] = 'Доставка товара: '.Carbon::parse((string) $o['delivery_date'])->format('d.m.Y');
         }
-        $lines[] = 'В Руках: '.trim((string) ($o['status'] ?? '')).(! empty($o['specialist']) ? ' · мастер '.$o['specialist'] : '')
+        $lines[] = 'Статус: '.trim((string) ($o['status'] ?? '')).(! empty($o['specialist']) ? ' · мастер '.$o['specialist'] : '')
             .(! empty($o['price']) ? ' · сумма '.$o['price'].' ₽' : '').(! empty($o['payment_status']) ? ' · '.$o['payment_status'] : '');
         $comment = trim((string) ($o['full_comment'] ?? '')) ?: trim((string) ($o['comment'] ?? ''));
         if ($comment !== '') {
@@ -274,7 +277,7 @@ class HandsLeadSync
         $data = Http::json($text);
         if ($status !== 200) {
             $msg = (string) ($data['error'] ?? $data['detail'] ?? '');
-            throw new RuntimeException('Руки: HTTP '.$status.($msg !== '' ? ' — '.mb_substr($msg, 0, 200) : ($status === 401 || $status === 403 ? ' — ключ не принят' : '')));
+            throw new RuntimeException('hands.ru: HTTP '.$status.($msg !== '' ? ' — '.mb_substr($msg, 0, 200) : ($status === 401 || $status === 403 ? ' — ключ не принят' : '')));
         }
 
         return $data;

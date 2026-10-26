@@ -26,8 +26,8 @@ class IntegrationController extends Controller
         'tilda' => 'Tilda',
         // статистика Instagram БлагоДара и «Шагового» для «SMM-контента» — только в пространстве потолков
         'instagram' => 'Instagram (статистика)',
-        // заказы «Руки» (hands.ru, Леруа Мерлен) → лиды потолков
-        'hands' => 'Руки (hands.ru)',
+        // заказы Лемана ПРО (через сервис «Руки», hands.ru) → лиды потолков
+        'hands' => 'Лемана ПРО (через hands.ru)',
     ];
 
     public function index()
@@ -430,7 +430,7 @@ class IntegrationController extends Controller
         $connection = IntegrationConnection::query()->firstOrNew(['account_id' => Auth::user()->account_id, 'provider' => 'hands']);
         $settings = is_array($connection->settings) ? $connection->settings : [];
         if ($key === '') {
-            return back()->withErrors(['hands' => 'Вставьте ключ API из бэкофиса Рук (раздел «API»).']);
+            return back()->withErrors(['hands' => 'Вставьте ключ API из бэкофиса hands.ru (раздел «API»).']);
         }
         try {
             HandsLeadSync::check($key);
@@ -441,7 +441,7 @@ class IntegrationController extends Controller
         $settings['import_since'] ??= now()->subDays(HandsLeadSync::START_DAYS)->toDateString();
         $connection->fill(['account_id' => Auth::user()->account_id, 'provider' => 'hands', 'status' => 'active', 'settings' => $settings, 'last_error' => null])->save();
 
-        return redirect()->route('settings.integrations.index')->with('status', 'Руки подключены: новые заказы будут приходить лидами в «Поступил лид» каждые 5 минут.');
+        return redirect()->route('settings.integrations.index')->with('status', 'Лемана ПРО подключена: новые заказы будут приходить лидами в «Поступил лид» каждые 5 минут.');
     }
 
     /** Instagram подключается в пространстве потолков: оттуда сводка владельца и «SMM-контент» читают токены. */

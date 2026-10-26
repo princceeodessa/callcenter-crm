@@ -6,12 +6,12 @@ use App\Models\IntegrationConnection;
 use App\Services\Integrations\HandsLeadSync;
 use Illuminate\Console\Command;
 
-/** Новые заказы «Руки» (hands.ru) → лиды потолков; раз в 5 минут из планировщика. */
+/** Новые заказы Лемана ПРО (через hands.ru) → лиды потолков; раз в 5 минут из планировщика. */
 class PollHandsOrders extends Command
 {
     protected $signature = 'integrations:hands-poll';
 
-    protected $description = 'Заказы «Руки» (hands.ru) → лиды в «Поступил лид»';
+    protected $description = 'Заказы Лемана ПРО (через hands.ru) → лиды в «Поступил лид»';
 
     public function handle(HandsLeadSync $sync): int
     {
@@ -22,7 +22,7 @@ class PollHandsOrders extends Command
                 $this->info("[account {$conn->account_id}] заказов {$r['orders']}, новых лидов {$r['created']}, договорились (→ «Замер назначен») {$r['moved']}");
             } catch (\Throwable $e) {
                 // сеть или ключ — ошибка видна в «Интеграциях», планировщик не падает
-                $conn->forceFill(['last_error' => 'Руки: '.mb_substr($e->getMessage(), 0, 300)])->save();
+                $conn->forceFill(['last_error' => 'Лемана ПРО: '.mb_substr($e->getMessage(), 0, 300)])->save();
                 $this->warn("[account {$conn->account_id}] ".$e->getMessage());
             }
         }

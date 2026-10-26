@@ -50,7 +50,7 @@ class CeilingsKpi
         'chat_telegram' => 'написали в Telegram',
         'form_tilda' => 'форма на сайте',
         'form_vk' => 'лид-форма',
-        'form_hands' => 'заказ в «Руках» (Леруа Мерлен)',
+        'form_hands' => 'заказ Лемана ПРО',
         'call_ours' => 'позвонили мы (клиент оставил номер)',
     ];
 
@@ -292,7 +292,7 @@ class CeilingsKpi
             $key === 'chat_telegram' => 'Telegram',
             $key === 'form_tilda' || $key === 'chat_tilda' => 'Сайт · форма (Tilda)',
             $key === 'form_vk' => 'ВК · лид-форма',
-            $key === 'form_hands' => 'Руки (hands.ru) · Леруа Мерлен',
+            $key === 'form_hands' => 'Лемана ПРО',
             $key === 'call_ours' => 'Звонок от нас (клиент оставил номер)',
             $key === 'import_bitrix' => 'Импорт из Битрикса',
             str_starts_with($key, 'chat_') => 'Чат · '.substr($key, 5),

@@ -80,15 +80,15 @@ class HandsLeadSyncTest extends TestCase
         $deals = DB::table('deals')->where('account_id', $this->acc)->get();
         $this->assertCount(1, $deals, 'заказ 20.10 — до подключения, не заводится');
         $deal = $deals->first();
-        $this->assertSame([$this->stage['lead'], 'Анна Петрова — Руки (hands.ru)', 1], [(int) $deal->stage_id, $deal->title, (int) $deal->is_unread]);
+        $this->assertSame([$this->stage['lead'], 'Анна Петрова — Лемана ПРО', 1], [(int) $deal->stage_id, $deal->title, (int) $deal->is_unread]);
         $this->assertSame('79120001122', DB::table('contacts')->where('id', $deal->contact_id)->value('phone'));
         $act = DB::table('deal_activities')->where('deal_id', $deal->id)->where('type', 'lead_form')->first();
         $this->assertSame(['hands', '7001'], [json_decode($act->payload, true)['provider'], json_decode($act->payload, true)['external_id']]);
-        foreach (['Заказ «Руки» (hands.ru) № 7001 от 26.10.2026 09:12 · магазин LM_Izhevsk115', 'Что: Замер потолка', 'Адрес: г. Ижевск, ул. Ленина, д. 1, п. 4, кв. 45, эт. 6',
-            'Время работ в Руках: 27.10.2026 10:00', 'В Руках: Назначен · мастер Картапов Сергей', 'Комментарий: Услуга: Замер потолка'] as $line) {
+        foreach (['Заказ Лемана ПРО № 7001 от 26.10.2026 09:12 · магазин LM_Izhevsk115', 'Что: Замер потолка', 'Адрес: г. Ижевск, ул. Ленина, д. 1, п. 4, кв. 45, эт. 6',
+            'Время работ: 27.10.2026 10:00', 'Статус: Назначен · мастер Картапов Сергей', 'Комментарий: Услуга: Замер потолка'] as $line) {
             $this->assertStringContainsString($line, $act->body);
         }
-        $this->assertSame('Руки (hands.ru) · Леруа Мерлен', CeilingsKpi::channelLabel((new CeilingsKpi($this->acc))->channelsFor([(int) $deal->id])[(int) $deal->id]));
+        $this->assertSame('Лемана ПРО', CeilingsKpi::channelLabel((new CeilingsKpi($this->acc))->channelsFor([(int) $deal->id])[(int) $deal->id]));
         $this->assertNotNull($conn->fresh()->last_synced_at);
 
         $this->artisan('integrations:hands-poll')->assertExitCode(0);
@@ -108,7 +108,7 @@ class HandsLeadSyncTest extends TestCase
         $this->assertSame($this->stage['measure'], (int) $deal('7002')->stage_id);
         $this->assertSame($this->stage['lead'], (int) $deal('7001')->stage_id, '«Назначен» — колл-центру');
         $this->assertSame(1, DB::table('deal_stage_history')->where('deal_id', $deal('7002')->id)->where('to_stage_id', $this->stage['measure'])->whereNull('changed_by_user_id')->count());
-        $this->assertStringContainsString('Руки: мастер договорился с клиентом, замер 28.10.2026 15:00 — этап «Замер назначен»',
+        $this->assertStringContainsString('Лемана ПРО: мастер договорился с клиентом, замер 28.10.2026 15:00 — этап «Замер назначен»',
             DB::table('deal_activities')->where('deal_id', $deal('7002')->id)->where('type', 'stage_changed')->value('body'));
 
         // позже: по 7001 договорились — сделка ещё на первом этапе, переходит; 7003 оператор уже взял в работу — не трогаем
@@ -144,7 +144,7 @@ class HandsLeadSyncTest extends TestCase
         $conn = $this->conn();
         $conn->forceFill(['settings' => ['api_key' => 'OLD', 'import_since' => '2026-10-23']])->save();
         $this->artisan('integrations:hands-poll')->assertExitCode(0);
-        $this->assertStringContainsString('Руки: HTTP 403 — Неверный ключ', (string) $conn->fresh()->last_error);
+        $this->assertStringContainsString('Лемана ПРО: hands.ru: HTTP 403 — Неверный ключ', (string) $conn->fresh()->last_error);
         $this->assertSame(0, DB::table('deals')->where('account_id', $this->acc)->count());
     }
 
@@ -158,7 +158,7 @@ class HandsLeadSyncTest extends TestCase
         $conn = IntegrationConnection::withoutGlobalScopes()->where('account_id', $this->acc)->where('provider', 'hands')->firstOrFail();
         $this->assertSame(['active', 'KEY1', '2026-10-23'], [$conn->status, $conn->settings['api_key'], $conn->settings['import_since']]);
 
-        $page = $this->actingAs($admin)->get(route('settings.integrations.index'))->assertOk()->assertSee('Руки (hands.ru)')->assertSee('ключ сохранён · заказы с 23.10.2026')->getContent();
+        $page = $this->actingAs($admin)->get(route('settings.integrations.index'))->assertOk()->assertSee('Лемана ПРО (через hands.ru)')->assertSee('ключ сохранён · заказы с 23.10.2026')->getContent();
         $this->assertStringNotContainsString('KEY1', $page);
     }
 }
