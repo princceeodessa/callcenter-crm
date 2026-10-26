@@ -17,7 +17,7 @@ class OwnerOverheadTest extends TestCase
         parent::setUp();
         Carbon::setTestNow('2026-10-26 12:00:00');
         config(['owner.overhead' => ['cashiers_per_day' => 4700, 'monthly' => [
-            'marketing' => ['Маркетинг', 300000], 'radio' => ['Радио', 80000], 'newspapers' => ['Газеты', 20000],
+            'marketing' => ['Маркетинг', 300000], 'radio' => ['Радио', 68000], 'newspapers' => ['Газеты', 20000], 'dgis' => ['2ГИС', 10000],
         ]]]);
     }
 
@@ -36,8 +36,8 @@ class OwnerOverheadTest extends TestCase
     {
         $o = Overhead::forPeriod(Carbon::parse('2026-09-01'), Carbon::parse('2026-10-01'), 50000);
         $this->assertSame(30, $o['days']);
-        $this->assertEquals(['cashiers' => 141000, 'marketing' => 300000, 'radio' => 80000, 'newspapers' => 20000, 'ads' => 50000], $this->sums($o));
-        $this->assertEquals(591000, $o['total']);
+        $this->assertEquals(['cashiers' => 141000, 'marketing' => 300000, 'radio' => 68000, 'newspapers' => 20000, 'dgis' => 10000, 'ads' => 50000], $this->sums($o));
+        $this->assertEquals(589000, $o['total']);
         $this->assertSame('4 700 ₽ × 30 дней', $o['items'][0]['note']);
         $this->assertSame('300 000 ₽ в месяц', $o['items'][1]['note']);
     }
@@ -47,7 +47,7 @@ class OwnerOverheadTest extends TestCase
         // «этот месяц» — до сегодня включительно: 26 дней октября из 31
         $o = Overhead::forPeriod(Carbon::parse('2026-10-01'), Carbon::parse('2026-11-01'), 0);
         $this->assertSame(26, $o['days']);
-        $this->assertEquals(['cashiers' => 122200, 'marketing' => 251612.9, 'radio' => 67096.77, 'newspapers' => 16774.19, 'ads' => 0], $this->sums($o));
+        $this->assertEquals(['cashiers' => 122200, 'marketing' => 251612.9, 'radio' => 57032.26, 'newspapers' => 16774.19, 'dgis' => 8387.1, 'ads' => 0], $this->sums($o));
         $this->assertSame('300 000 ₽ в месяц · за 26 дней', $o['items'][1]['note']);
 
         // целиком в будущем — расходов нет
