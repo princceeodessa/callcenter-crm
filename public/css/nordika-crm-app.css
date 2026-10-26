@@ -692,3 +692,50 @@ html.nd-html .form-control[type=file]:not(:disabled):not([readonly]){cursor:poin
 .nd-tbl thead tr:first-child th:first-child{border-top-left-radius:var(--r)}
 .nd-tbl thead tr:first-child th:last-child{border-top-right-radius:var(--r)}
 html.nd-html .nd-page .card:has(> .table-responsive),html.nd-html .nd-page .card:has(> .table){overflow:hidden}
+
+/* ===== «Завершённые»: блоки итога одной высоты, нецелевые — компактно ===== */
+.nd-closed-sum{align-items:stretch}
+.nd-closed-total{display:flex;flex-direction:column;justify-content:space-between;gap:14px}
+.nd-closed-total .nd-closed-bar{margin:0}
+.nd-closed-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.nd-closed-kpis>div{display:flex;flex-direction:column;gap:2px;background:var(--btn-soft);border-radius:12px;padding:10px 12px;min-width:0}
+.nd-closed-kpis span{font-size:11.5px;color:var(--muted);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nd-closed-kpis b{font-size:20px;font-weight:800;line-height:1.2}
+.nd-closed-kpis small{font-size:11px;color:var(--faint)}
+@media (max-width:600px){.nd-closed-kpis{grid-template-columns:1fr}}
+.nd-closed-reasons{display:flex;flex-direction:column;gap:10px;padding:16px 18px}
+.nd-closed-rh{margin:0;align-items:center}
+.nd-closed-rh>span{font-size:12px;color:var(--muted)}
+.nd-closed-rh>span b{font-size:13px;color:var(--ink)}
+a.nd-reason-none{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink);background:color-mix(in srgb,var(--amber) 13%,var(--panel));border-radius:12px;padding:9px 12px}
+a.nd-reason-none:hover{background:color-mix(in srgb,var(--amber) 20%,var(--panel))}
+a.nd-reason-none.nd-on{box-shadow:inset 0 0 0 1.5px var(--amber)}
+.nd-reason-none-ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--amber);color:#fff;flex:none}
+.nd-reason-none-ic svg{width:16px;height:16px}
+.nd-reason-none-t{display:flex;flex-direction:column;min-width:0;flex:1}
+.nd-reason-none-t b{font-size:13.5px}
+.nd-reason-none-t small{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nd-reason-go{font-size:12px;font-weight:700;color:color-mix(in srgb,var(--amber) 75%,var(--ink));white-space:nowrap}
+.nd-reason-sub{display:flex;align-items:baseline;gap:6px;font-size:12px;color:var(--muted)}
+.nd-reason-sub b{color:var(--ink)}
+.nd-reason-sub span{margin-left:auto;font-size:11px;color:var(--faint)}
+.nd-reason-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;flex:1;align-content:start}
+a.nd-reason2{display:flex;flex-direction:column;gap:6px;text-decoration:none;color:var(--ink);background:var(--btn-soft);border-radius:10px;padding:8px 10px}
+a.nd-reason2:hover{background:var(--btn-soft-hover)}
+a.nd-reason2.nd-on{background:var(--accent-soft);box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--accent) 45%,transparent)}
+a.nd-reason2.nd-zero{color:var(--faint)}
+.nd-reason2-top{display:flex;align-items:baseline;gap:6px;font-size:12.5px;min-width:0}
+.nd-reason2-l{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nd-reason2-top b{font-weight:800;font-size:13px}
+.nd-reason2-top small{font-size:11px;color:var(--muted);min-width:30px;text-align:right}
+a.nd-reason2 .nd-reason-bar{height:4px;background:color-mix(in srgb,var(--ink) 7%,transparent)}
+@media (max-width:600px){.nd-reason-grid{grid-template-columns:1fr}.nd-reason-none-t small{white-space:normal}}
+
+/* зелёная кнопка («+ Сделка», «Показать»…) при наведении — темнее, а не белая */
+.nd-btn.nd-primary:hover,.nd-toolbar .nd-btn.nd-primary:hover{background:#199a4b;color:#fff;filter:none}
+:root[data-theme="dark"] .nd-btn.nd-primary:hover{background:#27b25f}
+
+/* рамка фокуса браузера у кнопок панели и верхней панели — не показываем (появлялась после клика при прокрутке канбана) */
+.nd-toolbar :is(button,a,label,.nd-chipf):focus,.nd-toolbar :is(button,a,label,.nd-chipf):focus-visible,
+.nd-top :is(button,a):focus,.nd-top :is(button,a):focus-visible,
+.nd-seg :is(button,a):focus,.nd-seg :is(button,a):focus-visible{outline:none}

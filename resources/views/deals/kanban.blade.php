@@ -432,8 +432,9 @@
             const saved = localStorage.getItem('kanbanMode') || 'row';
             applyMode(saved);
 
-            btnRow.addEventListener('click', () => applyMode('row'));
-            btnWrap.addEventListener('click', () => applyMode('wrap'));
+            // фокус с кнопки снимаем: иначе прокрутка доски клавишами рисует вокруг неё рамку
+            btnRow.addEventListener('click', () => { applyMode('row'); btnRow.blur(); });
+            btnWrap.addEventListener('click', () => { applyMode('wrap'); btnWrap.blur(); });
 
             const tokenEl = document.querySelector('meta[name="csrf-token"]');
             const csrf = tokenEl ? tokenEl.getAttribute('content') : '';

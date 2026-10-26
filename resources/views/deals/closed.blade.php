@@ -50,11 +50,19 @@
       $ndNon = max(0, $ndTotal - $ndBooked - $ndLost);
       $ndPct = fn ($n) => $ndTotal > 0 ? round($n * 100 / $ndTotal) : 0;
       $ndLink = fn ($k) => route('deals.closed', array_filter(['from' => $fromValue, 'to' => $toValue, 'q' => $q ?: null, 'category' => $category === $k ? null : $k]));
-      $ndReasons = collect($outcomeColumns)->except(['booked', 'lost'])
+      // нецелевые: «без причины» — отдельной плашкой, причины — плитками; полоски сравнивают причины между собой
+      $ndNoneN = $ndCount('none');
+      $ndReasons = collect($outcomeColumns)->except(['booked', 'lost', 'none'])
           ->map(fn ($label, $k) => ['key' => $k, 'label' => $label, 'n' => $ndCount($k)])
-          ->reject(fn ($r) => $r['key'] === 'none' && $r['n'] === 0)
           ->sortByDesc('n')->values();
+      $ndCatTotal = (int) $ndReasons->sum('n');
       $ndMaxReason = max(1, (int) $ndReasons->max('n'));
+      $ndPctNon = fn ($n) => $ndNon > 0 ? round($n * 100 / $ndNon) : 0;
+      // целевые: сколько из них записали на замер; закрытий в среднем за день периода
+      $ndTarget = $ndBooked + $ndLost;
+      $ndConv = $ndTarget > 0 ? round($ndBooked * 100 / $ndTarget) : null;
+      $ndDays = max(1, \Carbon\Carbon::parse($fromValue)->diffInDays(\Carbon\Carbon::parse($toValue)) + 1);
+      $ndPerDay = round($ndTotal / $ndDays, 1);
     @endphp
     <div class="nd-closed-sum">
       <div class="nd-panel nd-closed-total">
@@ -69,6 +77,11 @@
         <div class="nd-closed-bar" role="img" aria-label="Записали {{ $ndPct($ndBooked) }}%, отказы {{ $ndPct($ndLost) }}%, нецелевые {{ $ndPct($ndNon) }}%">
           <span style="width:{{ $ndPct($ndBooked) }}%;background:var(--accent)"></span><span style="width:{{ $ndPct($ndLost) }}%;background:var(--red)"></span><span style="width:{{ $ndPct($ndNon) }}%;background:var(--amber)"></span>
         </div>
+        <div class="nd-closed-kpis">
+          <div><span>Записали из целевых</span><b style="color:var(--accent)">{{ $ndConv !== null ? $ndConv.'%' : '—' }}</b><small>{{ $ndBooked }} из {{ $ndTarget }}</small></div>
+          <div><span>Целевых обращений</span><b>{{ $ndTarget }}</b><small>{{ $ndPct($ndTarget) }}% закрытых</small></div>
+          <div><span>Закрывали в день</span><b>{{ str_replace('.', ',', (string) $ndPerDay) }}</b><small>в среднем за {{ $ndDays }} {{ trans_choice('день|дня|дней', $ndDays, [], 'ru') }}</small></div>
+        </div>
         <div class="nd-closed-target">
           <a href="{{ $ndLink('booked') }}" @class(['nd-closed-big', 'nd-on' => $category === 'booked']) style="--c:var(--accent)">
             <span class="nd-kl">{{ $outcomeColumns['booked'] ?? 'Целевой записанный' }}</span><b>{{ $ndBooked }}</b><small>{{ $ndPct($ndBooked) }}% закрытых · записали на замер</small>
@@ -79,14 +92,23 @@
         </div>
       </div>
       <div class="nd-panel nd-closed-reasons">
-        <div class="nd-closed-rh"><b>Нецелевые — почему</b><span>нажмите строку — покажем эти сделки</span></div>
-        @foreach($ndReasons as $r)
-          <a href="{{ $ndLink($r['key']) }}" @class(['nd-reason', 'nd-on' => $category === $r['key'], 'nd-zero' => $r['n'] === 0])>
-            <span class="nd-reason-l">{{ $r['label'] }}</span>
-            <span class="nd-reason-bar"><i style="width:{{ round($r['n'] * 100 / $ndMaxReason) }}%"></i></span>
-            <b>{{ $r['n'] }}</b>
+        <div class="nd-closed-rh"><b>Нецелевые — почему</b><span><b>{{ $ndNon }}</b> · {{ $ndPct($ndNon) }}% закрытых</span></div>
+        @if($ndNoneN > 0)
+          <a href="{{ $ndLink('none') }}" @class(['nd-reason-none', 'nd-on' => $category === 'none'])>
+            <span class="nd-reason-none-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01M10.3 3.9L2.4 17.6A2 2 0 004.1 20.6h15.8a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></svg></span>
+            <span class="nd-reason-none-t"><b>{{ $ndNoneN }} · {{ $outcomeColumns['none'] ?? 'Нецелевые без категории' }}</b><small>{{ $ndPctNon($ndNoneN) }}% нецелевых без причины — закрыты до категорий или без неё</small></span>
+            <span class="nd-reason-go">Показать →</span>
           </a>
-        @endforeach
+        @endif
+        <div class="nd-reason-sub">С причиной — <b>{{ $ndCatTotal }}</b>@if($ndNon > 0) · {{ $ndPctNon($ndCatTotal) }}% нецелевых@endif<span>нажмите — покажем сделки</span></div>
+        <div class="nd-reason-grid">
+          @foreach($ndReasons as $r)
+            <a href="{{ $ndLink($r['key']) }}" @class(['nd-reason2', 'nd-on' => $category === $r['key'], 'nd-zero' => $r['n'] === 0]) title="{{ $r['label'] }}: {{ $r['n'] }}{{ $ndCatTotal > 0 ? ' — '.round($r['n'] * 100 / $ndCatTotal).'% с причиной' : '' }}">
+              <span class="nd-reason2-top"><span class="nd-reason2-l">{{ $r['label'] }}</span><b>{{ $r['n'] }}</b>@if($ndCatTotal > 0 && $r['n'] > 0)<small>{{ round($r['n'] * 100 / $ndCatTotal) }}%</small>@endif</span>
+              <span class="nd-reason-bar"><i style="width:{{ round($r['n'] * 100 / $ndMaxReason) }}%"></i></span>
+            </a>
+          @endforeach
+        </div>
       </div>
     </div>
   @endif
