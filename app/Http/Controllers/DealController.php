@@ -900,7 +900,7 @@ class DealController extends Controller
         return $out;
     }
 
-    public function close(Request $request, Deal $deal, WarehouseService $warehouse)
+    public function close(Request $request, Deal $deal, WarehouseService $warehouse, TaskWorkflowService $taskWorkflow)
     {
         $user = Auth::user();
         abort_unless($deal->account_id === $user->account_id, 403);
@@ -948,6 +948,8 @@ class DealController extends Controller
         ]);
 
         $warehouse->syncDealStock($deal);
+        // открытые дела закрытой сделки уходят из «Дел» сами — без отдельного «Выполнено»
+        $taskWorkflow->completeForClosedDeal($deal, $user);
 
         return redirect()->route('deals.show', $deal)->with('status', $this->dealClosedStatusMessage());
     }
@@ -1383,6 +1385,7 @@ class DealController extends Controller
                 'closed_reason' => $deal->closed_reason,
             ],
         ]);
+        app(TaskWorkflowService::class)->completeForClosedDeal($deal, $user);
 
         return true;
     }

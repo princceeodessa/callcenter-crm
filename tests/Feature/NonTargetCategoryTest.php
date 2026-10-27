@@ -76,6 +76,31 @@ class NonTargetCategoryTest extends TestCase
             ->assertSee('почему нецелевая')->assertSee('Запрос на связь с замерщиком');
     }
 
+    public function test_closing_a_deal_completes_its_open_tasks(): void
+    {
+        // «Отказ» в карточке: открытые дела сделки уходят из «Дел» сами, без отдельного «Выполнено»
+        $id = $this->deal();
+        $other = $this->deal();
+        $task = fn (int $deal, string $title, string $status = 'open') => DB::table('tasks')->insertGetId([
+            'account_id' => $this->acc, 'deal_id' => $deal, 'assigned_user_id' => $this->op->id, 'title' => $title, 'status' => $status,
+            'due_at' => now()->subHour(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $open1 = $task($id, 'Перезвонить клиенту');
+        $open2 = $task($id, 'Уточнить адрес');
+        $done = $task($id, 'Старое дело', 'done');
+        $foreign = $task($other, 'Дело другой сделки');
+        $this->actingAs($this->op)->get(route('tasks.index'))->assertSee('Перезвонить клиенту');
+
+        $this->actingAs($this->op)->post(route('deals.close', $id), ['result' => 'lost', 'reason' => 'дорого'])->assertSessionHasNoErrors();
+
+        $status = fn (int $t) => DB::table('tasks')->where('id', $t)->value('status');
+        $this->assertSame(['done', 'done', 'done', 'open'], [$status($open1), $status($open2), $status($done), $status($foreign)]);
+        $this->assertNotNull(DB::table('tasks')->where('id', $open1)->value('completed_at'));
+        $this->assertSame('Дела закрыты вместе со сделкой: Перезвонить клиенту; Уточнить адрес',
+            DB::table('deal_activities')->where('deal_id', $id)->where('type', 'task_done')->value('body'));
+        $this->actingAs($this->op)->get(route('tasks.index'))->assertDontSee('Перезвонить клиенту')->assertSee('Дело другой сделки');
+    }
+
     public function test_moving_to_the_non_target_stage_needs_a_category(): void
     {
         $id = $this->deal();

@@ -84,6 +84,35 @@ class TaskWorkflowService
         return $task;
     }
 
+    /**
+     * Сделку закрыли (отказ, успех, нецелевая) — её открытые дела больше не нужны: отмечаются выполненными сами,
+     * как если бы их отжали «Выполнено», и уходят из «Дел» и напоминаний. Возвращает, сколько закрыто.
+     */
+    public function completeForClosedDeal(Deal $deal, User $user): int
+    {
+        $tasks = Task::query()->where('deal_id', $deal->id)->where('status', 'open')->get();
+        foreach ($tasks as $task) {
+            $task->status = 'done';
+            $task->completed_at = now();
+            $task->save();
+            $this->syncDueNotificationState($task);
+            $task->setRelation('deal', $deal);
+            $this->bitrixSync->syncCompletedTask($task, $user);
+        }
+        if ($tasks->isNotEmpty()) {
+            DealActivity::create([
+                'account_id' => $deal->account_id,
+                'deal_id' => $deal->id,
+                'author_user_id' => $user->id,
+                'type' => 'task_done',
+                'body' => ($tasks->count() === 1 ? 'Дело закрыто вместе со сделкой: ' : 'Дела закрыты вместе со сделкой: ').$tasks->pluck('title')->implode('; '),
+                'payload' => ['task_ids' => $tasks->pluck('id')->all(), 'reason' => 'deal_closed'],
+            ]);
+        }
+
+        return $tasks->count();
+    }
+
     public function syncDueNotificationState(Task $task): void
     {
         $notificationQuery = fn () => UserNotification::query()
