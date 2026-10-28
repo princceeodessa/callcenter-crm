@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
+use App\Models\Deal;
 use App\Models\User;
+use App\Support\Ui\Sneakers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -21,6 +23,16 @@ class UserController extends Controller
             ->get();
 
         $isSneakerSpace = in_array(Auth::user()->role, ['sneaker_head', 'sneaker_operator'], true);
+
+        // кроссовки — каркас «Нордика» отдела (layouts/sneakers): сотрудники таблицей с продажами за месяц, как в прототипе
+        if (Sneakers::enabled()) {
+            $month = now()->startOfMonth();
+            $salesByUser = Deal::query()->where('account_id', $accountId)->whereNotNull('stock_deducted_at')
+                ->whereBetween('stock_deducted_at', [$month, $month->copy()->endOfMonth()])
+                ->selectRaw('responsible_user_id, COUNT(*) AS n')->groupBy('responsible_user_id')->pluck('n', 'responsible_user_id');
+
+            return view('settings.users.sneakers', compact('users', 'salesByUser', 'month'));
+        }
 
         return view('settings.users.index', compact('users', 'isSneakerSpace'));
     }
@@ -51,7 +63,10 @@ class UserController extends Controller
             'name' => [$usesSplitName ? 'nullable' : 'required', 'string', 'max:255'],
             'login' => ['required', 'string', 'max:255', 'regex:/^\S+$/u', 'unique:users,email'],
             'password' => ['required', 'string', 'min:6'],
-            'role' => ['required', 'in:admin,main_operator,operator,documents_operator,measurer,constructor,sneaker_head,sneaker_operator,sneaker_owner,smm'],
+            // руководитель кроссовок заводит только сотрудников своего отдела (форма другие роли и не предлагает)
+            'role' => ['required', Auth::user()->role === 'sneaker_head'
+                ? 'in:sneaker_head,sneaker_operator,sneaker_owner,smm'
+                : 'in:admin,main_operator,operator,documents_operator,measurer,constructor,sneaker_head,sneaker_operator,sneaker_owner,smm'],
             'is_active' => ['nullable'],
         ]);
 

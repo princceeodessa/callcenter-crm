@@ -201,9 +201,12 @@ class NordikaPagesTest extends TestCase
         $this->assertStringNotContainsString('nd-tk-stats', $html);
         $this->assertStringContainsString('navbar-dark', $html);
 
+        // «Пользователи» кроссовок — уже в их собственном каркасе «Нордика» (layouts/sneakers, этап 1), не в каркасе колл-центра
         $html = $this->actingAs($head)->get(route('settings.users.index'))->assertOk()->getContent();
         $this->assertStringNotContainsString('nd-users', $html);
-        $this->assertStringContainsString('Добавить пользователя', $html);
+        $this->assertStringNotContainsString('nd-html', $html);
+        $this->assertStringContainsString('class="ns-html"', $html);
+        $this->assertStringContainsString('Новый сотрудник', $html);
 
         $html = $this->actingAs($head)->get(route('deals.closed'))->assertOk()->getContent();
         $this->assertStringNotContainsString('class="nd-tbl"', $html);

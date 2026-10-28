@@ -1,0 +1,36 @@
+/* «Нордика» · кроссовки — наши дополнения к макету дизайнера (nordika-sneakers.css): то, чего в прототипе нет,
+   а на сайте нужно (сообщения после действий, формы, меню профиля с выходом). Токены — из :root макета. */
+
+/* сообщение после действия: зелёное — готово, красное — ошибки формы */
+.ns-flash{display:flex;align-items:flex-start;gap:9px;padding:11px 14px;border-radius:12px;font-size:13px;font-weight:600;margin:0 0 14px;line-height:1.45}
+.ns-flash .ns-icon{flex:none;margin-top:1px}
+.ns-flash.ns-ok{background:var(--accent-soft);color:var(--accent)}
+.ns-flash.ns-err{background:rgba(229,72,77,.1);color:var(--red)}
+
+/* логотип без переключателя отдела (у всех, кроме владельца всех бизнесов) — не кнопка */
+.ns-brand.ns-brand-fixed{cursor:default}
+.ns-brand.ns-brand-fixed:hover{background:transparent}
+.ns-brand a,.ns-pop a.ns-mi{text-decoration:none;color:inherit}
+
+/* меню профиля: «Выйти» — форма POST, выглядит пунктом меню */
+.ns-mi-form{margin:0}
+.ns-mi-form button.ns-mi{width:100%;border:0;background:transparent;font:inherit;font-size:13px;font-weight:500;color:var(--red);text-align:left}
+.ns-mi-form button.ns-mi:hover{background:color-mix(in srgb,var(--red) 8%,transparent)}
+.ns-side-user{cursor:pointer}
+.ns-side-user>div:last-child{min-width:0}
+.ns-side-user .ns-un,.ns-side-user .ns-ur{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* окно уведомлений: ссылка на все */
+.ns-pop .ns-ntf-all{justify-content:center;color:var(--accent);font-weight:700;border-radius:0;border-top:1px solid var(--line);padding:10px 12px}
+
+/* шапка: поиск — форма, Enter ведёт в «Продажу» */
+.ns-search{margin:0}
+
+/* «Пользователи»: строка действий и окошко смены пароля */
+.ns-row-act{display:flex;gap:6px;justify-content:flex-end;align-items:center;flex-wrap:wrap}
+.ns-pw-form{display:flex;flex-direction:column;gap:10px;padding:10px 12px 12px}
+.ns-pw-form .ns-field{margin:0}
+.ns-user-ava{width:34px;height:34px;border-radius:50%;color:#fff;display:grid;place-items:center;font-weight:700;font-size:12px;flex:none}
+.ns-check{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:600;cursor:pointer;margin:4px 0 2px}
+.ns-check input{width:17px;height:17px;accent-color:var(--accent)}
+.ns-note{font-size:12.5px;color:var(--muted);margin-top:12px;line-height:1.5}
