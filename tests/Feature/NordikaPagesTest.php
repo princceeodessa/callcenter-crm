@@ -167,6 +167,18 @@ class NordikaPagesTest extends TestCase
         $this->assertStringNotContainsString('class="nd-side"', $embed);
         $this->assertStringNotContainsString('notifications/poll', $embed);
         $this->assertStringContainsString('nd-embed', $this->actingAs($op)->get(route('deals.show', ['deal' => $id, 'embed' => 1]))->getContent());
+        $this->assertStringNotContainsString('id="ndEmbedDone"', $embed);
+
+        // переоткрыли закрытую сделку в окне — окно закроется само (метка для nordika-crm.js), список под ним обновится
+        $closed = $this->deal('done', 'Закрытая сделка', ['closed_at' => now(), 'closed_result' => 'won']);
+        $after = $this->actingAs($op)->withHeaders(['Sec-Fetch-Dest' => 'iframe'])->from(route('deals.show', ['deal' => $closed, 'embed' => 1]))
+            ->followingRedirects()->post(route('deals.stage', $closed), ['stage_id' => $this->stage['lead']])->assertOk()->getContent();
+        $this->assertNull(DB::table('deals')->where('id', $closed)->value('closed_at'));
+        $this->assertStringContainsString('id="ndEmbedDone" data-msg="Сделка переоткрыта — «', $after);
+        // обычная смена этапа открытой сделки окно не закрывает
+        $plain = $this->actingAs($op)->withHeaders(['Sec-Fetch-Dest' => 'iframe'])->from(route('deals.show', ['deal' => $id, 'embed' => 1]))
+            ->followingRedirects()->post(route('deals.stage', $id), ['stage_id' => $this->stage['measure']])->assertOk()->getContent();
+        $this->assertStringNotContainsString('id="ndEmbedDone"', $plain);
         $this->assertStringNotContainsString('nd-embed', $this->actingAs($op)->withHeaders(['Sec-Fetch-Dest' => 'document'])->get(route('deals.show', $id))->getContent());
     }
 

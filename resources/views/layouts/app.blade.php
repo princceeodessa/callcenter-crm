@@ -308,6 +308,10 @@
         @php($homeRoute = $isSneakerOwner ? 'owner.dashboard' : ($isMeasurer ? 'calendar.index' : ($isConstructor ? 'ceiling-projects.index' : ($isDocumentsOperator ? 'nonclosures.index' : ($isSneaker ? 'sale.quick' : 'deals.kanban')))))
 @if($ndEmbed)
     <div class="nd-embed-page">
+        @if(session('nd_close'))
+            {{-- окно сделки закроется само, а страница под ним покажет это сообщение (nordika-crm.js) --}}
+            <div id="ndEmbedDone" data-msg="{{ session('nd_close') }}" hidden></div>
+        @endif
         @include('partials.flash')
         @yield('content')
     </div>

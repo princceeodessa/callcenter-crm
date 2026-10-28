@@ -1050,9 +1050,12 @@ class DealController extends Controller
             $this->closeSneakerDealAtTerminalStage($deal, $to, $user);
         }
 
-        return back()->with('status', $reopened
+        $back = back()->with('status', $reopened
             ? $this->dealReopenedStatusMessage()
             : null);
+
+        // в окне сделки поверх «Завершённых»: переоткрытая из списка уходит — окно закрывается само, список обновляется
+        return $reopened ? $back->with('nd_close', 'Сделка переоткрыта — «'.$to->name.'»') : $back;
     }
 
     /** Kanban drag&drop move. */

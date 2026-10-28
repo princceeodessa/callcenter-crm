@@ -165,7 +165,24 @@
             if (e.key !== 'Escape' || e.defaultPrevented) return;            // Esc в открытом списке закрывает только список
             if (window.parent !== window) window.parent.postMessage({ nd: 'close' }, location.origin);
         });
+        // сделку переоткрыли — окно закрывается само, страница под ним обновится и скажет, что сделано
+        const done = document.getElementById('ndEmbedDone');
+        if (done && window.parent !== window) window.parent.postMessage({ nd: 'close', toast: done.dataset.msg || '' }, location.origin);
         return;
+    }
+
+    /* ---------- короткое сообщение после обновления страницы (из окна сделки) ---------- */
+    let ndToast = null;
+    try { ndToast = sessionStorage.getItem('ndToast'); sessionStorage.removeItem('ndToast'); } catch (e) {}
+    if (ndToast) {
+        const t = document.createElement('div');                 // .nd-toast / .nd-show — из макета дизайнера
+        t.className = 'nd-toast';
+        t.setAttribute('role', 'status');
+        t.textContent = ndToast;
+        document.body.appendChild(t);
+        requestAnimationFrame(() => requestAnimationFrame(() => t.classList.add('nd-show')));
+        setTimeout(() => t.classList.remove('nd-show'), 4000);
+        setTimeout(() => t.remove(), 4500);
     }
 
     /* ---------- меню (телефон) и тема ---------- */
@@ -199,12 +216,14 @@
         dScrim.setAttribute('aria-hidden', 'false');
         document.body.classList.add('nd-modal-open');
     };
-    const closeDeal = () => {
+    const closeDeal = (force) => {
         if (!dScrim?.classList.contains('nd-on')) return;
         dScrim.classList.remove('nd-on');
         dScrim.setAttribute('aria-hidden', 'true');
         document.body.classList.remove('nd-modal-open');
-        const changed = dLoads > 1;                               // в окне отправляли форму — обновим страницу
+        // в окне отправляли форму — обновим страницу; окно само сказало, что сделано (force), — тоже,
+        // даже если его вторая загрузка ещё не досчитана: сообщение приходит раньше события load
+        const changed = force === true || dLoads > 1;
         dFrame.src = 'about:blank';
         if (changed) location.reload();
     };
@@ -215,7 +234,11 @@
     });
     document.getElementById('ndDealClose')?.addEventListener('click', closeDeal);
     dScrim?.addEventListener('click', (e) => { if (e.target === dScrim) closeDeal(); });
-    window.addEventListener('message', (e) => { if (e.origin === location.origin && e.data?.nd === 'close') closeDeal(); });
+    window.addEventListener('message', (e) => {
+        if (e.origin !== location.origin || e.data?.nd !== 'close') return;
+        if (e.data.toast) { try { sessionStorage.setItem('ndToast', String(e.data.toast)); } catch (err) {} }
+        closeDeal(Boolean(e.data.toast));
+    });
 
     // клик по ссылке на сделку или по строке таблицы — окно; Ctrl/колёсико — как обычно, в новой вкладке
     document.addEventListener('click', (e) => {
