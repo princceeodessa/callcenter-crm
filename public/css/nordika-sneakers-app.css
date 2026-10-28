@@ -238,3 +238,4 @@ a.ns-chipf{text-decoration:none}
 .nd-mono{font-family:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace}
 a.ns-col-add{text-decoration:none}
 .ns-toolbar .ns-grow{flex:1}
+.ns-btn:disabled{opacity:.45;cursor:default;filter:none}
