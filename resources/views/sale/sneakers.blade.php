@@ -78,6 +78,9 @@
         @foreach($brands as $brand => $cnt)
             <button class="ns-chipf" type="button" data-b="{{ $brand }}">{{ $brand }} <span class="ns-cn">{{ $n($cnt) }}</span></button>
         @endforeach
+        @if($otherBrands > 0)
+            <button class="ns-chipf" type="button" data-b="__other">Другие <span class="ns-cn">{{ $n($otherBrands) }}</span></button>
+        @endif
         <span class="ns-vsp"></span>
         <button class="ns-chipf ns-on" type="button" id="nsOnlyStock"><span class="ns-sw"></span>Только в наличии</button>
     </div>
@@ -87,10 +90,10 @@
     <div id="nsPlist">
         @foreach($products as $pi => $p)
             @php
-                $brandLbl = $p['brand'] !== '' ? $p['brand'] : 'Без бренда';
+                $brandLbl = $p['brand_key'];
             @endphp
-            <div class="ns-prow" data-pid="{{ $pi }}" data-brand="{{ $brandLbl }}" data-stock="{{ $p['total_available'] }}" data-search="{{ mb_strtolower($p['name'].' '.$p['article'].' '.$p['brand']) }}">
-                {!! $pimg($p['image_url'], $p['brand']) !!}
+            <div class="ns-prow" data-pid="{{ $pi }}" data-brand="{{ $p['brand_chip'] }}" data-stock="{{ $p['total_available'] }}" data-search="{{ mb_strtolower($p['name'].' '.$p['article'].' '.$p['brand']) }}">
+                {!! $pimg($p['image_url'], $p['brand_key']) !!}
                 <div class="ns-pinfo">
                     <div class="ns-pname">{{ $p['name'] }}</div>
                     <div class="ns-part">@if($p['article'] !== '')<span class="ns-mono">{{ $p['article'] }}</span>·@endif<span>{{ $brandLbl }}</span></div>
