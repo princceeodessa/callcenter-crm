@@ -136,7 +136,7 @@ class SneakerReportController extends Controller
                 'revenue' => (float) $g->sum(fn ($d) => (float) ($d->amount ?? 0)),
                 'profit' => (float) $g->sum(fn ($d) => (float) ($d->amount ?? 0) - (float) ($d->sold_unit_cost ?? 0) * (int) $d->sold_quantity),
             ])
-            ->sortByDesc('units')->take(8)->values();
+            ->sortBy([['units', 'desc'], ['profit', 'desc']])->take(8)->values();   // при равных парах — прибыльнее выше
 
         // Залежавшийся товар: есть остаток, но нет продаж за 30 дней.
         $lastOut = StockMovement::query()
