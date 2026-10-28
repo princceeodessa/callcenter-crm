@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Deal;
+use App\Models\WarehouseProduct;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -136,7 +137,22 @@ class SneakerDailySalesController extends Controller
             'stripMax' => $stripMax,
             'showProfit' => $showProfit,
             'isOwner' => $isOwner,
+            'images' => $isOwner ? [] : $this->images($accId, $sales->pluck('warehouseItem')->merge($returns->pluck('warehouseItem'))->filter()),
         ]);
+    }
+
+    /** Обложки товаров для строк продаж: ключ — бренд|модель в нижнем регистре */
+    private function images(int $accId, Collection $items): array
+    {
+        if ($items->isEmpty()) {
+            return [];
+        }
+        $out = [];
+        foreach (WarehouseProduct::with('photos')->where('account_id', $accId)->whereIn('model', $items->pluck('model')->unique()->all())->get() as $p) {
+            $out[mb_strtolower(trim(($p->brand ?? '').'|'.($p->model ?? '')))] = $p->image_url;
+        }
+
+        return $out;
     }
 
     /** @return Collection<int, Deal> */

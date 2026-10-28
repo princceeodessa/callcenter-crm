@@ -1,98 +1,66 @@
-@extends('layouts.app')
-
-@section('content')
+@extends('layouts.sneakers')
+{{--
+    «1С» — продажи белых пар (кнопка на складе, только руководителю). Каркас «Нордика»; данные — OnecSalesController, блоки прежние:
+    продажи из 1С (с 13.10.2026 белые пары продают в 1С «Обувь», CRM подтягивает их), затем старая выгрузка CRM → 1С (выключена).
+--}}
 @php
-    $money = fn ($v) => number_format((float) $v, 0, ',', ' ');
+    $ui = \App\Support\Ui\Sneakers::class;
+    $rub = fn ($v) => number_format((float) $v, 0, ',', ' ').' ₽';
     $lastSync = $connection?->last_synced_at;
-    $statusCls = ['done' => 'text-success', 'waiting' => 'text-warning-emphasis', 'error' => 'text-danger', 'pending' => 'text-muted'];
+    $statusCls = ['done' => 'ns-up', 'waiting' => 'ns-warn-t', 'error' => 'ns-dn', 'pending' => 'ns-muted'];
     $doneCount = $docs->where('status', 'done')->count();
     $waitingCount = $docs->where('status', 'waiting')->count();
     $errorCount = $docs->where('status', 'error')->count();
-@endphp
-<style>
-    .oc-stat{ background:var(--crm-surface-strong); border:1px solid var(--crm-border); border-radius:12px; padding:.6rem 1rem; min-width:150px; }
-    .oc-stat .l{ font-size:.72rem; color:var(--crm-muted); }
-    .oc-stat .v{ font-size:1.3rem; font-weight:700; }
-    .oc-fix{ display:flex; flex-wrap:wrap; align-items:center; gap:.4rem .7rem; padding:.4rem 0; border-top:1px dashed var(--crm-border); }
-    .oc-fix:first-child{ border-top:0; }
-    .oc-fix .nm{ flex:1; min-width:220px; }
-</style>
-
-<div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
-    <div>
-        <h4 class="mb-0" style="letter-spacing:-.02em">🧾 1С: продажи белых пар</h4>
-        <div class="text-muted small">с 13.10.2026 белые пары продают в 1С «Обувь» чеками, CRM подтягивает их сюда — в статистику и на склад; серые пары продают в CRM</div>
-    </div>
-    <a class="btn btn-sm btn-outline-secondary" href="{{ route('warehouse.index') }}">← К складу</a>
-</div>
-
-<div class="d-flex gap-2 flex-wrap mb-3">
-    <div class="oc-stat">
-        <div class="l">Станция (компьютер с 1С)</div>
-        <div class="v" style="font-size:1rem">
-            @if(! $connection)
-                <span class="text-muted">не подключена</span>
-            @elseif($lastSync)
-                на связи {{ $lastSync->format('d.m H:i') }}
-            @else
-                <span class="text-muted">ещё не выходила на связь</span>
-            @endif
-        </div>
-    </div>
-    <div class="oc-stat"><div class="l">Выгрузка с</div><div class="v" style="font-size:1rem">{{ $start ? \Carbon\Carbon::parse($start)->format('d.m.Y') : '—' }}</div></div>
-    <div class="oc-stat"><div class="l">В очереди</div><div class="v {{ $queue->isNotEmpty() ? 'text-warning-emphasis' : '' }}">{{ $queue->count() }}</div></div>
-    <div class="oc-stat"><div class="l">Ещё {{ \App\Services\Onec\SaleDocExport::COOLING_MINUTES }} мин можно поправить</div><div class="v">{{ $cooling }}</div></div>
-    <div class="oc-stat"><div class="l">В 1С · ждут прихода · ошибки</div><div class="v" style="font-size:1rem">{{ $doneCount }} · {{ $waitingCount }} · <span class="{{ $errorCount ? 'text-danger' : '' }}">{{ $errorCount }}</span></div></div>
-</div>
-
-@php
-    $impCls = ['linked' => 'text-success', 'unlinked' => 'text-warning-emphasis', 'returned' => 'text-info-emphasis', 'return_unmatched' => 'text-danger', 'cancelled_in_1c' => 'text-danger'];
+    $impCls = ['linked' => 'ns-ok', 'unlinked' => 'ns-warn', 'returned' => '', 'return_unmatched' => 'ns-bad', 'cancelled_in_1c' => 'ns-bad'];
     $impAttention = $imports->whereIn('status', ['unlinked', 'return_unmatched', 'cancelled_in_1c'])->count();
 @endphp
-<div class="card shadow-sm mb-3">
-    <div class="card-header fw-semibold d-flex justify-content-between flex-wrap gap-2">
-        <span>Продажи из 1С · {{ $imports->count() }}</span>
-        @if($impAttention > 0)
-            <span class="text-danger small">разобрать вручную: {{ $impAttention }}</span>
-        @endif
-    </div>
+
+@section('title', '1С: продажи белых пар')
+@section('ns_sub', 'белые пары продают в 1С «Обувь» — CRM подтягивает чеки')
+
+@section('content')
+<div class="ns-kpis ns-k5">
+    <div class="ns-kpi"><div class="ns-kl">Станция (компьютер с 1С)</div><div class="ns-kv ns-kv-sm">@if(! $connection)<span class="ns-muted">не подключена</span>@elseif($lastSync)на связи {{ $lastSync->format('d.m H:i') }}@else<span class="ns-muted">ещё не выходила на связь</span>@endif</div></div>
+    <div class="ns-kpi"><div class="ns-kl">Выгрузка с</div><div class="ns-kv ns-kv-sm">{{ $start ? \Carbon\Carbon::parse($start)->format('d.m.Y') : '—' }}</div></div>
+    <div @class(['ns-kpi', 'ns-warn' => $queue->isNotEmpty()])><div class="ns-kl">В очереди</div><div class="ns-kv">{{ $queue->count() }}</div></div>
+    <div class="ns-kpi"><div class="ns-kl">Ещё {{ \App\Services\Onec\SaleDocExport::COOLING_MINUTES }} мин можно поправить</div><div class="ns-kv">{{ $cooling }}</div></div>
+    <div @class(['ns-kpi', 'ns-warn' => $errorCount > 0])><div class="ns-kl">В 1С · ждут прихода · ошибки</div><div class="ns-kv ns-kv-sm">{{ $doneCount }} · {{ $waitingCount }} · <span @class(['ns-dn' => $errorCount])>{{ $errorCount }}</span></div></div>
+</div>
+
+<div class="ns-panel" style="overflow:hidden">
+    <div class="ns-panel-pad" style="padding-bottom:6px"><div class="ns-sec-h">Продажи из 1С <span class="ns-tag">{{ $imports->count() }}</span><span class="ns-grow"></span>@if($impAttention > 0)<span class="ns-tag ns-bad">разобрать вручную: {{ $impAttention }}</span>@endif</div></div>
     @if($imports->isEmpty())
-        <div class="card-body text-muted small">Из 1С пока ничего не пришло. Станция читает чеки 1С раз в 30 минут; продажа появится здесь, в «Продажах за день» и на складе.</div>
+        <div class="ns-empty ns-sm">{!! $ui::icon('doc1c') !!}<b>Из 1С пока ничего не пришло</b>Станция читает чеки 1С раз в 30 минут; продажа появится здесь, в «Продажах за день» и на складе</div>
     @else
-        <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0">
-                <thead><tr><th>Когда</th><th>Документ 1С</th><th>Карточка 1С</th><th class="text-end">Сумма</th><th>Итог</th><th>Сделка</th></tr></thead>
-                <tbody>
-                @foreach($imports as $im)
-                    <tr>
-                        <td class="text-nowrap">{{ $im->onec_date->format('d.m H:i') }}</td>
-                        <td class="text-nowrap">{{ \App\Models\OnecSaleImport::TYPE_LABELS[$im->doc_type] ?? $im->doc_type }} № {{ $im->onec_number }}</td>
-                        <td class="small">{{ $im->card_name }} @if($im->qty > 1)× {{ $im->qty }}@endif</td>
-                        <td class="text-end text-nowrap">{{ $money($im->amount) }} ₽</td>
-                        <td class="small"><span class="{{ $impCls[$im->status] ?? '' }}">{{ \App\Models\OnecSaleImport::STATUS_LABELS[$im->status] ?? $im->status }}</span>@if($im->note)<div class="text-muted">{{ $im->note }}</div>@endif</td>
-                        <td class="text-nowrap">@if($im->deal)<a href="{{ route('deals.show', $im->deal) }}">#{{ $im->deal_id }}</a>@else — @endif</td>
-                    </tr>
-                @endforeach
-                </tbody>
-            </table>
-        </div>
+        <div style="overflow-x:auto"><table class="ns-tbl">
+            <thead><tr><th>Когда</th><th>Документ 1С</th><th>Карточка 1С</th><th class="ns-num">Сумма</th><th>Итог</th><th>Сделка</th></tr></thead>
+            <tbody>
+            @foreach($imports as $im)
+                <tr>
+                    <td class="ns-muted">{{ $im->onec_date->format('d.m H:i') }}</td>
+                    <td style="white-space:nowrap">{{ \App\Models\OnecSaleImport::TYPE_LABELS[$im->doc_type] ?? $im->doc_type }} № {{ $im->onec_number }}</td>
+                    <td>{{ $im->card_name }} @if($im->qty > 1)× {{ $im->qty }}@endif</td>
+                    <td class="ns-num"><b>{{ $rub($im->amount) }}</b></td>
+                    <td><span class="ns-tag {{ $impCls[$im->status] ?? '' }}">{{ \App\Models\OnecSaleImport::STATUS_LABELS[$im->status] ?? $im->status }}</span>@if($im->note)<div class="ns-muted" style="font-size:12px;margin-top:3px;white-space:normal">{{ $im->note }}</div>@endif</td>
+                    <td>@if($im->deal)<a class="ns-link" href="{{ route('deals.show', $im->deal) }}">#{{ $im->deal_id }}</a>@else — @endif</td>
+                </tr>
+            @endforeach
+            </tbody>
+        </table></div>
     @endif
 </div>
 
-<div class="text-muted small mb-2">Ниже — выгрузка продаж из CRM в 1С, как было до 13.10.2026 (сейчас выключена).</div>
+<div class="ns-note" style="margin:18px 0 10px">Ниже — выгрузка продаж из CRM в 1С, как было до 13.10.2026 (сейчас выключена).</div>
 
 @if($ambiguous->isNotEmpty())
-    <div class="card shadow-sm mb-3 border-warning-subtle">
-        <div class="card-header fw-semibold">Уточните: белая или серая пара · {{ $ambiguous->count() }}</div>
-        <div class="card-body small">
-            <div class="text-muted mb-1">В этих размерах есть и белые, и серые пары. Белые уйдут в 1С, серые — нет.</div>
+    <div class="ns-panel ns-panel-pad ns-oc-block">
+        <div class="ns-sec-h">Уточните: белая или серая пара <span class="ns-tag ns-warn">{{ $ambiguous->count() }}</span></div>
+        <div class="ns-note" style="margin:0 0 6px">В этих размерах есть и белые, и серые пары. Белые уйдут в 1С, серые — нет.</div>
+        <div class="ns-hlist">
             @foreach($ambiguous as $d)
-                <div class="oc-fix">
-                    <div class="nm"><a href="{{ route('deals.show', $d) }}">#{{ $d->id }}</a> · {{ $d->warehouseItem?->display_name ?? $d->title }} · {{ $d->stock_deducted_at?->format('d.m H:i') }}@if($d->amount) · {{ $money($d->amount) }} ₽@endif</div>
-                    <form method="POST" action="{{ route('deals.sale-flags', $d) }}" class="m-0 d-flex gap-1">
-                        @csrf
-                        <button class="btn btn-sm btn-outline-primary" name="white" value="1">🤍 Белая</button>
-                        <button class="btn btn-sm btn-outline-secondary" name="white" value="0">Серая</button>
+                <div class="ns-hr"><div class="ns-grow"><b><a class="ns-link" href="{{ route('deals.show', $d) }}">#{{ $d->id }}</a> · {{ $d->warehouseItem?->display_name ?? $d->title }}</b><small>{{ $d->stock_deducted_at?->format('d.m H:i') }}@if($d->amount) · {{ $rub($d->amount) }}@endif</small></div>
+                    <form method="POST" action="{{ route('deals.sale-flags', $d) }}" class="ns-oc-acts">@csrf
+                        <button class="ns-btn ns-sm" name="white" value="1">Белая</button><button class="ns-btn ns-sm" name="white" value="0">Серая</button>
                     </form>
                 </div>
             @endforeach
@@ -101,18 +69,14 @@
 @endif
 
 @if($noPayment->isNotEmpty())
-    <div class="card shadow-sm mb-3 border-warning-subtle">
-        <div class="card-header fw-semibold">Белые продажи без способа оплаты · {{ $noPayment->count() }}</div>
-        <div class="card-body small">
-            <div class="text-muted mb-1">В 1С наличные и безнал учитываются раздельно. Без отметки продажа уйдёт как наличные.</div>
+    <div class="ns-panel ns-panel-pad ns-oc-block">
+        <div class="ns-sec-h">Белые продажи без способа оплаты <span class="ns-tag ns-warn">{{ $noPayment->count() }}</span></div>
+        <div class="ns-note" style="margin:0 0 6px">В 1С наличные и безнал учитываются раздельно. Без отметки продажа уйдёт как наличные.</div>
+        <div class="ns-hlist">
             @foreach($noPayment as $d)
-                <div class="oc-fix">
-                    <div class="nm"><a href="{{ route('deals.show', $d) }}">#{{ $d->id }}</a> · {{ $d->warehouseItem?->display_name ?? $d->title }} · {{ $d->stock_deducted_at?->format('d.m H:i') }}@if($d->amount) · {{ $money($d->amount) }} ₽@endif</div>
-                    <form method="POST" action="{{ route('deals.sale-flags', $d) }}" class="m-0 d-flex gap-1">
-                        @csrf
-                        @foreach(\App\Models\Deal::PAYMENT_METHODS as $pv => $pl)
-                            <button class="btn btn-sm btn-outline-primary" name="payment" value="{{ $pv }}">{{ $pl }}</button>
-                        @endforeach
+                <div class="ns-hr"><div class="ns-grow"><b><a class="ns-link" href="{{ route('deals.show', $d) }}">#{{ $d->id }}</a> · {{ $d->warehouseItem?->display_name ?? $d->title }}</b><small>{{ $d->stock_deducted_at?->format('d.m H:i') }}@if($d->amount) · {{ $rub($d->amount) }}@endif</small></div>
+                    <form method="POST" action="{{ route('deals.sale-flags', $d) }}" class="ns-oc-acts">@csrf
+                        @foreach(\App\Models\Deal::PAYMENT_METHODS as $pv => $pl)<button class="ns-btn ns-sm" name="payment" value="{{ $pv }}">{{ $pl }}</button>@endforeach
                     </form>
                 </div>
             @endforeach
@@ -121,74 +85,56 @@
 @endif
 
 @if($cancelled->isNotEmpty())
-    <div class="card shadow-sm mb-3 border-danger-subtle">
-        <div class="card-header fw-semibold">Есть в 1С, но в CRM уже не белая продажа · {{ $cancelled->count() }}</div>
-        <div class="card-body small">
-            <div class="text-muted mb-1">Продажу отменили или отметили серой после выгрузки. Документ в 1С пометьте на удаление вручную.</div>
+    <div class="ns-panel ns-panel-pad ns-oc-block">
+        <div class="ns-sec-h">Есть в 1С, но в CRM уже не белая продажа <span class="ns-tag ns-bad">{{ $cancelled->count() }}</span></div>
+        <div class="ns-note" style="margin:0 0 6px">Продажу отменили или отметили серой после выгрузки. Документ в 1С пометьте на удаление вручную.</div>
+        <div class="ns-hlist">
             @foreach($cancelled as $c)
-                <div class="oc-fix">
-                    <div class="nm"><a href="{{ route('deals.show', $c->deal_id) }}">#{{ $c->deal_id }}</a> · {{ $c->deal?->warehouseItem?->display_name ?? $c->deal?->title }} · в 1С: отчёт № {{ $c->onec_number }}@if($c->onec_date) от {{ $c->onec_date->format('d.m.Y H:i') }}@endif</div>
-                </div>
+                <div class="ns-hr"><div class="ns-grow"><b><a class="ns-link" href="{{ route('deals.show', $c->deal_id) }}">#{{ $c->deal_id }}</a> · {{ $c->deal?->warehouseItem?->display_name ?? $c->deal?->title }}</b><small>в 1С: отчёт № {{ $c->onec_number }}@if($c->onec_date) от {{ $c->onec_date->format('d.m.Y H:i') }}@endif</small></div></div>
             @endforeach
         </div>
     </div>
 @endif
 
 @if($queue->isNotEmpty())
-    <div class="card shadow-sm mb-3">
-        <div class="card-header fw-semibold">В очереди на выгрузку · {{ $queue->count() }}</div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-sm mb-0 align-middle small">
-                    <tbody>
-                    @foreach($queue as $q)
-                        @php
-                            $qd = $queueDeals[$q['deal_id']] ?? null;
-                        @endphp
-                        <tr>
-                            <td class="ps-3">{{ \Carbon\Carbon::parse($q['date'])->format('d.m H:i') }}</td>
-                            <td>{{ \App\Models\OnecSaleDoc::KIND_LABELS[$q['kind']] ?? $q['kind'] }}</td>
-                            <td><a href="{{ route('deals.show', $q['deal_id']) }}">#{{ $q['deal_id'] }}</a> · {{ $qd?->warehouseItem?->display_name ?? $qd?->title }}</td>
-                            <td class="text-end pe-3">{{ $money($q['row']['amount']) }} ₽</td>
-                        </tr>
-                    @endforeach
-                    </tbody>
-                </table>
-            </div>
-        </div>
+    <div class="ns-panel ns-oc-block" style="overflow:hidden">
+        <div class="ns-panel-pad" style="padding-bottom:6px"><div class="ns-sec-h">В очереди на выгрузку <span class="ns-tag">{{ $queue->count() }}</span></div></div>
+        <table class="ns-tbl"><tbody>
+            @foreach($queue as $q)
+                @php
+                    $qd = $queueDeals[$q['deal_id']] ?? null;
+                @endphp
+                <tr><td class="ns-muted">{{ \Carbon\Carbon::parse($q['date'])->format('d.m H:i') }}</td><td>{{ \App\Models\OnecSaleDoc::KIND_LABELS[$q['kind']] ?? $q['kind'] }}</td>
+                    <td><a class="ns-link" href="{{ route('deals.show', $q['deal_id']) }}">#{{ $q['deal_id'] }}</a> · {{ $qd?->warehouseItem?->display_name ?? $qd?->title }}</td><td class="ns-num">{{ $rub($q['row']['amount']) }}</td></tr>
+            @endforeach
+        </tbody></table>
     </div>
 @endif
 
-<div class="card shadow-sm mb-3">
-    <div class="card-header fw-semibold">Документы в 1С</div>
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-sm mb-0 align-middle small">
-                <thead>
-                    <tr><th class="ps-3">Когда</th><th>Что</th><th>Сделка · пара</th><th class="text-end">Сумма</th><th>Статус</th><th class="pe-3">Документ 1С</th></tr>
-                </thead>
-                <tbody>
-                @forelse($docs as $d)
-                    @php
-                        $when = $d->onec_date ?? ($d->kind === 'return' ? $d->deal?->returned_at : $d->deal?->stock_deducted_at);
-                    @endphp
-                    <tr>
-                        <td class="ps-3">{{ $when?->format('d.m H:i') ?? '—' }}</td>
-                        <td>{{ \App\Models\OnecSaleDoc::KIND_LABELS[$d->kind] ?? $d->kind }}</td>
-                        <td><a href="{{ route('deals.show', $d->deal_id) }}">#{{ $d->deal_id }}</a> · {{ $d->deal?->warehouseItem?->display_name ?? $d->deal?->title }}</td>
-                        <td class="text-end">{{ $money($d->amount ?: $d->deal?->amount) }} ₽</td>
-                        <td class="{{ $statusCls[$d->status] ?? '' }}">
-                            {{ \App\Models\OnecSaleDoc::STATUS_LABELS[$d->status] ?? $d->status }}
-                            @if($d->reason)<div class="{{ $d->status === 'error' ? 'text-danger' : 'text-muted' }}">{{ \Illuminate\Support\Str::limit($d->reason, 300) }}</div>@endif
-                        </td>
-                        <td class="pe-3">{{ $d->onec_number ? 'Отчёт № '.$d->onec_number : '—' }}@if($d->card_code)<div class="text-muted">карточка {{ $d->card_code }}</div>@endif</td>
-                    </tr>
-                @empty
-                    <tr><td colspan="6" class="text-center text-muted py-4">Пока ничего не выгружалось: белых продаж с начала выгрузки ещё не было.</td></tr>
-                @endforelse
-                </tbody>
-            </table>
-        </div>
-    </div>
+<div class="ns-panel" style="overflow:hidden">
+    <div class="ns-panel-pad" style="padding-bottom:6px"><div class="ns-sec-h">Документы в 1С</div></div>
+    @if($docs->isEmpty())
+        <div class="ns-empty ns-sm"><b>Пока ничего не выгружалось</b>Белых продаж с начала выгрузки ещё не было</div>
+    @else
+        <div style="overflow-x:auto"><table class="ns-tbl">
+            <thead><tr><th>Когда</th><th>Что</th><th>Сделка · пара</th><th class="ns-num">Сумма</th><th>Статус</th><th>Документ 1С</th></tr></thead>
+            <tbody>
+            @foreach($docs as $d)
+                @php
+                    $when = $d->onec_date ?? ($d->kind === 'return' ? $d->deal?->returned_at : $d->deal?->stock_deducted_at);
+                @endphp
+                <tr>
+                    <td class="ns-muted">{{ $when?->format('d.m H:i') ?? '—' }}</td>
+                    <td>{{ \App\Models\OnecSaleDoc::KIND_LABELS[$d->kind] ?? $d->kind }}</td>
+                    <td><a class="ns-link" href="{{ route('deals.show', $d->deal_id) }}">#{{ $d->deal_id }}</a> · {{ $d->deal?->warehouseItem?->display_name ?? $d->deal?->title }}</td>
+                    <td class="ns-num">{{ $rub($d->amount ?: $d->deal?->amount) }}</td>
+                    <td class="{{ $statusCls[$d->status] ?? '' }}" style="white-space:normal">{{ \App\Models\OnecSaleDoc::STATUS_LABELS[$d->status] ?? $d->status }}
+                        @if($d->reason)<div @class(['ns-dn' => $d->status === 'error', 'ns-muted' => $d->status !== 'error']) style="font-size:12px">{{ \Illuminate\Support\Str::limit($d->reason, 300) }}</div>@endif</td>
+                    <td>{{ $d->onec_number ? 'Отчёт № '.$d->onec_number : '—' }}@if($d->card_code)<div class="ns-muted" style="font-size:12px">карточка {{ $d->card_code }}</div>@endif</td>
+                </tr>
+            @endforeach
+            </tbody>
+        </table></div>
+    @endif
 </div>
 @endsection

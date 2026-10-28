@@ -64,6 +64,21 @@ class Sneakers
         'smm' => 'SMM-специалист',
     ];
 
+    /** Цвета источников продаж (Deal::SNEAKER_SOURCES) — как SRC_C в прототипе */
+    public const SOURCE_COLORS = [
+        'Avito' => 'var(--av)', 'ВК' => 'var(--vk)', 'Instagram' => 'var(--ig)', 'Telegram' => 'var(--tg)', 'Сайт' => 'var(--site)',
+        'Сарафан' => 'var(--lemana)', 'Магазин' => 'var(--accent)', 'Другое' => '#7b8494',
+    ];
+
+    /** Плашка источника клиента; пустой — «не указан» */
+    public static function srcChip(?string $source): string
+    {
+        $source = trim((string) $source);
+        $none = $source === '' || in_array(mb_strtolower($source), ['не указан', '—'], true);
+
+        return '<span class="ns-src" style="--src:'.($none ? '#aab2bf' : (self::SOURCE_COLORS[$source] ?? '#7b8494')).'">'.e($none ? 'не указан' : $source).'</span>';
+    }
+
     public static function enabled(?User $user = null): bool
     {
         $user ??= auth()->user();
@@ -129,7 +144,7 @@ class Sneakers
                 $shop ? $item('scan', 'Скан', 'scan', 'scan') : null,
             ],
             'Склад' => [
-                $shop ? $item('warehouse.index', 'Склад', 'box', 'warehouse.index|warehouse.unlinked|warehouse.reorder|warehouse.consignments|warehouse.import*', self::count(self::models($user))) : null,
+                $shop ? $item('warehouse.index', 'Склад', 'box', 'warehouse.index|warehouse.unlinked|warehouse.reorder|warehouse.consignments|warehouse.import*|onec.*', self::count(self::models($user))) : null,
                 $shop ? $item('warehouse.receiving', 'Приёмка', 'inbox', 'warehouse.receiving*') : null,
                 $head ? $item('purchases.kanban', 'Закупки', 'truck', 'purchases.*', self::count(self::inTransitPairs($user))) : null,
                 $head ? $item('warehouse.analytics', 'Аналитика', 'chart', 'warehouse.analytics*') : null,

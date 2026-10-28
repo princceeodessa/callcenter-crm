@@ -136,6 +136,8 @@ class WarehouseAnalyticsController extends Controller
             $perDay = $soldQty / $days;
             $daysLeft = $perDay > 0 ? (int) round($stock / $perDay) : null;
             $turnover[] = [
+                'key' => $key,
+                'cost' => (float) $group->sum(fn ($i) => max(0, (int) $i->quantity) * (float) ($i->avg_cost ?? 0)),
                 'name' => $name,
                 'stock' => $stock,
                 'sold_90d' => $soldQty,
@@ -152,6 +154,27 @@ class WarehouseAnalyticsController extends Controller
         $endingSoon = array_values(array_filter($turnover, fn ($t) => $t['days_left'] !== null && $t['days_left'] <= 21 && $t['stock'] > 0));
         usort($endingSoon, fn ($a, $b) => ($a['days_left'] ?? 999) <=> ($b['days_left'] ?? 999));
         $endingSoon = array_slice($endingSoon, 0, 8);
+
+        // Для страницы «Нордика»: мёртвый груз целиком (а не первые 8), на сколько месяцев хватит склада при темпе
+        // последних 90 дней, бренды на складе — по первому слову названия (в поле «бренд» бывает всё название)
+        $dead = array_filter($turnover, fn ($t) => $t['sold_90d'] === 0 && $t['stock'] > 0);
+        $deadPairs = (int) array_sum(array_column($dead, 'stock'));
+        $deadModels = count($dead);
+        $recentUnits = (int) $recentSold->sum(fn ($d) => (int) $d->sold_quantity);
+        $monthsOfStock = $recentUnits > 0 ? round((int) $items->sum('quantity') / ($recentUnits / 3), 1) : null;
+        $brandBars = [];
+        foreach ($modelsStock as $group) {
+            $q = (int) $group->sum('quantity');
+            if ($q <= 0) {
+                continue;
+            }
+            $f = $group->first();
+            $b = Sneakers::brandOf(trim(($f->brand ?? '').' '.($f->model ?? '')));
+            $brandBars[$b] ??= ['brand' => $b, 'models' => 0, 'pairs' => 0];
+            $brandBars[$b]['models']++;
+            $brandBars[$b]['pairs'] += $q;
+        }
+        usort($brandBars, fn ($a, $b) => $b['pairs'] <=> $a['pairs']);
 
         // --- Топ размеров: продажи vs остаток ---
         $sizeSold = [];
@@ -194,12 +217,17 @@ class WarehouseAnalyticsController extends Controller
         usort($brandStock, fn ($a, $b) => $b['stock_units'] <=> $a['stock_units']);
 
         // Карта продуктов (brand+model → WarehouseProduct) — используется в нескольких блоках ниже.
-        $productList = WarehouseProduct::where('account_id', $accId)->get();
+        $productList = WarehouseProduct::with('photos')->where('account_id', $accId)->get();
         $productMap = [];
         foreach ($productList as $p) {
             $key = mb_strtolower(trim(($p->brand ?? '').'|'.($p->model ?? '')));
             $productMap[$key] = $p;
         }
+
+        $withImage = fn (array $list) => array_map(fn ($t) => $t + ['img' => ($productMap[$t['key']] ?? null)?->image_url], array_values($list));
+        $fastMovers = $withImage($fastMovers);
+        usort($dead, fn ($a, $b) => [$b['cost'], $b['stock']] <=> [$a['cost'], $a['stock']]);   // сначала — где больше денег по закупке
+        $slowMovers = $withImage(array_slice($dead, 0, 8));
 
         // ==================== KPI-хедер: текущий и прошлый месяц ====================
         $curStart = $now->copy()->startOfMonth();
@@ -402,7 +430,8 @@ class WarehouseAnalyticsController extends Controller
             'cur', 'prev', 'delta',
             'topClients', 'totalClients', 'repeatClients', 'avgOrdersPerClient', 'avgClientRevenue',
             'marginByCategory', 'workingCapital', 'avgMarkup', 'sellThrough', 'dio',
-            'totalSoldWindow', 'totalOnStock'
+            'totalSoldWindow', 'totalOnStock',
+            'deadPairs', 'deadModels', 'monthsOfStock', 'brandBars'
         ));
     }
 

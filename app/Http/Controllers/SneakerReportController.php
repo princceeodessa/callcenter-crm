@@ -8,6 +8,7 @@ use App\Models\PipelineStage;
 use App\Models\Purchase;
 use App\Models\StockMovement;
 use App\Models\WarehouseItem;
+use App\Support\Ui\Sneakers;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -17,6 +18,8 @@ class SneakerReportController extends Controller
     public function index(Request $request)
     {
         $user = Auth::user();
+        // Отчёт — прибыль, себестоимость, закупки: только руководителю (решение 28.10.2026; продавцу был открыт без проверки роли)
+        abort_unless(Sneakers::seesCost($user), 403);
         $accId = $user->account_id;
 
         $monthStr = $request->string('month')->toString();
@@ -196,6 +199,7 @@ class SneakerReportController extends Controller
     public function export(Request $request)
     {
         $user = Auth::user();
+        abort_unless(Sneakers::seesCost($user), 403);
         $monthStr = $request->string('month')->toString();
         try {
             $month = $monthStr !== '' ? Carbon::createFromFormat('Y-m', $monthStr)->startOfMonth() : Carbon::now()->startOfMonth();

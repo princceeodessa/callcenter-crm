@@ -1,239 +1,193 @@
-@extends('layouts.app')
+@extends('layouts.sneakers')
+{{--
+    «Отчёт» кроссовочного отдела — каркас «Нордика» (прототип: PAGES.report, снимок 14). Месяц, KPI со сравнением к прошлому месяцу,
+    деньги и склад, динамика 6 месяцев, воронка, топ моделей, сотрудники, источники, возвраты, «Дозаказать», залежавшийся товар,
+    продажи с прибылью по каждому заказу и CSV. Расчёты — SneakerReportController; страница только руководителю.
+--}}
+@php
+    $ui = \App\Support\Ui\Sneakers::class;
+    $rub = fn ($v) => number_format((float) $v, 0, ',', ' ').' ₽';
+    $sgnRub = fn ($v) => ($v < 0 ? '−' : '').number_format(abs((float) $v), 0, ',', ' ').' ₽';
+    $dlt = fn (int $d) => $d === 0 ? '<span>±0% к пр. мес.</span>' : '<span class="'.($d > 0 ? 'ns-up' : 'ns-dn').'">'.($d > 0 ? '▲' : '▼').abs($d).'%</span> к пр. мес.';
+    $mon = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+    $months = collect(range(0, 17))->map(fn ($k) => now()->startOfMonth()->subMonthsNoOverflow($k))
+        ->map(fn ($m) => ['v' => $m->format('Y-m'), 'l' => mb_convert_case($mon[$m->month - 1], MB_CASE_TITLE).' '.$m->year]);
+    $monthTitle = \Carbon\Carbon::createFromFormat('Y-m', $monthValue)->startOfMonth();
+    $monGen = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+    $funnelColors = ['var(--blue)', '#16b3c4', 'var(--amber)', '#8b5cf6', 'var(--accent)', 'var(--red)'];
+    $dynMaxK = max(1, (float) $dynamics->max('revenue'));
+@endphp
 
-@push('styles')
-<style>
-    .kpi{ border:1px solid var(--crm-border); border-radius:.9rem; box-shadow:var(--crm-shadow); background:var(--crm-surface-strong); padding:.8rem .95rem; height:100%; }
-    .kpi .l{ font-size:.72rem; color:var(--crm-muted); }
-    .kpi .v{ font-size:1.35rem; font-weight:800; line-height:1.15; }
-    .kpi .s{ font-size:.72rem; color:var(--crm-muted); }
-    .bars{ display:flex; align-items:flex-end; gap:.5rem; height:150px; padding-top:.5rem; }
-    .bar-col{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
-    .bar-wrap{ display:flex; gap:3px; align-items:flex-end; height:100%; width:100%; justify-content:center; }
-    .bar{ width:34%; min-height:2px; border-radius:.3rem .3rem 0 0; background:linear-gradient(180deg,#818cf8,#4f46e5); }
-    .bar.profit{ background:linear-gradient(180deg,#34d399,#059669); }
-    .bar-lbl{ font-size:.7rem; color:var(--crm-muted); margin-top:.25rem; text-align:center; }
-    .funnel-row{ display:flex; align-items:center; gap:.6rem; margin-bottom:.4rem; }
-    .funnel-name{ width:42%; font-size:.85rem; }
-    .funnel-track{ flex:1; background:rgba(148,163,184,.18); border-radius:999px; height:18px; position:relative; overflow:hidden; }
-    .funnel-fill{ height:100%; background:linear-gradient(90deg,#60a5fa,#4f46e5); border-radius:999px; min-width:2px; }
-    .funnel-fill.final{ background:linear-gradient(90deg,#34d399,#059669); }
-    .funnel-val{ width:120px; text-align:right; font-size:.8rem; color:var(--crm-muted); }
-</style>
-@endpush
+@section('title', 'Отчёт')
+@section('ns_sub', 'Кроссовки')
+@section('ns_no_search', '1')
+@section('ns_no_sell', '1')
+@section('ns_actions')
+    <form method="GET" action="{{ route('sneaker.report') }}" class="ns-rep-form">
+        <select name="month" class="ns-select" onchange="this.form.submit()" aria-label="Месяц">
+            @foreach($months as $m)
+                <option value="{{ $m['v'] }}" @selected($m['v'] === $monthValue)>{{ $m['l'] }}</option>
+            @endforeach
+        </select>
+        <button class="ns-btn" type="submit">Показать</button>
+    </form>
+    <a class="ns-btn" href="{{ route('sneaker.report.export', ['month' => $monthValue]) }}">{!! $ui::icon('down', 'ns-sm') !!}CSV</a>
+@endsection
 
 @section('content')
-    @php
-        $money = fn ($v) => number_format((float) $v, 0, ',', ' ');
-        $dlt = function ($d) {
-            if ($d === 0) return '<span class="text-muted">±0%</span>';
-            $cls = $d > 0 ? 'text-success' : 'text-danger';
-            $ar = $d > 0 ? '▲' : '▼';
-            return '<span class="'.$cls.'">'.$ar.' '.abs($d).'% к пр. мес.</span>';
-        };
-        $funnelMax = max(1, (int) $funnel->max('count'));
-    @endphp
+<div class="ns-kpis">
+    <div class="ns-kpi"><div class="ns-kl">Выручка</div><div class="ns-kv">{{ $rub($cur['revenue']) }}</div><div class="ns-kd">{!! $dlt($delta['revenue']) !!}</div></div>
+    <div class="ns-kpi"><div class="ns-kl">Прибыль · маржа {{ round($cur['margin']) }}%</div><div @class(['ns-kv', 'ns-up' => $cur['profit'] >= 0, 'ns-dn' => $cur['profit'] < 0])>{{ $sgnRub($cur['profit']) }}</div><div class="ns-kd">{!! $dlt($delta['profit']) !!}</div></div>
+    <div class="ns-kpi"><div class="ns-kl">Продано пар</div><div class="ns-kv">{{ $cur['units'] }}</div><div class="ns-kd">сделок {{ $cur['count'] }} · {!! $dlt($delta['units']) !!}</div></div>
+    <div class="ns-kpi"><div class="ns-kl">Средний чек</div><div class="ns-kv">{{ $cur['count'] ? $rub($cur['avg']) : '—' }}</div><div class="ns-kd">{!! $dlt($delta['avg']) !!}</div></div>
+</div>
+<div class="ns-kpis">
+    <div class="ns-kpi"><div class="ns-kl">Конверсия в продажу</div><div class="ns-kv">{{ $conversion !== null ? $conversion.'%' : '—' }}</div><div class="ns-kd">продаж {{ $wonCount }} · отказов {{ $lostCount }}</div></div>
+    <div class="ns-kpi"><div class="ns-kl">Закуплено за период</div><div class="ns-kv">{{ $rub($purchaseSpend) }}</div><div class="ns-kd">открытых закупок: {{ $openPurchases }}@if($whiteCount) · в белую {{ $rub($whiteSpend) }} ({{ $whiteCount }})@endif</div></div>
+    <div class="ns-kpi"><div class="ns-kl">Склад по себестоимости</div><div class="ns-kv">{{ $rub($stockCostValue) }}</div><div class="ns-kd">{{ number_format($stockUnits, 0, ',', ' ') }} пар@if($reservedUnits) · резерв {{ $reservedUnits }}@endif</div></div>
+    <div class="ns-kpi"><div class="ns-kl">Склад в ценах продажи</div><div class="ns-kv">{{ $rub($stockSaleValue) }}</div><div class="ns-kd">потенц. выручка склада</div></div>
+</div>
 
-    <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
-        <h4 class="mb-0">Отчёт · Кроссовки</h4>
-        <div class="d-flex gap-2 align-items-center flex-wrap">
-            <form method="GET" action="{{ route('sneaker.report') }}" class="d-flex gap-2 align-items-center">
-                <label class="form-label mb-0 small text-muted">Период</label>
-                <input type="month" name="month" value="{{ $monthValue }}" class="form-control form-control-sm">
-                <button class="btn btn-sm btn-primary">Показать</button>
-            </form>
-            <a class="btn btn-sm btn-outline-success" href="{{ route('sneaker.report.export', ['month' => $monthValue]) }}">Экспорт CSV</a>
+<div class="ns-grid2 ns-rep-row">
+    <div class="ns-panel ns-panel-pad">
+        <div class="ns-sec-h">Динамика за 6 месяцев <span class="ns-sm">· выручка</span></div>
+        <div class="ns-chart" style="height:190px">
+            @foreach($dynamics as $i => $d)
+                @php
+                    $h = $d['revenue'] > 0 ? max(4, $d['revenue'] / $dynMaxK * 100) : 1.5;
+                @endphp
+                <div @class(['ns-bar', 'ns-soft' => $d['revenue'] <= 0]) style="height:{{ number_format($h, 1, '.', '') }}%" title="{{ $d['label'] }}: выручка {{ $rub($d['revenue']) }}, прибыль {{ $sgnRub($d['profit']) }}">@if($d['revenue'] > 0)<span>{{ number_format($d['revenue'] / 1000, 0, ',', ' ') }}к</span>@endif<small>{{ $d['label'] }}</small></div>
+            @endforeach
         </div>
+        <div class="ns-chart-pad" style="height:26px"></div>
     </div>
-
-    {{-- KPI с авто-сравнением --}}
-    <div class="row g-2 mb-2">
-        <div class="col-6 col-lg">
-            <div class="kpi"><div class="l">Выручка</div><div class="v">{{ $money($cur['revenue']) }} ₽</div><div class="s">{!! $dlt($delta['revenue']) !!}</div></div>
-        </div>
-        <div class="col-6 col-lg">
-            <div class="kpi"><div class="l">Прибыль · маржа {{ round($cur['margin']) }}%</div><div class="v {{ $cur['profit'] >= 0 ? 'text-success' : 'text-danger' }}">{{ $money($cur['profit']) }} ₽</div><div class="s">{!! $dlt($delta['profit']) !!}</div></div>
-        </div>
-        <div class="col-6 col-lg">
-            <div class="kpi"><div class="l">Продано пар</div><div class="v">{{ $cur['units'] }}</div><div class="s">сделок {{ $cur['count'] }} · {!! $dlt($delta['units']) !!}</div></div>
-        </div>
-        <div class="col-6 col-lg">
-            <div class="kpi"><div class="l">Средний чек</div><div class="v">{{ $cur['count'] ? $money($cur['avg']) : '—' }} ₽</div><div class="s">{!! $dlt($delta['avg']) !!}</div></div>
-        </div>
-        <div class="col-6 col-lg">
-            <div class="kpi"><div class="l">Конверсия в продажу</div><div class="v">{{ $conversion !== null ? $conversion.'%' : '—' }}</div><div class="s">продаж {{ $wonCount }} · отказов {{ $lostCount }}</div></div>
-        </div>
-    </div>
-
-    {{-- Деньги/склад --}}
-    <div class="row g-2 mb-3">
-        <div class="col-6 col-lg-3"><div class="kpi"><div class="l">Закуплено за период</div><div class="v">{{ $money($purchaseSpend) }} ₽</div><div class="s">открытых закупок: {{ $openPurchases }}</div></div></div>
-        <div class="col-6 col-lg-3"><div class="kpi"><div class="l">Склад по себестоимости</div><div class="v">{{ $money($stockCostValue) }} ₽</div><div class="s">{{ $stockUnits }} пар@if($reservedUnits) · резерв {{ $reservedUnits }}@endif</div></div></div>
-        <div class="col-6 col-lg-3"><div class="kpi"><div class="l">Склад в ценах продажи</div><div class="v">{{ $money($stockSaleValue) }} ₽</div><div class="s">потенц. выручка склада</div></div></div>
-        <div class="col-6 col-lg-3"><div class="kpi"><div class="l">В работе (воронка)</div><div class="v">{{ $money($pipelineValue) }} ₽</div><div class="s">{{ $pipelineCount }} активных сделок</div></div></div>
-        <div class="col-6 col-lg-3"><div class="kpi"><div class="l">Заказано в белую</div><div class="v">{{ $money($whiteSpend) }} ₽</div><div class="s">{{ $whiteCount }} закуп. за период</div></div></div>
-    </div>
-
-    <div class="row g-3 mb-3">
-        {{-- Динамика --}}
-        <div class="col-lg-7">
-            <div class="card shadow-sm h-100"><div class="card-body">
-                <div class="fw-semibold mb-1">Динамика за 6 месяцев <span class="small text-muted">(<span class="text-primary">выручка</span> / <span class="text-success">прибыль</span>)</span></div>
-                <div class="bars">
-                    @foreach($dynamics as $d)
-                        <div class="bar-col">
-                            <div class="bar-wrap">
-                                <div class="bar" style="height: {{ max(2, (int) round($d['revenue'] / $dynMax * 100)) }}%" title="Выручка: {{ $money($d['revenue']) }} ₽"></div>
-                                <div class="bar profit" style="height: {{ max(2, (int) round(max(0,$d['profit']) / $dynMax * 100)) }}%" title="Прибыль: {{ $money($d['profit']) }} ₽"></div>
-                            </div>
-                            <div class="bar-lbl">{{ $d['label'] }}<br>{{ $money($d['revenue']) }}</div>
-                        </div>
-                    @endforeach
-                </div>
-            </div></div>
-        </div>
-        {{-- Воронка --}}
-        <div class="col-lg-5">
-            <div class="card shadow-sm h-100"><div class="card-body">
-                <div class="fw-semibold mb-2">Воронка продаж (в работе)</div>
-                @forelse($funnel as $f)
-                    <div class="funnel-row">
-                        <div class="funnel-name">{{ $f['name'] }}</div>
-                        <div class="funnel-track"><div class="funnel-fill {{ $f['final'] ? 'final' : '' }}" style="width: {{ max(2, (int) round($f['count'] / $funnelMax * 100)) }}%"></div></div>
-                        <div class="funnel-val">{{ $f['count'] }} шт@if($f['sum'] > 0) · {{ $money($f['sum']) }} ₽@endif</div>
-                    </div>
-                @empty
-                    <div class="text-muted small">Воронка не настроена.</div>
-                @endforelse
-            </div></div>
-        </div>
-    </div>
-
-    <div class="row g-3 mb-3">
-        {{-- Топ моделей --}}
-        <div class="col-lg-6">
-            <div class="card shadow-sm h-100">
-                <div class="card-header fw-semibold">Топ моделей за период</div>
-                <div class="table-responsive"><table class="table table-sm mb-0 align-middle">
-                    <thead><tr><th>Модель</th><th class="text-end">Пар</th><th class="text-end">Выручка</th><th class="text-end">Прибыль</th></tr></thead>
-                    <tbody>
-                    @forelse($topModels as $t)
-                        <tr><td>{{ $t['name'] }}</td><td class="text-end">{{ $t['units'] }}</td><td class="text-end">{{ $money($t['revenue']) }}</td><td class="text-end {{ $t['profit'] >= 0 ? 'text-success' : 'text-danger' }}">{{ $money($t['profit']) }}</td></tr>
-                    @empty
-                        <tr><td colspan="4" class="text-muted small text-center py-3">Продаж за период нет.</td></tr>
-                    @endforelse
-                    </tbody>
-                </table></div>
+    <div class="ns-panel ns-panel-pad">
+        <div class="ns-sec-h">Воронка продаж <span class="ns-sm">· в работе</span></div>
+        @if($funnel->isEmpty())
+            <div class="ns-empty ns-sm"><b>Воронка не настроена</b></div>
+        @else
+            <div class="ns-hlist">
+                @foreach($funnel as $i => $f)
+                    <div class="ns-hr"><span class="ns-fdot" style="background:{{ $funnelColors[$i % count($funnelColors)] }}"></span><div class="ns-grow"><b>{{ $f['name'] }}</b></div><b>{{ $f['count'] }} шт@if($f['sum'] > 0) · {{ $rub($f['sum']) }}@endif</b></div>
+                @endforeach
             </div>
-        </div>
-        {{-- По сотрудникам --}}
-        <div class="col-lg-6">
-            <div class="card shadow-sm h-100">
-                <div class="card-header fw-semibold">По сотрудникам за период</div>
-                <div class="table-responsive"><table class="table table-sm mb-0 align-middle">
-                    <thead><tr><th>Сотрудник</th><th class="text-end">Сделок</th><th class="text-end">Пар</th><th class="text-end">Выручка</th><th class="text-end">Прибыль</th></tr></thead>
-                    <tbody>
-                    @forelse($byOperator as $o)
-                        <tr><td>{{ $o['name'] }}</td><td class="text-end">{{ $o['count'] }}</td><td class="text-end">{{ $o['units'] }}</td><td class="text-end">{{ $money($o['revenue']) }}</td><td class="text-end {{ $o['profit'] >= 0 ? 'text-success' : 'text-danger' }}">{{ $money($o['profit']) }}</td></tr>
-                    @empty
-                        <tr><td colspan="5" class="text-muted small text-center py-3">Продаж за период нет.</td></tr>
-                    @endforelse
-                    </tbody>
-                </table></div>
-            </div>
-        </div>
+            @if($pipelineCount === 0)
+                <div class="ns-note" style="margin-top:8px">Все продажи {{ $monGen[$monthTitle->month - 1] }} прошли через быструю продажу — воронка сейчас пустая.</div>
+            @else
+                <div class="ns-note" style="margin-top:8px">В работе {{ $pipelineCount }} сделок на {{ $rub($pipelineValue) }}.</div>
+            @endif
+        @endif
     </div>
+</div>
+<div class="ns-gap"></div>
 
-    <div class="row g-3 mb-3">
-        <div class="col-lg-6">
-            <div class="card shadow-sm h-100">
-                <div class="card-header fw-semibold">По источникам за период</div>
-                <div class="table-responsive"><table class="table table-sm mb-0 align-middle">
-                    <thead><tr><th>Источник</th><th class="text-end">Сделок</th><th class="text-end">Выручка</th></tr></thead>
-                    <tbody>
-                    @forelse($bySource as $s)
-                        <tr><td>{{ $s['name'] }}</td><td class="text-end">{{ $s['count'] }}</td><td class="text-end">{{ $money($s['revenue']) }}</td></tr>
-                    @empty
-                        <tr><td colspan="3" class="text-muted small text-center py-3">Нет данных за период.</td></tr>
-                    @endforelse
-                    </tbody>
-                </table></div>
-            </div>
-        </div>
-        <div class="col-lg-6">
-            <div class="card shadow-sm h-100"><div class="card-body d-flex flex-column justify-content-center">
-                <div class="text-muted small">Возвраты за период</div>
-                <div class="h3 mb-0">{{ $returnsCount }}</div>
-                <div class="small text-muted">оформленных возвратов товара на склад</div>
-            </div></div>
-        </div>
+<div class="ns-grid3 ns-rep-3">
+    <div class="ns-panel" style="overflow:hidden">
+        <div class="ns-panel-pad" style="padding-bottom:4px"><div class="ns-sec-h">Топ моделей</div></div>
+        @if($topModels->isEmpty())
+            <div class="ns-empty ns-sm"><b>Продаж за период нет</b></div>
+        @else
+            <table class="ns-tbl"><tbody>
+                @foreach($topModels as $t)
+                    <tr title="выручка {{ $rub($t['revenue']) }}"><td class="ns-tname">{{ $t['name'] }}</td><td class="ns-num">{{ $t['units'] }}</td><td @class(['ns-num', 'ns-up' => $t['profit'] >= 0, 'ns-dn' => $t['profit'] < 0])><b>{{ $sgnRub($t['profit']) }}</b></td></tr>
+                @endforeach
+            </tbody></table>
+        @endif
     </div>
-
-    <div class="row g-3">
-        {{-- Дозаказать --}}
-        <div class="col-lg-6">
-            <div class="card shadow-sm h-100">
-                <div class="card-header fw-semibold">Дозаказать (низкий остаток) @if($reorder->count())<span class="badge text-bg-danger">{{ $reorder->count() }}</span>@endif</div>
-                <div class="table-responsive"><table class="table table-sm mb-0 align-middle">
-                    <thead><tr><th>Позиция</th><th class="text-end">Доступно</th><th class="text-end">Мин.</th><th class="text-end">Заказать ≈</th></tr></thead>
-                    <tbody>
-                    @forelse($reorder as $r)
-                        <tr><td>{{ $r['name'] }}</td><td class="text-end text-danger fw-semibold">{{ $r['available'] }}</td><td class="text-end text-muted">{{ $r['threshold'] }}</td><td class="text-end">{{ $r['suggest'] }}</td></tr>
-                    @empty
-                        <tr><td colspan="4" class="text-muted small text-center py-3">Всё в норме.</td></tr>
-                    @endforelse
-                    </tbody>
-                </table></div>
-            </div>
-        </div>
-        {{-- Залежавшийся --}}
-        <div class="col-lg-6">
-            <div class="card shadow-sm h-100">
-                <div class="card-header fw-semibold">Залежавшийся товар <span class="small text-muted fw-normal">(без продаж 30+ дней)</span></div>
-                <div class="table-responsive"><table class="table table-sm mb-0 align-middle">
-                    <thead><tr><th>Позиция</th><th class="text-end">Пар</th><th class="text-end">В деньгах</th><th>Посл. продажа</th></tr></thead>
-                    <tbody>
-                    @forelse($deadStock as $d)
-                        <tr><td>{{ $d['name'] }}</td><td class="text-end">{{ $d['qty'] }}</td><td class="text-end">{{ $money($d['value']) }}</td><td class="small text-muted">{{ $d['last'] ?? 'не продавалось' }}</td></tr>
-                    @empty
-                        <tr><td colspan="4" class="text-muted small text-center py-3">Залежавшихся позиций нет.</td></tr>
-                    @endforelse
-                    </tbody>
-                </table></div>
-            </div>
-        </div>
+    <div class="ns-panel" style="overflow:hidden">
+        <div class="ns-panel-pad" style="padding-bottom:4px"><div class="ns-sec-h">По сотрудникам</div></div>
+        @if($byOperator->isEmpty())
+            <div class="ns-empty ns-sm"><b>Продаж за период нет</b></div>
+        @else
+            <table class="ns-tbl">
+                <thead><tr><th>Сотрудник</th><th class="ns-num">Пар</th><th class="ns-num">Прибыль</th></tr></thead>
+                <tbody>
+                @foreach($byOperator as $o)
+                    <tr title="сделок {{ $o['count'] }} · выручка {{ $rub($o['revenue']) }}"><td class="ns-tname">{{ $o['name'] }}</td><td class="ns-num">{{ $o['units'] }}</td><td @class(['ns-num', 'ns-up' => $o['profit'] >= 0, 'ns-dn' => $o['profit'] < 0])><b>{{ $sgnRub($o['profit']) }}</b></td></tr>
+                @endforeach
+                </tbody>
+            </table>
+        @endif
     </div>
+    <div class="ns-panel" style="overflow:hidden">
+        <div class="ns-panel-pad" style="padding-bottom:4px"><div class="ns-sec-h">По источникам</div></div>
+        @if($bySource->isEmpty())
+            <div class="ns-empty ns-sm"><b>Нет данных за период</b></div>
+        @else
+            <table class="ns-tbl"><tbody>
+                @foreach($bySource as $s)
+                    <tr><td>@if($s['name'] === 'Не указан')<span class="ns-tag ns-warn">не указан</span>@else{!! $ui::srcChip($s['name']) !!}@endif</td><td class="ns-num">{{ $s['count'] }}</td><td class="ns-num"><b>{{ $rub($s['revenue']) }}</b></td></tr>
+                @endforeach
+            </tbody></table>
+        @endif
+    </div>
+</div>
+<div class="ns-gap"></div>
 
-    {{-- Продажи за период — прибыль и маржа по каждому заказу --}}
-    <div class="card shadow-sm mt-3">
-        <div class="card-header fw-semibold d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <span>Продажи за период — прибыль по каждому заказу</span>
-            <span class="small text-muted fw-normal">маржа = прибыль ÷ сумма; «—» значит закупочная цена не указана</span>
-        </div>
-        <div class="table-responsive"><table class="table table-sm mb-0 align-middle">
-            <thead><tr>
-                <th>Дата</th><th>Товар</th><th>Источник</th>
-                <th class="text-end">Пар</th><th class="text-end">Сумма</th>
-                <th class="text-end">Себест.</th><th class="text-end">Прибыль</th><th class="text-end">Маржа</th>
-            </tr></thead>
+<div class="ns-grid3 ns-rep-3">
+    <div class="ns-panel ns-panel-pad">
+        <div class="ns-sec-h"><svg class="ns-icon ns-sm" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 010 10h-3"/></svg>Возвраты за период</div>
+        <div class="ns-rep-big @if($returnsCount) ns-dn @endif">{{ $returnsCount }}</div>
+        <div class="ns-note" style="margin-top:2px">оформленных возвратов товара на склад</div>
+    </div>
+    <div class="ns-panel" style="overflow:hidden">
+        <div class="ns-panel-pad" style="padding-bottom:4px"><div class="ns-sec-h">Дозаказать <span class="ns-sm">· низкий остаток</span></div></div>
+        @if($reorder->isEmpty())
+            <div class="ns-empty ns-sm">{!! $ui::icon('check') !!}<b>Всё в норме</b>Мин. остаток задаётся в окне размера на складе. Подсказки по скорости продаж — <a href="{{ route('warehouse.reorder') }}">«Что заказать»</a></div>
+        @else
+            <table class="ns-tbl">
+                <thead><tr><th>Позиция</th><th class="ns-num">Доступно</th><th class="ns-num">Мин.</th><th class="ns-num">Заказать ≈</th></tr></thead>
+                <tbody>
+                @foreach($reorder as $r)
+                    <tr><td class="ns-tname">{{ $r['name'] }}</td><td class="ns-num ns-dn"><b>{{ $r['available'] }}</b></td><td class="ns-num ns-muted">{{ $r['threshold'] }}</td><td class="ns-num">{{ $r['suggest'] }}</td></tr>
+                @endforeach
+                </tbody>
+            </table>
+        @endif
+    </div>
+    <div class="ns-panel ns-panel-pad">
+        <div class="ns-sec-h">Залежавшийся товар <span class="ns-sm">· без продаж 30+ дней</span></div>
+        @if($deadStock->isEmpty())
+            <div class="ns-empty ns-sm"><b>Залежавшихся позиций нет</b></div>
+        @else
+            <div class="ns-hlist">
+                @foreach($deadStock as $d)
+                    <div class="ns-hr"><div class="ns-grow"><b>{{ $d['name'] }}</b><small>{{ $d['qty'] }} пар · {{ $d['last'] ? 'посл. продажа '.$d['last'] : 'не продавалось' }}</small></div><b>{{ $rub($d['value']) }}</b></div>
+                @endforeach
+            </div>
+        @endif
+    </div>
+</div>
+<div class="ns-gap"></div>
+
+<div class="ns-panel" style="overflow:hidden">
+    <div class="ns-panel-pad" style="padding-bottom:6px"><div class="ns-sec-h">Продажи за период <span class="ns-tag">{{ $soldDeals->count() }}</span><span class="ns-grow"></span><span class="ns-sm">маржа = прибыль ÷ сумма; «—» — закупочная цена не указана</span></div></div>
+    @if($soldDeals->isEmpty())
+        <div class="ns-empty ns-sm"><b>Продаж за период нет</b></div>
+    @else
+        <div style="overflow-x:auto"><table class="ns-tbl">
+            <thead><tr><th>Дата</th><th>Товар</th><th>Источник</th><th class="ns-num">Пар</th><th class="ns-num">Сумма</th><th class="ns-num">Себест.</th><th class="ns-num">Прибыль</th><th class="ns-num">Маржа</th></tr></thead>
             <tbody>
-            @forelse($soldDeals as $d)
-                @php($dProfit = $d->sale_profit)
-                @php($dMargin = $d->sale_margin_percent)
-                @php($dCost = $d->unit_cost_basis)
+            @foreach($soldDeals as $d)
+                @php
+                    $dProfit = $d->sale_profit;
+                    $dMargin = $d->sale_margin_percent;
+                    $dCost = $d->unit_cost_basis;
+                @endphp
                 <tr>
-                    <td class="small text-muted">{{ optional($d->stock_deducted_at)->format('d.m H:i') }}</td>
-                    <td>{{ $d->warehouseItem?->display_name ?? $d->title }}</td>
-                    <td class="small">{{ $d->manual_source ?: '—' }}</td>
-                    <td class="text-end">{{ (int) $d->sold_quantity }}</td>
-                    <td class="text-end">{{ $money($d->amount) }} ₽</td>
-                    <td class="text-end text-muted">{{ $dCost !== null ? $money($dCost).' ₽' : '—' }}</td>
-                    <td class="text-end fw-semibold {{ $dProfit === null ? 'text-muted' : ($dProfit >= 0 ? 'text-success' : 'text-danger') }}">{{ $dProfit !== null ? $money($dProfit).' ₽' : '—' }}</td>
-                    <td class="text-end {{ $dMargin === null ? 'text-muted' : ($dMargin >= 0 ? 'text-success' : 'text-danger') }}">{{ $dMargin !== null ? $dMargin.'%' : '—' }}</td>
+                    <td class="ns-muted">{{ optional($d->stock_deducted_at)->format('d.m H:i') }}</td>
+                    <td class="ns-tname"><a class="ns-link" href="{{ route('deals.show', $d->id) }}">{{ $d->warehouseItem?->display_name ?? $d->title }}</a></td>
+                    <td>{!! $ui::srcChip($d->manual_source) !!}</td>
+                    <td class="ns-num">{{ (int) $d->sold_quantity }}</td>
+                    <td class="ns-num"><b>{{ $rub($d->amount) }}</b></td>
+                    <td class="ns-num ns-muted">{{ $dCost !== null ? $rub($dCost) : '—' }}</td>
+                    <td @class(['ns-num', 'ns-muted' => $dProfit === null, 'ns-up' => $dProfit !== null && $dProfit >= 0, 'ns-dn' => $dProfit !== null && $dProfit < 0])><b>{{ $dProfit !== null ? $sgnRub($dProfit) : '—' }}</b></td>
+                    <td @class(['ns-num', 'ns-muted' => $dMargin === null, 'ns-dn' => $dMargin !== null && $dMargin < 0])>{{ $dMargin !== null ? $dMargin.'%' : '—' }}</td>
                 </tr>
-            @empty
-                <tr><td colspan="8" class="text-muted small text-center py-3">Продаж за период нет.</td></tr>
-            @endforelse
+            @endforeach
             </tbody>
+            <tfoot><tr><td>Итого</td><td></td><td></td><td class="ns-num">{{ $cur['units'] }}</td><td class="ns-num">{{ $rub($cur['revenue']) }}</td><td></td><td @class(['ns-num', 'ns-up' => $cur['profit'] >= 0, 'ns-dn' => $cur['profit'] < 0])>{{ $sgnRub($cur['profit']) }}</td><td class="ns-num">{{ round($cur['margin']) }}%</td></tr></tfoot>
         </table></div>
-    </div>
+    @endif
+</div>
 @endsection
