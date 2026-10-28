@@ -159,7 +159,7 @@ class Sneakers
             ],
             'Система' => [
                 $head ? $item('settings.users.index', 'Пользователи', 'users', 'settings.users.*') : null,
-                $item('help.index', 'Помощь', 'help', 'help.*'),
+                $shop ? $item('help.index', 'Помощь', 'help', 'help.*') : null,   // владельцу «Помощь» закрыта (маршрут — для магазина)
             ],
         ];
 
