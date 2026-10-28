@@ -303,6 +303,13 @@ class DealController extends Controller
         $nonTargetCategories = NonTargetCategory::appliesTo((int) $user->account_id) ? NonTargetCategory::LABELS : [];
         $nonTargetStageId = $nonTargetCategories ? NonTargetCategory::stageId((int) $user->account_id) : null;
 
+        // кроссовки — доска в каркасе «Нордика» отдела (прототип PAGES.deals): на карточке модель и размер со склада
+        if (\App\Support\Ui\Sneakers::enabled($user)) {
+            $dealsByStage->each(fn ($deals) => $deals->load('warehouseItem:id,brand,model,size'));
+
+            return view('deals.kanban_sneakers', compact('stages', 'dealsByStage', 'showSpam', 'q'));
+        }
+
         return view('deals.kanban', compact('stages','dealsByStage','showSpam','q', 'dateFilteredStageIds', 'focusDate', 'canSeeKanbanIds', 'canSeeKanbanCreatedAt', 'nonTargetCategories', 'nonTargetStageId'));
     }
 

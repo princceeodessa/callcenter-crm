@@ -52,7 +52,8 @@ class DealCardNordikaTest extends TestCase
         return User::create(['account_id' => $acc, 'name' => 'Наталья Петрова', 'email' => 'dc_'.$role.'_'.uniqid(), 'password' => Hash::make('password'), 'role' => $role, 'is_active' => true]);
     }
 
-    public function test_sneakers_card_keeps_old_markup_and_groups_calls(): void
+    /** Кроссовки (с 28.10.2026): та же карточка «Нордика» в каркасе отдела, с блоком продажи со склада */
+    public function test_sneakers_card_is_nordika_in_sneakers_layout_and_groups_calls(): void
     {
         [$acc, $pipeline, $stages] = $this->space('Кроссовки (тест карточки)');
         $head = $this->user($acc, 'sneaker_head');
@@ -60,7 +61,7 @@ class DealCardNordikaTest extends TestCase
 
         $html = $this->actingAs($head)->get(route('deals.show', $deal))->assertOk()->getContent();
 
-        $this->assertSame(2, substr_count($html, 'class="activity-call-card"'));          // два звонка, а не три события
+        $this->assertSame(2, substr_count($html, '<div class="nd-call">'));          // два звонка, а не три события
         $this->assertStringContainsString('объединено событий: 2', $html);
         $this->assertStringContainsString('01:15', $html);
         $this->assertStringContainsString('Ivan Petrov', $html);
@@ -68,7 +69,10 @@ class DealCardNordikaTest extends TestCase
         $this->assertStringContainsString('https://rec.example.test/abc.mp3', $html);
         $this->assertStringContainsString('Здравствуйте, хочу потолок', $html);
         $this->assertStringContainsString('id="dealStageSelect"', $html);
-        $this->assertStringNotContainsString('nd-deal', $html);
+        $this->assertStringContainsString('class="nd-panel nd-deal"', $html);
+        $this->assertStringContainsString('class="ns-html nd-html"', $html);             // каркас кроссовок
+        $this->assertStringContainsString('Склад · что продаём', $html);
+        $this->assertStringNotContainsString('navbar-dark', $html);
     }
 
     public function test_call_center_card_is_nordika_and_keeps_forms(): void

@@ -1,21 +1,17 @@
-@extends('layouts.app')
+@extends('layouts.sneakers')
+{{-- Новая закупка (полная форма; быстрое окно — на канбане закупок). Каркас «Нордика», только руководителю. --}}
+@section('title', 'Новая закупка')
+@section('ns_sub', 'закупки')
+@section('ns_actions')
+    <a class="ns-btn" href="{{ route('purchases.kanban') }}">← К закупкам</a>
+@endsection
 
 @section('content')
-    <div class="d-flex align-items-center justify-content-between mb-3">
-        <h4 class="mb-0">Новая закупка</h4>
-        <a class="btn btn-sm btn-outline-secondary" href="{{ route('purchases.kanban') }}">← К канбану</a>
-    </div>
-
-    <div class="card shadow-sm">
-        <div class="card-body">
-            <form method="POST" action="{{ route('purchases.store') }}">
-                @csrf
-                @include('purchases._form_fields')
-                <div class="mt-3 d-flex gap-2">
-                    <button type="submit" class="btn btn-success">Создать</button>
-                    <a class="btn btn-outline-secondary" href="{{ route('purchases.kanban') }}">Отмена</a>
-                </div>
-            </form>
-        </div>
-    </div>
+<div class="ns-panel ns-panel-pad ns-pf-panel">
+    <form method="POST" action="{{ route('purchases.store') }}">
+        @csrf
+        @include('purchases._form_fields')
+        <div class="ns-pf-foot"><a class="ns-btn" href="{{ route('purchases.kanban') }}">Отмена</a><button type="submit" class="ns-btn ns-primary">Создать</button></div>
+    </form>
+</div>
 @endsection

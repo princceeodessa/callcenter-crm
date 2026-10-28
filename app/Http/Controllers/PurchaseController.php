@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Purchase;
 use App\Models\PurchaseStage;
 use App\Services\Warehouse\WarehouseService;
+use App\Support\Ui\Sneakers;
 use App\Support\Users\AssignmentScope;
 use App\Support\Warehouse\ArticleIdentity;
 use App\Support\Warehouse\DeliverySheet;
@@ -17,6 +18,7 @@ class PurchaseController extends Controller
     public function kanban(Request $request)
     {
         $user = Auth::user();
+        $this->headOnly();
         $q = trim($request->string('q')->toString());
 
         $stages = PurchaseStage::query()
@@ -48,6 +50,7 @@ class PurchaseController extends Controller
     public function create()
     {
         $user = Auth::user();
+        $this->headOnly();
 
         $stages = PurchaseStage::query()
             ->where('account_id', $user->account_id)
@@ -62,6 +65,7 @@ class PurchaseController extends Controller
     public function store(Request $request, WarehouseService $warehouse)
     {
         $user = Auth::user();
+        $this->headOnly();
         $data = $this->validateData($request);
 
         $stage = PurchaseStage::query()
@@ -90,12 +94,18 @@ class PurchaseController extends Controller
 
         $warehouse->syncPurchaseStock($purchase);
 
+        // окно «Новая закупка» на канбане — обратно на доску
+        if ($request->input('back') === 'kanban') {
+            return redirect()->route('purchases.kanban')->with('status', 'Закупка «'.$purchase->title.'» добавлена.');
+        }
+
         return redirect()->route('purchases.show', $purchase);
     }
 
     public function show(Purchase $purchase)
     {
         $user = Auth::user();
+        $this->headOnly();
         abort_unless($purchase->account_id === $user->account_id, 403);
 
         $purchase->load('responsible', 'stage');
@@ -113,6 +123,7 @@ class PurchaseController extends Controller
     public function update(Request $request, Purchase $purchase, WarehouseService $warehouse)
     {
         $user = Auth::user();
+        $this->headOnly();
         abort_unless($purchase->account_id === $user->account_id, 403);
 
         $data = $this->validateData($request);
@@ -147,6 +158,7 @@ class PurchaseController extends Controller
     public function move(Request $request, Purchase $purchase, WarehouseService $warehouse)
     {
         $user = Auth::user();
+        $this->headOnly();
         if ($purchase->account_id !== $user->account_id) {
             abort(403);
         }
@@ -179,6 +191,7 @@ class PurchaseController extends Controller
     public function close(Purchase $purchase)
     {
         $user = Auth::user();
+        $this->headOnly();
         abort_unless($purchase->account_id === $user->account_id, 403);
 
         if (! $purchase->closed_at) {
@@ -192,6 +205,7 @@ class PurchaseController extends Controller
     /** Форма загрузки таблицы поставки (.xlsx). */
     public function importForm()
     {
+        $this->headOnly();
         return view('purchases.import', ['imported' => null]);
     }
 
@@ -204,6 +218,7 @@ class PurchaseController extends Controller
     public function importRun(Request $request, WarehouseService $warehouse)
     {
         $user = Auth::user();
+        $this->headOnly();
         $request->validate([
             'xlsx' => ['required', 'file', 'mimes:xlsx', 'max:10240'],
         ]);
@@ -300,9 +315,12 @@ class PurchaseController extends Controller
         $grandTotalPairs = $q === '' ? $totalPairs : (int) Purchase::where('account_id', $user->account_id)
             ->whereNull('closed_at')->whereNull('stocked_at')->sum('quantity');
 
+        // продавец принимает поставку, но закупочных цен не видит (решение 28.10.2026)
+        $seesCost = Sneakers::seesCost($user);
+
         return view('purchases.in_transit', compact(
             'purchases', 'q', 'totalPairs', 'totalCost',
-            'avgPairCost', 'articlesCount', 'brandsCount', 'grandTotalPairs', 'whitePairs'
+            'avgPairCost', 'articlesCount', 'brandsCount', 'grandTotalPairs', 'whitePairs', 'seesCost'
         ));
     }
 
@@ -356,6 +374,7 @@ class PurchaseController extends Controller
     public function markWhite(Request $request)
     {
         $user = Auth::user();
+        $this->headOnly();
         $data = $request->validate([
             'white' => ['required', 'boolean'],
             'scope' => ['nullable', 'in:all'],
@@ -390,6 +409,15 @@ class PurchaseController extends Controller
             .' выбранных ('.$pairs.' пар).';
 
         return redirect()->route('purchases.inTransit', $request->only('q'))->with('status', $status);
+    }
+
+    /**
+     * Закупки — с закупочными ценами: только руководителю (решение 28.10.2026; продавцу были открыты канбан, карточка,
+     * создание). Продавцу остаются «В пути» без цен и приёмка поставки.
+     */
+    private function headOnly(): void
+    {
+        abort_unless(Sneakers::seesCost(), 403);
     }
 
     private function validateData(Request $request): array

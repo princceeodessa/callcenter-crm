@@ -1,5 +1,6 @@
 {{-- Карточка сделки в стиле Nordika (редизайн колл-центра, этап 2; окно сделки из прототипа дизайнера — здесь страницей).
-     Формы и маршруты — прежние (deals.stage, deals.update, deals.close, deals.voice-note.store, tasks.*); лента — $prepareActivity. --}}
+     Формы и маршруты — прежние (deals.stage, deals.update, deals.close, deals.voice-note.store, tasks.*); лента — $prepareActivity.
+     Кроссовки (28.10.2026) открывают эту же карточку в своём каркасе — с блоком «Склад · что продаём» (deals._sale_nd). --}}
 @php
   $ndUi = \App\Support\Ui\Nordika::class;
   $ndSrc = $ndUi::sourceKey($deal);
@@ -28,7 +29,7 @@
   <div class="nd-m-head">
     <div class="nd-deal-headtext">
       <div class="nd-deal-chips">
-        {!! $ndUi::sourceChip($ndSrc) !!}
+        {!! !empty($isSneakerSpace) ? \App\Support\Ui\Sneakers::srcChip($deal->manual_source) : $ndUi::sourceChip($ndSrc) !!}
         @if($dealSourceChatUrl)
           <a class="nd-tag" href="{{ $dealSourceChatUrl }}" target="_blank" rel="noopener">Открыть {{ $dealSourceLabel }} ↗</a>
         @endif
@@ -82,6 +83,10 @@
           @if($deal->incoming_phone_source_display) · номер: {{ $deal->incoming_phone_source_display }} @endif
         </div>
       </div>
+
+      @if(!empty($isSneakerSpace))
+        @include('deals._sale_nd')
+      @endif
 
       <div class="nd-lbl">Голосовое сообщение в ленту</div>
       <form class="nd-composer nd-deal-voice" method="POST" action="{{ route('deals.voice-note.store', $deal) }}" enctype="multipart/form-data">
@@ -317,7 +322,7 @@
       </div>
 
       <div class="nd-al">Источник</div>
-      <div class="nd-av2">{!! $ndUi::sourceChip($ndSrc) !!}
+      <div class="nd-av2">{!! !empty($isSneakerSpace) ? \App\Support\Ui\Sneakers::srcChip($deal->manual_source) : $ndUi::sourceChip($ndSrc) !!}
         @if($deal->incoming_phone_source_display)<div class="nd-deal-srclabel">номер: {{ $deal->incoming_phone_source_display }}</div>@endif
       </div>
 
@@ -328,7 +333,9 @@
       <div class="nd-deal-facts">
         <div><span>Категория</span><b>{{ $deal->product_category_label ?? '—' }}</b></div>
         <div><span>Сумма</span><b>{{ $deal->amount ? number_format($deal->amount, 0, ',', ' ').' ₽' : '—' }}</b></div>
-        <div><span>Помещение</span><b>{{ $deal->readiness_status ?? '—' }}</b></div>
+        @if(empty($isSneakerSpace))
+          <div><span>Помещение</span><b>{{ $deal->readiness_status ?? '—' }}</b></div>
+        @endif
         @if($deal->closed_at)
           <div><span>Закрыта</span><b>{{ $deal->closed_at->format('d.m.Y H:i') }}</b></div>
           <div><span>Результат</span><b>{{ $dealClosedResult['short_label'] }}</b></div>

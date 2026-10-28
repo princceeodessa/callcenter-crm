@@ -8,6 +8,8 @@
 
     Секции страницы: title, ns_title, ns_sub, ns_actions (кнопки перед общими), ns_no_search / ns_no_sell (без поиска /
     «Продать» в шапке), content (внутри .ns-view > .ns-page) или ns_view (весь блок под шапкой — например, канбан).
+    ns_nd — страница на разметке колл-центра «Нордика» (карточка сделки _show_nordika) или на Bootstrap: подключаются Bootstrap
+    и стили колл-центра (nordika-crm.css — классы nd-, nordika-crm-app.css — Bootstrap цветами темы), у <html> класс nd-html.
 --}}
 @php
     $nsUser = auth()->user();
@@ -17,6 +19,8 @@
     $nsSwitch = $nsUser->role === 'sneaker_owner' && $nsUser->all_businesses && Route::has('owner.ceilings');
     $nsTitle = trim($__env->yieldContent('ns_title')) ?: trim($__env->yieldContent('title')) ?: 'Кроссовки';
     $nsSub = trim($__env->yieldContent('ns_sub'));
+    $nsNd = $__env->hasSection('ns_nd');
+    $nsBootstrap = $nsNd || $__env->hasSection('ns_bootstrap');
     $nsSearch = $nsShop && ! $__env->hasSection('ns_no_search');
     $nsSell = $nsShop && ! $__env->hasSection('ns_no_sell') && Route::has('sale.quick');
     $nsUnread = $nsUi::unread($nsUser);
@@ -29,7 +33,7 @@
         'notifKey' => 'lastNotifId_u'.$nsUser->id.'_a'.$nsUser->account_id,
     ];
 @endphp
-<html lang="ru" class="ns-html" data-theme="light">
+<html lang="ru" @class(['ns-html', 'nd-html' => $nsNd]) data-theme="light">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -42,8 +46,12 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    @hasSection('ns_bootstrap')
+    @if($nsBootstrap)
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    @endif
+    @if($nsNd)
+        <link rel="stylesheet" href="{{ $nsV('css/nordika-crm.css') }}">
+        <link rel="stylesheet" href="{{ $nsV('css/nordika-crm-app.css') }}">
     @endif
     <link rel="stylesheet" href="{{ $nsV('css/nordika-sneakers.css') }}">
     <link rel="stylesheet" href="{{ $nsV('css/nordika-sneakers-app.css') }}">
@@ -125,7 +133,7 @@
 @if($nsShop)
     @include('partials.scanner-listener')
 @endif
-@hasSection('ns_bootstrap')
+@if($nsBootstrap)
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 @endif
 @stack('scripts')

@@ -90,15 +90,17 @@ class NordikaLayoutTest extends TestCase
         $this->assertStringNotContainsString('id="navNotifBadge"', $measurer);   // у замерщика колокольчика не было
     }
 
-    public function test_sneakers_and_login_keep_old_layout(): void
+    /** Кроссовки — свой каркас «Нордика» (layouts.sneakers, с 28.10.2026), не каркас колл-центра; вход — прежний */
+    public function test_sneakers_have_own_layout_and_login_keeps_old_layout(): void
     {
         $sneakers = Account::create(['name' => 'Кроссовки (тест Nordika)'])->id;
         $pipe = DB::table('pipelines')->insertGetId(['account_id' => $sneakers, 'name' => 'Продажи', 'is_default' => 1, 'created_at' => now(), 'updated_at' => now()]);
         DB::table('pipeline_stages')->insert(['account_id' => $sneakers, 'pipeline_id' => $pipe, 'name' => 'Новый', 'sort' => 10, 'is_final' => 0, 'created_at' => now(), 'updated_at' => now()]);
 
         $html = $this->actingAs($this->user('sneaker_head', 'Рук кроссовок', $sneakers))->get(route('deals.kanban'))->assertOk()->getContent();
-        $this->assertStringContainsString('navbar-dark', $html);
-        $this->assertStringContainsString('kanban-board mode-row', $html);
+        $this->assertStringContainsString('class="ns-html"', $html);
+        $this->assertStringContainsString('class="ns-board"', $html);
+        $this->assertStringNotContainsString('navbar-dark', $html);
         $this->assertStringNotContainsString('nd-html', $html);
         $this->assertStringNotContainsString('class="nd-board"', $html);
         $this->assertStringNotContainsString('class="nd-card', $html);

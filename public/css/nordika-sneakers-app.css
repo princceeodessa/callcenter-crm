@@ -197,3 +197,44 @@ a.ns-link:hover{color:var(--accent);text-decoration:underline}
 @media(max-width:700px){.ns-an-tax{grid-template-columns:1fr}}
 @media print{.ns-side,.ns-top .ns-btn,.ns-top .ns-search{display:none!important}.ns-page{overflow:visible}}
 .ns-heat .ns-hh{overflow:hidden}
+
+/* «Закупки»: доска, «В пути», карточка закупки */
+.ns-board-flash{padding:0 22px}
+.ns-card a.ns-c-title{display:block;color:var(--ink);text-decoration:none}
+.ns-card a.ns-c-title:hover{color:var(--accent)}
+.ns-card .ns-c-top .ns-tag{padding:2px 7px;font-size:10.5px}
+.ns-col-body.ns-drop{outline:2px dashed color-mix(in srgb,var(--accent) 45%,transparent);outline-offset:-6px;border-radius:12px}
+.ns-card.ns-dragging{opacity:.45}
+.ns-board .ns-card{content-visibility:auto;contain-intrinsic-size:auto 110px}
+.ns-it-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-top:14px;padding-bottom:14px}
+.ns-it-sum{font-size:12.5px;font-weight:600}
+.ns-it-white button:disabled{opacity:.45;cursor:default}
+.ns-chk{width:17px;height:17px;accent-color:var(--accent);cursor:pointer;vertical-align:middle}
+.ns-pf-panel{max-width:980px}
+.ns-pf{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px 14px}
+.ns-pf .ns-pf-wide{grid-column:span 2}
+.ns-pf .ns-pf-full{grid-column:1/-1}
+.ns-pf-check{align-self:end;margin-bottom:16px}
+.ns-pf-foot{display:flex;justify-content:flex-end;gap:10px;margin-top:6px}
+.ns-pf-tags{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:14px;font-size:12.5px}
+.ns-pf-close{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0}
+.ns-pf-upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 4px}
+@media(max-width:700px){.ns-pf{grid-template-columns:1fr}.ns-pf .ns-pf-wide{grid-column:auto}}
+
+/* «Продажи · канбан» и карточка сделки кроссовок (карточка колл-центра «Нордика» + блок «Склад · что продаём») */
+a.ns-chipf{text-decoration:none}
+.ns-c-row b{font-variant-numeric:tabular-nums}
+.ns-page>.nd-panel.nd-deal{max-width:1280px}
+.nd-sale{border:1px solid var(--line);border-radius:14px;padding:12px 14px 14px;background:var(--panel-2);margin-bottom:16px}
+.nd-sale .nd-lbl{margin-top:0;font-weight:700;color:var(--ink)}
+.nd-sale-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+.nd-sale-row form{margin:0}
+.nd-sale-flags{margin-top:10px}
+.nd-sale-ok{color:var(--accent)}
+.nd-sale-bad{color:var(--red)}
+.nd-sale-marks{margin-top:12px}
+.nd-sale-mark{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;border-bottom:1px dashed var(--line);font-size:12px}
+.nd-sale-mark code{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis}
+.nd-mono{font-family:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace}
+a.ns-col-add{text-decoration:none}
+.ns-toolbar .ns-grow{flex:1}

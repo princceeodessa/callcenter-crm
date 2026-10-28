@@ -151,7 +151,7 @@ class UnlinkedSalesTest extends TestCase
         $this->assertSame(1, $second->fresh()->quantity, 'пару убрали — вернулась на склад');
         $this->assertTrue(Deal::where('id', $deal->id)->soldWithoutStock()->exists());
 
-        $this->actingAs($this->head)->get(route('deals.show', $deal))->assertOk()->assertSee('пара со склада НЕ списана');
+        $this->actingAs($this->head)->get(route('deals.show', $deal))->assertOk()->assertSee('но пара со склада не списана');
     }
 
     /** Обычная продажа (со склада) — прежнее поведение: смена товара в карточке возвращает старую пару и списывает новую. */

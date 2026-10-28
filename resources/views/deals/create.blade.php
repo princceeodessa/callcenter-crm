@@ -1,7 +1,13 @@
-@extends('layouts.app')
+{{-- кроссовки (28.10.2026): страница в каркасе отдела (layouts.sneakers, ns_nd — Bootstrap цветами темы «Нордика») --}}
+@extends(\App\Support\Ui\Sneakers::enabled() ? 'layouts.sneakers' : 'layouts.app')
+@if(\App\Support\Ui\Sneakers::enabled())
+  @section('ns_nd', '1')
+  @section('title', 'Новая сделка')
+  @section('ns_sub', 'ручной ввод')
+@endif
 
 @section('content')
-<h4 class="mb-3">Новая сделка (ручной ввод)</h4>
+@unless(\App\Support\Ui\Sneakers::enabled())<h4 class="mb-3">Новая сделка (ручной ввод)</h4>@endunless
 
 <div class="card shadow-sm">
   <div class="card-body">
@@ -47,7 +53,7 @@
         <label class="form-label">Стадия</label>
         <select name="stage_id" class="form-select" required>
           @foreach($stages as $s)
-            <option value="{{ $s->id }}" @selected((int) old('stage_id') === $s->id)>{{ $s->name }}</option>
+            <option value="{{ $s->id }}" @selected((int) old('stage_id', request('stage_id')) === $s->id)>{{ $s->name }}</option>
           @endforeach
         </select>
       </div>

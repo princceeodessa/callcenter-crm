@@ -1,4 +1,10 @@
-@extends('layouts.app')
+{{-- кроссовки (28.10.2026): страница в каркасе отдела (layouts.sneakers, ns_nd — Bootstrap цветами темы «Нордика») --}}
+@extends(\App\Support\Ui\Sneakers::enabled() ? 'layouts.sneakers' : 'layouts.app')
+@if(\App\Support\Ui\Sneakers::enabled())
+  @section('ns_nd', '1')
+  @section('title', 'Завершённые сделки')
+  @section('ns_sub', 'сделки')
+@endif
 
 @php
   // редизайн «Nordika» (этап 3) — у колл-центра потолков исходы плитками и таблица как в прототипе; у кроссовок прежняя
@@ -171,7 +177,7 @@
   .nt-cell .v{ font-size:1.3rem; font-weight:700; }
 </style>
 <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
-  <h4 class="mb-0">Завершённые сделки</h4>
+  @unless(\App\Support\Ui\Sneakers::enabled())<h4 class="mb-0">Завершённые сделки</h4>@endunless
   <form class="d-flex gap-2 flex-wrap" method="GET" action="{{ route('deals.closed') }}">
     <div class="d-flex align-items-center gap-1">
       <span class="text-muted small">с</span>

@@ -1,4 +1,10 @@
-﻿@extends('layouts.app')
+﻿{{-- кроссовки (28.10.2026): та же карточка «Нордика», что у колл-центра, в каркасе кроссовок (layouts.sneakers, ns_nd) --}}
+@extends(!empty($isSneakerSpace) ? 'layouts.sneakers' : 'layouts.app')
+@if(!empty($isSneakerSpace))
+  @section('ns_nd', '1')
+  @section('title', 'Сделка #'.$deal->id)
+  @section('ns_sub', $deal->stage?->name ?? '')
+@endif
 
 @push('styles')
 <style>
@@ -37,8 +43,8 @@
 @endpush
 
 @php
-  // редизайн «Nordika» (этап 2) — у колл-центра потолков; у кроссовок прежняя карточка
-  $nd = \App\Support\Ui\Nordika::enabled();
+  // редизайн «Nordika» (этап 2) — у колл-центра потолков; у кроссовок (с 28.10.2026) — та же карточка в каркасе кроссовок
+  $nd = \App\Support\Ui\Nordika::enabled() || !empty($isSneakerSpace);
   $editingTaskId = max(0, (int) request()->query('edit_task', 0));
   $canUseCeilingProjects = auth()->user()?->role === 'admin';
 
