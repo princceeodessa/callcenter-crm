@@ -175,10 +175,11 @@ class SneakerDailySalesTest extends TestCase
 
     private function sell(User $user, WarehouseItem $item, int $qty): Deal
     {
-        $this->actingAs($user)
-            ->post(route('sale.quick.store'), ['warehouse_item_id' => $item->id, 'qty' => $qty])
-            ->assertRedirect(route('sale.quick'));
+        $res = $this->actingAs($user)
+            ->post(route('sale.quick.store'), ['warehouse_item_id' => $item->id, 'qty' => $qty]);
+        $deal = Deal::where('warehouse_item_id', $item->id)->latest('id')->firstOrFail();
+        $res->assertRedirect(route('sale.quick', ['sold' => $deal->id]));   // итог продажи — по номеру сделки
 
-        return Deal::where('warehouse_item_id', $item->id)->latest('id')->firstOrFail();
+        return $deal;
     }
 }

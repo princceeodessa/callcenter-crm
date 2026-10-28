@@ -94,6 +94,57 @@ class SneakersLayoutTest extends TestCase
             ->get(route('settings.users.index'))->assertSee('Логин занят');
     }
 
+    public function test_sale_page_by_prototype_and_cost_only_for_head(): void
+    {
+        $head = $this->user('sneaker_head', 'Руководитель Кроссовок');
+        $seller = $this->user('sneaker_operator', 'Ксения Петрова');
+        $pipe = DB::table('pipelines')->insertGetId(['account_id' => $this->acc, 'name' => 'Продажи', 'is_default' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('pipeline_stages')->insert(['account_id' => $this->acc, 'pipeline_id' => $pipe, 'name' => 'Продано', 'sort' => 50, 'is_final' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        $item = fn (string $brand, string $model, string $size, int $qty, ?float $price = 11990, ?float $cost = 6000) => DB::table('warehouse_items')->insertGetId([
+            'account_id' => $this->acc, 'brand' => $brand, 'model' => $model, 'size' => $size, 'quantity' => $qty, 'reserved' => 0, 'consigned' => 0,
+            'sale_price' => $price, 'avg_cost' => $cost, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $i39 = $item('Nike', 'Air Max 90', '39', 1);
+        $item('Nike', 'Air Max 90', '42', 3);
+        $item('Nike', 'Air Max 90', '44', 0);
+        $item('Adidas', 'Campus', '40', 2, 10990, 5000);
+
+        $html = $this->actingAs($seller)->get(route('sale.quick'))->assertOk()->getContent();
+        $this->assertStringContainsString('class="ns-html"', $html);
+        $this->assertStringContainsString('id="nsSteps"', $html);                                    // подсказка из 3 шагов
+        $this->assertStringContainsString('data-b="Nike">Nike <span class="ns-cn">1</span>', $html);   // бренды со счётчиком моделей
+        $this->assertStringContainsString('id="nsOnlyStock"', $html);
+        $this->assertMatchesRegularExpression('~class="ns-sz ns-low" data-item="'.$i39.'"[^>]*data-avail="1"~', $html);   // последняя пара — оранжевая
+        $this->assertStringContainsString('class="ns-sz ns-off" disabled', $html);                      // нет в наличии — пунктир
+        $this->assertStringContainsString('4 пары', $html);
+        $this->assertStringContainsString('Не важно</button>', $html);                                  // «Откуда клиент» — чипы
+        $this->assertStringNotContainsString('data-cost=', $html);                                      // продавцу закупка не уходит в разметку
+        $this->assertStringContainsString('<span>Продаж</span>', $html);
+        $this->assertStringNotContainsString('<span>Прибыль</span>', $html);
+
+        // продажа — та же форма; после неё баннер с чеком, строка в «Последних продажах» под «Сегодня»
+        $res = $this->actingAs($seller)->post(route('sale.quick.store'), ['warehouse_item_id' => $i39, 'qty' => 1, 'price' => 11990, 'payment' => 'card', 'source' => 'ВК']);
+        $deal = \App\Models\Deal::where('warehouse_item_id', $i39)->firstOrFail();
+        $res->assertRedirect(route('sale.quick', ['sold' => $deal->id]));
+        $this->assertSame('ВК', $deal->manual_source);
+        // баннер — из самой сделки, даже если между продажей и страницей прошёл другой запрос (опрос уведомлений)
+        $this->actingAs($seller)->getJson(route('notifications.poll'))->assertOk();
+        $after = $this->actingAs($seller)->get(route('sale.quick', ['sold' => $deal->id]))->assertOk()->getContent();
+        $this->assertStringContainsString('Продано: Nike Air Max 90', $after);
+        $this->assertStringContainsString('href="'.route('deals.receipt', $deal->id).'"', $after);
+        $this->assertStringContainsString('Сегодня · '.now()->day.' ', $after);
+        $this->assertStringContainsString('data-sale="'.$deal->id.'"', $after);
+        $this->assertStringNotContainsString('"profit":-', $after);
+
+        // руководитель: закупка в плитках и прибыль; продажа без цены — «цена не указана»
+        $zero = \App\Models\Deal::create(['account_id' => $this->acc, 'pipeline_id' => $pipe, 'stage_id' => $deal->stage_id, 'title' => 'Продажа', 'warehouse_item_id' => $i39,
+            'sold_quantity' => 1, 'amount' => 0, 'stock_deducted_at' => now(), 'responsible_user_id' => $head->id]);
+        $h = $this->actingAs($head)->get(route('sale.quick'))->assertOk()->getContent();
+        $this->assertStringContainsString('data-cost="6000"', $h);
+        $this->assertStringContainsString('<span>Прибыль</span>', $h);
+        $this->assertMatchesRegularExpression('~data-sale="'.$zero->id.'".*?цена не указана~s', $h);
+    }
+
     public function test_menu_by_role_and_call_center_untouched(): void
     {
         $label = fn (User $u) => collect(Sneakers::nav($u))->flatten(1)->pluck('label')->all();

@@ -104,7 +104,7 @@ class WhiteSalesOnecTest extends TestCase
         $this->assertSame($first->contact_id, $again->contact_id, 'с телефоном — тот же клиент');
         $this->assertSame('Олег', $again->contact->fresh()->name, 'имя дописано, если его не было');
 
-        $this->actingAs($this->head)->get(route('sale.quick'))->assertOk()->assertSee('>ВК</option>', false);
+        $this->actingAs($this->head)->get(route('sale.quick'))->assertOk()->assertSee('data-v="ВК">ВК</button>', false);
     }
 
     public function test_quick_sale_page_marks_white_sizes(): void

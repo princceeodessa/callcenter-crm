@@ -11,6 +11,7 @@ use App\Models\PipelineStage;
 use App\Models\WarehouseItem;
 use App\Models\WarehouseProduct;
 use App\Services\Warehouse\WarehouseService;
+use App\Support\Ui\Sneakers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -39,6 +40,7 @@ class SneakerSaleController extends Controller
         }
 
         $products = [];
+        $seesCost = Sneakers::seesCost($user);
         foreach ($items->groupBy(fn ($i) => mb_strtolower(trim(($i->brand ?? '').'|'.($i->model ?? '')))) as $key => $group) {
             $first = $group->first();
             $p = $productMap[$key] ?? null;
@@ -52,30 +54,74 @@ class SneakerSaleController extends Controller
                     'price' => $i->sale_price !== null ? (float) $i->sale_price : null,
                     'white' => $splits[$i->id]['white'] ?? 0,
                     'other' => $splits[$i->id]['other'] ?? 0,
+                    // закупка — для «прибыль · маржа» в листе продажи, только руководителю: продавцу в разметку не попадает
+                    'cost' => $seesCost && $i->avg_cost !== null ? (float) $i->avg_cost : null,
                 ];
             }
+            // цена модели — общая у размеров; разная — «от» самой низкой
+            $prices = collect($sizes)->pluck('price')->filter(fn ($v) => $v !== null)->unique()->sort()->values();
             $products[] = [
                 'name' => $p && $p->custom_name ? $p->custom_name : $autoName,
                 'article' => $p ? (string) $p->article : '',
                 'image_url' => $p ? $p->image_url : null,
-                'brand' => (string) ($first->brand ?? ''),
-                'sizes' => $sizes,
+                'brand' => trim((string) ($first->brand ?? '')),
+                'sizes' => collect($sizes)->sortBy('size', SORT_NATURAL)->values()->all(),
                 'total_available' => (int) $group->sum(fn ($i) => max(0, $i->available)),
+                'price' => $prices->first(),
+                'price_from' => $prices->count() > 1,
             ];
         }
         usort($products, fn ($a, $b) => strcmp(mb_strtoupper($a['name']), mb_strtoupper($b['name'])));
 
-        // Журнал последних продаж (для удобного отслеживания).
-        $isHead = $user->role === 'sneaker_head';
+        // бренды — чипы над списком: моделей у бренда, больше — левее
+        $brands = collect($products)->groupBy(fn ($p) => $p['brand'] !== '' ? $p['brand'] : 'Без бренда')
+            ->map->count()->sortDesc();
+
+        // «Последние продажи» по дням; прибыль и себестоимость — только руководителю (решение 28.10.2026)
+        $images = [];
+        foreach ($productRows as $p) {
+            $images[mb_strtolower(trim(($p->brand ?? '').'|'.($p->model ?? '')))] = $p->image_url;
+        }
+        $saleRow = function (Deal $d) use ($seesCost, $images) {
+            $item = $d->warehouseItem;
+            $name = $item ? trim(($item->brand ?? '').' '.($item->model ?? '')) : '';
+
+            return [
+                'id' => $d->id,
+                'at' => $d->stock_deducted_at,
+                'name' => $name !== '' ? $name : (trim((string) preg_replace('/^Продажа:\s*/u', '', (string) $d->title)) ?: 'Без названия'),
+                'size' => $item && trim((string) $item->size) !== '' ? trim((string) $item->size) : null,
+                'brand' => trim((string) ($item?->brand ?? '')),
+                'qty' => (int) $d->sold_quantity,
+                'amount' => (float) ($d->amount ?? 0),
+                'cost' => $seesCost && $d->sold_unit_cost !== null ? (float) $d->sold_unit_cost * (int) $d->sold_quantity : null,
+                'profit' => $seesCost ? $d->sale_profit : null,
+                'source' => $d->manual_source,
+                'payment' => $d->payment_method,
+                'seller' => $d->responsible?->name,
+                'image' => $item ? ($images[mb_strtolower(trim(($item->brand ?? '').'|'.($item->model ?? '')))] ?? null) : null,
+            ];
+        };
         $recentSales = Deal::where('account_id', $accId)
             ->whereNotNull('stock_deducted_at')
             ->whereNull('returned_at')
-            ->with(['warehouseItem:id,brand,model,avg_cost', 'responsible:id,name'])
+            ->with(['warehouseItem:id,brand,model,size,avg_cost', 'responsible:id,name'])
             ->orderByDesc('stock_deducted_at')
-            ->limit(30)
-            ->get();
+            ->limit(60)
+            ->get()->map($saleRow);
+        $today = Deal::where('account_id', $accId)->whereNull('returned_at')
+            ->whereBetween('stock_deducted_at', [now()->startOfDay(), now()->endOfDay()])
+            ->with('warehouseItem:id,avg_cost')->get();
+        $todaySum = [
+            'revenue' => (float) $today->sum(fn ($d) => (float) ($d->amount ?? 0)),
+            'pairs' => (int) $today->sum('sold_quantity'),
+            'count' => $today->count(),
+            'profit' => $seesCost ? (float) $today->sum(fn ($d) => (float) ($d->sale_profit ?? 0)) : null,
+        ];
 
-        return view('sale.quick', compact('products', 'recentSales', 'isHead'));
+        $done = request()->filled('sold') ? $this->soldInfo((int) request('sold'), $user) : null;
+
+        return view('sale.sneakers', compact('products', 'brands', 'recentSales', 'todaySum', 'seesCost', 'done'));
     }
 
     public function store(Request $request, WarehouseService $warehouse)
@@ -185,19 +231,29 @@ class SneakerSaleController extends Controller
         // Списание со склада + уведомление руководителю
         $warehouse->syncDealStock($deal);
 
-        // Прибыль показываем только руководителю.
-        $showProfit = $user->role === 'sneaker_head';
+        // Итог продажи (чек, сделка, прибыль руководителю) страница берёт из самой сделки по ?sold= — не из флеш-сообщения
+        // сессии: его съедал любой запрос между продажей и открытием страницы (опрос уведомлений раз в 25 с).
+        return redirect()->route('sale.quick', ['sold' => $deal->id]);
+    }
 
-        $request->session()->flash('quick_sale', [
+    /** Баннер «Продано» — своя продажа за последний час; прибыль — только руководителю */
+    private function soldInfo(int $dealId, $user): ?array
+    {
+        $deal = Deal::with('warehouseItem')->where('account_id', $user->account_id)->whereKey($dealId)
+            ->whereNotNull('stock_deducted_at')->where('stock_deducted_at', '>=', now()->subHour())->first();
+        if (! $deal) {
+            return null;
+        }
+        $seesCost = Sneakers::seesCost($user);
+
+        return [
             'deal_id' => $deal->id,
-            'name' => $item->display_name,
-            'qty' => $qty,
-            'amount' => $amount,
-            'low' => $item->fresh()->available <= 0,
-            'profit' => $showProfit ? $deal->sale_profit : null,
-            'margin' => $showProfit ? $deal->sale_margin_percent : null,
-        ]);
-
-        return redirect()->route('sale.quick');
+            'name' => $deal->warehouseItem?->display_name ?? $deal->title,
+            'qty' => (int) $deal->sold_quantity,
+            'amount' => $deal->amount !== null ? (float) $deal->amount : null,
+            'low' => $deal->warehouseItem && $deal->warehouseItem->available <= 0,
+            'profit' => $seesCost ? $deal->sale_profit : null,
+            'margin' => $seesCost ? $deal->sale_margin_percent : null,
+        ];
     }
 }
