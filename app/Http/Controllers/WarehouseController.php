@@ -11,6 +11,7 @@ use App\Models\WarehouseProduct;
 use App\Models\WarehouseProductPhoto;
 use App\Services\Warehouse\WarehouseService;
 use App\Support\Warehouse\ArticleIdentity;
+use App\Support\Warehouse\CodeLookup;
 use App\Support\Warehouse\ProductClassifier;
 use App\Support\Marking\MarkCode;
 use App\Support\Ui\Sneakers;
@@ -97,6 +98,8 @@ class WarehouseController extends Controller
                 'cat' => trim((string) $request->query('cat')),
                 'sex' => trim((string) $request->query('sex')),
                 'sea' => trim((string) $request->query('sea')),
+                // «Завести товар» из «Скана» / «Приёмки»: окно нового товара с отсканированным кодом в артикуле
+                'new' => mb_substr(trim((string) $request->query('new')), 0, 64),
             ],
             // Сколько пар закуплено, но ещё не заведено на склад — счётчик на кнопке «В пути».
             'inTransitPairs' => Sneakers::inTransitPairs($user),
@@ -578,23 +581,155 @@ class WarehouseController extends Controller
 
     // ==================== ПРИЁМКА (ТСД / сканер) ====================
 
-    /** Страница приёмки со сканером-input. */
+    /**
+     * Приёмка — каркас «Нордика» (прототип PAGES.receiving, снимки 07, 08): строка «код · пар · Принять», найденный товар
+     * с плитками размеров (приход — в выбранный размер), «Последние приходы» с меткой «откуда», «Сегодня» и «Как принимать».
+     * Сканы и приход идут запросами receivingScan (JSON), страница не перезагружается.
+     */
     public function receivingForm(Request $request)
     {
-        $user = Auth::user();
-        $recent = StockMovement::with('item:id,brand,model,size')
-            ->where('account_id', $user->account_id)
-            ->whereIn('type', ['in', 'replenish'])
-            ->orderByDesc('id')->limit(15)->get();
-        $lastCode = $request->session()->get('receive_last', '');
-        $lastResult = $request->session()->get('receive_result', '');
+        $accId = Auth::user()->account_id;
+        $recent = $this->receiptsQuery($accId)->with('item:id,brand,model,size')->orderByDesc('id')->limit(15)->get();
+        $images = $this->productImages($accId, $recent->pluck('item')->filter());
 
-        return view('warehouse.receiving', compact('recent', 'lastCode', 'lastResult'));
+        return view('warehouse.receiving', [
+            'rows' => $recent->map(fn (StockMovement $m) => $this->receiptRow($m, $images))->values(),
+            'today' => $this->receiptsToday($accId),
+        ]);
+    }
+
+    /** Приходы на склад: закупки, сканер, импорт, ручное пополнение */
+    private function receiptsQuery(int $accId)
+    {
+        return StockMovement::query()->where('account_id', $accId)->whereIn('type', ['in', 'replenish'])->where('quantity', '>', 0);
+    }
+
+    /** @return array{pairs: int, items: int} принято сегодня: пар и позиций (размеров) */
+    private function receiptsToday(int $accId): array
+    {
+        $r = $this->receiptsQuery($accId)->where('created_at', '>=', today())
+            ->selectRaw('COALESCE(SUM(quantity), 0) AS q, COUNT(DISTINCT warehouse_item_id) AS n')->first();
+
+        return ['pairs' => (int) $r->q, 'items' => (int) $r->n];
+    }
+
+    /** Обложки товаров для строк по бренду + модели */
+    private function productImages(int $accId, Collection $items): array
+    {
+        $keys = $items->map(fn ($i) => self::productKey($i->brand, $i->model))->unique()->all();
+        if (! $keys) {
+            return [];
+        }
+        $out = [];
+        foreach (WarehouseProduct::with('photos')->where('account_id', $accId)->whereIn('model', $items->pluck('model')->unique()->all())->get() as $p) {
+            $k = self::productKey($p->brand, $p->model);
+            if (in_array($k, $keys, true)) {
+                $out[$k] = $p->image_url;
+            }
+        }
+
+        return $out;
+    }
+
+    /** Строка «Последних приходов»: откуда — закупка / сканер / импорт / вручную (полный текст примечания — в подсказке) */
+    private function receiptRow(StockMovement $m, array $images): array
+    {
+        $note = (string) $m->note;
+        $src = match (true) {
+            $m->source_type === 'purchase' => ['purchase', 'Закупка'.(preg_match('/#\d+/', $note, $mm) ? ' '.$mm[0] : ($m->source_id ? ' #'.$m->source_id : ''))],
+            str_starts_with($note, 'Приёмка') => ['scan', 'Сканер'],
+            str_starts_with($note, 'Импорт') => ['import', 'Импорт'],
+            default => ['manual', 'Вручную'],
+        };
+        $item = $m->item;
+
+        return [
+            'at' => optional($m->created_at)->format('d.m H:i'),
+            'name' => $item ? (trim($item->brand.' '.$item->model) ?: 'Без названия') : '—',
+            'size' => $item && $item->size !== '' ? $item->size : '—',
+            'q' => (int) $m->quantity,
+            'src' => $src[0],
+            'label' => $src[1],
+            'note' => $note,
+            'img' => $item ? ($images[self::productKey($item->brand, $item->model)] ?? null) : null,
+            'brand' => Sneakers::brandOf($item ? trim($item->brand.' '.$item->model) : ''),
+        ];
+    }
+
+    /**
+     * Приёмка запросом страницы (JSON): код → найденные товары с размерами (ничего не меняет); item_id → приход N пар в этот
+     * размер (раньше пара молча уходила в первый размер товара); режим «Честный знак» — код к последнему принятому размеру.
+     */
+    private function receivingJson(Request $request, WarehouseService $warehouse)
+    {
+        $accId = Auth::user()->account_id;
+        $data = $request->validate([
+            'code' => ['nullable', 'string', 'max:512'],
+            'quantity' => ['nullable', 'integer', 'min:1', 'max:1000'],
+            'mode' => ['nullable', 'in:article,mark'],
+            'item_id' => ['nullable', 'integer'],
+        ]);
+        $qty = (int) ($data['quantity'] ?? 1);
+
+        if (! empty($data['item_id'])) {
+            $item = WarehouseItem::where('account_id', $accId)->findOrFail((int) $data['item_id']);
+            $warehouse->replenish($item, $qty, 'Приёмка ТСД ('.date('Y-m-d H:i').')');
+            $request->session()->put('receive_target_item_id', $item->id);
+            $m = StockMovement::with('item:id,brand,model,size')->where('account_id', $accId)->where('warehouse_item_id', $item->id)->orderByDesc('id')->first();
+
+            return response()->json([
+                'status' => 'received',
+                'msg' => 'Принято: '.$item->display_name.' × +'.$qty,
+                'row' => $m ? $this->receiptRow($m, $this->productImages($accId, collect([$item]))) : null,
+                'today' => $this->receiptsToday($accId),
+                'item' => ['id' => $item->id, 'q' => (int) $item->fresh()->quantity],
+            ]);
+        }
+
+        $raw = trim((string) ($data['code'] ?? ''));
+        if ($raw === '') {
+            throw ValidationException::withMessages(['code' => 'Отсканируйте код или введите артикул.']);
+        }
+
+        if (($data['mode'] ?? 'article') === 'mark') {
+            $code = MarkCode::normalize($raw);
+            $item = ($id = $request->session()->get('receive_target_item_id')) ? WarehouseItem::where('account_id', $accId)->find($id) : null;
+            if (! $item) {
+                return response()->json(['status' => 'mark_no_target', 'msg' => 'Сначала примите пару по артикулу — код «Честного знака» привяжется к ней']);
+            }
+            if (StockMark::where('account_id', $accId)->where('code', $code)->exists()) {
+                return response()->json(['status' => 'mark_dup', 'msg' => 'Такой код уже есть в CRM']);
+            }
+            StockMark::create(['account_id' => $accId, 'warehouse_item_id' => $item->id, 'code' => $code, 'status' => 'in_stock']);
+
+            return response()->json(['status' => 'mark_ok', 'msg' => 'Код «Честного знака» привязан: '.$item->display_name]);
+        }
+
+        $found = CodeLookup::find($accId, $raw);
+        $cards = $found['products']->take(6)->map(function (WarehouseProduct $p) use ($accId) {
+            $name = $p->display_name;
+
+            return [
+                'name' => $name,
+                'art' => (string) $p->article,
+                'brand' => Sneakers::brandOf($name),
+                'img' => $p->exists ? $p->image_url : null,
+                'sizes' => CodeLookup::items($accId, $p)->map(fn (WarehouseItem $i) => ['id' => $i->id, 's' => (string) $i->size, 'q' => (int) $i->quantity])->values()->all(),
+            ];
+        })->filter(fn ($c) => $c['sizes'])->values();
+
+        return response()->json($cards->isEmpty()
+            ? ['status' => 'not_found', 'code' => $found['code'], 'new_url' => route('warehouse.index', ['new' => $found['code']])]
+            : ['status' => 'found', 'code' => $found['code'], 'similar' => $found['similar'], 'highlight' => $found['highlight'], 'cards' => $cards]);
     }
 
     /** Приём кода со сканера: находим товар по артикулу (K-XXXXX), +qty в остаток; либо принимаем как код маркировки. */
     public function receivingScan(Request $request, WarehouseService $warehouse)
     {
+        if ($request->expectsJson()) {
+            return $this->receivingJson($request, $warehouse);
+        }
+
         $user = Auth::user();
         $data = $request->validate([
             'code' => ['required', 'string', 'max:512'],

@@ -135,3 +135,24 @@ a.ns-btn,a.ns-ib{text-decoration:none}
 .ns-flash.ns-long{font-weight:500;line-height:1.55}
 .ns-flash.ns-long span{color:var(--ink)}
 .ns-flash.ns-long b{font-weight:700}
+
+/* «Скан» и «Приёмка» */
+.ns-sc-card{overflow:hidden;margin-bottom:14px}
+.ns-tbl tr.ns-hit td{background:var(--accent-soft)}
+.ns-sc-marks{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);margin:-6px 0 12px}
+.ns-sc-sales{padding:14px 20px 6px;border-top:1px solid var(--line)}
+.ns-sc-sales .ns-sec-h{font-size:13px;margin-bottom:4px}
+.ns-resline small{font-weight:500;opacity:.8}
+.ns-resline a{color:inherit}
+.ns-resline .ns-btn{margin-left:auto;flex:none;color:var(--ink)}
+.ns-res-card .ns-pimg img{max-width:88%;max-height:88%;object-fit:contain;mix-blend-mode:multiply}
+.ns-rv-card{display:flex;gap:14px;align-items:center;padding:14px 16px;margin-bottom:10px}
+.ns-rv-card .ns-sz:disabled{opacity:.6;cursor:wait}
+.ns-tag.ns-src-purchase{background:var(--accent-soft);color:var(--accent)}
+.ns-tag.ns-src-scan{background:rgba(63,114,255,.12);color:var(--blue)}
+.ns-rcv-tbl .ns-tag{gap:4px}
+.ns-rcv-tbl .ns-tag .ns-icon{width:13px;height:13px}
+.ns-rcv-tbl tr.ns-rv-new td{animation:ns-rvnew 2.4s ease}
+@keyframes ns-rvnew{from{background:var(--accent-soft)}to{background:transparent}}
+.ns-rcv-bar .ns-qty[hidden]{display:none}
+@media(max-width:1250px){.ns-rcv-grid{grid-template-columns:minmax(0,1fr)}.ns-rcv-side{position:static}}

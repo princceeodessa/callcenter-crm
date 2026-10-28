@@ -4,72 +4,29 @@ namespace App\Http\Controllers;
 
 use App\Models\Deal;
 use App\Models\StockMark;
-use App\Models\WarehouseItem;
 use App\Models\WarehouseProduct;
 use App\Support\Marking\MarkCode;
-use App\Support\Warehouse\ArticleIdentity;
+use App\Support\Ui\Sneakers;
+use App\Support\Warehouse\CodeLookup;
 use App\Support\Warehouse\ProductClassifier;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 
 /**
  * Скан штрихкода сканером в любом месте CRM → карточка товара: размеры, остатки, цены,
  * «Продать» и «Печать». Понимает артикул со штрихкода ценника, код «Честного знака»
- * (находит конкретную пару) и GTIN; исправляет ввод в русской раскладке.
+ * (находит конкретную пару) и GTIN; исправляет ввод в русской раскладке (поиск — CodeLookup).
  */
 class ScanController extends Controller
 {
     public function show(Request $request)
     {
         $accId = Auth::user()->account_id;
-        $raw = trim((string) $request->query('code', ''));
-        $code = MarkCode::fromRussianLayout($raw);
-
-        $mark = null;
-        $products = collect();
-        $highlightItemId = null;
-
-        if ($code !== '') {
-            // 1. Код «Честного знака» → конкретная пара.
-            $markCode = MarkCode::normalize($raw);
-            if (MarkCode::looksLike($markCode)) {
-                $mark = $this->findMark($accId, $markCode);
-                if ($mark?->item) {
-                    $highlightItemId = $mark->item->id;
-                    $products = $this->productsForItem($accId, $mark->item);
-                }
-            }
-
-            // 2. GTIN / EAN (13–14 цифр) → код ЧЗ с таким GTIN.
-            if ($products->isEmpty() && ! $mark && preg_match('~^\d{13,14}$~', $code)) {
-                $gtin = str_pad($code, 14, '0', STR_PAD_LEFT);
-                $byGtin = StockMark::where('account_id', $accId)->where('code', 'like', '01'.$gtin.'21%')->with('item')->first();
-                if ($byGtin?->item) {
-                    $products = $this->productsForItem($accId, $byGtin->item);
-                }
-            }
-
-            // 3. Артикул (штрихкод на наших ценниках).
-            if ($products->isEmpty() && ! $mark) {
-                $article = ArticleIdentity::normalizeArticle($code);
-                $products = WarehouseProduct::where('account_id', $accId)
-                    ->where(fn ($q) => $q->where('article', $article)->orWhere('article', $code))
-                    ->get();
-            }
-
-            // 4. Похожие: артикул/модель содержат введённое.
-            if ($products->isEmpty() && ! $mark && mb_strlen($code) >= 3) {
-                $like = '%'.str_replace(['%', '_'], ['\%', '\_'], $code).'%';
-                $products = WarehouseProduct::where('account_id', $accId)
-                    ->where(fn ($q) => $q->where('article', 'like', $like)->orWhere('model', 'like', $like)->orWhere('custom_name', 'like', $like))
-                    ->orderBy('brand')->orderBy('model')->limit(20)->get();
-            }
-        }
+        $found = CodeLookup::find($accId, (string) $request->query('code', ''));
+        ['raw' => $raw, 'code' => $code, 'mark' => $mark, 'products' => $products, 'highlight' => $highlightItemId] = $found;
 
         $cards = $products->map(function (WarehouseProduct $p) use ($accId) {
-            $items = WarehouseItem::where('account_id', $accId)->where('brand', $p->brand)->where('model', $p->model)->get()
-                ->sort(fn ($a, $b) => strnatcmp((string) $a->size, (string) $b->size))->values();
+            $items = CodeLookup::items($accId, $p);
             $ids = $items->pluck('id');
 
             return [
@@ -106,44 +63,18 @@ class ScanController extends Controller
             ]));
         }
 
-        return view('scan.show', [
+        return view('scan.sneakers', [
             'raw' => $raw,
             'code' => $code,
             'mark' => $mark,
             'markHr' => $mark ? MarkCode::humanReadable(MarkCode::normalize($mark->code)) : (MarkCode::looksLike(MarkCode::normalize($raw)) ? MarkCode::humanReadable(MarkCode::normalize($raw)) : null),
             'cards' => $cards,
+            'similar' => $found['similar'],
             'highlightItemId' => $highlightItemId,
-            'isHead' => Auth::user()->role === 'sneaker_head',
+            'seesCost' => Sneakers::seesCost(),
             'categoryOptions' => ProductClassifier::categoryOptions(),
             'genderOptions' => ProductClassifier::genderOptions(),
             'seasonOptions' => ProductClassifier::seasonOptions(),
         ]);
-    }
-
-    /** Точное совпадение кода, иначе — по GTIN+серийному (сканер мог потерять криптохвост). */
-    private function findMark(int $accId, string $code): ?StockMark
-    {
-        $mark = StockMark::where('account_id', $accId)->where('code', $code)->with('item', 'deal')->first();
-        if ($mark) {
-            return $mark;
-        }
-        $p = MarkCode::parse($code);
-        if (! $p) {
-            return null;
-        }
-
-        return StockMark::where('account_id', $accId)
-            ->where('code', 'like', '01'.$p['gtin'].'21'.str_replace(['%', '_'], ['\%', '\_'], $p['serial']).'%')
-            ->with('item', 'deal')->first();
-    }
-
-    /** @return Collection<int, WarehouseProduct> */
-    private function productsForItem(int $accId, WarehouseItem $item): Collection
-    {
-        $product = WarehouseProduct::where('account_id', $accId)->where('brand', $item->brand)->where('model', $item->model)->first()
-            // карточки модели ещё нет — показываем размеры без неё (ничего не создаём на GET)
-            ?? new WarehouseProduct(['account_id' => $accId, 'brand' => $item->brand, 'model' => $item->model]);
-
-        return collect([$product]);
     }
 }

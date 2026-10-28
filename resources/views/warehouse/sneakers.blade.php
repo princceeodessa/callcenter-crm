@@ -349,7 +349,7 @@
     };
 
     /* ---------- новый товар (openNewProduct прототипа) ---------- */
-    $('nsNewProd').addEventListener('click', () => {
+    const openNew = (code) => {
         const m = ns.openModal('<div class="ns-m-head"><div><div class="ns-mt">Новый товар</div><div class="ns-msub">Фото можно добавить после создания</div></div><button class="ns-m-x" type="button" data-ns-close aria-label="Закрыть">' + I.x + '</button></div><div class="ns-m-body">' +
             '<div class="ns-field"><label>Название</label><input id="npN" maxlength="255" placeholder="Например, NIKE air force 1’07"></div>' +
             '<div class="ns-frow"><div class="ns-field"><label>Артикул <i>необязательно</i></label><input id="npA" class="ns-mono" maxlength="64" placeholder="выдаст CRM"></div><div class="ns-field"><label>Бренд <i>необязательно</i></label><input id="npB" maxlength="100" placeholder="Nike"></div></div>' +
@@ -366,8 +366,11 @@
             api('POST', W.url.store, d).then((j) => { ns.closeModal(); F.q = ''; qi.value = ''; apply(j); ns.toast(j.msg); grid.querySelector('.ns-wc[data-pid="' + j.id + '"]')?.scrollIntoView({ block: 'center', behavior: 'smooth' }); })
                 .catch((e) => ns.toast(e.message)).finally(() => { b.disabled = false; });
         });
+        if (code) m.querySelector('#npA').value = code;
         m.querySelector('#npN').focus();
-    });
+    };
+    $('nsNewProd').addEventListener('click', () => openNew(''));
+    if (W.initial.new) { openNew(W.initial.new); history.replaceState(null, '', location.pathname); }
 
     /* ---------- выбор карточек и массовые действия ---------- */
     const drawBulk = () => {
