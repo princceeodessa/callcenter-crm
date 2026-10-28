@@ -1,4 +1,10 @@
-@extends('layouts.app')
+{{-- кроссовки (28.10.2026): страница в каркасе отдела (layouts.sneakers, ns_nd — Bootstrap цветами темы «Нордика») --}}
+@extends(\App\Support\Ui\Sneakers::enabled() ? 'layouts.sneakers' : 'layouts.app')
+@if(\App\Support\Ui\Sneakers::enabled())
+  @section('ns_nd', '1')
+  @section('title', 'Список сделок')
+  @section('ns_sub', 'сделки')
+@endif
 
 @php
   $productCategoryOptions = $productCategoryOptions ?? [];
@@ -106,7 +112,7 @@
   {{ $deals->links('pagination.nordika') }}
 @else
 <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
-  <h4 class="mb-0">Список сделок</h4>
+  @unless(\App\Support\Ui\Sneakers::enabled())<h4 class="mb-0">Список сделок</h4>@endunless
   <form class="d-flex gap-2 flex-wrap" method="GET" action="{{ route('deals.index') }}" id="dealSearchForm">
     <input type="hidden" name="auto_expand_search" value="1" id="dealAutoExpandSearch">
     <select class="form-select form-select-sm" name="status" style="width: 170px;" id="dealStatusFilter">

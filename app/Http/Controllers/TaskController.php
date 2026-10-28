@@ -126,7 +126,8 @@ class TaskController extends Controller
         }
         }
 
-        return view('tasks.index', [
+        // кроссовки — «Дела» в каркасе «Нордика» отдела (прототип PAGES.tasks), колл-центр — прежняя страница
+        return view($isSneaker ? 'tasks.sneakers' : 'tasks.index', [
             'selectedTasks' => $selectedTasks,
             'previousTasks' => $previousTasks,
             'nextTasks' => $nextTasks,

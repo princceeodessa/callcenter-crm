@@ -31,7 +31,8 @@ class NotificationController extends Controller
             ->where('is_read', 0)
             ->count();
 
-        return view('notifications.index', compact('notifications', 'unreadCount'));
+        // кроссовки — страница в каркасе «Нордика» отдела, колл-центр — прежняя
+        return view(\App\Support\Ui\Sneakers::enabled($user) ? 'notifications.sneakers' : 'notifications.index', compact('notifications', 'unreadCount'));
     }
 
     public function poll(Request $request, TaskWorkflowService $taskWorkflow)

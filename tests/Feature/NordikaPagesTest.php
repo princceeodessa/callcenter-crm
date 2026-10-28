@@ -192,14 +192,16 @@ class NordikaPagesTest extends TestCase
         $this->assertStringContainsString('Запланирован', $html);
     }
 
-    public function test_sneakers_keep_old_pages(): void
+    /** Кроссовки — свои страницы в каркасе «Нордика» отдела (layouts/sneakers, 28.10.2026), не страницы колл-центра */
+    public function test_sneakers_have_own_pages(): void
     {
         $sneakers = Account::create(['name' => 'Кроссовки (тест страниц)'])->id;
         $head = $this->user('sneaker_head', 'Рук кроссовок', $sneakers);
 
         $html = $this->actingAs($head)->get(route('tasks.index'))->assertOk()->getContent();
         $this->assertStringNotContainsString('nd-tk-stats', $html);
-        $this->assertStringContainsString('navbar-dark', $html);
+        $this->assertStringNotContainsString('navbar-dark', $html);
+        $this->assertStringContainsString('class="ns-html"', $html);
 
         // «Пользователи» кроссовок — уже в их собственном каркасе «Нордика» (layouts/sneakers, этап 1), не в каркасе колл-центра
         $html = $this->actingAs($head)->get(route('settings.users.index'))->assertOk()->getContent();

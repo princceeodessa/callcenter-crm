@@ -237,5 +237,43 @@ a.ns-chipf{text-decoration:none}
 .nd-sale-mark code{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis}
 .nd-mono{font-family:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace}
 a.ns-col-add{text-decoration:none}
+
+/* «Дела», «Помощь», «Уведомления» */
+.ns-tasks{max-width:880px;margin:0 auto}
+.ns-tasks .ns-tasks-q{margin-left:auto;min-width:220px;height:34px}
+.ns-tblock{margin-bottom:14px;overflow:hidden}
+.ns-rrow.ns-task{cursor:default;align-items:flex-start}
+.ns-rrow.ns-task form{margin:0}
+.ns-rrow.ns-task .ns-rr-n{white-space:normal;font-size:13px}
+.ns-rrow.ns-task .ns-rr-s{font-size:11.5px}
+.ns-rr-d{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.45;white-space:pre-line}
+.ns-help a.ns-hn{text-decoration:none}
+.ns-hbody{max-width:720px;line-height:1.6;color:var(--ink)}
+.ns-hbody p{margin:10px 0}
+.ns-hbody p.ns-lead{font-size:15px;color:var(--muted);margin-top:0}
+.ns-hbody ul{padding-left:20px;margin:10px 0}
+.ns-hbody li{margin:4px 0}
+.ns-hbody a{color:var(--accent)}
+.ns-hbody code{background:var(--pill);padding:1px 6px;border-radius:6px;font-size:.9em;font-family:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace}
+.ns-hbody pre{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;overflow:auto;font-size:12.5px}
+.ns-hbody pre code{background:transparent;padding:0}
+.ns-hbody .ns-hsteps{margin:14px 0}
+.ns-hbody .ns-hstep>div{font-size:13.5px;line-height:1.5}
+.ns-hbody .ns-tip{display:flex;gap:10px;align-items:flex-start;background:var(--accent-soft);border-radius:14px;padding:13px 16px;font-size:13.5px;line-height:1.5;margin:14px 0}
+.ns-hbody .ns-tip .ns-icon{color:var(--accent);flex:none;margin-top:1px}
+.ns-hintro{margin-bottom:6px}
+.ns-hintro p{color:var(--muted)}
+.ns-ntf-page{overflow:hidden;max-width:900px}
+.ns-ntf-page .ns-ni{cursor:default;align-items:flex-start}
+.ns-ntf-page .ns-ni:last-child{border-bottom:0}
+.ns-ni-m{flex:1;min-width:0}
+.ns-ni-m b{display:block;font-size:13.5px}
+.ns-ni-m p{margin:3px 0;font-size:12.5px;color:var(--muted);line-height:1.45}
+.ns-ni-m small{font-size:11.5px;color:var(--faint)}
+.ns-ni-a{display:flex;gap:6px;align-items:center;flex:none}
+.ns-ni-a form{margin:0}
+.ns-pager{display:flex;align-items:center;gap:12px;margin-top:14px;font-size:12.5px;max-width:900px}
+a.ns-btn.ns-dis{pointer-events:none}
+@media(max-width:700px){.ns-help{grid-template-columns:1fr}.ns-toc{position:static;max-height:none}.ns-tasks .ns-tasks-q{margin-left:0;flex:1 1 100%}}
 .ns-toolbar .ns-grow{flex:1}
 .ns-btn:disabled{opacity:.45;cursor:default;filter:none}
