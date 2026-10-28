@@ -114,7 +114,7 @@ class SneakersLayoutTest extends TestCase
         $this->assertStringContainsString('id="nsSteps"', $html);                                    // подсказка из 3 шагов
         // бренды — по первому слову названия; меньше 3 моделей — в чипе «Другие»
         $this->assertStringContainsString('data-b="__other">Другие <span class="ns-cn">2</span>', $html);
-        $this->assertSame(['Adidas', 'New Balance', 'Nike', 'Nike', 'Merrell', 'Nguvp', 'Без бренда'], array_map([\App\Http\Controllers\SneakerSaleController::class, 'brandOf'],
+        $this->assertSame(['Adidas', 'New Balance', 'Nike', 'Nike', 'Merrell', 'Nguvp', 'Без бренда'], array_map([\App\Support\Ui\Sneakers::class, 'brandOf'],
             ['adidas campus black HQ8708', 'NEW BALANCE 530', 'nike air force 1', 'WMNS Nike Dunk', 'Merell moab', 'nguvp', '  ']));
         $this->assertStringContainsString('id="nsOnlyStock"', $html);
         $this->assertMatchesRegularExpression('~class="ns-sz ns-low" data-item="'.$i39.'"[^>]*data-avail="1"~', $html);   // последняя пара — оранжевая

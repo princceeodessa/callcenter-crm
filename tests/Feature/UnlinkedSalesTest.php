@@ -41,7 +41,7 @@ class UnlinkedSalesTest extends TestCase
 
         $response = $this->actingAs($this->head)->get(route('warehouse.unlinked'))
             ->assertOk()
-            ->assertSee('Продажи без списания со склада')
+            ->assertSee('Продажи без списания')
             ->assertSee('Unltest Air Zeta '.$this->marker)
             ->assertSee('закупочная цена совпала');
 

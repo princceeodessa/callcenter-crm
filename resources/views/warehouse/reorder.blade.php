@@ -1,75 +1,59 @@
-@extends('layouts.app')
+@extends('layouts.sneakers')
+{{-- «Что заказать» — подсказки закупок по скорости продаж (кнопка на складе). Каркас «Нордика», расчёт прежний:
+     WarehouseController::reorderSuggestions. --}}
+@php
+    $ui = \App\Support\Ui\Sneakers::class;
+    $prio = ['high' => ['ns-bad', 'Срочно'], 'mid' => ['ns-warn', 'Скоро'], 'low' => ['ns-ok', 'Норма']];
+    $counts = collect($suggestions)->countBy('priority');
+    $total = (int) collect($suggestions)->sum('suggested');
+@endphp
 
+@section('title', 'Что заказать')
+@section('ns_sub', 'по продажам за 90 дней + запас на неделю')
 @section('content')
-<style>
-    .prio-high{ background:rgba(220,38,38,.08); }
-    .prio-mid{ background:rgba(217,119,6,.08); }
-    .prio-low{ background:rgba(16,185,129,.05); }
-    .prio-tag{ padding:.15rem .55rem; border-radius:999px; font-size:.72rem; font-weight:700; color:#fff; }
-    .prio-tag.high{ background:#dc2626; }
-    .prio-tag.mid{ background:#d97706; }
-    .prio-tag.low{ background:#059669; }
-</style>
-
-<div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
-    <div>
-        <h4 class="mb-0" style="letter-spacing:-.02em">🧠 Умные подсказки закупок</h4>
-        <div class="text-muted small">рекомендации на основе продаж за 90 дней + запас на неделю</div>
-    </div>
-    <div class="d-flex gap-2">
-        <form method="GET" action="{{ route('warehouse.reorder') }}" class="d-flex gap-1">
-            <select name="days" onchange="this.form.submit()" class="form-select form-select-sm">
-                @foreach([7, 14, 30, 60, 90] as $d)
-                    <option value="{{ $d }}" @selected($days === $d)>Прогноз на {{ $d }} дн.</option>
-                @endforeach
-            </select>
-        </form>
-        <a class="btn btn-sm btn-outline-secondary" href="{{ route('warehouse.index') }}">← К складу</a>
+<div class="ns-rec-bar">
+    <span class="ns-muted">Прогноз на</span>
+    <div class="ns-seg" role="group" aria-label="Горизонт прогноза">
+        @foreach([7, 14, 30, 60, 90] as $d)
+            <a href="{{ route('warehouse.reorder', ['days' => $d]) }}" @class(['ns-on' => $days === $d])>{{ $d }} дн.</a>
+        @endforeach
     </div>
 </div>
-
-<div class="card shadow-sm">
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-sm mb-0 align-middle">
-                <thead>
-                    <tr>
-                        <th></th>
-                        <th>Позиция</th>
-                        <th class="text-end">Продано за 90 дн.</th>
-                        <th class="text-end">Скорость (пар/день)</th>
-                        <th class="text-end">Остаток сейчас</th>
-                        <th class="text-end">Хватит на</th>
-                        <th class="text-end">Рекомендуем заказать</th>
-                    </tr>
-                </thead>
-                <tbody>
-                @forelse($suggestions as $s)
-                    <tr class="prio-{{ $s['priority'] }}">
-                        <td><span class="prio-tag {{ $s['priority'] }}">{{ $s['priority'] === 'high' ? 'СРОЧНО' : ($s['priority'] === 'mid' ? 'СКОРО' : 'Норма') }}</span></td>
-                        <td>{{ $s['name'] }}</td>
-                        <td class="text-end">{{ $s['sold_90d'] }}</td>
-                        <td class="text-end">{{ number_format($s['per_day'], 2, ',', '') }}</td>
-                        <td class="text-end fw-semibold {{ $s['available'] <= 0 ? 'text-danger' : '' }}">{{ $s['available'] }}</td>
-                        <td class="text-end">{{ $s['days_left'] ?? '∞' }} дн.</td>
-                        <td class="text-end fw-bold h5 mb-0">{{ $s['suggested'] }} пар</td>
-                    </tr>
-                @empty
-                    <tr><td colspan="7" class="text-muted small text-center py-4">
-                        📉 Рекомендаций нет: за последние 90 дней продаж не было или всех позиций хватит с запасом.
-                    </td></tr>
-                @endforelse
-                </tbody>
-            </table>
-        </div>
-    </div>
+<div class="ns-kpis">
+    <div class="ns-kpi"><div class="ns-kl">Позиций заказать</div><div class="ns-kv">{{ count($suggestions) }}</div><div class="ns-kd">на {{ $days }} дн. вперёд</div></div>
+    <div class="ns-kpi @if($counts->get('high')) ns-warn @endif"><div class="ns-kl">Срочно</div><div @class(['ns-kv', 'ns-dn' => $counts->get('high')])>{{ (int) $counts->get('high') }}</div><div class="ns-kd">хватит меньше чем на 7 дней</div></div>
+    <div class="ns-kpi"><div class="ns-kl">Скоро</div><div class="ns-kv">{{ (int) $counts->get('mid') }}</div><div class="ns-kd">хватит на 7–21 день</div></div>
+    <div class="ns-kpi"><div class="ns-kl">Пар заказать</div><div class="ns-kv ns-up">{{ number_format($total, 0, ',', ' ') }}</div><div class="ns-kd">всего по списку</div></div>
 </div>
 
-<div class="mt-3 text-muted small">
-    <b>Как считаем:</b> берём среднюю скорость продаж по позиции за последние 90 дней и прогнозируем расход за выбранный горизонт.
-    К прогнозу добавляем недельный страховой запас, вычитаем текущий остаток.
-    Приоритет <span class="prio-tag high">СРОЧНО</span> — хватит менее чем на 7 дней,
-    <span class="prio-tag mid">СКОРО</span> — 7–21 день,
-    <span class="prio-tag low">Норма</span> — больше 21 дня.
+<div class="ns-panel" style="overflow:hidden">
+    @if(empty($suggestions))
+        <div class="ns-empty">{!! $ui::icon('bulb') !!}<b>Заказывать нечего</b>За 90 дней продаж не было или всех позиций хватит с запасом</div>
+    @else
+        <table class="ns-tbl">
+            <thead><tr>
+                <th></th><th>Позиция</th><th class="ns-num">Продано за 90 дн.</th><th class="ns-num">Пар в день</th>
+                <th class="ns-num">Остаток</th><th class="ns-num">Хватит на</th><th class="ns-num">Заказать</th>
+            </tr></thead>
+            <tbody>
+            @foreach($suggestions as $s)
+                <tr>
+                    <td><span class="ns-tag {{ $prio[$s['priority']][0] }}">{{ $prio[$s['priority']][1] }}</span></td>
+                    <td class="ns-tname">{{ $s['name'] }}</td>
+                    <td class="ns-num">{{ $s['sold_90d'] }}</td>
+                    <td class="ns-num">{{ number_format($s['per_day'], 2, ',', '') }}</td>
+                    <td @class(['ns-num', 'ns-dn' => $s['available'] <= 0])>{{ $s['available'] }}</td>
+                    <td class="ns-num">{{ $s['days_left'] === null ? '∞' : max(0, $s['days_left']) }} дн.</td>
+                    <td class="ns-num"><b>{{ $s['suggested'] }} пар</b></td>
+                </tr>
+            @endforeach
+            </tbody>
+        </table>
+    @endif
+</div>
+
+<div class="ns-note">
+    <b>Как считаем:</b> средняя скорость продаж позиции за 90 дней × выбранный горизонт, плюс недельный запас, минус текущий остаток.
+    «Срочно» — остатка хватит меньше чем на 7 дней, «Скоро» — на 7–21 день, «Норма» — дольше.
 </div>
 @endsection

@@ -43,6 +43,17 @@ class Sneakers
         'chev' => '<path d="M6 9l6 6 6-6"/>',
         'logout' => '<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>',
         'pc' => '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+        'warn' => '<path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/>',
+        'bulb' => '<path d="M9 18h6M10 22h4M12 2a7 7 0 00-4 12.7V17h8v-2.3A7 7 0 0012 2z"/>',
+        'hand' => '<path d="M7 11l4-4 3 3 4-4M3 21l6-6 3 3 9-9"/>',
+        'doc1c' => '<path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5"/>',
+        'up' => '<path d="M12 16V4M7 9l5-5 5 5M4 20h16"/>',
+        'down' => '<path d="M12 4v12M7 11l5 5 5-5M4 20h16"/>',
+        'tag' => '<path d="M20.6 13.4l-7.2 7.2a2 2 0 01-2.8 0L3 13V3h10l7.6 7.6a2 2 0 010 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
+        'pen' => '<path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/>',
+        'gear' => '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-1.8-.3 1.6 1.6 0 00-1 1.5V21a2 2 0 01-4 0v-.1a1.6 1.6 0 00-1-1.5 1.6 1.6 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.6 1.6 0 00.3-1.8 1.6 1.6 0 00-1.5-1H3a2 2 0 010-4h.1a1.6 1.6 0 001.5-1 1.6 1.6 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 001.8.3H9a1.6 1.6 0 001-1.5V3a2 2 0 014 0v.1a1.6 1.6 0 001 1.5 1.6 1.6 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 00-.3 1.8V9a1.6 1.6 0 001.5 1H21a2 2 0 010 4h-.1a1.6 1.6 0 00-1.5 1z"/>',
+        'clock' => '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+        'cam' => '<path d="M3 8a2 2 0 012-2h2l2-2h6l2 2h2a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><circle cx="12" cy="13" r="3.5"/>',
     ];
 
     /** Подписи ролей сотрудников отдела (меню, «Пользователи») */
@@ -66,6 +77,19 @@ class Sneakers
         $user ??= auth()->user();
 
         return $user !== null && in_array($user->role, ['sneaker_head', 'sneaker_owner'], true);
+    }
+
+    /** Бренд по первому слову названия модели — как brandOf() в прототипе дизайнера: «NIKE dunk…» и «nike air…» — Nike
+        (в поле «бренд» склада часто всё название целиком и разный регистр) */
+    public static function brandOf(string $name): string
+    {
+        $first = mb_strtoupper((string) (preg_split('/\s+/u', trim($name), 2)[0] ?? ''));
+        $map = ['NEW' => 'New Balance', 'CALVIN' => 'Calvin Klein', 'NIKE' => 'Nike', 'WMNS' => 'Nike', 'AIR' => 'Nike', 'ADIDAS' => 'Adidas',
+            'PUMA' => 'Puma', 'JORDAN' => 'Jordan', 'LACOSTE' => 'Lacoste', 'KAPPA' => 'Kappa', 'SAUCONY' => 'Saucony', 'GUESS' => 'Guess',
+            'SALOMON' => 'Salomon', 'VANS' => 'Vans', 'REEBOK' => 'Reebok', 'ASICS' => 'Asics', 'CONVERSE' => 'Converse', 'FILA' => 'Fila',
+            'LI-NING' => 'Li-Ning', 'MERELL' => 'Merrell', 'MERRELL' => 'Merrell', 'ONITSUKA' => 'Onitsuka Tiger', 'TIMBERLAND' => 'Timberland'];
+
+        return $map[$first] ?? ($first === '' ? 'Без бренда' : mb_convert_case(mb_strtolower($first), MB_CASE_TITLE));
     }
 
     public static function icon(string $name, string $cls = ''): string

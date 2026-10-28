@@ -7,6 +7,7 @@ use App\Models\Purchase;
 use App\Models\StockMovement;
 use App\Models\WarehouseItem;
 use App\Models\WarehouseProduct;
+use App\Support\Ui\Sneakers;
 use App\Support\Warehouse\ProductClassifier;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -18,6 +19,8 @@ class WarehouseAnalyticsController extends Controller
     public function index(Request $request)
     {
         $user = Auth::user();
+        // Аналитика склада — закупка, себестоимость, прибыль: только руководителю (решение 28.10.2026; продавцу было открыто)
+        abort_unless(Sneakers::seesCost($user), 403);
         $accId = $user->account_id;
         $now = Carbon::now();
 
@@ -407,6 +410,7 @@ class WarehouseAnalyticsController extends Controller
     public function export(Request $request): StreamedResponse
     {
         $user = Auth::user();
+        abort_unless(Sneakers::seesCost($user), 403);
         $accId = $user->account_id;
 
         // Простая сводка: KPI + топы. Полные детали — в UI.

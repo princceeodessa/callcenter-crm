@@ -32,6 +32,7 @@
     const hidePop = () => { if (pop) { pop.hidden = true; pop.classList.remove('ns-ntf'); } };
     const showPop = (anchor, html, width) => {
         if (!pop) return null;
+        pop.classList.remove('ns-ntf');   // окно уведомлений, не дождавшееся ответа, не перепишет новое окно
         pop.innerHTML = html;
         pop.hidden = false;
         pop.style.width = width ? width + 'px' : '';
@@ -165,7 +166,7 @@
         pop.classList.add('ns-ntf');
         let data;
         try { data = await (await fetch(cfg.listUrl, { headers: { Accept: 'application/json' }, credentials: 'same-origin' })).json(); } catch (e) { return; }
-        if (pop.hidden) return;
+        if (pop.hidden || !pop.classList.contains('ns-ntf')) return;
         const items = Array.isArray(data.items) ? data.items : [];
         setBadge(data.unread_count);
         pop.innerHTML = '<div class="ns-nh">Уведомления' + (data.unread_count ? ' <span class="ns-tag" style="margin-left:8px">' + data.unread_count + '</span>' : '') +

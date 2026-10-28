@@ -76,7 +76,7 @@ class SneakerSaleController extends Controller
         // бренды — чипы над списком (как в прототипе: по первому слову названия — в поле «бренд» склада часто всё название
         // целиком и разный регистр); моделей у бренда, больше — левее; редкие (меньше 3 моделей) — одним чипом «Другие»
         foreach ($products as &$prod) {
-            $prod['brand_key'] = self::brandOf($prod['name']);
+            $prod['brand_key'] = Sneakers::brandOf($prod['name']);
         }
         unset($prod);
         $counts = collect($products)->countBy('brand_key')->sortDesc();
@@ -244,18 +244,6 @@ class SneakerSaleController extends Controller
         // Итог продажи (чек, сделка, прибыль руководителю) страница берёт из самой сделки по ?sold= — не из флеш-сообщения
         // сессии: его съедал любой запрос между продажей и открытием страницы (опрос уведомлений раз в 25 с).
         return redirect()->route('sale.quick', ['sold' => $deal->id]);
-    }
-
-    /** Бренд по первому слову названия модели — как brandOf() в прототипе дизайнера: «NIKE dunk…» и «nike air…» — Nike */
-    public static function brandOf(string $name): string
-    {
-        $first = mb_strtoupper((string) (preg_split('/\s+/u', trim($name), 2)[0] ?? ''));
-        $map = ['NEW' => 'New Balance', 'CALVIN' => 'Calvin Klein', 'NIKE' => 'Nike', 'WMNS' => 'Nike', 'AIR' => 'Nike', 'ADIDAS' => 'Adidas',
-            'PUMA' => 'Puma', 'JORDAN' => 'Jordan', 'LACOSTE' => 'Lacoste', 'KAPPA' => 'Kappa', 'SAUCONY' => 'Saucony', 'GUESS' => 'Guess',
-            'SALOMON' => 'Salomon', 'VANS' => 'Vans', 'REEBOK' => 'Reebok', 'ASICS' => 'Asics', 'CONVERSE' => 'Converse', 'FILA' => 'Fila',
-            'LI-NING' => 'Li-Ning', 'MERELL' => 'Merrell', 'MERRELL' => 'Merrell', 'ONITSUKA' => 'Onitsuka Tiger', 'TIMBERLAND' => 'Timberland'];
-
-        return $map[$first] ?? ($first === '' ? 'Без бренда' : mb_convert_case(mb_strtolower($first), MB_CASE_TITLE));
     }
 
     /** Баннер «Продано» — своя продажа за последний час; прибыль — только руководителю */

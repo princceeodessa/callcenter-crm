@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\Deal;
-use App\Models\Purchase;
 use App\Models\StockMark;
 use App\Models\StockMovement;
 use App\Models\WarehouseConsignment;
@@ -14,174 +13,184 @@ use App\Services\Warehouse\WarehouseService;
 use App\Support\Warehouse\ArticleIdentity;
 use App\Support\Warehouse\ProductClassifier;
 use App\Support\Marking\MarkCode;
+use App\Support\Ui\Sneakers;
 use Illuminate\Http\Request;
-use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 class WarehouseController extends Controller
 {
+    /**
+     * Склад — каркас «Нордика» (прототип PAGES.warehouse, снимки 05, 06): блоки «Остатки» и «Склад в деньгах», карточки
+     * товаров с размерами. Все товары уходят на страницу одним JSON — поиск, фильтры, итоги и правки размеров работают
+     * без перезагрузки (действия отвечают JSON с обновлённым товаром). Закупка в данные попадает только руководителю.
+     */
     public function index(Request $request)
     {
         $user = Auth::user();
-        $q = trim($request->string('q')->toString());
+        $accId = $user->account_id;
+        $seesCost = Sneakers::seesCost($user);
 
         $items = WarehouseItem::query()
             ->with(['consignments' => fn ($cq) => $cq->where('status', 'given')])
-            ->where('account_id', $user->account_id)
-            ->when($q !== '', fn ($query) => $query->where(fn ($qq) => $qq
-                ->where('brand', 'like', "%{$q}%")
-                ->orWhere('model', 'like', "%{$q}%")
-                ->orWhere('size', 'like', "%{$q}%")))
+            ->where('account_id', $accId)
             ->orderBy('brand')->orderBy('model')->orderBy('size')
             ->get();
 
-        $movements = StockMovement::query()
-            ->with(['item:id,brand,model,size', 'user:id,name'])
-            ->where('account_id', $user->account_id)
-            ->orderByDesc('id')
-            ->limit(40)
-            ->get();
-
-        $totalUnits = (int) $items->sum('quantity');
-        $stockValue = (float) $items->sum(fn ($i) => (int) $i->quantity * (float) ($i->sale_price ?? 0));
-        $stockCostValue = (float) $items->sum(fn ($i) => (int) $i->quantity * (float) ($i->avg_cost ?? 0));
-        $isHead = $this->isHead();
-
-        // Опции таксономии + текущие фильтры
-        $categoryOptions = ProductClassifier::categoryOptions();
-        $genderOptions = ProductClassifier::genderOptions();
-        $seasonOptions = ProductClassifier::seasonOptions();
-        $filterCategory = trim((string) $request->query('cat'));
-        $filterGender = trim((string) $request->query('sex'));
-        $filterSeason = trim((string) $request->query('sea'));
-        $filterTag = trim((string) $request->query('tag'));
-        $lowFilter = $request->query('low') == '1';
-
         // Все продукты одним запросом (фото сразу) — без N+1 на каждую карточку.
-        $productRows = WarehouseProduct::with('photos')->where('account_id', $user->account_id)->get();
         $prodMap = [];
-        $allTags = collect();
-        foreach ($productRows as $p) {
-            $prodMap[mb_strtolower(trim(($p->brand ?? '').'|'.($p->model ?? '')))] = $p;
-            if (is_array($p->tags)) {
-                foreach ($p->tags as $t) {
-                    $allTags->push($t);
-                }
-            }
+        foreach (WarehouseProduct::with('photos')->where('account_id', $accId)->get() as $p) {
+            $prodMap[self::productKey($p->brand, $p->model)] = $p;
         }
-        $allTags = $allTags->unique()->sort()->values();
 
-        // Группируем размеры под одним товаром (бренд + модель).
-        // Заодно подмешиваем warehouse_products (кастомное имя, фото).
-        $accId = $user->account_id;
+        // Размеры — под одним товаром (бренд + модель); товара в warehouse_products ещё нет — заводим (артикул, фото).
         $products = $items
-            ->groupBy(fn ($i) => mb_strtolower(trim(($i->brand ?? '').'|'.($i->model ?? ''))))
-            ->map(function ($group) use ($accId, &$prodMap) {
+            ->groupBy(fn ($i) => self::productKey($i->brand, $i->model))
+            ->map(function ($group, $key) use ($accId, &$prodMap, $seesCost) {
                 $first = $group->first();
-                $brand = (string) ($first->brand ?? '');
-                $model = (string) ($first->model ?? '');
-                $key = mb_strtolower(trim($brand.'|'.$model));
                 $product = $prodMap[$key] ?? null;
                 if (! $product) {
-                    $product = WarehouseProduct::create(['account_id' => $accId, 'brand' => $brand, 'model' => $model]);
+                    $product = WarehouseProduct::create(['account_id' => $accId, 'brand' => (string) ($first->brand ?? ''), 'model' => (string) ($first->model ?? '')]);
                     $product->setRelation('photos', collect());
                     $prodMap[$key] = $product;
                 }
-                $autoName = trim($brand.' '.$model) ?: 'Без названия';
-                $gallery = $product->gallery;
-                $article = (string) $product->article;
 
-                // Общие цены по расцветке (если одинаковы у всех размеров)
-                $costVals = $group->pluck('avg_cost')->filter(fn ($v) => $v !== null)->map(fn ($v) => (float) $v)->unique()->values();
-                $priceVals = $group->pluck('sale_price')->filter(fn ($v) => $v !== null)->map(fn ($v) => (float) $v)->unique()->values();
-                $costCommon = $costVals->count() === 1 ? $costVals[0] : null;
-                $priceCommon = $priceVals->count() === 1 ? $priceVals[0] : null;
-                $margin = ($costCommon && $priceCommon && $costCommon > 0)
-                    ? (int) round(($priceCommon - $costCommon) / $costCommon * 100)
-                    : null;
-
-                return [
-                    'entity' => $product,
-                    'name' => $product->custom_name ?: $autoName,
-                    'auto_name' => $autoName,
-                    'custom_name' => $product->custom_name,
-                    'image_url' => $gallery[0]['url'] ?? null,
-                    'gallery' => $gallery,
-                    'article' => $article,
-                    'category' => $product->category,
-                    'gender' => $product->gender,
-                    'season' => $product->season,
-                    'tags' => is_array($product->tags) ? $product->tags : [],
-                    'cost_common' => $costCommon,
-                    'price_common' => $priceCommon,
-                    'margin' => $margin,
-                    'mixed_prices' => $costVals->count() > 1 || $priceVals->count() > 1,
-                    'brand' => $brand,
-                    'model' => $model,
-                    'sizes' => $group->sortBy('size', SORT_NATURAL)->values(),
-                    'total' => (int) $group->sum('quantity'),
-                    'available' => (int) $group->sum(fn ($i) => $i->available),
-                    'reserved' => (int) $group->sum('reserved'),
-                    'consigned' => (int) $group->sum('consigned'),
-                    'value' => (float) $group->sum(fn ($i) => (int) $i->quantity * (float) ($i->sale_price ?? 0)),
-                    'low' => $group->contains(fn ($i) => $i->is_low),
-                ];
+                return $this->payload($group, $product, $seesCost);
             })
-            ->sortBy('name')
+            ->sortBy(fn ($p) => mb_strtoupper($p['name']))
             ->values();
 
-        // Сводка считается по всему складу (до фильтров)
-        $productsCount = $products->count();
-        $availableSum = (int) $products->sum('available');
-        $lowCount = $products->filter(fn ($p) => $p['low'])->count();
+        $moveLabels = [
+            'in' => 'Приход', 'in_adjust' => 'Корректировка прихода', 'in_reversal' => 'Откат прихода', 'out' => 'Продажа',
+            'out_reversal' => 'Возврат на склад', 'return' => 'Возврат продажи', 'reserve' => 'Резерв', 'reserve_release' => 'Снятие резерва',
+            'replenish' => 'Пополнение', 'adjust' => 'Корректировка', 'consign_out' => 'Передано посреднику', 'consign_resolve' => 'Снято с реализации',
+            'consign_sold' => 'Продано посредником',
+        ];
+        $movements = StockMovement::query()
+            ->with(['item:id,brand,model,size', 'user:id,name'])
+            ->where('account_id', $accId)
+            ->orderByDesc('id')
+            ->limit(40)
+            ->get()
+            ->map(fn (StockMovement $m) => [
+                'at' => optional($m->created_at)->format('d.m H:i'),
+                'name' => $m->item?->display_name ?? '—',
+                'type' => $moveLabels[$m->type] ?? $m->type,
+                'q' => (int) $m->quantity,
+                'note' => $m->note,
+                'user' => $m->user?->name,
+            ]);
 
-        $filtered = $products;
-        if ($filterCategory !== '' || $filterGender !== '' || $filterSeason !== '' || $filterTag !== '') {
-            $filtered = $filtered->filter(function ($p) use ($filterCategory, $filterGender, $filterSeason, $filterTag) {
-                if ($filterCategory !== '' && (string) $p['category'] !== $filterCategory) return false;
-                if ($filterGender !== '' && (string) $p['gender'] !== $filterGender) return false;
-                if ($filterSeason !== '' && (string) $p['season'] !== $filterSeason) return false;
-                if ($filterTag !== '' && ! in_array($filterTag, $p['tags'] ?? [], true)) return false;
-                return true;
-            })->values();
+        return view('warehouse.sneakers', [
+            'products' => $products,
+            'movements' => $movements,
+            'seesCost' => $seesCost,
+            'isHead' => $this->isHead(),
+            'categoryOptions' => ProductClassifier::categoryOptions(),
+            'genderOptions' => ProductClassifier::genderOptions(),
+            'seasonOptions' => ProductClassifier::seasonOptions(),
+            'initial' => [
+                'q' => trim($request->string('q')->toString()),
+                'low' => $request->query('low') == '1',
+                'cat' => trim((string) $request->query('cat')),
+                'sex' => trim((string) $request->query('sex')),
+                'sea' => trim((string) $request->query('sea')),
+            ],
+            // Сколько пар закуплено, но ещё не заведено на склад — счётчик на кнопке «В пути».
+            'inTransitPairs' => Sneakers::inTransitPairs($user),
+            // Сверка: продажи без списания со склада и отрицательные остатки — оранжевая кнопка над блоками.
+            'unlinkedSalesCount' => Deal::where('account_id', $accId)->soldWithoutStock()->count(),
+            'negativeCount' => WarehouseItem::where('account_id', $accId)->where('quantity', '<', 0)->count(),
+        ]);
+    }
+
+    /** Ключ товара — бренд + модель без учёта регистра и пробелов по краям (так размеры собираются под одной карточкой) */
+    private static function productKey(?string $brand, ?string $model): string
+    {
+        return mb_strtolower(trim(($brand ?? '').'|'.($model ?? '')));
+    }
+
+    /**
+     * Товар для страницы склада: название, артикул, фото, разметка и размеры (остаток, доступно, резерв, у посредников,
+     * цена, мин. остаток, передачи посредникам). Закупка «c» — только тем, кто видит себестоимость (решение 28.10.2026).
+     */
+    private function payload(Collection $group, WarehouseProduct $product, bool $seesCost): array
+    {
+        $first = $group->first();
+        $brand = (string) ($first->brand ?? '');
+        $model = (string) ($first->model ?? '');
+        $autoName = trim($brand.' '.$model) ?: 'Без названия';
+        $name = $product->custom_name ?: $autoName;
+        $gallery = $product->gallery;
+
+        return [
+            'id' => $product->id,
+            'name' => $name,
+            'auto' => $autoName,
+            'art' => (string) $product->article,
+            'brand' => Sneakers::brandOf($name),
+            'b' => $brand,
+            'm' => $model,
+            'img' => $gallery[0]['url'] ?? null,
+            'gal' => $gallery,
+            'cat' => $product->category,
+            'sex' => $product->gender,
+            'sea' => $product->season,
+            'sz' => $group->sortBy('size', SORT_NATURAL)->values()->map(fn (WarehouseItem $i) => [
+                'id' => $i->id,
+                's' => (string) $i->size,
+                'q' => (int) $i->quantity,
+                'a' => (int) $i->available,
+                'r' => (int) $i->reserved,
+                'k' => (int) $i->consigned,
+                'p' => $i->sale_price !== null ? (float) $i->sale_price : null,
+                'min' => (int) $i->low_stock_threshold,
+                'cons' => $i->consignments->where('status', 'given')->map(fn ($c) => ['id' => $c->id, 'who' => $c->consignee, 'q' => (int) $c->quantity])->values()->all(),
+            ] + ($seesCost ? ['c' => $i->avg_cost !== null ? (float) $i->avg_cost : null] : []))->all(),
+        ];
+    }
+
+    /** Размеры одного товара (бренд + модель); пустой бренд/модель в старых строках бывает и NULL, и '' */
+    private function productItems(int $accId, string $brand, string $model): Collection
+    {
+        $same = fn ($q, string $col, string $v) => $v === '' ? $q->where(fn ($w) => $w->whereNull($col)->orWhere($col, '')) : $q->where($col, $v);
+
+        $query = WarehouseItem::query()->with(['consignments' => fn ($cq) => $cq->where('status', 'given')])->where('account_id', $accId);
+        $same($query, 'brand', $brand);
+        $same($query, 'model', $model);
+
+        return $query->get();
+    }
+
+    /** Ответ действия склада для страницы: обновлённый товар (или product = null — размеров не осталось) */
+    private function productResponse(int $accId, string $brand, string $model, string $msg, ?int $productId = null)
+    {
+        $items = $this->productItems($accId, $brand, $model);
+        $product = WarehouseProduct::with('photos')->where('account_id', $accId)
+            ->when($productId, fn ($q) => $q->whereKey($productId), fn ($q) => $q->where('brand', $brand)->where('model', $model))
+            ->first();
+        if ($items->isNotEmpty() && ! $product) {
+            $product = WarehouseProduct::create(['account_id' => $accId, 'brand' => $brand, 'model' => $model]);
+            $product->setRelation('photos', collect());
         }
-        if ($lowFilter) {
-            $filtered = $filtered->filter(fn ($p) => $p['low'])->values();
-        }
 
-        // Пагинация: браузер не тянет сотни карточек разом.
-        $perPage = 24;
-        $page = LengthAwarePaginator::resolveCurrentPage();
-        $productsPage = new LengthAwarePaginator(
-            $filtered->forPage($page, $perPage)->values(),
-            $filtered->count(),
-            $perPage,
-            $page,
-            ['path' => $request->url(), 'query' => $request->query()]
-        );
-
-        // Сколько пар закуплено, но ещё не заведено на склад — счётчик на кнопке «В пути».
-        $inTransitPairs = (int) Purchase::where('account_id', $user->account_id)
-            ->whereNull('closed_at')
-            ->whereNull('stocked_at')
-            ->sum('quantity');
-
-        // Сверка: продажи без списания со склада и отрицательные остатки — кнопка «⚠» в шапке.
-        $unlinkedSalesCount = Deal::where('account_id', $user->account_id)->soldWithoutStock()->count();
-        $negativeCount = WarehouseItem::where('account_id', $user->account_id)->where('quantity', '<', 0)->count();
-
-        return view('warehouse.index', compact(
-            'productsPage', 'productsCount', 'availableSum', 'lowCount', 'lowFilter',
-            'movements', 'q', 'totalUnits', 'stockValue', 'stockCostValue', 'isHead',
-            'categoryOptions', 'genderOptions', 'seasonOptions',
-            'filterCategory', 'filterGender', 'filterSeason', 'filterTag', 'allTags',
-            'inTransitPairs', 'unlinkedSalesCount', 'negativeCount'
-        ));
+        return response()->json([
+            'ok' => true,
+            'msg' => $msg,
+            'id' => $product?->id ?? $productId,
+            'product' => $items->isNotEmpty() ? $this->payload($items, $product, Sneakers::seesCost()) : null,
+        ]);
     }
 
     public function store(Request $request, WarehouseService $warehouse)
     {
+        // «+ Товар» на складе: название, артикул, бренд и сразу несколько размеров «41:1, 42:2»
+        if ($request->filled('name')) {
+            return $this->storeProduct($request, $warehouse);
+        }
+
         $user = Auth::user();
         $data = $request->validate([
             'brand' => ['nullable', 'string', 'max:255'],
@@ -191,16 +200,26 @@ class WarehouseController extends Controller
             'sale_price' => ['nullable', 'numeric', 'min:0'],
             'low_stock_threshold' => ['nullable', 'integer', 'min:0'],
         ]);
+        $brand = (string) ($data['brand'] ?? '');
+        $model = (string) ($data['model'] ?? '');
 
         $item = WarehouseItem::firstOrNew([
             'account_id' => $user->account_id,
-            'brand' => (string) ($data['brand'] ?? ''),
-            'model' => (string) ($data['model'] ?? ''),
+            'brand' => $brand,
+            'model' => $model,
             'size' => (string) ($data['size'] ?? ''),
         ]);
         $existed = $item->exists;
         if (array_key_exists('sale_price', $data)) {
             $item->sale_price = $data['sale_price'];
+        }
+        // «+ размер» у товара: цену и закупку берём у соседнего размера — иначе новый размер продавался бы «без цены»
+        if (! $existed && $item->sale_price === null) {
+            $sibling = $this->productItems($user->account_id, $brand, $model)->whereNotNull('sale_price')->sortByDesc('id')->first();
+            if ($sibling) {
+                $item->sale_price = $sibling->sale_price;
+                $item->avg_cost ??= $sibling->avg_cost;
+            }
         }
         $item->low_stock_threshold = (int) ($data['low_stock_threshold'] ?? $item->low_stock_threshold ?? 0);
         if (! $existed) {
@@ -213,7 +232,132 @@ class WarehouseController extends Controller
             $warehouse->replenish($item, $qty, $existed ? 'Добавление к позиции (вручную)' : 'Начальный остаток (вручную)');
         }
 
+        $msg = ($item->size !== '' ? 'Размер '.$item->size : 'Позиция').($existed ? ' пополнен' : ' добавлен').($qty > 0 ? ': +'.$qty : '');
+        if ($request->expectsJson()) {
+            return $this->productResponse($user->account_id, $brand, $model, $msg);
+        }
+
         return redirect()->route('warehouse.index')->with('status', $existed ? 'Позиция пополнена.' : 'Позиция добавлена.');
+    }
+
+    /** Новый товар с несколькими размерами (окно «Новый товар», прототип openNewProduct) */
+    private function storeProduct(Request $request, WarehouseService $warehouse)
+    {
+        $user = Auth::user();
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'brand' => ['nullable', 'string', 'max:100'],
+            'article' => ['nullable', 'string', 'max:64'],
+            'sizes' => ['required', 'string', 'max:1000'],
+            'cost' => ['nullable', 'numeric', 'min:0'],
+            'price' => ['nullable', 'numeric', 'min:0'],
+        ], [
+            'sizes.required' => 'Укажите размеры и пары: 41:1, 42:2.',
+        ]);
+
+        $sizes = self::parseNewSizes($data['sizes'], $bad);
+        if ($bad !== null || ! $sizes) {
+            throw ValidationException::withMessages(['sizes' => $bad !== null
+                ? 'Не понял размер «'.$bad.'». Пишите так: 41:1, 42.5:2 (размер : пар).'
+                : 'Укажите размеры и пары: 41:1, 42:2.']);
+        }
+        [$brand, $model] = self::splitName($data['name'], (string) ($data['brand'] ?? ''));
+        $article = trim((string) ($data['article'] ?? ''));
+        if ($article !== '') {
+            $taken = WarehouseProduct::where('account_id', $user->account_id)->where('article', $article)->first();
+            if ($taken && self::productKey($taken->brand, $taken->model) !== self::productKey($brand, $model)) {
+                throw ValidationException::withMessages(['article' => 'Артикул «'.$article.'» уже у товара «'.$taken->display_name.'».']);
+            }
+        }
+
+        $pairs = 0;
+        foreach ($sizes as $size => $qty) {
+            $item = WarehouseItem::firstOrNew(['account_id' => $user->account_id, 'brand' => $brand, 'model' => $model, 'size' => (string) $size]);
+            $existed = $item->exists;
+            if (! $existed) {
+                $item->quantity = 0;
+                $item->low_stock_threshold = 0;
+            }
+            if (($data['price'] ?? null) !== null) {
+                $item->sale_price = (float) $data['price'];
+            }
+            if ($this->isHead() && ($data['cost'] ?? null) !== null) {
+                $item->avg_cost = (float) $data['cost'];
+            }
+            $item->save();
+            if ($qty > 0) {
+                $warehouse->replenish($item, $qty, $existed ? 'Добавление к позиции (вручную)' : 'Начальный остаток (вручную)');
+                $pairs += $qty;
+            }
+        }
+
+        $product = WarehouseProduct::firstOrCreate(['account_id' => $user->account_id, 'brand' => $brand, 'model' => $model]);
+        if ($article !== '' && $product->article !== $article) {
+            $product->article = $article;
+            $product->save();
+        }
+
+        $msg = 'Товар «'.$product->display_name.'» создан: '.count($sizes).' разм., '.$pairs.' пар';
+        if ($request->expectsJson()) {
+            return $this->productResponse($user->account_id, $brand, $model, $msg, $product->id);
+        }
+
+        return redirect()->route('warehouse.index')->with('status', $msg.'.');
+    }
+
+    /**
+     * Название нового товара → бренд + модель, как их хранит склад («NIKE» + «p-6000 prm»): бренд указан и название с него
+     * начинается — бренд берётся из названия; не начинается — бренд отдельно, модель = название; бренда нет — первое слово
+     * (New Balance — два).
+     *
+     * @return array{0: string, 1: string}
+     */
+    private static function splitName(string $name, string $brand): array
+    {
+        $name = trim(preg_replace('/\s+/u', ' ', $name));
+        $brand = trim(preg_replace('/\s+/u', ' ', $brand));
+        if ($brand !== '') {
+            $len = mb_strlen($brand);
+            if (mb_strtolower(mb_substr($name, 0, $len)) === mb_strtolower($brand) && (mb_strlen($name) === $len || mb_substr($name, $len, 1) === ' ')) {
+                return [mb_substr($name, 0, $len), trim(mb_substr($name, $len))];
+            }
+
+            return [$brand, $name];
+        }
+        if (preg_match('/^(new\s+balance|\S+)\s*(.*)$/iu', $name, $m)) {
+            return [$m[1], trim($m[2])];
+        }
+
+        return ['', $name];
+    }
+
+    /**
+     * «41:1, 42.5:2, 43» → [41 => 1, 42.5 => 2, 43 => 1]; пары можно и в скобках — «42(2)». Размер — число (половинки через
+     * точку или запятую); непонятный кусок — в $bad.
+     *
+     * @return array<string, int>
+     */
+    private static function parseNewSizes(string $raw, ?string &$bad = null): array
+    {
+        $bad = null;
+        $out = [];
+        $raw = preg_replace(['/\s*([:x×*])\s*/u', '/\s*\(\s*/u', '/\s*\)/u'], ['$1', '(', ')'], $raw);
+        foreach (preg_split('/[;\s]+|,(?=\s)|,(?=\d{2})/u', trim($raw), -1, PREG_SPLIT_NO_EMPTY) as $part) {
+            $part = trim($part, " ,\t");
+            if ($part === '') {
+                continue;
+            }
+            if (! preg_match('/^(\d{1,2}(?:[.,]5)?)\s*(?:[:x×*]\s*(\d{1,4})|\((\d{1,4})\))?$/u', $part, $m)) {
+                $bad = $part;
+
+                return [];
+            }
+            $size = str_replace(',', '.', $m[1]);
+            $qty = (int) (($m[2] ?? '') !== '' ? $m[2] : (($m[3] ?? '') !== '' ? $m[3] : 1));
+            $out[$size] = ($out[$size] ?? 0) + $qty;
+        }
+
+        return $out;
     }
 
     public function update(Request $request, WarehouseItem $item, WarehouseService $warehouse)
@@ -229,18 +373,29 @@ class WarehouseController extends Controller
             'notes' => ['nullable', 'string', 'max:255'],
         ]);
 
-        // Цены (закуп/продажа) и порог меняет только руководитель отдела.
+        // Цены (закуп/продажа) и порог меняет только руководитель отдела. Меняются только присланные поля: окно размера
+        // продавца цен не шлёт, а заметку позиции не показывает — раньше сохранение стирало её.
         if ($this->isHead()) {
-            $item->sale_price = $data['sale_price'] ?? null;
+            if ($request->has('sale_price')) {
+                $item->sale_price = $data['sale_price'] ?? null;
+            }
             if ($request->has('avg_cost')) {
                 $item->avg_cost = $data['avg_cost'] ?? null;
             }
-            $item->low_stock_threshold = (int) ($data['low_stock_threshold'] ?? 0);
+            if ($request->has('low_stock_threshold')) {
+                $item->low_stock_threshold = (int) ($data['low_stock_threshold'] ?? 0);
+            }
         }
-        $item->notes = $data['notes'] ?? null;
+        if ($request->has('notes')) {
+            $item->notes = $data['notes'] ?? null;
+        }
         $item->save();
 
         $warehouse->setQuantity($item, (int) $data['quantity'], 'Ручная корректировка остатка');
+
+        if ($request->expectsJson()) {
+            return $this->productResponse($user->account_id, (string) $item->brand, (string) $item->model, 'Размер '.($item->size !== '' ? $item->size : '—').' сохранён');
+        }
 
         return redirect()->route('warehouse.index')->with('status', 'Позиция обновлена.');
     }
@@ -256,16 +411,25 @@ class WarehouseController extends Controller
 
         $warehouse->replenish($item, (int) $data['delta'], $data['delta'] > 0 ? 'Пополнение (вручную)' : 'Списание (вручную)');
 
+        if ($request->expectsJson()) {
+            return $this->productResponse($user->account_id, (string) $item->brand, (string) $item->model, 'Остаток изменён');
+        }
+
         return redirect()->route('warehouse.index')->with('status', 'Остаток изменён.');
     }
 
-    public function destroy(WarehouseItem $item)
+    public function destroy(Request $request, WarehouseItem $item)
     {
         $user = Auth::user();
         abort_unless($item->account_id === $user->account_id, 403);
         abort_unless($this->isHead(), 403);
 
+        $productId = WarehouseProduct::where('account_id', $user->account_id)->where('brand', (string) $item->brand)->where('model', (string) $item->model)->value('id');
         $item->delete();
+
+        if ($request->expectsJson()) {
+            return $this->productResponse($user->account_id, (string) $item->brand, (string) $item->model, 'Размер '.($item->size !== '' ? $item->size : '—').' удалён', $productId);
+        }
 
         return redirect()->route('warehouse.index')->with('status', 'Позиция удалена.');
     }
@@ -300,6 +464,10 @@ class WarehouseController extends Controller
         }
         $product->save();
 
+        if ($request->expectsJson()) {
+            return $this->productResponse($user->account_id, (string) $product->brand, (string) $product->model, 'Товар сохранён', $product->id);
+        }
+
         return back()->with('status', 'Товар обновлён.');
     }
 
@@ -320,6 +488,10 @@ class WarehouseController extends Controller
         $product->photos()->create(['path' => $path, 'sort' => 0]);
         $product->image_path = $path;
         $product->save();
+
+        if ($request->expectsJson()) {
+            return $this->productResponse($user->account_id, (string) $product->brand, (string) $product->model, 'Фото обновлено', $product->id);
+        }
 
         return back()->with('status', 'Фото обновлено.');
     }
@@ -348,6 +520,10 @@ class WarehouseController extends Controller
             $product->save();
         }
 
+        if ($request->expectsJson()) {
+            return $this->productResponse($user->account_id, (string) $product->brand, (string) $product->model, 'Фото удалено', $product->id);
+        }
+
         return back()->with('status', 'Фото удалено.');
     }
 
@@ -371,6 +547,10 @@ class WarehouseController extends Controller
             $upd['sale_price'] = (float) $data['price'];
         }
         if (empty($upd)) {
+            if ($request->expectsJson()) {
+                throw ValidationException::withMessages(['cost' => 'Укажите закуп и/или цену продажи.']);
+            }
+
             return back()->withErrors(['cost' => 'Укажите закуп и/или цену продажи.']);
         }
 
@@ -378,6 +558,10 @@ class WarehouseController extends Controller
             ->where('brand', $product->brand)
             ->where('model', $product->model)
             ->update($upd);
+
+        if ($request->expectsJson()) {
+            return $this->productResponse($user->account_id, (string) $product->brand, (string) $product->model, 'Цена применена ко всем размерам ('.$n.')', $product->id);
+        }
 
         return back()->with('status', 'Цены применены к '.$n.' размер(ам) «'.$product->display_name.'».');
     }
@@ -532,10 +716,18 @@ class WarehouseController extends Controller
         ]);
 
         if ((int) $data['quantity'] > (int) $item->available) {
+            if ($request->expectsJson()) {
+                throw ValidationException::withMessages(['quantity' => 'Недостаточно доступного остатка (доступно: '.$item->available.').']);
+            }
+
             return back()->withErrors(['quantity' => 'Недостаточно доступного остатка (доступно: '.$item->available.').']);
         }
 
         $warehouse->giveForConsignment($item, (int) $data['quantity'], trim($data['consignee']), $data['note'] ?? null);
+
+        if ($request->expectsJson()) {
+            return $this->productResponse($user->account_id, (string) $item->brand, (string) $item->model, 'Передано «'.trim($data['consignee']).'»: '.$data['quantity'].' пар');
+        }
 
         return back()->with('status', 'Передано под реализацию: '.$data['quantity'].' пар.');
     }
@@ -556,6 +748,12 @@ class WarehouseController extends Controller
         } else {
             $warehouse->resolveConsignmentReturned($consignment);
             $status = 'Пары возвращены на склад.';
+        }
+
+        if ($request->expectsJson()) {
+            $item = $consignment->item()->first();
+
+            return $this->productResponse($user->account_id, (string) $item?->brand, (string) $item?->model, $status);
         }
 
         return back()->with('status', $status);
@@ -649,6 +847,18 @@ class WarehouseController extends Controller
             }
             $p->save();
             $count++;
+        }
+
+        if ($request->expectsJson()) {
+            $seesCost = Sneakers::seesCost($user);
+            $payloads = $products->map(function (WarehouseProduct $p) use ($user, $seesCost) {
+                $items = $this->productItems($user->account_id, (string) $p->brand, (string) $p->model);
+                $p->load('photos');
+
+                return $items->isNotEmpty() ? $this->payload($items, $p, $seesCost) : null;
+            })->filter()->values();
+
+            return response()->json(['ok' => true, 'msg' => 'Обновлено товаров: '.$count, 'products' => $payloads]);
         }
 
         return back()->with('status', "Обновлено товаров: {$count}");
@@ -964,9 +1174,15 @@ class WarehouseController extends Controller
         $items = WarehouseItem::where('account_id', $user->account_id)
             ->orderBy('brand')->orderBy('model')->orderBy('size')->get();
 
-        $rows = [['Бренд', 'Модель', 'Размер', 'Остаток', 'Резерв', 'Доступно', 'Себестоимость', 'Цена продажи', 'Стоимость (прод.)']];
+        // Себестоимость — только тем, кто видит закупку (решение 28.10.2026): продавцу колонки нет
+        $cost = Sneakers::seesCost($user);
+        $rows = [array_values(array_filter(['Бренд', 'Модель', 'Размер', 'Остаток', 'Резерв', 'Доступно', $cost ? 'Себестоимость' : null, 'Цена продажи', 'Стоимость (прод.)'], fn ($v) => $v !== null))];
         foreach ($items as $i) {
-            $rows[] = [$i->brand, $i->model, $i->size, $i->quantity, $i->reserved, $i->available, $i->avg_cost, $i->sale_price, (int) $i->quantity * (float) ($i->sale_price ?? 0)];
+            $row = [$i->brand, $i->model, $i->size, $i->quantity, $i->reserved, $i->available];
+            if ($cost) {
+                $row[] = $i->avg_cost;
+            }
+            $rows[] = array_merge($row, [$i->sale_price, (int) $i->quantity * (float) ($i->sale_price ?? 0)]);
         }
 
         return response()->streamDownload(function () use ($rows) {

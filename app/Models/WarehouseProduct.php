@@ -19,14 +19,13 @@ class WarehouseProduct extends Model
         'tags' => 'array',
     ];
 
-    protected static function bootWarehouseProduct(): void
+    /**
+     * Артикул K-00001… — новому товару и старому без артикула при сохранении (без артикула нет штрихкода на ценнике).
+     * До 28.10.2026 метод назывался bootWarehouseProduct — Laravel так вызывает только методы трейтов, и с 01.07 артикулы
+     * не выдавались. Разметку (autoTaxonomy) он тоже не запускал — включать её сейчас не стали: это меняло бы фильтры склада.
+     */
+    protected static function booted(): void
     {
-        static::creating(function (WarehouseProduct $p) {
-            if (empty($p->article)) {
-                $p->article = self::nextArticle($p->account_id);
-            }
-            self::autoTaxonomy($p);
-        });
         static::saving(function (WarehouseProduct $p) {
             if (empty($p->article)) {
                 $p->article = self::nextArticle($p->account_id);

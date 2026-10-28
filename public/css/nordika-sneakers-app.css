@@ -57,3 +57,81 @@ a.ns-btn,a.ns-ib{text-decoration:none}
   .ns-sb-f .ns-btn{flex:1;justify-content:center;padding:0 12px}
   .ns-sb-f .ns-btn.ns-primary{flex:2}
 }
+
+/* «Склад»: фото — кнопка «сменить фото», строка поиска, заметка о резерве, окна размера и управления, движения */
+.ns-wimg{cursor:pointer;margin:0}
+.ns-wimg-h{position:absolute;left:8px;bottom:8px;display:flex;align-items:center;gap:5px;padding:4px 8px;border-radius:8px;background:rgba(20,25,35,.62);color:#fff;font-size:11px;font-weight:600;opacity:0;transition:opacity .15s;pointer-events:none}
+.ns-wimg-h .ns-icon{width:13px;height:13px}
+.ns-wc:hover .ns-wimg-h{opacity:1}
+.ns-wimg .ns-wtag.ns-bad{background:#fdecec}
+:root[data-theme="dark"] .ns-wimg .ns-wtag.ns-bad{color:var(--red)}
+.ns-wnote{font-size:11.5px;color:var(--muted);margin:-4px 0 10px;font-weight:600}
+.ns-wgrid .ns-wc{content-visibility:auto;contain-intrinsic-size:auto 440px}
+.ns-wfilters .ns-wsearch{min-width:280px;flex:0 1 340px}
+.ns-wcount{margin-left:auto;font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap}
+.ns-ws-row.ns-ws-row2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.ns-wchips a.ns-chipf{text-decoration:none}
+.ns-pop .ns-field select{appearance:auto}
+.ns-szc+.ns-szc{padding-top:8px}
+.ns-cons{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;margin-bottom:6px}
+.ns-cons span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ns-mg-row{display:flex;gap:6px}
+.ns-mg-row input{min-width:0}
+.ns-thumbs{display:flex;flex-wrap:wrap;gap:6px}
+.ns-thumb{position:relative;width:46px;height:46px;border-radius:10px;overflow:hidden;background:var(--wimg);border:1px solid var(--line);display:grid;place-items:center;margin:0}
+.ns-thumb img{max-width:100%;max-height:100%;object-fit:contain;mix-blend-mode:multiply}
+.ns-thumb button{position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:6px;border:0;background:rgba(229,72,77,.9);color:#fff;display:grid;place-items:center;cursor:pointer;opacity:0;padding:0}
+.ns-thumb button svg{width:11px;height:11px;stroke-width:3}
+.ns-thumb:hover button{opacity:1}
+.ns-thumb-add{border-style:dashed;color:var(--muted);cursor:pointer;background:transparent}
+.ns-thumb-add:hover{border-color:var(--accent);color:var(--accent)}
+.ns-thumb-add svg{width:16px;height:16px}
+.ns-mv{padding-top:6px;padding-bottom:6px}
+.ns-mv-r{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
+.ns-mv-r:last-child{border-bottom:0}
+.ns-mv-t{flex:none;width:74px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.ns-mv-n{flex:1;min-width:0}
+.ns-mv-n b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ns-mv-n small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}
+.ns-mv-r>b{font-variant-numeric:tabular-nums;font-weight:800}
+.ns-bulk a.ns-btn{text-decoration:none}
+/* телефон: кнопки разделов склада — одной строкой с прокруткой (три строки съедали четверть экрана над карточками) */
+@media(max-width:560px){
+  .ns-wchips{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .ns-wchips::-webkit-scrollbar{display:none}
+  .ns-wchips>*{flex:none}
+  .ns-wchips .ns-grow{display:none}
+  .ns-wfilters .ns-wsearch{min-width:0;flex:1 1 100%}
+}
+
+/* подстраницы склада: переключатель-ссылки, сверка продаж, импорт */
+.ns-seg a{border:0;background:transparent;color:var(--muted);font-size:12.5px;font-weight:600;padding:7px 12px;border-radius:8px;white-space:nowrap;text-decoration:none}
+.ns-seg a.ns-on{background:var(--panel);color:var(--ink);box-shadow:var(--shadow-sm)}
+.ns-seg a:hover{color:var(--ink)}
+.ns-flash>span{flex:1;min-width:0}
+.ns-us{padding:14px 16px;margin-bottom:12px}
+.ns-us-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin-bottom:8px;font-size:13px}
+.ns-us-h b{font-size:14px}
+.ns-us-h a{color:var(--accent);font-weight:700;text-decoration:none}
+.ns-us-sug{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:8px 10px;border-top:1px dashed var(--line);font-size:13px}
+.ns-us-sug:first-of-type{border-top:0}
+.ns-us-sug.ns-best{background:var(--accent-soft);border-radius:10px;border-top-color:transparent}
+.ns-us-sug .ns-grow{flex:1;min-width:220px;display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
+.ns-us-sug form,.ns-us-other form,.ns-hr form,.ns-tbl form{margin:0}
+.ns-us-none{font-size:12.5px;padding:4px 0}
+.ns-us-other{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+.ns-us-pick{display:flex;gap:8px;flex:1;min-width:260px}
+.ns-us-pick input{flex:1;min-width:0;border:1px solid var(--line);background:var(--panel-2);border-radius:10px;padding:0 12px;height:32px;font:inherit;font-size:13px;color:var(--ink);outline:none}
+.ns-us-pick input:focus{border-color:var(--accent);background:var(--panel)}
+.ns-imp{align-items:start}
+.ns-imp .ns-sec-h .ns-icon{width:18px;height:18px}
+.ns-imp-t{font-size:12.5px;color:var(--muted);line-height:1.55;margin:0 0 14px}
+.ns-radio{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;line-height:1.45;margin:0 0 9px;cursor:pointer}
+.ns-radio input{margin-top:2px;accent-color:var(--accent)}
+.ns-imp-f{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:14px;font-size:12px}
+.ns-imp-l{font-size:12.5px;color:var(--muted);line-height:1.6;margin:4px 0 0;padding-left:18px}
+.ns-field input[type="file"]{padding:8px 10px}
+.ns-rec-bar{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-bottom:14px;font-size:12.5px;font-weight:600}
+.ns-flash.ns-long{font-weight:500;line-height:1.55}
+.ns-flash.ns-long span{color:var(--ink)}
+.ns-flash.ns-long b{font-weight:700}

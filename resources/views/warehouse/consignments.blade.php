@@ -1,98 +1,63 @@
-@extends('layouts.app')
+@extends('layouts.sneakers')
+{{-- «Реализация» — пары у посредников (кнопка на складе). Каркас «Нордика»; себестоимость — только руководителю.
+     Передать пары и закрыть передачу — в окне размера на складе. --}}
+@php
+    $ui = \App\Support\Ui\Sneakers::class;
+    $money = fn ($v) => number_format((float) $v, 0, ',', ' ').' ₽';
+@endphp
+
+@section('title', 'Реализация')
+@section('ns_sub', 'пары, переданные посредникам на продажу')
 
 @section('content')
-<style>
-    .cons-stat{ background:var(--crm-card-bg,#fff); border:1px solid var(--crm-border); border-radius:12px; padding:.75rem 1rem; }
-    .cons-stat .l{ font-size:.72rem; color:var(--crm-muted); }
-    .cons-stat .v{ font-size:1.3rem; font-weight:700; }
-</style>
-
-<div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
-    <div>
-        <h4 class="mb-0" style="letter-spacing:-.02em">🤝 Реализация</h4>
-        <div class="text-muted small">пары, переданные посредникам на продажу</div>
-    </div>
-    <a class="btn btn-sm btn-outline-secondary" href="{{ route('warehouse.index') }}">← К складу</a>
-</div>
-
-<div class="d-flex gap-2 flex-wrap mb-3">
-    <div class="cons-stat"><div class="l">Пар у посредников сейчас</div><div class="v">{{ $totalQty }}</div></div>
+<div class="ns-kpis">
+    <div class="ns-kpi"><div class="ns-kl">Пар у посредников</div><div class="ns-kv">{{ $totalQty }}</div><div class="ns-kd">сейчас на реализации</div></div>
+    <div class="ns-kpi"><div class="ns-kl">Посредников</div><div class="ns-kv">{{ $byConsignee->count() }}</div><div class="ns-kd">держат пары</div></div>
     @if($isHead)
-        <div class="cons-stat"><div class="l">Стоимость по себестоимости</div><div class="v">{{ number_format($totalCostValue, 0, ',', ' ') }} ₽</div></div>
+        <div class="ns-kpi"><div class="ns-kl">По себестоимости</div><div class="ns-kv">{{ $money($totalCostValue) }}</div><div class="ns-kd">закупка этих пар</div></div>
     @endif
 </div>
 
-<div class="card shadow-sm mb-3">
-    <div class="card-header fw-semibold">Сейчас на реализации</div>
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-sm mb-0 align-middle">
-                <thead>
-                    <tr>
-                        <th>Посредник</th>
-                        <th>Товары</th>
-                        <th class="text-end">Пар</th>
-                        @if($isHead)<th class="text-end">Себестоимость</th>@endif
-                    </tr>
-                </thead>
-                <tbody>
-                @forelse($byConsignee as $group)
-                    <tr>
-                        <td class="fw-semibold">{{ $group['name'] }}</td>
-                        <td class="small text-muted">
-                            @foreach($group['items'] as $c)
-                                {{ $c->item?->display_name ?? '—' }} × {{ $c->quantity }}@if(!$loop->last), @endif
-                            @endforeach
-                        </td>
-                        <td class="text-end fw-bold">{{ $group['qty'] }}</td>
-                        @if($isHead)<td class="text-end">{{ number_format($group['cost_value'], 0, ',', ' ') }} ₽</td>@endif
-                    </tr>
-                @empty
-                    <tr><td colspan="{{ $isHead ? 4 : 3 }}" class="text-muted small text-center py-4">
-                        Сейчас никто ничего не реализует — все пары либо на складе, либо проданы.
-                    </td></tr>
-                @endforelse
-                </tbody>
-            </table>
-        </div>
-    </div>
+<div class="ns-sec-h">Сейчас на реализации</div>
+<div class="ns-panel" style="overflow:hidden;margin-bottom:18px">
+    @if($byConsignee->isEmpty())
+        <div class="ns-empty ns-sm">{!! $ui::icon('hand') !!}<b>Никто ничего не реализует</b>Все пары на складе или проданы. Передать пары — в окне размера на складе</div>
+    @else
+        <table class="ns-tbl">
+            <thead><tr><th>Посредник</th><th>Товары</th><th class="ns-num">Пар</th>@if($isHead)<th class="ns-num">Себестоимость</th>@endif</tr></thead>
+            <tbody>
+            @foreach($byConsignee as $group)
+                <tr>
+                    <td class="ns-tname">{{ $group['name'] }}</td>
+                    <td class="ns-muted">@foreach($group['items'] as $c){{ $c->item?->display_name ?? '—' }} · р. {{ $c->item?->size ?: '—' }} × {{ $c->quantity }}@if(! $loop->last), @endif @endforeach</td>
+                    <td class="ns-num"><b>{{ $group['qty'] }}</b></td>
+                    @if($isHead)<td class="ns-num">{{ $money($group['cost_value']) }}</td>@endif
+                </tr>
+            @endforeach
+            </tbody>
+        </table>
+    @endif
 </div>
 
-<div class="card shadow-sm">
-    <div class="card-header fw-semibold">История (последние 50)</div>
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-sm mb-0 align-middle">
-                <thead>
-                    <tr>
-                        <th>Дата</th>
-                        <th>Посредник</th>
-                        <th>Товар</th>
-                        <th class="text-end">Пар</th>
-                        <th>Итог</th>
-                    </tr>
-                </thead>
-                <tbody>
-                @forelse($history as $c)
-                    <tr>
-                        <td class="small text-muted">{{ optional($c->resolved_at)->format('d.m.Y H:i') }}</td>
-                        <td>{{ $c->consignee }}</td>
-                        <td>{{ $c->item?->display_name ?? '—' }}</td>
-                        <td class="text-end">{{ $c->quantity }}</td>
-                        <td>
-                            @if($c->status === 'sold')
-                                <span class="badge text-bg-success">продано</span>
-                            @else
-                                <span class="badge text-bg-secondary">возврат</span>
-                            @endif
-                        </td>
-                    </tr>
-                @empty
-                    <tr><td colspan="5" class="text-muted small text-center py-4">Пока пусто.</td></tr>
-                @endforelse
-                </tbody>
-            </table>
-        </div>
-    </div>
+<div class="ns-sec-h">История <span class="ns-sm">последние 50</span></div>
+<div class="ns-panel" style="overflow:hidden">
+    @if($history->isEmpty())
+        <div class="ns-empty ns-sm">{!! $ui::icon('clock') !!}<b>Пока пусто</b>Здесь появятся закрытые передачи: продано или возвращено</div>
+    @else
+        <table class="ns-tbl">
+            <thead><tr><th>Дата</th><th>Посредник</th><th>Товар</th><th class="ns-num">Пар</th><th>Итог</th></tr></thead>
+            <tbody>
+            @foreach($history as $c)
+                <tr>
+                    <td class="ns-muted">{{ optional($c->resolved_at)->format('d.m.Y H:i') }}</td>
+                    <td>{{ $c->consignee }}</td>
+                    <td>{{ $c->item?->display_name ?? '—' }}</td>
+                    <td class="ns-num">{{ $c->quantity }}</td>
+                    <td>@if($c->status === 'sold')<span class="ns-tag ns-ok">продано</span>@else<span class="ns-tag">возврат</span>@endif</td>
+                </tr>
+            @endforeach
+            </tbody>
+        </table>
+    @endif
 </div>
 @endsection
