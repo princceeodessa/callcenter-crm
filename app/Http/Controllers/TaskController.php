@@ -184,9 +184,10 @@ class TaskController extends Controller
 
         $user = Auth::user();
         abort_if((string) $user->role === 'documents_operator', 403);
-        $deal = Deal::query()
-            ->where('account_id', $user->account_id)
-            ->findOrFail((int) $data['deal_id']);
+        // сделку можно не выбирать — дело само по себе (30.10.2026, просьба колл-центра)
+        $deal = ! empty($data['deal_id'])
+            ? Deal::query()->where('account_id', $user->account_id)->findOrFail((int) $data['deal_id'])
+            : null;
 
         $taskWorkflow->createTask($deal, $data, $user);
 
@@ -451,7 +452,7 @@ class TaskController extends Controller
 
         if ($includeDealId) {
             $rules = [
-                'deal_id' => ['required', 'integer', 'exists:deals,id'],
+                'deal_id' => ['nullable', 'integer', 'exists:deals,id'],
                 ...$rules,
             ];
         }

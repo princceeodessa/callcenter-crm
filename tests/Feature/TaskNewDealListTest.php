@@ -94,6 +94,34 @@ class TaskNewDealListTest extends TestCase
         $this->assertStringNotContainsString('<optgroup', $html);
     }
 
+    public function test_task_can_be_created_without_a_deal(): void
+    {
+        $op = $this->user('main_operator');
+        $this->deal('Потолок в зал');
+
+        $html = $this->actingAs($op)->get(route('tasks.index'))->assertOk()->getContent();
+        $this->assertStringContainsString('<select name="deal_id">', $html);                    // не обязательно
+        $this->assertStringContainsString('<option value="">Без сделки</option>', $html);
+
+        $this->actingAs($op)->post(route('tasks.page.store'), [
+            'deal_id' => '', 'title' => 'Позвонить в Лемана ПРО', 'assigned_user_id' => $op->id, 'due_at' => now()->subMinute()->format('Y-m-d\TH:i'),
+        ])->assertRedirect(route('tasks.index'))->assertSessionHasNoErrors();
+        $task = DB::table('tasks')->where('title', 'Позвонить в Лемана ПРО')->first();
+        $this->assertNotNull($task);
+        $this->assertNull($task->deal_id);
+        $this->assertSame(0, DB::table('deal_activities')->where('type', 'task_created')->where('author_user_id', $op->id)->count());
+        // напоминание — как у прочих дел
+        $this->assertDatabaseHas('user_notifications', ['user_id' => $op->id, 'type' => 'task_due', 'source_id' => $task->id, 'body' => 'Позвонить в Лемана ПРО (без сделки)']);
+
+        $html = $this->actingAs($op)->get(route('tasks.index'))->assertOk()->getContent();
+        $this->assertStringContainsString('Позвонить в Лемана ПРО', $html);
+        $this->assertStringContainsString('Без сделки', $html);
+        $this->assertStringNotContainsString('Сделка не найдена', $html);
+
+        $this->actingAs($op)->post(route('tasks.complete', $task->id))->assertRedirect();
+        $this->assertSame('done', DB::table('tasks')->where('id', $task->id)->value('status'));
+    }
+
     public function test_sneakers_new_task_window_has_closed_sales_and_search(): void
     {
         $sneakers = Account::create(['name' => 'Кроссовки (тест дел)'])->id;

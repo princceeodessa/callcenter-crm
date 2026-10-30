@@ -4,7 +4,7 @@
   $ndDueCls = ! $ndDue ? '' : ($ndDue->isToday() ? 'nd-today' : ($ndDue->isPast() ? 'nd-over' : ''));   // сегодня — жёлтым, прошлые дни — красным
   $ndTone = $ndDueCls === 'nd-over' ? 'var(--red)' : ($ndDueCls === 'nd-today' ? 'var(--amber)' : 'var(--blue)');
   $ndDealUrl = $task->deal ? route('deals.show', $task->deal) : null;
-  $ndDealTitle = $task->deal ? trim((string) ($task->deal->title ?: 'Сделка #'.$task->deal->id)) : 'Сделка не найдена';
+  $ndDealTitle = $task->deal ? trim((string) ($task->deal->title ?: 'Сделка #'.$task->deal->id)) : ($task->deal_id ? 'Сделка не найдена' : ($task->context_label ?: 'Без сделки'));
   $ndClient = trim((string) ($task->deal?->contact?->name ?? ''));
   $ndPhone = \App\Support\Ui\Nordika::phone($task->deal?->contact?->phone);
   $ndWho = (string) $task->assignee_label;

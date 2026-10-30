@@ -91,7 +91,7 @@
     $taskDealTitle = function ($task) {
         $deal = $task->deal;
         if (! $deal) {
-            return 'Сделка не найдена';
+            return $task->deal_id ? 'Сделка не найдена' : ($task->context_label ?: 'Без сделки');
         }
 
         $contact = trim((string) ($deal->contact?->name ?? ''));
@@ -205,7 +205,7 @@
             <div class="nd-field" data-deal-pick>
               <label>Сделка</label>
               <input type="search" data-deal-filter placeholder="Найти сделку: имя, телефон, номер" autocomplete="off" aria-label="Найти сделку" style="margin-bottom:6px">
-              <select name="deal_id" required>
+              <select name="deal_id">
                 @include('tasks._deal_options', ['label' => $dealLabel])
               </select>
             </div>
@@ -304,7 +304,7 @@
                 <div class="col-12 col-lg-5" data-deal-pick>
                     <label class="form-label">Сделка</label>
                     <input type="search" class="form-control mb-2" data-deal-filter placeholder="Найти сделку: имя, телефон, номер" autocomplete="off" aria-label="Найти сделку">
-                    <select name="deal_id" class="form-select" required>
+                    <select name="deal_id" class="form-select">
                         @include('tasks._deal_options', ['label' => $dealLabel])
                     </select>
                 </div>

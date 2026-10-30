@@ -20,13 +20,14 @@ class TaskWorkflowService
     ) {
     }
 
-    public function createTask(Deal $deal, array $data, User $user): Task
+    /** $deal = null — дело без сделки (окно «Новое дело» на странице «Дела»): без записи в ленту сделки и без Bitrix. */
+    public function createTask(?Deal $deal, array $data, User $user): Task
     {
         $assignment = $this->resolveAssignment($user, $data['assigned_user_id'] ?? null);
 
         $task = Task::create([
             'account_id' => $user->account_id,
-            'deal_id' => $deal->id,
+            'deal_id' => $deal?->id,
             'assigned_user_id' => $assignment['assignee_id'],
             'title' => $data['title'],
             'description' => $data['description'] ?? null,
@@ -37,6 +38,10 @@ class TaskWorkflowService
 
         $task->load('assignedTo');
         $this->syncDueNotificationState($task);
+
+        if (! $deal) {
+            return $task;
+        }
 
         DealActivity::create([
             'account_id' => $user->account_id,
@@ -178,7 +183,7 @@ class TaskWorkflowService
 
             $locationLabel = $fresh->deal
                 ? ($fresh->deal?->title ?? ('Сделка #'.$fresh->deal_id))
-                : ($fresh->context_label ?? 'задача без привязки');
+                : ($fresh->context_label ?? 'без сделки');
 
             foreach ($recipientIds as $recipientId) {
                 UserNotification::query()->updateOrCreate(

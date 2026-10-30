@@ -1,6 +1,6 @@
 {{--
-    Варианты «Сделка» в окне «Новое дело»: открытые и закрытые за 30 дней (TaskController::index). Если есть закрытые —
-    двумя группами. $label — fn ($deal): string; data-s — строка для поиска (tasks._deal_filter_js).
+    Варианты «Сделка» в окне «Новое дело»: «Без сделки» (по умолчанию), открытые и закрытые за 30 дней (TaskController::index).
+    Если есть закрытые — двумя группами. $label — fn ($deal): string; data-s — строка для поиска (tasks._deal_filter_js).
 --}}
 @php
     [$dealsOpen, $dealsClosed] = $deals->partition(fn ($d) => $d->closed_at === null);
@@ -8,7 +8,7 @@
     $dealSearch = fn ($d) => mb_strtolower($label($d).' #'.$d->id.' '.substr(preg_replace('/\D+/', '', (string) ($d->contact?->phone ?? '')), -10));
     $dealSelected = (int) old('deal_id');
 @endphp
-<option value="">{{ $placeholder ?? 'Выберите сделку' }}</option>
+<option value="">Без сделки</option>
 @foreach($dealGroups as $groupLabel => $groupDeals)
     @if($groupLabel !== '')<optgroup label="{{ $groupLabel }}">@endif
     @foreach($groupDeals as $d)

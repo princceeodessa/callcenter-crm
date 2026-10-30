@@ -97,8 +97,8 @@
             </div>
             <div class="ns-field" data-deal-pick><label>Сделка</label>
                 <input type="search" data-deal-filter placeholder="Найти сделку: имя, телефон, номер" autocomplete="off" aria-label="Найти сделку" style="margin-bottom:6px">
-                <select name="deal_id" required>
-                    @include('tasks._deal_options', ['label' => fn ($d) => '#'.$d->id.' · '.$dealTitle($d).($d->contact?->phone ? ' · '.$d->contact->phone : ''), 'placeholder' => '— выберите сделку —'])
+                <select name="deal_id">
+                    @include('tasks._deal_options', ['label' => fn ($d) => '#'.$d->id.' · '.$dealTitle($d).($d->contact?->phone ? ' · '.$d->contact->phone : '')])
                 </select>
             </div>
             <div class="ns-field"><label>Комментарий</label><textarea name="description" rows="3" placeholder="Необязательно"></textarea></div>
