@@ -93,13 +93,23 @@ class TaskController extends Controller
 
         $deals = collect();
         if (! $isDocumentsTaskView) {
+            $dealColumns = ['id', 'title', 'title_is_custom', 'contact_id', 'updated_at', 'closed_at'];
             $deals = Deal::query()
                 ->with(['contact:id,name,phone'])
                 ->where('account_id', $user->account_id)
                 ->whereNull('closed_at')
                 ->orderByDesc('updated_at')
                 ->limit(300)
-                ->get(['id', 'title', 'title_is_custom', 'contact_id', 'updated_at']);
+                ->get($dealColumns)
+                // и закрытые за 30 дней — дело к ним тоже нужно: перезвонить, перенести замер (30.10.2026: заказ Лемана ПРО,
+                // закрытый на «Замер назначен», в списке не находился)
+                ->concat(Deal::query()
+                    ->with(['contact:id,name,phone'])
+                    ->where('account_id', $user->account_id)
+                    ->where('closed_at', '>=', now()->subDays(30))
+                    ->orderByDesc('closed_at')
+                    ->limit(300)
+                    ->get($dealColumns));
         }
 
         $productCategoryOptions = Deal::productCategoryOptions();

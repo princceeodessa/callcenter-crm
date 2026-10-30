@@ -95,12 +95,10 @@
                 <div class="ns-field"><label>Кому назначить</label><select name="assigned_user_id">{!! $assignOptions !!}</select></div>
                 <div class="ns-field"><label>Когда напомнить</label><input name="due_at" type="datetime-local" required></div>
             </div>
-            <div class="ns-field"><label>Сделка</label>
+            <div class="ns-field" data-deal-pick><label>Сделка</label>
+                <input type="search" data-deal-filter placeholder="Найти сделку: имя, телефон, номер" autocomplete="off" aria-label="Найти сделку" style="margin-bottom:6px">
                 <select name="deal_id" required>
-                    <option value="">— выберите сделку —</option>
-                    @foreach($deals as $d)
-                        <option value="{{ $d->id }}">#{{ $d->id }} · {{ $dealTitle($d) }}@if($d->contact?->phone) · {{ $d->contact->phone }}@endif</option>
-                    @endforeach
+                    @include('tasks._deal_options', ['label' => fn ($d) => '#'.$d->id.' · '.$dealTitle($d).($d->contact?->phone ? ' · '.$d->contact->phone : ''), 'placeholder' => '— выберите сделку —'])
                 </select>
             </div>
             <div class="ns-field"><label>Комментарий</label><textarea name="description" rows="3" placeholder="Необязательно"></textarea></div>
@@ -125,6 +123,10 @@
     </form>
 </template>
 @endsection
+
+@push('scripts')
+@include('tasks._deal_filter_js')
+@endpush
 
 @push('scripts')
 <script>

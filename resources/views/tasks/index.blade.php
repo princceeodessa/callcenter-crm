@@ -202,13 +202,11 @@
         <div class="nd-m-body nd-m-pad">
           <form method="POST" action="{{ route('tasks.page.store') }}" class="nd-deal-form">
             @csrf
-            <div class="nd-field">
+            <div class="nd-field" data-deal-pick>
               <label>Сделка</label>
+              <input type="search" data-deal-filter placeholder="Найти сделку: имя, телефон, номер" autocomplete="off" aria-label="Найти сделку" style="margin-bottom:6px">
               <select name="deal_id" required>
-                <option value="">Выберите сделку</option>
-                @foreach($deals as $deal)
-                  <option value="{{ $deal->id }}" @selected((int) old('deal_id') === (int) $deal->id)>{{ $dealLabel($deal) }}</option>
-                @endforeach
+                @include('tasks._deal_options', ['label' => $dealLabel])
               </select>
             </div>
             <div class="nd-field"><label>Что сделать</label><input name="title" value="{{ old('title') }}" placeholder="Например: связаться с клиентом" required></div>
@@ -303,13 +301,11 @@
         <div class="card-body">
             <form method="POST" action="{{ route('tasks.page.store') }}" class="row g-3">
                 @csrf
-                <div class="col-12 col-lg-5">
+                <div class="col-12 col-lg-5" data-deal-pick>
                     <label class="form-label">Сделка</label>
+                    <input type="search" class="form-control mb-2" data-deal-filter placeholder="Найти сделку: имя, телефон, номер" autocomplete="off" aria-label="Найти сделку">
                     <select name="deal_id" class="form-select" required>
-                        <option value="">Выберите сделку</option>
-                        @foreach($deals as $deal)
-                            <option value="{{ $deal->id }}" @selected((int) old('deal_id') === (int) $deal->id)>{{ $dealLabel($deal) }}</option>
-                        @endforeach
+                        @include('tasks._deal_options', ['label' => $dealLabel])
                     </select>
                 </div>
                 <div class="col-12 col-lg-3">
@@ -516,6 +512,12 @@
 </div>
 @endif
 @endsection
+
+@if($canCreatePageTask)
+@push('scripts')
+@include('tasks._deal_filter_js')
+@endpush
+@endif
 
 @push('scripts')
 <script>
