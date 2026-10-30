@@ -102,13 +102,13 @@ class TaskController extends Controller
                 ->limit(300)
                 ->get($dealColumns)
                 // и закрытые за 30 дней — дело к ним тоже нужно: перезвонить, перенести замер (30.10.2026: заказ Лемана ПРО,
-                // закрытый на «Замер назначен», в списке не находился)
+                // закрытый на «Замер назначен», в списке не находился). У потолков их ~1000 за 30 дней — в окне есть поиск
                 ->concat(Deal::query()
                     ->with(['contact:id,name,phone'])
                     ->where('account_id', $user->account_id)
                     ->where('closed_at', '>=', now()->subDays(30))
                     ->orderByDesc('closed_at')
-                    ->limit(300)
+                    ->limit(2000)
                     ->get($dealColumns));
         }
 
