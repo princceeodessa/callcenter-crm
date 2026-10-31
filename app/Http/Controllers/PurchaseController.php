@@ -11,6 +11,7 @@ use App\Support\Warehouse\ArticleIdentity;
 use App\Support\Warehouse\DeliverySheet;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class PurchaseController extends Controller
 {
@@ -328,6 +329,8 @@ class PurchaseController extends Controller
      * Принять на склад: выбранные позиции (purchase_ids) либо всё, что в пути (scope=all).
      * Стадия «Получено / На складе» помечена is_stock_in, поэтому остаток заводит
      * штатный WarehouseService::syncPurchaseStock — как при обычном перетаскивании карточки.
+     * receive_qty[id] = n — пришла только часть (31.10.2026: из 2 пар пришла 1): закупка делится — n пар отдельной
+     * закупкой уходят на склад, остаток остаётся «в пути» в прежней.
      */
     public function receiveBatch(Request $request, WarehouseService $warehouse)
     {
@@ -336,7 +339,10 @@ class PurchaseController extends Controller
             'scope' => ['nullable', 'in:all'],
             'purchase_ids' => ['required_without:scope', 'array', 'min:1'],
             'purchase_ids.*' => ['integer'],
+            'receive_qty' => ['nullable', 'array'],
+            'receive_qty.*' => ['integer', 'min:0'],
         ]);
+        $partial = $data['receive_qty'] ?? [];
 
         $stage = PurchaseStage::where('account_id', $user->account_id)->where('name', 'Получено / На складе')->first()
             ?? PurchaseStage::where('account_id', $user->account_id)->where('is_stock_in', true)->orderBy('sort')->first();
@@ -353,17 +359,40 @@ class PurchaseController extends Controller
             ->get();
 
         $pairs = 0;
+        $positions = 0;
+        $parts = 0;
         foreach ($purchases as $purchase) {
-            if ((int) $purchase->purchase_stage_id !== (int) $stage->id) {
-                $purchase->purchase_stage_id = $stage->id;
-                $purchase->save();
+            $total = (int) $purchase->quantity;
+            $take = array_key_exists($purchase->id, $partial) ? min((int) $partial[$purchase->id], $total) : $total;
+            if ($take <= 0) {
+                continue;
             }
-            $warehouse->syncPurchaseStock($purchase);
-            $pairs += (int) $purchase->quantity;
+            if ($take < $total) {
+                DB::transaction(function () use ($purchase, $stage, $take, $total, $warehouse) {
+                    $part = $purchase->replicate(['stocked_at', 'stocked_quantity', 'warehouse_item_id']);
+                    $part->quantity = $take;
+                    $part->purchase_stage_id = $stage->id;
+                    $part->notes = trim($purchase->notes."\nЧасть закупки #{$purchase->id}: принято {$take} из {$total}");
+                    $part->save();
+                    $purchase->quantity = $total - $take;
+                    $purchase->save();
+                    $warehouse->syncPurchaseStock($part);
+                });
+                $parts++;
+            } else {
+                if ((int) $purchase->purchase_stage_id !== (int) $stage->id) {
+                    $purchase->purchase_stage_id = $stage->id;
+                    $purchase->save();
+                }
+                $warehouse->syncPurchaseStock($purchase);
+            }
+            $positions++;
+            $pairs += $take;
         }
 
         return redirect()->route('purchases.inTransit')
-            ->with('status', 'Принято на склад: '.$purchases->count().' поз. ('.$pairs.' пар).');
+            ->with('status', 'Принято на склад: '.$positions.' поз. ('.$pairs.' пар)'
+                .($parts ? '; частично — '.$parts.' поз., остаток ждёт «в пути»' : '').'.');
     }
 
     /**

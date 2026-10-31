@@ -73,6 +73,47 @@ class PurchaseInTransitReceiveTest extends TestCase
         $this->assertSame($afterFirst, $afterSecond);
     }
 
+    /** Из 2 пар пришла 1 (31.10.2026): принимается 1, вторая ждёт «в пути»; закупочная цена пары — прежняя. */
+    public function test_partial_receive_splits_the_purchase(): void
+    {
+        $user = User::where('role', 'sneaker_operator')->firstOrFail();
+        [$two, $other] = $this->makeInTransit($user->account_id, 2);
+        $two->update(['quantity' => 2, 'notes' => 'с рынка']);
+        $other->update(['quantity' => 3]);
+
+        $html = $this->actingAs($user)->get(route('purchases.inTransit'))->assertOk()->getContent();
+        $this->assertStringContainsString('class="ns-it-qty" value="2" min="0" max="2" data-full="2"', $html);   // число в «Пар» можно поправить
+
+        $this->actingAs($user)
+            ->post(route('purchases.receiveBatch'), ['purchase_ids' => [$two->id, $other->id], 'receive_qty' => [$two->id => 1, $other->id => 9]])
+            ->assertRedirect(route('purchases.inTransit'))
+            ->assertSessionHas('status', 'Принято на склад: 2 поз. (4 пар); частично — 1 поз., остаток ждёт «в пути».');
+
+        $two->refresh();
+        $this->assertNull($two->stocked_at, 'остаток — по-прежнему в пути');
+        $this->assertSame(1, (int) $two->quantity);
+        $part = Purchase::where('article', $two->article)->whereKeyNot($two->id)->firstOrFail();
+        $this->assertNotNull($part->stocked_at);
+        $this->assertSame(1, (int) $part->quantity);
+        $this->assertEquals(1000, $part->cost);
+        $this->assertSame("с рынка\nЧасть закупки #{$two->id}: принято 1 из 2", $part->notes);
+        $this->assertSame(1, (int) $this->stockFor($user->account_id, $two)->quantity);
+
+        $other->refresh();                                                       // больше заказанного — принимается всё
+        $this->assertNotNull($other->stocked_at);
+        $this->assertSame(3, (int) $this->stockFor($user->account_id, $other)->quantity);
+
+        // пришла и вторая пара — обычная приёмка остатка
+        $this->actingAs($user)->post(route('purchases.receiveBatch'), ['purchase_ids' => [$two->id]]);
+        $this->assertNotNull($two->fresh()->stocked_at);
+        $this->assertSame(2, (int) $this->stockFor($user->account_id, $two)->fresh()->quantity);
+
+        // 0 пар — позиция не принимается
+        [$zero] = $this->makeInTransit($user->account_id, 1);
+        $this->actingAs($user)->post(route('purchases.receiveBatch'), ['purchase_ids' => [$zero->id], 'receive_qty' => [$zero->id => 0]]);
+        $this->assertNull($zero->fresh()->stocked_at);
+    }
+
     public function test_in_transit_page_lists_pending_pairs_only(): void
     {
         $user = User::where('role', 'sneaker_head')->firstOrFail();

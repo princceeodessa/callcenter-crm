@@ -67,7 +67,7 @@
                         <td><input type="checkbox" class="ns-chk row-check" name="purchase_ids[]" value="{{ $purchase->id }}" data-qty="{{ (int) $purchase->quantity }}" @if($seesCost) data-cost="{{ (int) $purchase->quantity * (float) ($purchase->cost ?? 0) }}" @endif></td>
                         <td class="ns-tname">@if($seesCost)<a class="ns-link" href="{{ route('purchases.show', $purchase) }}">{{ trim($purchase->brand.' '.$purchase->model) ?: $purchase->title }}</a>@else{{ trim($purchase->brand.' '.$purchase->model) ?: $purchase->title }}@endif</td>
                         <td>{{ $purchase->size }}</td>
-                        <td class="ns-num">{{ (int) $purchase->quantity }}</td>
+                        <td class="ns-num">@if((int) $purchase->quantity > 1)<input type="number" class="ns-it-qty" value="{{ (int) $purchase->quantity }}" min="0" max="{{ (int) $purchase->quantity }}" data-full="{{ (int) $purchase->quantity }}" aria-label="Сколько пар пришло" title="Пришла часть — поставьте, сколько пар"><span class="ns-it-part" hidden>из {{ (int) $purchase->quantity }}</span>@else{{ (int) $purchase->quantity }}@endif</td>
                         <td class="ns-muted ns-mono">{{ $purchase->article ?: '—' }}</td>
                         @if($seesCost)<td class="ns-num">{{ $purchase->cost !== null ? $rub($purchase->cost) : '—' }}</td>@endif
                         <td>@if($purchase->is_white)<span class="ns-tag ns-ok">белая</span>@else<span class="ns-tag">серая</span>@endif</td>
@@ -94,10 +94,13 @@
     const isFiltered = @json($q !== '');
     const seesCost = @json($seesCost);
     const money = (v) => new Intl.NumberFormat('ru-RU').format(Math.round(v));
+    // сколько пар принять по строке: пришла часть — число в колонке «Пар» меньше заказанного
+    const qtyInput = (r) => r.closest('tr').querySelector('.ns-it-qty');
+    const take = (r) => { const i = qtyInput(r); return i ? Math.max(0, Math.min(Number(i.dataset.full), Math.floor(Number(i.value) || 0))) : Number(r.dataset.qty || 0); };
     const refresh = () => {
         const picked = rows.filter((r) => r.checked);
-        const pairs = picked.reduce((s, r) => s + Number(r.dataset.qty || 0), 0);
-        const cost = picked.reduce((s, r) => s + Number(r.dataset.cost || 0), 0);
+        const pairs = picked.reduce((s, r) => s + take(r), 0);
+        const cost = picked.reduce((s, r) => s + Number(r.dataset.cost || 0) / Math.max(1, Number(r.dataset.qty || 1)) * take(r), 0);
         summary.textContent = picked.length === 0 ? 'Отметьте пары галочками' : 'Выбрано: ' + picked.length + ' поз. · ' + pairs + ' пар' + (seesCost ? ' · на ' + money(cost) + ' ₽' : '');
         summary.classList.toggle('ns-muted', picked.length === 0);
         receiveSelected.disabled = picked.length === 0;
@@ -115,6 +118,28 @@
         const picked = rows.filter((r) => r.checked), pairs = picked.reduce((s, r) => s + Number(r.dataset.qty || 0), 0);
         if (!confirm((b.value === '1' ? 'Отметить как ввоз В БЕЛУЮ: ' : 'Отметить как ввоз В СЕРУЮ: ') + picked.length + ' поз. (' + pairs + ' пар)?')) e.preventDefault();
     }));
+    form.querySelectorAll('.ns-it-qty').forEach((i) => {
+        const r = i.closest('tr').querySelector('.row-check');
+        i.addEventListener('input', () => {
+            const n = take(r);
+            i.classList.toggle('ns-it-less', n < Number(i.dataset.full));
+            i.nextElementSibling.hidden = n >= Number(i.dataset.full);
+            r.checked = n > 0;                                  // поправили число — строка выбрана (0 — снята)
+            refresh();
+        });
+        // Enter здесь — не отправка формы (первой кнопкой формы у руководителя сработала бы пометка ввоза)
+        i.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); i.blur(); } });
+    });
+    form.addEventListener('submit', () => {
+        form.querySelectorAll('input[name^="receive_qty["]').forEach((h) => h.remove());
+        rows.forEach((r) => {
+            const i = qtyInput(r);
+            if (!i || take(r) >= Number(i.dataset.full)) return;
+            const h = document.createElement('input');
+            h.type = 'hidden'; h.name = 'receive_qty[' + r.value + ']'; h.value = String(take(r));
+            form.appendChild(h);
+        });
+    });
     // выбрано всё и поиска нет — шлём scope=all вместо сотен id (PHP режет форму на max_input_vars)
     form.addEventListener('submit', (e) => {
         const allPicked = rows.length > 0 && rows.every((r) => r.checked);
