@@ -1,7 +1,7 @@
 /* «Нордика» · кроссовочный отдел — поведение каркаса layouts/sneakers (по образцу sneakers-reference.js дизайнера):
    тема ☀/☾ (localStorage nsTheme), звук уведомлений (crmSound: on/off, сигнал — два тона 880 и 1318,5 Гц), всплывающие меню
    (отдел, профиль, уведомления), окно .ns-modal, toast, мобильное меню, опрос уведомлений каждые 25 с (как прежний каркас).
-   Для страниц — window.ns: toast, showPop, hidePop, menuPop, openModal, closeModal, ding, post. */
+   Для страниц — window.ns: toast, showPop, hidePop, menuPop, openModal, closeModal, ding, post, размеры (sizeKey, sizeSplit, sizePick). */
 (() => {
     'use strict';
     const cfg = window.nsConfig || {};
@@ -51,6 +51,26 @@
     };
     pop?.addEventListener('click', (e) => e.stopPropagation());
     document.addEventListener('click', hidePop);
+
+    /* ---------- размеры: поиск и выбор («Продажа», «Склад», 01.11.2026) ---------- */
+    // подпись размера → ключ для сравнения: «42,5», « 42.5», «37/5» (опечатка в складе) → «42.5»; «42.0» → «42»
+    const sizeKey = (s) => String(s ?? '').trim().toLowerCase().replace(/^(\d{2})[,/](\d)$/, '$1.$2').replace(/\.0$/, '');
+    // строка поиска → { text, size }: «42», «42.5», «р42», «42 р.», «размер 42» — только размер; «samba 42» — модель и размер.
+    // Размер — последнее «слово» из двух цифр 15…50 (артикулы и модели вроде «air max 90», «327» сюда не попадают).
+    const sizeSplit = (q) => {
+        const s = String(q ?? '').trim().toLowerCase();
+        const m = s.match(/^(?:(.*?\S)\s+)?(?:р(?:азмер)?\.?\s*)?(\d{2}(?:[.,/]\d)?)(?:\s*р\.?)?$/);
+        if (!m || +m[2].slice(0, 2) < 15 || +m[2].slice(0, 2) > 50) return { text: s, size: null };
+        return { text: (m[1] || '').replace(/(?:^|\s+)р(?:азмер)?\.?$/, ''), size: sizeKey(m[2]) };   // «samba размер 42» → «samba»
+    };
+    // сетка размеров в поповере: list = [{ k, label, n }] (n — моделей в наличии), cur — ключ выбранного
+    const sizePick = (anchor, list, cur, onPick) => {
+        showPop(anchor, '<div class="ns-ph">Размер · моделей в наличии</div><div class="ns-szpick">' + list.map((s) =>
+            '<button type="button" class="ns-szp' + (s.k === cur ? ' ns-on' : '') + (s.n ? '' : ' ns-z') + '" data-k="' + esc(s.k) + '"><b>' + esc(s.label) + '</b><small>' + (s.n || 'нет') + '</small></button>').join('') +
+            '</div><div class="ns-szpick-f"><button type="button" class="ns-btn ns-sm" data-k=""' + (cur ? '' : ' disabled') + '>Все размеры</button></div>', 312);
+        pop.querySelectorAll('[data-k]').forEach((b) => b.addEventListener('click', () => { hidePop(); onPick(b.dataset.k); }));
+    };
+    const sizeOrder = (a, b) => (parseFloat(a) || 999) - (parseFloat(b) || 999) || String(a).localeCompare(String(b));
 
     /* ---------- окно (модалка) ---------- */
     const scrim = $('nsScrim'), modal = $('nsModal');
@@ -225,5 +245,5 @@
         hidePop(); closeModal(); closeSide();
     });
 
-    window.ns = { toast, showPop, hidePop, menuPop, openModal, closeModal, ding, post, esc };
+    window.ns = { toast, showPop, hidePop, menuPop, openModal, closeModal, ding, post, esc, sizeKey, sizeSplit, sizePick, sizeOrder };
 })();

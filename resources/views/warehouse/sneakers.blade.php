@@ -5,6 +5,7 @@
     (WarehouseController::index), карточки, поиск, фильтры и итоги рисует скрипт ниже; правки (размер, «+ размер», название,
     управление, фото, посредники, массовые действия, новый товар) — прежние маршруты склада, они отвечают JSON с обновлённым
     товаром, страница не перезагружается. Закупка в данных только у руководителя — продавцу её не видно и в коде страницы.
+    Поиск по размеру (01.11.2026): чип «Размер» или размер в строке поиска («42», «samba 42») — товары с этим размером.
 --}}
 @php
     $ui = \App\Support\Ui\Sneakers::class;
@@ -68,10 +69,11 @@
     @include('partials.ns-flash')
     <div class="ns-wsum" id="nsWsum"></div>
     <div class="ns-brands ns-wfilters">
-        <div class="ns-search ns-wsearch">{!! $ui::icon('search', 'ns-sm') !!}<input id="nsWq" type="search" placeholder="Бренд, модель, артикул или размер" autocomplete="off" data-scan="own" aria-label="Поиск по складу"></div>
+        <div class="ns-search ns-wsearch">{!! $ui::icon('search', 'ns-sm') !!}<input id="nsWq" type="search" placeholder="Бренд, модель, артикул или размер (samba 42)" autocomplete="off" data-scan="own" aria-label="Поиск по складу"></div>
         <button class="ns-chipf" type="button" data-f="cat" data-l="Категория"></button>
         <button class="ns-chipf" type="button" data-f="sex" data-l="Пол"></button>
         <button class="ns-chipf" type="button" data-f="sea" data-l="Сезон"></button>
+        <button class="ns-chipf" type="button" id="nsWsize" title="Товары, у которых есть этот размер (или наберите размер в поиске: 42)"><span id="nsWsizeL">Размер</span>{!! $ui::icon('chev', 'ns-chev') !!}</button>
         <button class="ns-chipf" type="button" id="nsWlow"><span class="ns-sw"></span>Заканчивается<span class="ns-cn" id="nsWlowN"></span></button>
         <span class="ns-wcount" id="nsWcount"></span>
     </div>
@@ -88,7 +90,8 @@
     'use strict';
     const W = window.nsWh, I = W.ic, $ = (id) => document.getElementById(id), esc = ns.esc;
     let P = W.products;
-    const F = { q: W.initial.q || '', low: !!W.initial.low, cat: W.initial.cat || '', sex: W.initial.sex || '', sea: W.initial.sea || '' };
+    const F = { q: W.initial.q || '', low: !!W.initial.low, cat: W.initial.cat || '', sex: W.initial.sex || '', sea: W.initial.sea || '', size: '' };
+    let curSz = '';   // размер, по которому сейчас ищем (из поиска или чипа «Размер») — его плашки подсвечены
     const sel = new Set();
     const fmt = (v) => Math.round(+v || 0).toLocaleString('ru-RU').replace(/-/, '−');
     const rub = (v) => fmt(v) + ' ₽';
@@ -199,7 +202,7 @@
             '<div class="ns-wstat"><div><span>Пар</span><b>' + fmt(st) + '</b></div><div><span>На сумму</span><b>' + rub(value(p)) + '</b></div><div><span>За пару</span><b>' + priceOf(p) + '</b></div></div>' +
             (r || k ? '<div class="ns-wnote">доступно ' + fmt(av) + (r ? ' · резерв ' + r : '') + (k ? ' · у посредников ' + k : '') + '</div>' : '') +
             '<div class="ns-wsz-h">Размер · остаток<em>нажмите для правки</em></div>' +
-            '<div class="ns-wpills">' + p.sz.map((z) => '<button class="ns-wp' + (z.a <= 0 ? ' ns-z' : '') + '" type="button" data-iid="' + z.id + '" title="Размер ' + esc(z.s || '—') + ' — доступно ' + z.a + '"><span>' + esc(z.s || '—') + '</span><i class="' + (z.a <= 0 ? 'ns-z' : z.a === 1 ? 'ns-l' : '') + '">' + String(z.a).replace('-', '−') + '</i></button>').join('') +
+            '<div class="ns-wpills">' + p.sz.map((z) => '<button class="ns-wp' + (z.a <= 0 ? ' ns-z' : '') + (curSz && ns.sizeKey(z.s) === curSz ? ' ns-szhit' : '') + '" type="button" data-iid="' + z.id + '" data-sk="' + esc(ns.sizeKey(z.s)) + '" title="Размер ' + esc(z.s || '—') + ' — доступно ' + z.a + '"><span>' + esc(z.s || '—') + '</span><i class="' + (z.a <= 0 ? 'ns-z' : z.a === 1 ? 'ns-l' : '') + '">' + String(z.a).replace('-', '−') + '</i></button>').join('') +
             '<button class="ns-wadd" type="button">+ размер</button></div></div>' +
             '<div class="ns-wfoot"><button class="ns-btn ns-sm" type="button" data-mng>' + I.gear + 'Управление</button><a class="ns-btn ns-sm ns-icon-only" href="' + esc(W.url.labels + '?type=price&product=' + p.id) + '" target="_blank" rel="noopener" title="Ценники и этикетки">' + I.tag + '</a></div></div>';
     };
@@ -221,13 +224,17 @@
 
     /* ---------- поиск и фильтры ---------- */
     const hay = (p) => (p.name + ' ' + p.auto + ' ' + p.art + ' ' + p.brand + ' ' + p.sz.map((z) => z.s).join(' ')).toLowerCase();
+    const sizeLabel = (k) => { for (const p of P) { const z = p.sz.find((x) => ns.sizeKey(x.s) === k); if (z) return z.s; } return k; };
     const filter = () => {
-        const q = F.q.toLowerCase();
+        // «42», «samba 42» — размер из поиска; иначе выбранный в чипе «Размер»
+        const qs = ns.sizeSplit(F.q), q = qs.text;
+        curSz = qs.size || F.size;
         let shown = 0, lowN = 0;
         P.forEach((p) => {
             const low = isLow(p);
             if (low) lowN++;
-            const ok = (!F.cat || p.cat === F.cat) && (!F.sex || p.sex === F.sex) && (!F.sea || p.sea === F.sea) && (!F.low || low) && (!q || hay(p).includes(q));
+            const ok = (!F.cat || p.cat === F.cat) && (!F.sex || p.sex === F.sex) && (!F.sea || p.sea === F.sea) && (!F.low || low) && (!q || hay(p).includes(q))
+                && (!curSz || p.sz.some((z) => ns.sizeKey(z.s) === curSz));
             const el = grid.querySelector('.ns-wc[data-pid="' + p.id + '"]');
             if (el) el.hidden = !ok;
             if (ok) shown++;
@@ -235,7 +242,10 @@
         $('nsWempty').hidden = shown > 0;
         $('nsWlowN').textContent = lowN ? lowN : '';
         $('nsWlow').classList.toggle('ns-on', F.low);
-        $('nsWcount').textContent = shown === P.length ? '' : shown + ' из ' + P.length;
+        $('nsWcount').textContent = shown === P.length ? '' : shown + ' из ' + P.length + (curSz ? ' · размер ' + sizeLabel(curSz) : '');
+        grid.querySelectorAll('.ns-wp[data-sk]').forEach((b) => b.classList.toggle('ns-szhit', !!curSz && b.dataset.sk === curSz));
+        $('nsWsize').classList.toggle('ns-on', !!F.size);
+        $('nsWsizeL').textContent = F.size ? 'Размер ' + sizeLabel(F.size) : 'Размер';
         document.querySelectorAll('[data-f]').forEach((b) => {
             const k = b.dataset.f, v = F[k];
             b.classList.toggle('ns-on', !!v);
@@ -247,6 +257,22 @@
     let qt;
     qi.addEventListener('input', () => { clearTimeout(qt); qt = setTimeout(() => { F.q = qi.value.trim(); filter(); }, 90); });
     $('nsWlow').addEventListener('click', () => { F.low = !F.low; filter(); });
+    // чип «Размер»: все размеры склада, число — товаров с этим размером в наличии
+    $('nsWsize').addEventListener('click', (e) => {
+        e.stopPropagation();
+        const m = new Map();
+        P.forEach((p) => {
+            const seen = new Set();
+            p.sz.forEach((z) => {
+                const k = ns.sizeKey(z.s);
+                if (!k) return;
+                const s = m.get(k) || { k, label: z.s, n: 0 };
+                if (z.a > 0 && !seen.has(k)) { seen.add(k); s.n++; }
+                m.set(k, s);
+            });
+        });
+        ns.sizePick(e.currentTarget, [...m.values()].sort((a, b) => ns.sizeOrder(a.k, b.k)), F.size, (k) => { F.size = k; filter(); });
+    });
     document.querySelectorAll('[data-f]').forEach((b) => b.addEventListener('click', (e) => {
         e.stopPropagation();
         const k = b.dataset.f, keys = Object.keys(W.opts[k]), labels = ['Все'].concat(keys.map((x) => W.opts[k][x]));

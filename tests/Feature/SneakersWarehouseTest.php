@@ -52,6 +52,7 @@ class SneakersWarehouseTest extends TestCase
         $this->item('41', qty: 2, cost: 6000, price: 11990);
 
         $res = $this->actingAs($this->operator)->get(route('warehouse.index'))->assertOk()
+            ->assertSee('id="nsWsize"', false)                                   // поиск по размеру (01.11.2026)
             ->assertDontSee('href="'.route('warehouse.analytics').'"', false)
             ->assertDontSee('href="'.route('onec.index').'"', false);
         foreach ($res->viewData('products') as $p) {

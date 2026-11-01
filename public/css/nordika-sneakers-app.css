@@ -282,3 +282,17 @@ a.ns-btn.ns-dis{pointer-events:none}
 .ns-it-qty:focus{outline:none;border-color:var(--accent);background:var(--panel)}
 .ns-it-qty.ns-it-less{border-color:var(--amber)}
 .ns-it-part{font-size:11.5px;font-weight:600;color:var(--muted);margin-left:6px}
+
+/* Поиск по размеру («Продажа», «Склад»): сетка размеров в поповере, найденный размер у модели подсвечен */
+.ns-szpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(54px,1fr));gap:6px;padding:4px 6px 2px}
+.ns-szp{height:46px;border-radius:10px;border:1px solid var(--line);background:var(--panel-2);font:inherit;color:var(--ink);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:0}
+.ns-szp b{font-size:14px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+.ns-szp small{font-size:10px;font-weight:700;color:var(--muted);line-height:1}
+.ns-szp:hover{border-color:var(--accent);background:var(--panel)}
+.ns-szp.ns-z{border-style:dashed}
+.ns-szp.ns-z b,.ns-szp.ns-z small{color:var(--faint)}
+.ns-szp.ns-on{background:var(--accent);border-color:var(--accent);color:#fff}
+.ns-szp.ns-on b,.ns-szp.ns-on small{color:#fff}
+.ns-szpick-f{display:flex;justify-content:flex-end;padding:8px 6px 4px}
+.ns-sz.ns-szhit:not(.ns-on),.ns-wp.ns-szhit{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.ns-wp.ns-szhit{background:var(--accent-soft)}

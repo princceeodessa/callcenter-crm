@@ -4,6 +4,7 @@
     плитками размеров, справа «Последние продажи» по дням; размер → лист продажи снизу → «Продать» (та же форма
     sale.quick.store, что и раньше: сделка, списание, уведомление руководителю, чек). Белые пары продаются через 1С —
     как прежде, плитка только с белыми помечена «1С», продать её здесь нельзя. Закупка и прибыль — только руководителю.
+    Поиск по размеру (01.11.2026): чип «Размер» или размер в строке поиска («42») — модели с этим размером, плитка подсвечена.
 --}}
 @php
     $ui = \App\Support\Ui\Sneakers::class;
@@ -71,7 +72,7 @@
         <button class="ns-ib" type="button" id="nsStepsHide" title="Скрыть подсказку">{!! $ui::icon('x') !!}</button>
     </div>
 
-    <div class="ns-bigsearch">{!! $ui::icon('scan') !!}<input id="nsSq" placeholder="Название модели или артикул — можно сканером" value="{{ $q }}" autocomplete="off" data-scan="own" aria-label="Поиск модели или артикула"><span class="ns-scanok"><i></i>сканер готов</span></div>
+    <div class="ns-bigsearch">{!! $ui::icon('scan') !!}<input id="nsSq" placeholder="Модель, артикул или размер (samba 42) — можно сканером" value="{{ $q }}" autocomplete="off" data-scan="own" aria-label="Поиск модели, артикула или размера"><span class="ns-scanok"><i></i>сканер готов</span></div>
 
     <div class="ns-brands" id="nsBrands">
         <button class="ns-chipf ns-on" type="button" data-b="all">Все <span class="ns-cn">{{ $n($allModels) }}</span></button>
@@ -83,6 +84,7 @@
         @endif
         <span class="ns-vsp"></span>
         <button class="ns-chipf ns-on" type="button" id="nsOnlyStock"><span class="ns-sw"></span>Только в наличии</button>
+        <button class="ns-chipf" type="button" id="nsSizeF" title="Модели, у которых есть этот размер (или наберите размер в поиске: 42)"><span id="nsSizeL">Размер</span>{!! $ui::icon('chev', 'ns-chev') !!}</button>
     </div>
 
     <div class="ns-plist-h"><b id="nsPlCnt"></b><span class="ns-lgd"><span><i></i>2 пары и больше</span><span><i class="ns-a"></i>последняя пара</span><span><i class="ns-x"></i>нет в наличии</span></span></div>
@@ -110,14 +112,14 @@
                         @if($av > 0)
                             <button type="button" @class(['ns-sz', 'ns-low' => $av === 1]) data-item="{{ $s['id'] }}" data-size="{{ $s['size'] }}" data-price="{{ $s['price'] ?? '' }}" data-avail="{{ $av }}" data-white="{{ $s['white'] }}" data-other="{{ $s['other'] }}" @if($s['cost'] !== null) data-cost="{{ $s['cost'] }}" @endif @if($wTip) title="{{ $wTip }}" @endif><b>{{ $s['size'] }}</b><small><i></i>{{ $av }} шт</small>@if($onlyWhite)<span class="ns-w1c">1С</span>@endif</button>
                         @else
-                            <button type="button" class="ns-sz ns-off" disabled title="Нет в наличии"><b>{{ $s['size'] }}</b><small><i></i>нет</small></button>
+                            <button type="button" class="ns-sz ns-off" disabled data-size="{{ $s['size'] }}" title="Нет в наличии"><b>{{ $s['size'] }}</b><small><i></i>нет</small></button>
                         @endif
                     @endforeach
                 </div>
             </div>
         @endforeach
     </div>
-    <div class="ns-panel ns-empty" id="nsPEmpty" hidden>{!! $ui::icon('search') !!}<b>Ничего не нашлось</b>Проверьте артикул или снимите фильтр «Только в наличии» — Enter откроет поиск по коду</div>
+    <div class="ns-panel ns-empty" id="nsPEmpty" hidden>{!! $ui::icon('search') !!}<b>Ничего не нашлось</b><span id="nsPEmptyT">Проверьте артикул или снимите фильтр «Только в наличии» — Enter откроет поиск по коду</span></div>
     <div class="ns-list-note"></div>
 </div>
 
@@ -201,7 +203,9 @@
     const plural = (k, a, b, c) => { const m = k % 10, h = k % 100; return m === 1 && h !== 11 ? a : (m >= 2 && m <= 4 && (h < 12 || h > 14) ? b : c); };
     const $ = (id) => document.getElementById(id);
     const sq = $('nsSq'), rows = [...document.querySelectorAll('#nsPlist .ns-prow')];
-    let brand = 'all', onlyStock = true, sel = null;
+    let brand = 'all', onlyStock = true, sel = null, size = '';
+    // плитки размеров строки с ключом размера (ns.sizeKey) — для поиска по размеру
+    rows.forEach((r) => { r._sz = [...r.querySelectorAll('.ns-sz')].map((t) => ({ t, k: ns.sizeKey(t.dataset.size), off: t.classList.contains('ns-off') })); });
 
     // фото не загрузилось — две буквы бренда, как в прототипе
     const imgFallback = (root) => root.querySelectorAll('.ns-pimg img').forEach((img) => {
@@ -233,17 +237,46 @@
 
     /* ---------- список моделей: поиск, бренды, «Только в наличии» ---------- */
     const visible = () => rows.filter((r) => !r.hidden);
+    // размер: набран в поиске («42», «samba 42») — он, иначе выбранный в чипе «Размер»
+    const curSize = () => ns.sizeSplit(sq.value).size || size;
+    const sizeLabel = (k) => { for (const r of rows) { const z = r._sz.find((x) => x.k === k); if (z) return z.t.dataset.size; } return k; };
     const filter = () => {
-        const q = sq.value.trim().toLowerCase();
+        const q = ns.sizeSplit(sq.value).text, sz = curSize();
         rows.forEach((r) => {
-            r.hidden = !((brand === 'all' || r.dataset.brand === brand) && (!onlyStock || +r.dataset.stock > 0) && (!q || r.dataset.search.includes(q)));
+            let hasSize = !sz;
+            r._sz.forEach((z) => {
+                const hit = !!sz && z.k === sz;
+                z.t.classList.toggle('ns-szhit', hit);
+                if (hit && (!onlyStock || !z.off)) hasSize = true;
+            });
+            r.hidden = !((brand === 'all' || r.dataset.brand === brand) && (!onlyStock || +r.dataset.stock > 0) && (!q || r.dataset.search.includes(q)) && hasSize);
         });
-        const k = visible().length;
-        $('nsPlCnt').textContent = (q || brand !== 'all' ? 'Найдено ' : '') + k.toLocaleString('ru-RU') + ' ' + plural(k, 'модель', 'модели', 'моделей');
+        const k = visible().length, szL = sz ? sizeLabel(sz) : '';
+        $('nsPlCnt').textContent = (q || sz || brand !== 'all' ? 'Найдено ' : '') + k.toLocaleString('ru-RU') + ' ' + plural(k, 'модель', 'модели', 'моделей') + (sz ? ' с размером ' + szL : '');
         $('nsPEmpty').hidden = k > 0;
+        $('nsPEmptyT').textContent = sz
+            ? 'Размера ' + szL + (onlyStock ? ' сейчас нет в наличии — снимите «Только в наличии», чтобы увидеть, где он закончился' : ' нет ни у одной модели')
+            : 'Проверьте артикул или снимите фильтр «Только в наличии» — Enter откроет поиск по коду';
+        $('nsSizeF').classList.toggle('ns-on', !!size);
+        $('nsSizeL').textContent = size ? 'Размер ' + sizeLabel(size) : 'Размер';
         updSteps();
     };
     sq.addEventListener('input', filter);
+    // чип «Размер»: сетка размеров текущего бренда, число — моделей с этим размером в наличии
+    $('nsSizeF').addEventListener('click', (e) => {
+        e.stopPropagation();
+        const m = new Map();
+        rows.forEach((r) => {
+            if (brand !== 'all' && r.dataset.brand !== brand) return;
+            r._sz.forEach((z) => {
+                if (!z.k) return;
+                const s = m.get(z.k) || { k: z.k, label: z.t.dataset.size, n: 0, rows: new Set() };
+                if (!z.off && !s.rows.has(r)) { s.rows.add(r); s.n++; }
+                m.set(z.k, s);
+            });
+        });
+        ns.sizePick(e.currentTarget, [...m.values()].sort((a, b) => ns.sizeOrder(a.k, b.k)), size, (k) => { size = k; filter(); });
+    });
     document.querySelectorAll('#nsBrands [data-b]').forEach((b) => b.addEventListener('click', () => {
         brand = b.dataset.b;
         document.querySelectorAll('#nsBrands [data-b]').forEach((x) => x.classList.toggle('ns-on', x === b));
@@ -327,8 +360,8 @@
         if (e.key !== 'Enter') return;
         e.preventDefault();
         const v = visible();
-        if (v.length === 0 && sq.value.trim().length >= 4) { location.href = @json(route('scan')) + '?code=' + encodeURIComponent(sq.value.trim()); return; }
-        if (v.length === 1) { const t = v[0].querySelector('.ns-sz:not(.ns-off)'); if (t) openSell(t); }
+        if (v.length === 0 && sq.value.trim().length >= 4 && !ns.sizeSplit(sq.value).size) { location.href = @json(route('scan')) + '?code=' + encodeURIComponent(sq.value.trim()); return; }
+        if (v.length === 1) { const t = v[0].querySelector('.ns-sz.ns-szhit:not(.ns-off)') || (curSize() ? null : v[0].querySelector('.ns-sz:not(.ns-off)')); if (t) openSell(t); }
     });
 
     /* ---------- «Последние продажи»: Все / Сегодня, окно продажи ---------- */

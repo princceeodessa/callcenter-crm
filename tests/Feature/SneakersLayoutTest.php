@@ -118,7 +118,8 @@ class SneakersLayoutTest extends TestCase
             ['adidas campus black HQ8708', 'NEW BALANCE 530', 'nike air force 1', 'WMNS Nike Dunk', 'Merell moab', 'nguvp', '  ']));
         $this->assertStringContainsString('id="nsOnlyStock"', $html);
         $this->assertMatchesRegularExpression('~class="ns-sz ns-low" data-item="'.$i39.'"[^>]*data-avail="1"~', $html);   // последняя пара — оранжевая
-        $this->assertStringContainsString('class="ns-sz ns-off" disabled', $html);                      // нет в наличии — пунктир
+        $this->assertStringContainsString('class="ns-sz ns-off" disabled data-size="44"', $html);       // нет в наличии — пунктир (размер — для поиска)
+        $this->assertStringContainsString('id="nsSizeF"', $html);                                       // поиск по размеру (01.11.2026)
         $this->assertStringContainsString('4 пары', $html);
         $this->assertStringContainsString('Не важно</button>', $html);                                  // «Откуда клиент» — чипы
         $this->assertStringNotContainsString('data-cost=', $html);                                      // продавцу закупка не уходит в разметку
