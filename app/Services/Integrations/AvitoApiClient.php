@@ -100,7 +100,10 @@ class AvitoApiClient
     public function listMessages(int|string $userId, string $chatId, int $limit = 30, int $offset = 0): array
     {
         $uid = (string)$userId;
+        // v3 — действующий адрес; v2 отвечает 404, v1 — 405 (03.11.2026). Без истории опрос видел только последнее
+        // сообщение чата: всё, что клиент писал между опросами или до ответа оператора в приложении, терялось.
         $paths = [
+            "/messenger/v3/accounts/{$uid}/chats/{$chatId}/messages/",
             "/messenger/v2/accounts/{$uid}/chats/{$chatId}/messages/",
             "/messenger/v2/accounts/{$uid}/chats/{$chatId}/messages",
             "/messenger/v1/accounts/{$uid}/chats/{$chatId}/messages/",
