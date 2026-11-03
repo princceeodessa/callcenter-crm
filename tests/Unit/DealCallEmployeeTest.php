@@ -68,4 +68,22 @@ class DealCallEmployeeTest extends TestCase
         $this->assertSame('phone:79225090014', Deal::resolveIncomingPhoneSourceFilterKeyFromPayload($payload));
         $this->assertSame('ТВ', Deal::incomingPhoneSourceOptions()['phone:79225090014']);
     }
+
+    /** Операторы звонят и с рекламных номеров — исходящий звонок не делает номер источником (03.11.2026) */
+    public function test_outgoing_calls_from_a_tracked_number_are_not_a_source(): void
+    {
+        foreach (['OUTGOING', 'ACCEPTED', 'COMPLETED'] as $type) {
+            $this->assertNull(Deal::resolveIncomingPhoneSourceFromPayload([
+                'cmd' => 'event', 'type' => $type, 'direction' => 'out', 'telnum' => '79225090014', 'diversion' => '79225090014',
+            ]), $type);
+        }
+        $this->assertNull(Deal::resolveIncomingPhoneSourceFromPayload(['cmd' => 'history', 'type' => 'out', 'diversion' => '79225090014']));
+
+        $this->assertSame('phone:79225090014', Deal::resolveIncomingPhoneSourceFilterKeyFromPayload([
+            'cmd' => 'event', 'type' => 'ACCEPTED', 'direction' => 'in', 'diversion' => '79225090014',
+        ]));
+        $this->assertSame('phone:79225090014', Deal::resolveIncomingPhoneSourceFilterKeyFromPayload([
+            'cmd' => 'contact', 'telnum' => '79225090014', 'diversion' => '79225090014',
+        ]));
+    }
 }

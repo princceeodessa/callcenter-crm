@@ -617,8 +617,9 @@ SQL;
             return null;
         }
 
+        // исходящий — не обращение: операторы звонят и с рекламных номеров (у событий Мегафона direction=out — и у ACCEPTED/COMPLETED)
         $callType = strtolower(trim((string) ($payload['type'] ?? '')));
-        if ($callType === 'out') {
+        if (in_array($callType, ['out', 'outgoing'], true) || strtolower(trim((string) ($payload['direction'] ?? ''))) === 'out') {
             return null;
         }
 
@@ -914,6 +915,10 @@ SQL;
     private static function applyIncomingPhoneSourceNumberCondition(Builder $query, string $number): Builder
     {
         $variants = self::phoneSourceSearchVariants($number);
+
+        // исходящие с этого номера — не источник (как в resolveIncomingPhoneSourceFromPayload)
+        $query->whereRaw("LOWER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.type')), '')) NOT IN ('out', 'outgoing')")
+            ->whereRaw("LOWER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.direction')), '')) <> 'out'");
 
         return $query->where(function (Builder $matchQuery) use ($variants) {
             foreach (self::INCOMING_PHONE_SOURCE_KEYS as $key) {
