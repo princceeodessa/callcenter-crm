@@ -247,12 +247,22 @@ class ChatHistorySyncService
 
     private function upsertVkMessage(Conversation $conversation, array $message): ?Message
     {
-        $externalId = trim((string) ($message['id'] ?? $message['conversation_message_id'] ?? ''));
-        if ($externalId === '') {
+        $direction = ((int) ($message['out'] ?? 0) === 1) ? 'out' : 'in';
+
+        // у ВК два номера: вебхук пишет входящие по conversation_message_id, отправка из CRM — по id. Ищем по обоим,
+        // новое входящее — по conversation_message_id: иначе каждое открытие чата задваивало сообщения (84 с сентября)
+        $cmid = trim((string) ($message['conversation_message_id'] ?? ''));
+        $vkId = trim((string) ($message['id'] ?? ''));
+        $candidates = array_values(array_filter([$cmid, $vkId], fn (string $v) => $v !== '' && $v !== '0'));
+        if ($candidates === []) {
             return null;
         }
-
-        $direction = ((int) ($message['out'] ?? 0) === 1) ? 'out' : 'in';
+        $externalId = Message::query()
+            ->where('conversation_id', $conversation->id)
+            ->where('direction', $direction)
+            ->whereIn('external_id', $candidates)
+            ->value('external_id')
+            ?? ($direction === 'in' ? $candidates[0] : ($vkId !== '' && $vkId !== '0' ? $vkId : $candidates[0]));
         $meta = is_array($conversation->meta) ? $conversation->meta : [];
         $leadName = $this->cleanLeadName((string) ($meta['lead_name'] ?? $meta['display_name'] ?? ''));
         $author = $direction === 'out'
@@ -308,11 +318,16 @@ class ChatHistorySyncService
         $existingPayload = is_array($message->payload ?? null) ? $message->payload : [];
         $message->account_id = $conversation->account_id;
         $message->direction = $direction;
-        // уже записанное имя и текст не затираем заглушкой: в истории Авито имени нет («avito:123»), у вложений нет текста
-        if (!$message->exists || trim((string) $message->author) === '' || $this->cleanLeadName($author) !== null) {
+        // записанное (вебхук, опрос, отправка из CRM) — главнее истории: в истории Авито нет имени («avito:123»), у ответов
+        // из CRM — оператора («user:4» → «user:avito»), а удалённое клиентом приходит «Сообщение удалено». Синк только
+        // заполняет пустое и заглушки
+        $oldAuthor = trim((string) $message->author);
+        $betterName = !str_starts_with($oldAuthor, 'user:') && $this->cleanLeadName($oldAuthor) === null
+            && !str_starts_with($author, 'user:') && $this->cleanLeadName($author) !== null;
+        if (!$message->exists || $oldAuthor === '' || $betterName) {
             $message->author = $author;
         }
-        if (!$message->exists || trim($body) !== '') {
+        if (!$message->exists || trim($body) !== '' && $this->isPlaceholderBody((string) $message->body)) {
             $message->body = $body;
         }
         $message->payload = array_replace_recursive($existingPayload, $payload);
@@ -329,6 +344,15 @@ class ChatHistorySyncService
         }
 
         return $message->fresh();
+    }
+
+    /** Пусто или заглушка, которую можно заменить текстом из истории */
+    private function isPlaceholderBody(string $body): bool
+    {
+        $body = trim($body);
+
+        return $body === '' || $body === 'Вложение' || $body === '📎 Вложение'
+            || str_starts_with($body, 'Сообщение не поддерживается') || str_starts_with($body, 'Перейдите на подписку');
     }
 
     private function syncConversationTimestamp(Conversation $conversation, ?Carbon $latestMessageAt): void
