@@ -622,6 +622,10 @@ SQL;
         if (in_array($callType, ['out', 'outgoing'], true) || strtolower(trim((string) ($payload['direction'] ?? ''))) === 'out') {
             return null;
         }
+        // номер, на который позвонил клиент, — diversion; telnum у Мегафона — линия, куда звонок пришёл (…0047 — и линия, и реклама)
+        if (is_scalar($payload['diversion'] ?? null) && trim((string) $payload['diversion']) !== '') {
+            return self::resolveIncomingPhoneSourceFromValue($payload['diversion']);
+        }
 
         foreach (self::INCOMING_PHONE_SOURCE_KEYS as $key) {
             if (!array_key_exists($key, $payload)) {
@@ -920,16 +924,24 @@ SQL;
         $query->whereRaw("LOWER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.type')), '')) NOT IN ('out', 'outgoing')")
             ->whereRaw("LOWER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.direction')), '')) <> 'out'");
 
-        return $query->where(function (Builder $matchQuery) use ($variants) {
-            foreach (self::INCOMING_PHONE_SOURCE_KEYS as $key) {
-                foreach ($variants as $variant) {
-                    $matchQuery->orWhere("payload->{$key}", $variant);
-                }
-            }
+        // есть diversion — решает только он (telnum — линия, куда пришёл звонок)
+        $diversion = "COALESCE(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.diversion')), '')";
 
-            foreach ($variants as $variant) {
-                $matchQuery->orWhereRaw('CAST(payload AS CHAR) LIKE ?', ['%'.$variant.'%']);
-            }
+        return $query->where(function (Builder $matchQuery) use ($variants, $diversion) {
+            $matchQuery->whereRaw($diversion.' IN ('.implode(',', array_fill(0, count($variants), '?')).')', $variants)
+                ->orWhere(function (Builder $legacy) use ($variants, $diversion) {
+                    $legacy->whereRaw($diversion." = ''")->where(function (Builder $anyKey) use ($variants) {
+                        foreach (self::INCOMING_PHONE_SOURCE_KEYS as $key) {
+                            foreach ($variants as $variant) {
+                                $anyKey->orWhere("payload->{$key}", $variant);
+                            }
+                        }
+
+                        foreach ($variants as $variant) {
+                            $anyKey->orWhereRaw('CAST(payload AS CHAR) LIKE ?', ['%'.$variant.'%']);
+                        }
+                    });
+                });
         });
     }
 

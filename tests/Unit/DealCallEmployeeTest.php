@@ -86,4 +86,18 @@ class DealCallEmployeeTest extends TestCase
             'cmd' => 'contact', 'telnum' => '79225090014', 'diversion' => '79225090014',
         ]));
     }
+
+    /** telnum — линия, куда пришёл звонок; источник — номер, на который позвонили (diversion) */
+    public function test_source_is_the_dialled_number_not_the_answering_line(): void
+    {
+        $this->assertSame('phone:79221797710', Deal::resolveIncomingPhoneSourceFilterKeyFromPayload([
+            'cmd' => 'event', 'type' => 'INCOMING', 'telnum' => '79225090014', 'diversion' => '79221797710',
+        ]));
+        $this->assertNull(Deal::resolveIncomingPhoneSourceFromPayload([
+            'cmd' => 'event', 'type' => 'INCOMING', 'telnum' => '79225090014', 'diversion' => '79650000000',
+        ]), 'звонок на неотслеживаемый номер — не источник линии');
+        $this->assertSame('phone:79225090014', Deal::resolveIncomingPhoneSourceFilterKeyFromPayload([
+            'type' => 'in', 'to' => '+7 922 509-00-14',
+        ]), 'без diversion — как раньше, по любому полю');
+    }
 }
