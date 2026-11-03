@@ -18,6 +18,9 @@ use RuntimeException;
  * Цифры дня: views, contacts, favorites, spend (все списания), spend_presence (размещение и целевые действия),
  * spend_promotion, spend_other (тариф, комиссия и прочее) и по направлениям <dir>_spend, <dir>_views,
  * <dir>_contacts, <dir>_favorites, shared_spend.
+ *
+ * Кабинетов может быть несколько (основной + cfg['more'], 03.11.2026 — «Дмитрий Мастер»): цифры складываются по дням.
+ * Не ответил любой — ошибка всего источника: неполная сумма не должна затереть прежние цифры.
  */
 class AvitoSource
 {
@@ -36,6 +39,8 @@ class AvitoSource
 
     private array $meta = [];
     private ?float $lastV2 = null;
+    /** Ключи кабинета, который сейчас собирается */
+    private array $cab = [];
 
     public function __construct(private readonly array $cfg)
     {
@@ -69,8 +74,63 @@ class AvitoSource
         return 'other';
     }
 
+    /** Кабинеты с ключами: основной, затем дополнительные. @return list<array{client_id:string, client_secret:string}> */
+    private function cabinets(): array
+    {
+        $list = [];
+        foreach (array_merge([$this->cfg], array_values((array) ($this->cfg['more'] ?? []))) as $c) {
+            if (! empty($c['client_id']) && ! empty($c['client_secret'])) {
+                $list[] = ['client_id' => (string) $c['client_id'], 'client_secret' => (string) $c['client_secret']];
+            }
+        }
+
+        return $list;
+    }
+
     /** @return array<string, array<string, int|float>> */
     public function daily(Carbon $from, Carbon $to): array
+    {
+        $out = [];
+        $metas = [];
+        foreach ($this->cabinets() as $cab) {
+            $this->cab = $cab;
+            foreach ($this->cabinetDaily($from, $to) as $day => $m) {
+                foreach ($m as $k => $v) {
+                    $out[$day][$k] = ($out[$day][$k] ?? 0) + $v;
+                }
+            }
+            $metas[] = $this->meta;
+        }
+        foreach ($out as &$m) {
+            foreach ($m as $k => $v) {
+                if (is_float($v)) {
+                    $m[$k] = round($v, 2);
+                }
+            }
+        }
+        unset($m);
+        ksort($out);
+
+        if (count($metas) > 1) {
+            $byDir = [];
+            foreach ($metas as $mt) {
+                foreach ((array) ($mt['active_by_dir'] ?? []) as $dir => $n) {
+                    $byDir[$dir] = ($byDir[$dir] ?? 0) + $n;
+                }
+            }
+            $this->meta = [
+                'account' => implode(' + ', array_filter(array_column($metas, 'account'))),
+                'accounts' => array_column($metas, 'account'),
+                'items' => array_sum(array_column($metas, 'items')),
+                'active_by_dir' => $byDir,
+            ];
+        }
+
+        return $out;
+    }
+
+    /** Цифры одного кабинета ($this->cab). @return array<string, array<string, int|float>> */
+    private function cabinetDaily(Carbon $from, Carbon $to): array
     {
         $account = $this->call('GET', '/core/v1/accounts/self');
         $userId = $account['id'] ?? null;
@@ -218,7 +278,7 @@ class AvitoSource
         }
         [$status, $text] = Http::withRetry($method, self::BASE.$path, $headers, $json !== null ? json_encode($json) : null);
         if ($status === 401 || $status === 403) {
-            Cache::forget(self::TOKEN_KEY);
+            Cache::forget($this->tokenKey());
         }
         if ($status !== 200) {
             throw Http::fail('Авито '.strtok($path, '?'), $status, $text);
@@ -227,23 +287,31 @@ class AvitoSource
         return Http::json($text);
     }
 
+    /** Токен — свой у каждого кабинета; у основного прежний ключ кэша */
+    private function tokenKey(): string
+    {
+        return ($this->cab['client_id'] ?? null) === ($this->cfg['client_id'] ?? null)
+            ? self::TOKEN_KEY
+            : self::TOKEN_KEY.'.'.substr(md5((string) ($this->cab['client_id'] ?? '')), 0, 12);
+    }
+
     private function token(): string
     {
-        $saved = Cache::get(self::TOKEN_KEY);
-        if (is_array($saved) && ($saved['client_id'] ?? null) === $this->cfg['client_id'] && ($saved['expires_at'] ?? 0) > time() + 300) {
+        $saved = Cache::get($this->tokenKey());
+        if (is_array($saved) && ($saved['client_id'] ?? null) === $this->cab['client_id'] && ($saved['expires_at'] ?? 0) > time() + 300) {
             return $saved['access_token'];
         }
         [$status, $text] = Http::withRetry('POST', self::BASE.'/token', ['Content-Type' => 'application/x-www-form-urlencoded'], http_build_query([
             'grant_type' => 'client_credentials',
-            'client_id' => $this->cfg['client_id'],
-            'client_secret' => $this->cfg['client_secret'],
+            'client_id' => $this->cab['client_id'],
+            'client_secret' => $this->cab['client_secret'],
         ]));
         $data = Http::json($text);
         if ($status !== 200 || empty($data['access_token'])) {
             throw new RuntimeException('Авито: токен не выдан (HTTP '.$status.')');
         }
-        Cache::put(self::TOKEN_KEY, [
-            'client_id' => $this->cfg['client_id'],
+        Cache::put($this->tokenKey(), [
+            'client_id' => $this->cab['client_id'],
             'access_token' => $data['access_token'],
             'expires_at' => time() + (int) ($data['expires_in'] ?? 86400),
         ], (int) ($data['expires_in'] ?? 86400));

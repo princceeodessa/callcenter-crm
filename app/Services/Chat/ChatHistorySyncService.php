@@ -6,6 +6,7 @@ use App\Models\Conversation;
 use App\Models\IntegrationConnection;
 use App\Models\Message;
 use App\Services\Integrations\AvitoApiClient;
+use App\Services\Integrations\AvitoConnections;
 use App\Services\Integrations\AvitoTokenManager;
 use App\Services\Integrations\VkApiClient;
 use Carbon\Carbon;
@@ -36,12 +37,8 @@ class ChatHistorySyncService
 
     private function syncAvito(Conversation $conversation, int $accountId, int $maxPages, int $pageLimit): void
     {
-        $connection = IntegrationConnection::query()
-            ->where('account_id', $accountId)
-            ->where('provider', 'avito')
-            ->where('status', 'active')
-            ->latest('id')
-            ->first();
+        // кабинет этого чата (их может быть несколько): чужими ключами Авито историю не отдаёт
+        $connection = (int) $conversation->account_id === $accountId ? AvitoConnections::forConversation($conversation) : null;
 
         if (!$connection) {
             return;

@@ -23,6 +23,10 @@ return [
         'avito' => [
             'client_id' => env('OWNER_AVITO_CLIENT_ID'),
             'client_secret' => env('OWNER_AVITO_CLIENT_SECRET'),
+            // связанные кабинеты (03.11.2026 — «Дмитрий Мастер»): расходы и контакты складываются с основным
+            'more' => array_values(array_filter([
+                ['client_id' => env('OWNER_AVITO2_CLIENT_ID'), 'client_secret' => env('OWNER_AVITO2_CLIENT_SECRET')],
+            ], fn (array $c) => ! empty($c['client_id']) && ! empty($c['client_secret']))),
         ],
         'direct' => [
             'token' => env('OWNER_DIRECT_TOKEN'),

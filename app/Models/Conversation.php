@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\BelongsToAccount;
 use App\Services\Integrations\AvitoApiClient;
+use App\Services\Integrations\AvitoConnections;
 use App\Services\Integrations\AvitoTokenManager;
 use App\Services\Integrations\VkApiClient;
 use Illuminate\Database\Eloquent\Model;
@@ -199,7 +200,7 @@ class Conversation extends Model
 
     private function fetchAvitoLeadName(): ?string
     {
-        $connection = IntegrationConnection::query()->where('account_id', $this->account_id)->where('provider', 'avito')->where('status', 'active')->first();
+        $connection = AvitoConnections::forConversation($this);
         $settings = is_array($connection?->settings) ? $connection->settings : [];
         $chatId = trim((string) $this->external_id);
         try {

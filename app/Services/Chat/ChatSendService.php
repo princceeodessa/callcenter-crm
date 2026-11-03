@@ -8,6 +8,7 @@ use App\Models\IntegrationConnection;
 use App\Models\IntegrationEvent;
 use App\Models\Message;
 use App\Services\Integrations\AvitoApiClient;
+use App\Services\Integrations\AvitoConnections;
 use App\Services\Integrations\AvitoTokenManager;
 use App\Services\Integrations\TelegramApiClient;
 use App\Services\Integrations\VkApiClient;
@@ -21,11 +22,14 @@ class ChatSendService
         $accountId = $conversation->account_id;
         $provider = $conversation->channel;
 
-        $conn = IntegrationConnection::query()
-            ->where('account_id', $accountId)
-            ->where('provider', $provider)
-            ->whereIn('status', ['active', 'error'])
-            ->first();
+        // Авито: отвечаем из кабинета, которому принадлежит чат (кабинетов может быть несколько)
+        $conn = $provider === 'avito'
+            ? AvitoConnections::forConversation($conversation, ['active', 'error'])
+            : IntegrationConnection::query()
+                ->where('account_id', $accountId)
+                ->where('provider', $provider)
+                ->whereIn('status', ['active', 'error'])
+                ->first();
 
         if (!$conn) {
             throw new \RuntimeException("Интеграция {$provider} не подключена");
@@ -106,11 +110,14 @@ class ChatSendService
         $accountId = $conversation->account_id;
         $provider = $conversation->channel;
 
-        $conn = IntegrationConnection::query()
-            ->where('account_id', $accountId)
-            ->where('provider', $provider)
-            ->whereIn('status', ['active', 'error'])
-            ->first();
+        // Авито: отвечаем из кабинета, которому принадлежит чат (кабинетов может быть несколько)
+        $conn = $provider === 'avito'
+            ? AvitoConnections::forConversation($conversation, ['active', 'error'])
+            : IntegrationConnection::query()
+                ->where('account_id', $accountId)
+                ->where('provider', $provider)
+                ->whereIn('status', ['active', 'error'])
+                ->first();
 
         if (!$conn) {
             throw new \RuntimeException("Интеграция {$provider} не подключена");

@@ -342,6 +342,48 @@ class OwnerMarketingTest extends TestCase
         $this->assertSame('таблица замеров', $ads['spend']['avito']['from']);
     }
 
+    /** Связанный кабинет Авито (03.11.2026): его просмотры, контакты и расходы складываются с основным по дням */
+    public function test_avito_linked_cabinet_is_added_to_the_main_one(): void
+    {
+        config(['owner.marketing.avito.more' => [['client_id' => 'av2-id', 'client_secret' => 'av2-secret']]]);
+        $this->fakeAll();
+        $main = Http::$fake;
+        Http::$fake = function (string $method, string $url, array $headers, ?string $body) use ($main) {
+            if (str_ends_with($url, 'api.avito.ru/token') && str_contains((string) $body, 'client_id=av2-id')) {
+                return [200, json_encode(['access_token' => 'av2-token', 'expires_in' => 86400])];
+            }
+            if (($headers['Authorization'] ?? '') !== 'Bearer av2-token') {
+                return $main($method, $url, $headers, $body);
+            }
+            $svc = ['id' => 114, 'name' => 'Предложение услуг'];
+            return match (true) {
+                str_contains($url, '/core/v1/accounts/self') => [200, json_encode(['id' => 888, 'name' => 'Дмитрий Мастер'])],
+                str_contains($url, '/core/v1/items') => [200, json_encode(['resources' => str_contains($url, 'status=active')
+                    ? [['id' => 21, 'title' => 'Натяжные потолки Сделаю как себе', 'category' => $svc]] : []])],
+                str_contains($url, '/stats/v1/accounts/888/items') => [200, json_encode(['result' => ['items' => [
+                    ['itemId' => 21, 'stats' => [['date' => '2026-10-08', 'uniqViews' => 10, 'uniqContacts' => 2, 'uniqFavorites' => 1]]],
+                ]]])],
+                str_contains($url, '/stats/v2/accounts/888/spendings') => [200, json_encode(['result' => ['groupings' => [
+                    ['date' => '2026-10-08', 'type' => 'day', 'spendings' => [['slug' => 'presence', 'value' => 388]]],
+                ]]])],
+                default => [404, '{}'],
+            };
+        };
+
+        $this->assertSame('ok, дней с данными: 2', (new MarketingCollector())->run(14, ['avito'])['avito']);
+        $av = json_decode(DB::table('owner_marketing_daily')->where('source', 'avito')->where('day', '2026-10-08')->value('metrics'), true);
+        $this->assertEquals(160, $av['views']);
+        $this->assertEquals(110, $av['ceilings_views']);
+        $this->assertEquals(7, $av['ceilings_contacts']);
+        $this->assertEqualsWithDelta(2188.4, $av['spend'], 0.001);
+        $this->assertEqualsWithDelta(1888.4, $av['ceilings_spend'], 0.001);   // 1500,4 основного + 388 связанного
+        $this->assertEqualsWithDelta(200, $av['shared_spend'], 0.001);
+        $meta = json_decode(DB::table('owner_marketing_sources')->where('source', 'avito')->value('meta'), true);
+        $this->assertSame(['БлагоДар', 'Дмитрий Мастер'], $meta['accounts']);
+        $this->assertSame(2, $meta['active_by_dir']['ceilings']);
+        $this->assertNotNull(Cache::get('owner_marketing.avito_token'), 'у основного кабинета прежний ключ токена');
+    }
+
     public function test_avito_direction_by_title(): void
     {
         $this->assertSame('ceilings', AvitoSource::direction('Натяжные потолки. 2-й и 3-й потолок в подарок'));

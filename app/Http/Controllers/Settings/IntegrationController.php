@@ -34,8 +34,10 @@ class IntegrationController extends Controller
     {
         $accountId = Auth::user()->account_id;
 
+        // у провайдера может быть несколько подключений (связанный кабинет Авито) — на странице основное (меньший id)
         $connections = IntegrationConnection::query()
             ->where('account_id', $accountId)
+            ->orderByDesc('id')
             ->get()
             ->keyBy('provider');
 
