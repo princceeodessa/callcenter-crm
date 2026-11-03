@@ -739,3 +739,6 @@ a.nd-reason2 .nd-reason-bar{height:4px;background:color-mix(in srgb,var(--ink) 7
 .nd-toolbar :is(button,a,label,.nd-chipf):focus,.nd-toolbar :is(button,a,label,.nd-chipf):focus-visible,
 .nd-top :is(button,a):focus,.nd-top :is(button,a):focus-visible,
 .nd-seg :is(button,a):focus,.nd-seg :is(button,a):focus-visible{outline:none}
+
+/* «Авито частник» (03.11.2026) — свой цвет чипа и кружка, не как у Авито (--av, оранжевый) */
+:root{--avp:#d9468f}

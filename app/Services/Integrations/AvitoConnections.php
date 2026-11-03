@@ -24,6 +24,23 @@ class AvitoConnections
             ->get();
     }
 
+    /** @var array<int, list<string>> */
+    private static array $privateCache = [];
+
+    /** id кабинетов Авито «частник» (settings.private у подключения) — их чаты выделяются своим цветом. @return list<string> */
+    public static function privateUserIds(int $accountId): array
+    {
+        return self::$privateCache[$accountId] ??= self::all($accountId, ['active', 'error', 'disabled'])
+            ->filter(fn (IntegrationConnection $c) => ! empty($c->settings['private']))
+            ->map(fn (IntegrationConnection $c) => trim((string) ($c->settings['user_id'] ?? '')))
+            ->filter()->values()->all();
+    }
+
+    public static function flushCache(): void
+    {
+        self::$privateCache = [];
+    }
+
     /**
      * Кабинет чата: conversations.meta.avito_user_id → кабинет, из которого опрос принёс входящие (payload.account_id —
      * id кабинета Авито) → основной. Найденный по сообщениям запоминается в meta.

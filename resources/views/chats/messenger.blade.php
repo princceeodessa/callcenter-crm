@@ -57,9 +57,7 @@
   $active = $activeConversation;
   $activeId = $active?->id;
   // цвет кружка чата — как у чипа источника на канбане
-  $ndChatSrc = fn ($c) => \App\Support\Ui\Nordika::source(match ((string) $c?->channel) {
-      'vk' => 'vk', 'telegram' => 'tg', 'avito' => 'avito', 'tilda' => 'site', 'megafon_vats' => 'call', default => 'crm',
-  });
+  $ndChatSrc = fn ($c) => \App\Support\Ui\Nordika::source(\App\Support\Ui\Nordika::chatSourceKey($c));   // чат частника — своим цветом
 
   $displayAuthor = function($message, $conversation) {
     $author = trim((string) ($message->author ?? ''));

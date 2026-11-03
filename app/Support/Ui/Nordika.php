@@ -2,8 +2,10 @@
 
 namespace App\Support\Ui;
 
+use App\Models\Conversation;
 use App\Models\Deal;
 use App\Models\User;
+use App\Services\Integrations\AvitoConnections;
 
 /**
  * Редизайн колл-центра «Nordika» (архив дизайнера 26.10.2026, public/css/nordika-crm.css): что нужно разметке —
@@ -17,6 +19,8 @@ class Nordika
     /** Источники как у дизайнера: подпись, цвет (переменная темы), значок. */
     public const SOURCES = [
         'avito' => ['Avito', 'var(--av)', 'A'],
+        // «Авито частник» (03.11.2026): звонки на номера с подписью «авито частник» и чаты связанного кабинета «Дмитрий Мастер»
+        'avito_private' => ['Частник', 'var(--avp)', 'Ч'],
         'vk' => ['VK', 'var(--vk)', '<svg viewBox="0 0 24 24" width="11" height="11" fill="#fff"><path d="M12.8 16.3c-5 0-8.2-3.6-8.3-9.5h2.6c.1 4.4 2.1 6.2 3.6 6.6V6.8h2.4v3.8c1.5-.2 3-1.9 3.6-3.8h2.4c-.4 2.3-2 4-3.2 4.7 1.2.6 3 2.1 3.7 4.8h-2.7c-.5-1.7-1.9-3-3.8-3.2v3.2z"/></svg>'],
         'call' => ['Звонок', 'var(--call)', self::PHONE_SVG],
         'lemana' => ['Лемана', 'var(--lemana)', 'Л'],
@@ -137,7 +141,7 @@ class Nordika
         // класс вида «source-surface source-surface-vk» (канал переписки или запасной источник сделки)
         preg_match('/source-surface-([a-z_]+)/', (string) $deal->lead_source_surface_class, $m);
 
-        return match ($m[1] ?? 'default') {
+        $key = match ($m[1] ?? 'default') {
             'avito' => 'avito',
             'vk' => 'vk',
             'telegram' => 'tg',
@@ -146,6 +150,39 @@ class Nordika
             'bitrix' => 'bitrix',
             default => 'crm',
         };
+
+        // частник — своим цветом: чат из его кабинета или звонок на номер «авито частник»
+        if ($key === 'avito' && self::isPrivateAvitoChat($deal->primaryConversation())) {
+            return 'avito_private';
+        }
+        if ($key === 'call' && str_contains(mb_strtolower((string) $deal->incoming_phone_source_label), 'частник')) {
+            return 'avito_private';
+        }
+
+        return $key;
+    }
+
+    /** Ключ источника чата (кружок в «Чатах»): по каналу, чат кабинета частника — «Частник». */
+    public static function chatSourceKey(?Conversation $conversation): string
+    {
+        return match ((string) $conversation?->channel) {
+            'vk' => 'vk',
+            'telegram' => 'tg',
+            'avito' => self::isPrivateAvitoChat($conversation) ? 'avito_private' : 'avito',
+            'tilda' => 'site',
+            'megafon_vats' => 'call',
+            default => 'crm',
+        };
+    }
+
+    private static function isPrivateAvitoChat(?Conversation $conversation): bool
+    {
+        if (! $conversation || $conversation->channel !== 'avito') {
+            return false;
+        }
+        $userId = trim((string) (($conversation->meta ?? [])['avito_user_id'] ?? ''));
+
+        return $userId !== '' && in_array($userId, AvitoConnections::privateUserIds((int) $conversation->account_id), true);
     }
 
     /** @return array{0: string, 1: string, 2: string} [подпись, цвет, значок] */
