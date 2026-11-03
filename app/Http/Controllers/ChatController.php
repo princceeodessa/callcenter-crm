@@ -54,7 +54,9 @@ class ChatController extends Controller
                 return $conversation;
             });
 
+            // по времени: история из Авито догружается позже — у старых сообщений бывают большие id
             $messages = $activeConversation->messages()
+                ->orderBy('created_at')
                 ->orderBy('id')
                 ->get();
         }
@@ -94,6 +96,7 @@ class ChatController extends Controller
         $messages = Message::query()
             ->where('conversation_id', $conversation->id)
             ->when($afterId > 0, fn ($query) => $query->where('id', '>', $afterId))
+            ->orderBy('created_at')
             ->orderBy('id')
             ->take(100)
             ->get();

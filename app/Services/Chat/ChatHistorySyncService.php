@@ -203,6 +203,11 @@ class ChatHistorySyncService
         $direction = $this->isOutgoingAvitoMessage($message, $ownerUserId) ? 'out' : 'in';
         $authorId = trim((string) ($message['author_id'] ?? $message['authorId'] ?? ''));
         $leadName = $this->resolveAvitoAuthorName($message);
+        if ($direction === 'in' && !$leadName) {
+            // в сообщении v3 имени нет — берём имя клиента из чата (так подписаны входящие из опроса)
+            $meta = is_array($conversation->meta) ? $conversation->meta : [];
+            $leadName = $this->cleanLeadName((string) ($meta['lead_name'] ?? $meta['display_name'] ?? ''));
+        }
         $author = $direction === 'out'
             ? 'user:avito'
             : ($leadName ?: ($authorId !== '' ? 'avito:'.$authorId : 'avito'));
@@ -303,8 +308,13 @@ class ChatHistorySyncService
         $existingPayload = is_array($message->payload ?? null) ? $message->payload : [];
         $message->account_id = $conversation->account_id;
         $message->direction = $direction;
-        $message->author = $author;
-        $message->body = $body;
+        // уже записанное имя и текст не затираем заглушкой: в истории Авито имени нет («avito:123»), у вложений нет текста
+        if (!$message->exists || trim((string) $message->author) === '' || $this->cleanLeadName($author) !== null) {
+            $message->author = $author;
+        }
+        if (!$message->exists || trim($body) !== '') {
+            $message->body = $body;
+        }
         $message->payload = array_replace_recursive($existingPayload, $payload);
         $message->status = $message->exists && $message->status ? $message->status : $status;
         $message->error = null;
