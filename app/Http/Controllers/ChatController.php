@@ -7,6 +7,8 @@ use App\Models\Deal;
 use App\Models\Message;
 use App\Services\Chat\ChatHistorySyncService;
 use App\Services\Chat\ChatSendService;
+use App\Support\Ui\Nordika;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 
@@ -17,12 +19,7 @@ class ChatController extends Controller
         $accountId = $request->user()->account_id;
         $activeId = (int) ($request->query('c') ?? 0);
 
-        $conversations = Conversation::query()
-            ->where('account_id', $accountId)
-            ->with(['deal', 'lastMessage'])
-            ->orderByDesc('last_message_at')
-            ->orderByDesc('id')
-            ->paginate(30);
+        $conversations = $this->conversationList($accountId);
 
         $activeConversation = null;
         $messages = collect();
@@ -61,14 +58,7 @@ class ChatController extends Controller
                 ->get();
         }
 
-        $unreadConversationCount = Conversation::query()
-            ->where('account_id', $accountId)
-            ->where('unread_count', '>', 0)
-            ->count();
-
-        $unreadMessageCount = (int) Conversation::query()
-            ->where('account_id', $accountId)
-            ->sum('unread_count');
+        [$unreadConversationCount, $unreadMessageCount] = $this->unreadCounts($accountId);
 
         return view('chats.messenger', [
             'conversations' => $conversations,
@@ -77,6 +67,51 @@ class ChatController extends Controller
             'unreadConversationCount' => $unreadConversationCount,
             'unreadMessageCount' => $unreadMessageCount,
         ]);
+    }
+
+    /**
+     * Список чатов для автообновления страницы «Чаты» (раз в 5 с): без догрузки истории и без отметок «прочитано».
+     */
+    public function list(Request $request)
+    {
+        $accountId = $request->user()->account_id;
+        [$unreadConversationCount, $unreadMessageCount] = $this->unreadCounts($accountId);
+
+        $html = view('chats._list', [
+            'nd' => Nordika::enabled(),
+            'conversations' => $this->conversationList($accountId)->withPath(route('chats.index')),
+            'activeId' => (int) ($request->query('c') ?? 0),
+            'unreadConversationCount' => $unreadConversationCount,
+            'unreadMessageCount' => $unreadMessageCount,
+        ])->render();
+
+        return response()->json([
+            'ok' => true,
+            'html' => $html,
+            'unread_conversations' => $unreadConversationCount,
+            'unread_messages' => $unreadMessageCount,
+            'sub' => $unreadConversationCount > 0 ? '— '.$unreadMessageCount.' новых в '.$unreadConversationCount.' чатах' : '— новых нет',
+        ]);
+    }
+
+    private function conversationList(int $accountId): LengthAwarePaginator
+    {
+        return Conversation::query()
+            ->where('account_id', $accountId)
+            ->with(['deal', 'lastMessage'])
+            ->orderByDesc('last_message_at')
+            ->orderByDesc('id')
+            ->paginate(30);
+    }
+
+    /**
+     * @return array{0: int, 1: int} чатов с непрочитанным, непрочитанных сообщений
+     */
+    private function unreadCounts(int $accountId): array
+    {
+        $unread = Conversation::query()->where('account_id', $accountId)->where('unread_count', '>', 0);
+
+        return [(clone $unread)->count(), (int) $unread->sum('unread_count')];
     }
 
     public function show(Request $request, Conversation $conversation)
@@ -92,6 +127,12 @@ class ChatController extends Controller
 
         $afterId = (int) ($request->query('after_id') ?? 0);
         app(ChatHistorySyncService::class)->syncRecent($conversation, $request->user()->account_id);
+
+        // чат открыт и виден оператору — пришедшее в него уже прочитано (иначе в списке у открытого чата висит счётчик)
+        if ($request->boolean('read') && (int) $conversation->unread_count > 0) {
+            $conversation->update(['unread_count' => 0]);
+            $conversation->deal()->update(['is_unread' => false]);
+        }
 
         $messages = Message::query()
             ->where('conversation_id', $conversation->id)

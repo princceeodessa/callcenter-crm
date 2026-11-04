@@ -25,7 +25,8 @@ class Conversation extends Model
 
     public function deal() { return $this->belongsTo(Deal::class); }
     public function messages() { return $this->hasMany(Message::class); }
-    public function lastMessage() { return $this->hasOne(Message::class)->latestOfMany(); }
+    // последнее по времени, не по номеру записи: догруженная история старше, но номера у неё больше
+    public function lastMessage() { return $this->hasOne(Message::class)->ofMany(['created_at' => 'max', 'id' => 'max']); }
 
     public function getSourceLabelAttribute(): string
     {

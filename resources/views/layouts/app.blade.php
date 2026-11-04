@@ -572,6 +572,7 @@
         } catch (e) {}
     };
 
+    window.ndBeep = playBeep;   // тот же сигнал — новое сообщение в «Чатах»
     document.addEventListener('click', () => { ensureAudio(); }, { once: true });
 
     const requestSystemPermission = async () => {

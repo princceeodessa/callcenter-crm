@@ -28,6 +28,9 @@
   .ccrm-chat-item.active { background: rgba(79,70,229,.08); }
   .ccrm-chat-bubble-out { background: linear-gradient(135deg, rgba(79,70,229,.95), rgba(59,130,246,.92)); color: #fff; }
   .ccrm-chat-bubble-in { background: rgba(255,255,255,.78); }
+  /* чат с новым сообщением — коротко подсвечивается при автообновлении списка */
+  .ccrm-chat-fresh { animation: ccrmChatFresh 3s ease-out; }
+  @keyframes ccrmChatFresh { from { background-color: rgba(240,165,38,.32); } to { background-color: transparent; } }
   @media (max-width: 992px) {
     .ccrm-chat-wrap {
       height: auto;
@@ -94,48 +97,12 @@
     }
     return $out;
   };
-
-  $markAllReadLabel = "\u{041F}\u{0440}\u{043E}\u{0447}\u{0438}\u{0442}\u{0430}\u{0442}\u{044C} \u{0432}\u{0441}\u{0435}";
-  $unreadSummaryText = ($unreadConversationCount ?? 0) > 0
-    ? "\u{041D}\u{0435}\u{043F}\u{0440}\u{043E}\u{0447}\u{0438}\u{0442}\u{0430}\u{043D}\u{043E}: ".($unreadConversationCount ?? 0)." \u{0447}\u{0430}\u{0442}\u{043E}\u{0432}, ".($unreadMessageCount ?? 0)." \u{0441}\u{043E}\u{043E}\u{0431}\u{0449}\u{0435}\u{043D}\u{0438}\u{0439}"
-    : "\u{041D}\u{0435}\u{043F}\u{0440}\u{043E}\u{0447}\u{0438}\u{0442}\u{0430}\u{043D}\u{043D}\u{044B}\u{0445} \u{0447}\u{0430}\u{0442}\u{043E}\u{0432} \u{043D}\u{0435}\u{0442}";
 @endphp
 
 @if($nd)
 <div @class(['nd-chats', 'nd-has-active' => (bool) $active])>
-  <div class="nd-chat-list">
-    <div class="nd-chat-listhd">
-      <span>{{ $unreadSummaryText }}</span>
-      @if(($unreadConversationCount ?? 0) > 0)
-        <form method="POST" action="{{ route('chats.read-all') }}">
-          @csrf
-          @if($activeId)
-            <input type="hidden" name="c" value="{{ $activeId }}">
-          @endif
-          <button type="submit" class="nd-btn nd-sm">{{ $markAllReadLabel }}</button>
-        </form>
-      @endif
-    </div>
-    @forelse($conversations as $c)
-      @php
-        $ndLast = $c->lastMessage;
-        $ndSrc = $ndChatSrc($c);
-        $ndName = trim((string) $c->display_title);
-      @endphp
-      <a href="{{ route('chats.index', ['c' => $c->id]) }}" @class(['nd-chat-i', 'nd-on' => (int) $c->id === (int) $activeId])>
-        <div class="nd-ca" style="background:{{ $ndSrc[1] }}">{{ mb_strtoupper(mb_substr($ndName !== '' ? $ndName : '?', 0, 1)) }}</div>
-        <div class="nd-chat-txt">
-          <div class="nd-cn"><span class="nd-cn-name">{{ $ndName !== '' ? $ndName : 'Без имени' }}</span><span class="nd-tm">{{ $c->last_message_at ? ($c->last_message_at->isToday() ? $c->last_message_at->format('H:i') : $c->last_message_at->format('d.m')) : '' }}</span></div>
-          <div class="nd-cm"><span class="nd-cm-text">{{ $ndLast?->direction === 'out' ? 'Вы: ' : '' }}{{ \Illuminate\Support\Str::limit($ndLast?->body ?? '—', 80) }}</span>@if(($c->unread_count ?? 0) > 0)<span class="nd-un">{{ $c->unread_count }}</span>@endif</div>
-          <div class="nd-chat-src">{{ $c->display_subtitle ?: $c->source_label }}</div>
-        </div>
-      </a>
-    @empty
-      <div class="nd-empty nd-empty-sm"><b>Пока нет диалогов</b>Как только кто-то напишет из VK, Telegram или Avito, чат появится здесь.</div>
-    @endforelse
-    @if($conversations->hasPages())
-      <div class="nd-chat-pager">{{ $conversations->onEachSide(1)->links('pagination.nordika') }}</div>
-    @endif
+  <div class="nd-chat-list" id="chatList">
+    @include('chats._list')
   </div>
 
   <div class="nd-chat-main">
@@ -220,57 +187,9 @@
         <a class="btn btn-sm btn-outline-secondary d-lg-none" href="{{ route('chats.index') }}">Список</a>
       @endif
     </div>
-    <div class="px-3 py-2 border-bottom d-flex align-items-center justify-content-between gap-2 flex-wrap">
-      <div class="text-muted small">{{ $unreadSummaryText }}</div>
-      @if(($unreadConversationCount ?? 0) > 0)
-        <form method="POST" action="{{ route('chats.read-all') }}" class="m-0">
-          @csrf
-          @if($activeId)
-            <input type="hidden" name="c" value="{{ $activeId }}">
-          @endif
-          <button type="submit" class="btn btn-sm btn-outline-primary">
-            <i class="bi bi-check2-all me-1"></i>{{ $markAllReadLabel }}
-          </button>
-        </form>
-      @endif
+    <div id="chatList" class="d-flex flex-column flex-grow-1" style="min-height: 0;">
+      @include('chats._list')
     </div>
-    <div class="card-body p-0">
-      @if($conversations->count() === 0)
-        <div class="p-4 text-muted">Пока нет диалогов. Как только кто-то напишет из VK, Telegram или Avito, чат появится здесь.</div>
-      @else
-        <div class="list-group list-group-flush">
-          @foreach($conversations as $c)
-            @php($last = $c->lastMessage)
-            <a href="{{ route('chats.index', ['c' => $c->id]) }}"
-               class="list-group-item list-group-item-action d-flex justify-content-between align-items-start ccrm-chat-item {{ $c->source_surface_class }} {{ (int)$c->id === (int)$activeId ? 'active' : '' }}">
-              <div class="me-3">
-                <div class="d-flex align-items-center gap-2 flex-wrap">
-                  {!! $c->source_icon_html !!}
-                  <div class="fw-semibold">{{ $c->display_title }}</div>
-                  <span class="{{ $c->source_badge_class }}">{{ $c->source_label }}</span>
-                </div>
-                <div class="text-muted small mt-1">{{ $c->display_subtitle }}</div>
-                <div class="text-muted small mt-1">
-                  {{ $last?->direction === 'out' ? 'Вы: ' : '' }}{{ \Illuminate\Support\Str::limit($last?->body ?? '—', 80) }}
-                </div>
-              </div>
-              <div class="text-end">
-                <div class="text-muted small">{{ $c->last_message_at ? $c->last_message_at->format('d.m H:i') : '' }}</div>
-                @if(($c->unread_count ?? 0) > 0)
-                  <span class="badge text-bg-primary mt-1">{{ $c->unread_count }}</span>
-                @endif
-              </div>
-            </a>
-          @endforeach
-        </div>
-      @endif
-    </div>
-
-    @if($conversations->hasPages())
-      <div class="card-footer bg-transparent">
-        {{ $conversations->links() }}
-      </div>
-    @endif
   </div>
 
   <div class="card shadow-sm flex-grow-1 d-flex flex-column ccrm-chat-pane {{ $active ? 'show' : '' }}">
@@ -376,6 +295,62 @@
   }
 </script>
 @endif
+<script>
+// список чатов обновляется сам каждые 5 с: новые чаты и сообщения — без F5, со звуком и счётчиком на вкладке браузера (04.11.2026)
+(function() {
+  const box = document.getElementById('chatList');
+  if (!box) return;
+  const listUrl = @json(route('chats.list'));
+  const activeId = @json((int) ($activeId ?? 0));
+  const baseTitle = document.title.replace(/^\(\d+\)\s*/, '');
+  let unread = @json((int) ($unreadMessageCount ?? 0));
+  let lastHtml = null;
+  let busy = false;
+
+  const paintTitle = () => { document.title = (unread > 0 ? `(${unread}) ` : '') + baseTitle; };
+  const stamps = () => Object.fromEntries(Array.from(box.querySelectorAll('[data-conv]')).map(el => [el.dataset.conv, Number(el.dataset.at || 0)]));
+  const scroller = () => box.querySelector('.card-body') || box;   // прежний вид — прокручивается тело карточки, Nordika — сам список
+
+  async function refresh() {
+    if (busy) return;
+    busy = true;
+    try {
+      const url = new URL(listUrl, window.location.origin);
+      const page = new URLSearchParams(window.location.search).get('page');
+      if (page) url.searchParams.set('page', page);
+      if (activeId) url.searchParams.set('c', String(activeId));
+      const r = await fetch(url.toString(), { headers: { 'Accept': 'application/json' } });
+      if (!r.ok) return;
+      const j = await r.json();
+      const n = Number(j.unread_messages || 0);
+      if (n > unread) window.ndBeep?.();
+      unread = n;
+      paintTitle();
+      const sub = document.querySelector('.nd-top .nd-sub');
+      if (sub && j.sub) sub.textContent = j.sub;
+      if (typeof j.html !== 'string' || j.html === lastHtml) return;
+      lastHtml = j.html;
+
+      const before = stamps();
+      const top = scroller().scrollTop;
+      box.innerHTML = j.html;
+      scroller().scrollTop = top;
+      box.querySelectorAll('[data-conv]').forEach(el => {
+        const was = before[el.dataset.conv];
+        if (was === undefined || Number(el.dataset.at || 0) > was) el.classList.add('ccrm-chat-fresh');
+      });
+      if (window.ndEmoji) box.querySelectorAll('.nd-cm-text').forEach(el => window.ndEmoji.decorate(el));
+    } catch (e) {
+    } finally {
+      busy = false;
+    }
+  }
+
+  paintTitle();
+  setInterval(refresh, 5000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+})();
+</script>
 @if($active)
 <script>
 (function() {
@@ -489,6 +464,7 @@
     try {
       const url = new URL(pollUrl, window.location.origin);
       url.searchParams.set('after_id', String(lastId));
+      if (!document.hidden) url.searchParams.set('read', '1');   // чат перед глазами — новое в нём прочитано
       const r = await fetch(url.toString(), { headers: { 'Accept': 'application/json' } });
       if (!r.ok) return;
       const j = await r.json();

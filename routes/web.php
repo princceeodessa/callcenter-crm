@@ -114,6 +114,7 @@ Route::middleware('auth')->group(function () {
         // Chats (Messenger)
         Route::get('/chats', [ChatController::class, 'index'])->name('chats.index');
         Route::post('/chats/read-all', [ChatController::class, 'markAllRead'])->name('chats.read-all');
+        Route::get('/chats/list', [ChatController::class, 'list'])->name('chats.list');
         Route::get('/chats/{conversation}', [ChatController::class, 'show'])->name('chats.show');
         Route::get('/chats/{conversation}/poll', [ChatController::class, 'poll'])->name('chats.poll');
         Route::post('/chats/{conversation}/messages', [ChatController::class, 'send'])->name('chats.send');
