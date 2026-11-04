@@ -162,13 +162,15 @@
               $ndOut = $m->direction === 'out';
               $ndMedia = $mediaFor($active, $m);
             @endphp
-            <div @class(['nd-bub', 'nd-out' => $ndOut, 'nd-in' => ! $ndOut])>
+            <div @class(['nd-bub', 'nd-out' => $ndOut, 'nd-in' => ! $ndOut]) data-id="{{ $m->id }}" data-at="{{ optional($m->created_at)->toDateTimeString() }}">
               @foreach($ndMedia as $it)
                 @php
                   $ndT = strtolower((string) ($it['type'] ?? 'file'));
                 @endphp
                 @if(str_contains($ndT, 'photo') || str_contains($ndT, 'image'))
                   <img src="{{ $it['url'] }}" class="nd-bub-img" alt="Фото">
+                @elseif($ndT === 'link')
+                  <a href="{{ $it['url'] }}" target="_blank" rel="noopener" class="nd-bub-file">{{ $it['file_name'] ?? $it['url'] }}</a>
                 @elseif(str_contains($ndT, 'video'))
                   <video src="{{ $it['url'] }}" controls class="nd-bub-img"></video>
                 @else
@@ -297,7 +299,7 @@
         <div id="chatMessages" class="d-flex flex-column gap-2">
           @forelse($messages as $m)
             @php($mm = $mediaFor($active, $m))
-            <div class="d-flex {{ $m->direction === 'out' ? 'justify-content-end' : 'justify-content-start' }}">
+            <div class="d-flex {{ $m->direction === 'out' ? 'justify-content-end' : 'justify-content-start' }}" data-id="{{ $m->id }}" data-at="{{ optional($m->created_at)->toDateTimeString() }}">
               <div class="p-2 rounded-3 {{ $m->direction === 'out' ? 'ccrm-chat-bubble-out' : 'ccrm-chat-bubble-in border' }}" style="max-width: 78%;">
                 @if(!empty($mm))
                   <div class="d-flex flex-column gap-2 mb-2">
@@ -305,6 +307,8 @@
                       @php($t = strtolower((string)($it['type'] ?? 'file')))
                       @if(str_contains($t, 'photo') || str_contains($t, 'image'))
                         <img src="{{ $it['url'] }}" class="img-fluid rounded" alt="image">
+                      @elseif($t === 'link')
+                        <a href="{{ $it['url'] }}" target="_blank" rel="noopener" class="{{ $m->direction === 'out' ? 'text-white' : '' }}">{{ $it['file_name'] ?? $it['url'] }}</a>
                       @elseif(str_contains($t, 'video'))
                         <video src="{{ $it['url'] }}" controls class="w-100 rounded"></video>
                       @else
@@ -389,7 +393,9 @@
   const clearFilesEl = document.getElementById('sendFilesClear');
   const errEl = document.getElementById('sendError');
 
-  let lastId = @json($messages->last()?->id ?? 0);
+  // самый большой номер записи, а не последний по времени: догруженная история старше, но номера у неё больше —
+  // иначе опрос приносил её снова и она дублировалась внизу (04.11.2026)
+  let lastId = @json((int) ($messages->max('id') ?? 0));
 
   function scrollToBottom() {
     scrollEl.scrollTop = scrollEl.scrollHeight;
@@ -407,6 +413,9 @@
       if (!url) return '';
       if (t.includes('photo') || t.includes('image')) {
         return `<img src="${escapeHtml(url)}" class="img-fluid rounded" alt="image">`;
+      }
+      if (t === 'link') {
+        return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="${isOut ? 'text-white' : ''}">${escapeHtml(it.file_name || url)}</a>`;
       }
       if (t.includes('video')) {
         return `<video src="${escapeHtml(url)}" controls class="w-100 rounded"></video>`;
@@ -426,6 +435,7 @@
         const t = (it.type || 'file').toLowerCase();
         if (!it.url) return '';
         if (t.includes('photo') || t.includes('image')) return `<img src="${escapeHtml(it.url)}" class="nd-bub-img" alt="Фото">`;
+        if (t === 'link') return `<a href="${escapeHtml(it.url)}" target="_blank" rel="noopener" class="nd-bub-file">${escapeHtml(it.file_name || it.url)}</a>`;
         if (t.includes('video')) return `<video src="${escapeHtml(it.url)}" controls class="nd-bub-img"></video>`;
         return `<a href="${escapeHtml(it.url)}" target="_blank" rel="noopener" class="nd-bub-file">📎 ${escapeHtml(it.file_name || 'Файл')}</a>`;
       }).join('');
@@ -433,6 +443,8 @@
         + (m.body ? `<div class="nd-bub-text">${escapeHtml(m.body)}</div>` : '')
         + `<div class="nd-bt">${isOut ? 'Вы' : escapeHtml(m.author || 'Клиент')} · ${(m.created_at || '').toString().slice(11,16)}${isOut ? ` · ${escapeHtml(m.status || 'ok')}` : ''}</div>`;
       window.ndEmoji?.decorate(bub, '.nd-bub-text');
+      bub.dataset.id = String(m.id || '');
+      bub.dataset.at = String(m.created_at || '');
       return bub;
     }
     const wrap = document.createElement('div');
@@ -452,8 +464,25 @@
         </div>
       </div>
     `;
+    wrap.dataset.id = String(m.id || '');
+    wrap.dataset.at = String(m.created_at || '');
 
     return wrap;
+  }
+
+  // сообщение — один раз и на своё место по времени: история из Авито/ВК догружается и старыми сообщениями
+  function placeMessage(m) {
+    if (m.id && listEl.querySelector(`[data-id="${String(m.id)}"]`)) return false;
+    const el = renderMessage(m);
+    const at = String(m.created_at || '');
+    const items = Array.from(listEl.querySelectorAll(':scope > [data-at]'));
+    const after = at ? items.filter(x => (x.dataset.at || '') <= at).pop() : null;
+    if (!at || !items.length || after === items[items.length - 1]) {
+      listEl.appendChild(el);
+      return true;
+    }
+    if (after) after.after(el); else listEl.insertBefore(el, items[0]);
+    return false;
   }
 
   async function poll() {
@@ -465,11 +494,12 @@
       const j = await r.json();
       const msgs = j.messages || [];
       if (!msgs.length) return;
+      let atEnd = false;
       msgs.forEach(m => {
-        listEl.appendChild(renderMessage(m));
+        atEnd = placeMessage(m) || atEnd;
         lastId = Math.max(lastId, Number(m.id || 0));
       });
-      scrollToBottom();
+      if (atEnd) scrollToBottom();
     } catch (e) {}
   }
 
@@ -505,7 +535,7 @@
 
       const msgs = Array.isArray(j.messages) && j.messages.length ? j.messages : (j.message ? [j.message] : []);
       msgs.forEach((msg) => {
-        listEl.appendChild(renderMessage(msg));
+        placeMessage(msg);
         lastId = Math.max(lastId, Number(msg.id || 0));
       });
       if (msgs.length) {

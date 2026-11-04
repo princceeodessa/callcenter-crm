@@ -523,10 +523,12 @@ class ChatHistorySyncService
                 }
             }
 
+            // видео ВК — не файл, а плеер: ссылкой, <video> его не играет
             if ($type === 'video' && is_array($attachment['video'] ?? null)) {
-                $url = $attachment['video']['player'] ?? null;
+                $v = $attachment['video'];
+                $url = isset($v['owner_id'], $v['id']) ? 'https://vk.com/video'.$v['owner_id'].'_'.$v['id'] : ($v['player'] ?? null);
                 if (is_string($url) && $url !== '') {
-                    $media[] = ['type' => 'video', 'url' => $url];
+                    $media[] = ['type' => 'link', 'url' => $url, 'file_name' => '🎬 Видео'.(trim((string) ($v['title'] ?? '')) !== '' ? ': '.trim((string) $v['title']) : '')];
                 }
             }
         }

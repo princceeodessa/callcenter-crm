@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToAccount;
+use App\Services\Chat\MessageContent;
 use Illuminate\Database\Eloquent\Model;
 
 class Message extends Model
@@ -32,6 +33,9 @@ class Message extends Model
 
     protected static function booted(): void
     {
+        // фото, голосовое, ссылка, стикер… без текста — подпись и вложения из сообщения площадки (иначе пустой пузырь)
+        static::saving(fn (Message $message) => MessageContent::fill($message));
+
         // входящее Авито несёт id кабинета (опрос — payload.account_id, вебхук — payload.payload.value.user_id): чат
         // запоминает свой кабинет — по нему отвечаем, читаем историю и выделяем «частника» (связанный кабинет, 03.11.2026)
         static::created(function (Message $message) {

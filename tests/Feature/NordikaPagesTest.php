@@ -104,8 +104,8 @@ class NordikaPagesTest extends TestCase
 
         $html = $this->actingAs($head)->get(route('chats.index', ['c' => $conv]))->assertOk()->getContent();
         $this->assertStringContainsString('nd-chats nd-has-active', $html);
-        $this->assertStringContainsString('<div class="nd-bub nd-in">', $html);
-        $this->assertStringContainsString('<div class="nd-bub nd-out">', $html);
+        $this->assertStringContainsString('<div class="nd-bub nd-in" data-id="', $html);
+        $this->assertStringContainsString('<div class="nd-bub nd-out" data-id="', $html);
         $this->assertStringContainsString('id="sendForm"', $html);
         $this->assertStringContainsString('id="sendInput"', $html);
         $this->assertStringContainsString('id="ndEmojiPop"', $html);                                     // эмодзи в чатах
