@@ -355,19 +355,31 @@ class ChatIngestService
             ->first();
 
         if (!$conversation) {
-            [$pipeline, $stage] = $this->getDefaultPipelineAndStage($accountId);
+            // «Звонок через Авито»: клиент уже есть сделкой звонка — чат кладём туда, а не второй сделкой
+            $deal = $provider === 'avito' ? AvitoCallMatcher::callDealFor($accountId, $payload) : null;
+            if ($deal) {
+                DealActivity::create([
+                    'account_id' => $accountId,
+                    'deal_id' => $deal->id,
+                    'author_user_id' => null,
+                    'type' => 'system',
+                    'body' => 'Клиент звонил через Авито — его чат Авито'.($leadName ? ' («'.$leadName.'»)' : '').' добавлен в эту сделку.',
+                ]);
+            } else {
+                [$pipeline, $stage] = $this->getDefaultPipelineAndStage($accountId);
 
-            $title = $this->makeDealTitle($provider, $externalConversationId, $leadName, $author, $body);
-            $responsibleId = $this->getDefaultResponsibleUserId($accountId);
-            $deal = Deal::create([
-                'account_id' => $accountId,
-                'pipeline_id' => $pipeline->id,
-                'stage_id' => $stage->id,
-                'title' => $title,
-                'title_is_custom' => 0,
-                'responsible_user_id' => $responsibleId,
-                'is_unread' => true,
-            ]);
+                $title = $this->makeDealTitle($provider, $externalConversationId, $leadName, $author, $body);
+                $responsibleId = $this->getDefaultResponsibleUserId($accountId);
+                $deal = Deal::create([
+                    'account_id' => $accountId,
+                    'pipeline_id' => $pipeline->id,
+                    'stage_id' => $stage->id,
+                    'title' => $title,
+                    'title_is_custom' => 0,
+                    'responsible_user_id' => $responsibleId,
+                    'is_unread' => true,
+                ]);
+            }
 
             $conversation = Conversation::create([
                 'account_id' => $accountId,
@@ -747,6 +759,11 @@ class ChatIngestService
         }
 
         if (preg_match('/^\d+$/', $value)) {
+            return true;
+        }
+
+        // «Клиент 79…» — имя-заглушка контакта из звонка: чат Авито в той же сделке даёт настоящее
+        if (preg_match('/^Клиент\s*\+?[\d\s\-()]+$/u', $value)) {
             return true;
         }
 
