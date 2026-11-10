@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Deal;
+use App\Models\GiftCertificateSale;
 use App\Models\WarehouseProduct;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -138,6 +139,9 @@ class SneakerDailySalesController extends Controller
             'showProfit' => $showProfit,
             'isOwner' => $isOwner,
             'images' => $isOwner ? [] : $this->images($accId, $sales->pluck('warehouseItem')->merge($returns->pluck('warehouseItem'))->filter()),
+            // проданные подарочные сертификаты — деньги в кассе, но не выручка (выручка — когда ими платят за пару)
+            'certSales' => GiftCertificateSale::where('account_id', $accId)->active()
+                ->whereBetween('sold_at', [$day->copy()->startOfDay(), $day->copy()->endOfDay()])->with('user:id,name')->orderByDesc('sold_at')->get(),
         ]);
     }
 

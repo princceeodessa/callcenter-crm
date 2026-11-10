@@ -124,7 +124,7 @@
                     $profit = $deal->sale_profit;
                     $client = $deal->contact;
                     $clientLabel = $client ? trim(($client->name ?? '').' '.($client->phone ?? '')) : '';
-                    $payLabel = $deal->payment_method ? ($pay[$deal->payment_method] ?? $deal->payment_method) : null;
+                    $payLabel = \App\Support\Sales\GiftCertificates::dealLabel($deal);
                     $row = [$deal->stock_deducted_at->format('H:i'), $name, $item->size ?? '', (int) $deal->sold_quantity, $deal->amount !== null ? (float) $deal->amount : ''];
                     if ($showProfit) { $row[] = $cost !== null ? round($cost * (int) $deal->sold_quantity, 2) : ''; $row[] = $profit ?? ''; }
                     $csv[] = array_merge($row, [optional($deal->responsible)->name ?? '', $deal->manual_source ?: '', $payLabel ?? '', $clientLabel]);
@@ -155,6 +155,25 @@
         </table></div>
     @endif
 </div>
+
+@if($certSales->isNotEmpty())
+    <div class="ns-gap"></div>
+    <div class="ns-panel" style="overflow:hidden">
+        <div class="ns-panel-pad" style="padding-bottom:6px"><div class="ns-sec-h">Подарочные сертификаты <span class="ns-tag">{{ (int) $certSales->sum('qty') }} шт · {{ $rub($certSales->sum('amount')) }}</span>
+            <span class="ns-sm ns-muted" style="font-weight:500">деньги в кассе, в выручку не входят — выручка, когда ими заплатят за пару</span></div></div>
+        <table class="ns-tbl"><tbody>
+            @foreach($certSales as $cs)
+                <tr>
+                    <td class="ns-muted" style="width:70px">{{ $cs->sold_at->format('H:i') }}</td>
+                    <td class="ns-tname">Сертификат {{ $rub($cs->nominal) }}{{ $cs->qty > 1 ? ' × '.$cs->qty : '' }}</td>
+                    <td class="ns-num"><b>{{ $rub($cs->amount) }}</b></td>
+                    <td class="ns-muted">{{ $pay[$cs->payment_method] ?? '—' }}</td>
+                    <td class="ns-muted">{{ $cs->user?->name ?? '—' }}</td>
+                </tr>
+            @endforeach
+        </tbody></table>
+    </div>
+@endif
 
 @if($returns->isNotEmpty())
     <div class="ns-gap"></div>

@@ -14,6 +14,7 @@ use App\Models\StockMark;
 use App\Models\User;
 use App\Models\WarehouseItem;
 use App\Services\Warehouse\WarehouseService;
+use App\Support\Sales\GiftCertificates;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -51,7 +52,7 @@ class SaleImport
 
     /**
      * @param  list<array<string, mixed>>  $docs  {uuid, type: check|return|report, number, date, posted, deleted, base_uuid?, payment?,
-     *                                            rows: [{row, code, name, qty, price?, amount, mark?}]}
+     *                                            certificate?, payment_extra?, rows: [{row, code, name, qty, price?, amount, mark?}]}
      * @return list<array<string, mixed>>
      */
     public function import(int $accountId, array $docs): array
@@ -73,6 +74,19 @@ class SaleImport
         $active = ! empty($doc['posted']) && empty($doc['deleted']);
         $date = Carbon::parse((string) $doc['date']);
         $res = ['uuid' => $uuid, 'number' => $doc['number'] ?? null, 'rows' => []];
+
+        // оплата подарочным сертификатом (10.11.2026): сумма по чеку раскладывается по строкам продажи по порядку,
+        // сверх неё — доплата; строка самого сертификата (продали его чеком в 1С) — не пара, продаются они в CRM
+        $certLeft = round(max(0, (float) ($doc['certificate'] ?? 0)), 2);
+        $extra = array_key_exists((string) ($doc['payment_extra'] ?? ''), GiftCertificates::moneyMethods()) ? (string) $doc['payment_extra'] : null;
+        $certFor = [];
+        foreach ((array) ($doc['rows'] ?? []) as $row) {
+            if ($certLeft > 0 && ! self::isCertificate($row) && (float) ($row['qty'] ?? 0) > 0) {
+                $part = min($certLeft, round(abs((float) ($row['amount'] ?? 0)), 2));
+                $certFor[(string) $row['row']] = $part;
+                $certLeft = round($certLeft - $part, 2);
+            }
+        }
 
         foreach ((array) ($doc['rows'] ?? []) as $row) {
             $key = (string) $row['row'];
@@ -105,10 +119,17 @@ class SaleImport
                 'amount' => round(abs((float) ($row['amount'] ?? 0)), 2),
                 'payment' => in_array($doc['payment'] ?? null, array_keys(Deal::PAYMENT_METHODS), true) ? $doc['payment'] : null,
             ]);
-            if ($doc['type'] === 'return' || $qtyRaw < 0) {
+            if (self::isCertificate($row)) {
+                $rec->status = 'certificate';
+                $rec->note = 'подарочный сертификат — не пара; сертификаты продают и учитывают в CRM («Сертификаты»)';
+            } elseif ($doc['type'] === 'return' || $qtyRaw < 0) {
                 $this->applyReturn($accountId, $rec, $doc);
             } else {
-                $this->applySale($accountId, $rec);
+                $cert = $certFor[$key] ?? null;
+                if ($cert) {
+                    $rec->payment = 'certificate';
+                }
+                $this->applySale($accountId, $rec, $cert, $cert && (float) $rec->amount > $cert + 0.009 ? $extra : null);
             }
             $rec->save();
             $res['rows'][] = ['row' => $key, 'status' => $rec->status, 'deal_id' => $rec->deal_id];
@@ -117,7 +138,13 @@ class SaleImport
         return $res;
     }
 
-    private function applySale(int $accountId, OnecSaleImport $rec): void
+    /** Строка чека — сам подарочный сертификат (его продали чеком в 1С), а не пара. */
+    private static function isCertificate(array $row): bool
+    {
+        return (bool) preg_match('/сертификат/iu', (string) ($row['name'] ?? ''));
+    }
+
+    private function applySale(int $accountId, OnecSaleImport $rec, ?float $cert = null, ?string $extra = null): void
     {
         [$item, $how, $mark] = $this->findItem($accountId, $rec);
         if (! $item && ($dup = $this->alreadySoldInCrm($accountId, $rec))) {
@@ -158,6 +185,8 @@ class SaleImport
             'sold_quantity' => $rec->qty,
             'stock_white' => true,
             'payment_method' => $rec->payment,
+            'cert_value' => $cert,
+            'pay_extra_method' => $extra,
         ]);
         DealStageHistory::create([
             'account_id' => $accountId, 'deal_id' => $deal->id, 'from_stage_id' => null, 'to_stage_id' => $stage->id,
@@ -167,7 +196,7 @@ class SaleImport
             'account_id' => $accountId, 'deal_id' => $deal->id, 'author_user_id' => null, 'type' => 'system',
             'body' => 'Продажа из 1С: '.(OnecSaleImport::TYPE_LABELS[$rec->doc_type] ?? $rec->doc_type).' № '.$rec->onec_number
                 .' от '.$rec->onec_date->format('d.m.Y H:i').' · '.$rec->card_name.' × '.$rec->qty.' на '.number_format((float) $rec->amount, 0, ',', ' ').' ₽'
-                .($rec->payment ? ' · '.mb_strtolower(Deal::PAYMENT_METHODS[$rec->payment]) : '').' · '.$how,
+                .($rec->payment ? ' · '.mb_strtolower(GiftCertificates::paymentLabel($rec->payment, $cert, $extra, $rec->amount)) : '').' · '.$how,
         ]);
         if ($mark) {
             $mark->forceFill(['deal_id' => $deal->id])->save();

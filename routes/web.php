@@ -168,6 +168,11 @@ Route::middleware('auth')->group(function () {
         // Быстрая продажа (один экран для продавца)
         Route::get('/sale', [SneakerSaleController::class, 'form'])->name('sale.quick');
         Route::post('/sale', [SneakerSaleController::class, 'store'])->name('sale.quick.store');
+        // подарочные сертификаты (10.11.2026)
+        Route::get('/certificates', [\App\Http\Controllers\GiftCertificateController::class, 'index'])->name('certificates.index');
+        Route::post('/certificates/sell', [\App\Http\Controllers\GiftCertificateController::class, 'sell'])->name('certificates.sell');
+        Route::post('/certificates/stock', [\App\Http\Controllers\GiftCertificateController::class, 'stock'])->name('certificates.stock');
+        Route::post('/certificates/{sale}/cancel', [\App\Http\Controllers\GiftCertificateController::class, 'cancel'])->name('certificates.cancel');
         // «Продажи за день» — и владельцу (он видит только отчёты), поэтому не 'purchases', а все роли кроссовок
         Route::get('/sale/day', [SneakerDailySalesController::class, 'index'])
             ->withoutMiddleware('purchases')->middleware(\App\Http\Middleware\RequireSneakerAccess::class)

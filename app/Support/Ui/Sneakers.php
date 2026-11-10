@@ -23,6 +23,7 @@ class Sneakers
         'scan' => '<path d="M4 7V5a1 1 0 011-1h2M17 4h2a1 1 0 011 1v2M20 17v2a1 1 0 01-1 1h-2M7 20H5a1 1 0 01-1-1v-2"/><path d="M8 8v8M11 8v8M14 8v8M17 8v8"/>',
         'sell' => '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/>',
         'cal' => '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+        'gift' => '<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v8a1 1 0 001 1h12a1 1 0 001-1v-8M12 8v13M12 8S10.5 3.5 8 4.2 8.5 8 12 8zm0 0s1.5-4.5 4-3.8S15.5 8 12 8z"/>',
         'box' => '<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8M12 13v8"/>',
         'inbox' => '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5h13L22 12v6a2 2 0 01-2 2H4a2 2 0 01-2-2v-6z"/>',
         'truck' => '<path d="M1 4h14v12H1zM15 9h4l4 4v3h-8"/><circle cx="5.5" cy="18.5" r="2"/><circle cx="18.5" cy="18.5" r="2"/>',
@@ -141,6 +142,7 @@ class Sneakers
             'Магазин' => [
                 $shop ? $item('sale.quick', 'Продажа', 'sell', 'sale.quick') : null,
                 $shop || $owner ? $item('sale.day', 'Продажи за день', 'cal', 'sale.day') : null,
+                $shop ? $item('certificates.index', 'Сертификаты', 'gift', 'certificates.*') : null,
                 $shop ? $item('scan', 'Скан', 'scan', 'scan') : null,
             ],
             'Склад' => [

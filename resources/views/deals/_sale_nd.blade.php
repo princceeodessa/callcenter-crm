@@ -77,10 +77,22 @@
           </select>
         </div>
         <div class="nd-field"><label>Оплата</label>
-          <select name="payment">
+          <select name="payment" onchange="this.form.querySelectorAll('.nd-cert-f').forEach((f) => { f.hidden = this.value !== 'certificate'; })">
             <option value="">— не указана —</option>
             @foreach(\App\Models\Deal::PAYMENT_METHODS as $pv => $pl)
               <option value="{{ $pv }}" @selected($deal->payment_method === $pv)>{{ $pl }}</option>
+            @endforeach
+          </select>
+        </div>
+        {{-- подарочный сертификат: на какую сумму принесли (остаток сверх цены сгорает) и чем доплатили --}}
+        <div class="nd-field nd-cert-f" @if($deal->payment_method !== 'certificate') hidden @endif><label>Сертификатами, ₽</label>
+          <input name="cert_value" type="number" min="0" step="100" value="{{ $deal->cert_value !== null ? (int) $deal->cert_value : '' }}" placeholder="{{ (int) $deal->amount }}">
+        </div>
+        <div class="nd-field nd-cert-f" @if($deal->payment_method !== 'certificate') hidden @endif><label>Доплата</label>
+          <select name="pay_extra">
+            <option value="">— без доплаты —</option>
+            @foreach(\App\Support\Sales\GiftCertificates::moneyMethods() as $pv => $pl)
+              <option value="{{ $pv }}" @selected($deal->pay_extra_method === $pv)>{{ $pl }}</option>
             @endforeach
           </select>
         </div>

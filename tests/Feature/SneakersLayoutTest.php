@@ -153,7 +153,7 @@ class SneakersLayoutTest extends TestCase
     {
         $label = fn (User $u) => collect(Sneakers::nav($u))->flatten(1)->pluck('label')->all();
         $seller = $this->user('sneaker_operator', 'Продавец');
-        $this->assertSame(['Продажа', 'Продажи за день', 'Скан', 'Склад', 'Приёмка', 'Продажи · канбан', 'Дела', 'Помощь'], $label($seller));   // без закупок, аналитики, сводки
+        $this->assertSame(['Продажа', 'Продажи за день', 'Сертификаты', 'Скан', 'Склад', 'Приёмка', 'Продажи · канбан', 'Дела', 'Помощь'], $label($seller));   // без закупок, аналитики, сводки
         $owner = $this->user('sneaker_owner', 'Владелец');
         $this->assertSame(['Продажи за день', 'Сводка'], $label($owner));   // «Помощь» владельцу закрыта (403) — в меню её нет
         $this->assertFalse(Sneakers::seesCost($seller));

@@ -8,6 +8,7 @@ use App\Models\OnecSaleDoc;
 use App\Models\OnecSaleImport;
 use App\Models\Purchase;
 use App\Services\Onec\SaleDocExport;
+use App\Support\Sales\GiftCertificates;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -64,6 +65,8 @@ class OnecSalesController extends Controller
         $data = $request->validate([
             'white' => ['nullable', 'in:0,1'],
             'payment' => ['nullable', 'in:'.implode(',', array_keys(Deal::PAYMENT_METHODS))],
+            'cert_value' => ['nullable', 'numeric', 'min:0', 'max:10000000'],
+            'pay_extra' => ['nullable', 'in:'.implode(',', array_keys(GiftCertificates::moneyMethods()))],
         ]);
 
         $changes = [];
@@ -76,9 +79,16 @@ class OnecSalesController extends Controller
         }
         if ($request->has('payment')) {
             $payment = $data['payment'] ?? null;
-            if ($payment !== $deal->payment_method) {
-                $deal->payment_method = $payment;
-                $changes[] = 'оплата: '.($payment ? mb_strtolower(Deal::PAYMENT_METHODS[$payment]) : 'не указана');
+            // подарочный сертификат: сумма сертификатов (пусто — вся сумма продажи) и доплата; другой способ — их нет
+            $cert = $payment === 'certificate' && ($data['cert_value'] ?? null) !== null && (float) $data['cert_value'] > 0 ? round((float) $data['cert_value'], 2) : null;
+            $extra = $payment === 'certificate' ? ($data['pay_extra'] ?? null) : null;
+            $was = GiftCertificates::dealLabel($deal);
+            $deal->payment_method = $payment;
+            $deal->cert_value = $cert;
+            $deal->pay_extra_method = $extra;
+            if ($deal->isDirty(['payment_method', 'cert_value', 'pay_extra_method'])) {
+                $now = GiftCertificates::dealLabel($deal);
+                $changes[] = 'оплата: '.($now ? mb_strtolower($now) : 'не указана').($was && $was !== $now ? ' (было: '.mb_strtolower($was).')' : '');
             }
         }
         if ($changes === []) {

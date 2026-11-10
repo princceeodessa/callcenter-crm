@@ -127,6 +127,8 @@ class OwnerDashboardController extends Controller
             'period' => $period, 'periods' => self::PERIODS,
             'fromValue' => $start->toDateString(), 'toValue' => $end->toDateString(),
             'series' => ['by' => $byMonth ? 'month' : 'day', 'rows' => array_values($series)],
+            // подарочные сертификаты: продажа — не выручка (выручка, когда ими платят за пару)
+            'certs' => \App\Support\Sales\GiftCertificates::summary($accId, $start, $end),
         ]);
     }
 

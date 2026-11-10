@@ -11,6 +11,7 @@ use App\Models\PipelineStage;
 use App\Models\WarehouseItem;
 use App\Models\WarehouseProduct;
 use App\Services\Warehouse\WarehouseService;
+use App\Support\Sales\GiftCertificates;
 use App\Support\Ui\Sneakers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -108,6 +109,7 @@ class SneakerSaleController extends Controller
                 'profit' => $seesCost ? $d->sale_profit : null,
                 'source' => $d->manual_source,
                 'payment' => $d->payment_method,
+                'pay_label' => GiftCertificates::dealLabel($d),
                 'seller' => $d->responsible?->name,
                 'image' => $item ? ($images[mb_strtolower(trim(($item->brand ?? '').'|'.($item->model ?? '')))] ?? null) : null,
             ];
@@ -130,8 +132,9 @@ class SneakerSaleController extends Controller
         ];
 
         $done = request()->filled('sold') ? $this->soldInfo((int) request('sold'), $user) : null;
+        $certNominals = GiftCertificates::nominals($accId)->pluck('nominal')->all();   // оплата подарочным сертификатом
 
-        return view('sale.sneakers', compact('products', 'brands', 'otherBrands', 'recentSales', 'todaySum', 'seesCost', 'done'));
+        return view('sale.sneakers', compact('products', 'brands', 'otherBrands', 'recentSales', 'todaySum', 'seesCost', 'done', 'certNominals'));
     }
 
     public function store(Request $request, WarehouseService $warehouse)
@@ -146,6 +149,8 @@ class SneakerSaleController extends Controller
             'client_phone' => ['nullable', 'string', 'max:32'],
             'white' => ['nullable', 'in:0,1'],
             'payment' => ['nullable', 'in:'.implode(',', array_keys(Deal::PAYMENT_METHODS))],
+            'cert' => ['nullable', 'array'],
+            'pay_extra' => ['nullable', 'in:'.implode(',', array_keys(GiftCertificates::moneyMethods()))],
         ]);
 
         $item = WarehouseItem::where('account_id', $user->account_id)
@@ -171,6 +176,22 @@ class SneakerSaleController extends Controller
             ? (float) $data['price']
             : ($item->sale_price !== null ? (float) $item->sale_price : null);
         $amount = $price !== null ? round($price * $qty, 2) : null;
+
+        // подарочный сертификат: сколько номиналов принесли; дороже — доплата деньгами, дешевле — остаток сгорает
+        $certValue = null;
+        $payExtra = null;
+        if (($data['payment'] ?? null) === 'certificate') {
+            $certValue = GiftCertificates::value($user->account_id, (array) ($data['cert'] ?? []));
+            if ($certValue <= 0) {
+                return redirect()->route('sale.quick', ['item' => $item->id])->withInput()->withErrors(['cert' => 'Отметьте, какими сертификатами платит клиент.']);
+            }
+            if ((float) $amount > $certValue + 0.009) {
+                $payExtra = $data['pay_extra'] ?? null;
+                if (! $payExtra) {
+                    return redirect()->route('sale.quick', ['item' => $item->id])->withInput()->withErrors(['pay_extra' => 'Сертификатов меньше суммы — выберите, как клиент доплатил.']);
+                }
+            }
+        }
 
         // Клиент (не обязателен). С телефоном — тот же клиент по телефону; без телефона — новый контакт с этим именем.
         // Раньше без телефона искался контакт «с пустым телефоном» — и все такие продажи липли к одному («Рома», 12.10.2026).
@@ -218,6 +239,8 @@ class SneakerSaleController extends Controller
             'manual_source' => trim((string) ($data['source'] ?? '')) ?: null,
             'stock_white' => $white,
             'payment_method' => $data['payment'] ?? null,
+            'cert_value' => $certValue,
+            'pay_extra_method' => $payExtra,
         ]);
 
         DealStageHistory::create([
@@ -235,7 +258,7 @@ class SneakerSaleController extends Controller
             'author_user_id' => $user->id,
             'type' => 'system',
             'body' => 'Быстрая продажа: '.$item->display_name.' × '.$qty.($amount !== null ? ' на '.number_format($amount, 0, ',', ' ').' ₽' : '')
-                .(! empty($data['payment']) ? ' · '.mb_strtolower(Deal::PAYMENT_METHODS[$data['payment']]) : ''),
+                .(! empty($data['payment']) ? ' · '.mb_strtolower(GiftCertificates::paymentLabel($data['payment'], $certValue, $payExtra, $amount)) : ''),
         ]);
 
         // Списание со склада + уведомление руководителю

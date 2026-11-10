@@ -296,3 +296,27 @@ a.ns-btn.ns-dis{pointer-events:none}
 .ns-szpick-f{display:flex;justify-content:flex-end;padding:8px 6px 4px}
 .ns-sz.ns-szhit:not(.ns-on),.ns-wp.ns-szhit{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
 .ns-wp.ns-szhit{background:var(--accent-soft)}
+
+/* подарочные сертификаты (10.11.2026): страница «Сертификаты» и оплата сертификатом на «Продаже» */
+.ns-dim{opacity:.55}
+.ns-cert-k .ns-kl{display:flex;align-items:center;gap:6px}
+.ns-cert-sell{padding:16px 18px;margin-bottom:18px}
+.ns-cert-sell .ns-sb-row{grid-template-columns:150px 1fr}
+.ns-cert-go{display:flex;align-items:center;justify-content:flex-end;gap:14px;flex-wrap:wrap;margin-top:4px}
+.ns-cert-go .ns-muted{font-size:12.5px;margin-right:auto}
+.ns-cert-adm{padding:6px 18px}
+.ns-cert-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--line);margin:0}
+.ns-cert-row:last-child{border-bottom:0}
+.ns-cert-row b{min-width:120px}
+.ns-cert-row label{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px}
+.ns-cert-row input{width:110px;height:34px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);padding:0 10px;font:inherit}
+.ns-sb-cert{border:1px dashed var(--line);border-radius:12px;padding:12px;margin-bottom:12px;background:var(--panel-2)}
+.ns-sb-cert .ns-cert-noms{display:flex;gap:8px;flex-wrap:wrap}
+.ns-cert-nom{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:4px 6px 4px 10px;font-weight:700;font-size:13px}
+.ns-cert-nom.ns-on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.ns-cert-nom button{width:26px;height:26px;border:0;border-radius:7px;background:var(--pill);color:var(--ink);font-size:15px;font-weight:700;cursor:pointer}
+.ns-cert-nom i{font-style:normal;min-width:14px;text-align:center}
+.ns-sb-cert-s{margin-top:10px;font-size:13px;color:var(--muted)}
+.ns-sb-cert-s b{color:var(--ink)}
+.ns-sb-cert .ns-field{margin:10px 0 0}
+@media (max-width:640px){.ns-cert-sell .ns-sb-row{grid-template-columns:1fr}}

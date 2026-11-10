@@ -18,6 +18,7 @@ class OnecSaleImport extends Model
         'returned' => 'возврат, пара на складе',
         'return_unmatched' => 'возврат, продажа не найдена',
         'cancelled_in_1c' => 'в 1С документ отменён — проверьте',
+        'certificate' => 'подарочный сертификат — не пара',
     ];
 
     protected $fillable = [

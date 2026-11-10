@@ -78,6 +78,8 @@ class OnecRetailController extends Controller
             'docs.*.deleted' => ['boolean'],
             'docs.*.base_uuid' => ['nullable', 'string', 'max:36'],
             'docs.*.payment' => ['nullable', 'in:'.implode(',', array_keys(\App\Models\Deal::PAYMENT_METHODS))],
+            'docs.*.certificate' => ['nullable', 'numeric', 'min:0'],          // оплачено подарочным сертификатом, ₽
+            'docs.*.payment_extra' => ['nullable', 'in:'.implode(',', array_keys(\App\Support\Sales\GiftCertificates::moneyMethods()))],
             'docs.*.rows' => ['present', 'array'],
             'docs.*.rows.*.row' => ['required'],
             'docs.*.rows.*.code' => ['nullable', 'string', 'max:32'],

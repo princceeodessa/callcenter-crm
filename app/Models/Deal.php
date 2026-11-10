@@ -21,6 +21,7 @@ class Deal extends Model
         'cash' => 'Наличные',
         'card' => 'Карта',
         'transfer' => 'Перевод',
+        'certificate' => 'Сертификат',   // подарочный сертификат (10.11.2026): сумма — cert_value, доплата — pay_extra_method
     ];
 
     /** Откуда пришёл клиент кроссовок (быстрая продажа и карточка сделки — один список). */
@@ -104,7 +105,7 @@ class Deal extends Model
         'closed_at','closed_result','closed_reason','closed_by_user_id',
         'warehouse_item_id','sold_quantity','stock_deducted_at','sold_unit_cost','stock_reserved_at','stock_linked_at','stock_link_skipped_at',
         'returned_at','manual_source',
-        'stock_white','payment_method',
+        'stock_white','payment_method','cert_value','pay_extra_method',
     ];
 
     protected $casts = [
@@ -117,6 +118,7 @@ class Deal extends Model
         'stock_linked_at' => 'datetime',
         'stock_link_skipped_at' => 'datetime',
         'stock_white' => 'boolean',
+        'cert_value' => 'decimal:2',
         'sold_unit_cost' => 'decimal:2',
         'stock_reserved_at' => 'datetime',
         'returned_at' => 'datetime',

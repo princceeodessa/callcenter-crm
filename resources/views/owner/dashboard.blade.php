@@ -98,6 +98,17 @@
         </div>
     @endif
 
+    {{-- Подарочные сертификаты (10.11.2026): деньги за проданные — не выручка; выручка, когда ими платят за пару --}}
+    @if(($certs['sold_qty'] ?? 0) > 0 || ($certs['redeemed_count'] ?? 0) > 0 || abs($certs['outstanding'] ?? 0) > 0)
+        <div class="sec" id="certs"><h2>Подарочные сертификаты</h2><span class="note">продажа сертификата не входит в выручку — выручка, когда им платят за пару</span></div>
+        <div class="kpis4">
+            <div class="card mini"><div class="lbl">Продано за период</div><div class="val num">{{ $money($certs['sold_amount']) }} ₽</div><div class="lbl">{{ $certs['sold_qty'] }} шт</div></div>
+            <div class="card mini"><div class="lbl">Оплатили ими пары</div><div class="val num">{{ $money($certs['redeemed']) }} ₽</div><div class="lbl">{{ $certs['redeemed_count'] }} продаж</div></div>
+            <div class="card mini"><div class="lbl">Сгорело остатков</div><div class="val num">{{ $money($certs['burned']) }} ₽</div></div>
+            <div class="card mini"><div class="lbl">На руках у клиентов</div><div class="val num">{{ $money(max(0, $certs['outstanding'])) }} ₽</div><div class="lbl">проданы, не потрачены</div></div>
+        </div>
+    @endif
+
     {{-- Склад в деньгах --}}
     <div class="sec" id="stock"><h2>Склад в деньгах</h2><span class="note">сейчас, без учёта месяца</span></div>
     <div class="kpis4">

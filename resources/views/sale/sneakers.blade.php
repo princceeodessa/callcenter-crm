@@ -33,7 +33,7 @@
     // окно продажи (Открыть) — данные строк «Последних продаж»
     $saleJs = $recentSales->map(fn ($s) => [
         'id' => $s['id'], 'name' => $s['name'], 'size' => $s['size'], 'qty' => $s['qty'], 'amount' => $s['amount'], 'cost' => $s['cost'],
-        'profit' => $s['profit'], 'source' => $s['source'], 'pay' => $s['payment'] ? (\App\Models\Deal::PAYMENT_METHODS[$s['payment']] ?? null) : null,
+        'profit' => $s['profit'], 'source' => $s['source'], 'pay' => $s['pay_label'],
         'seller' => $s['seller'], 'when' => $s['at']->format('d.m.Y H:i'), 'image' => $s['image'],
         'receipt' => route('deals.receipt', $s['id']), 'show' => route('deals.show', $s['id']), 'return' => route('deals.return', $s['id']),
     ])->values();
@@ -158,6 +158,7 @@
         @endforelse
         <div class="ns-empty ns-sm" id="nsRcNoToday" hidden>{!! $ui::icon('sell') !!}<b>Сегодня продаж ещё не было</b>Выберите размер слева</div>
         <a class="ns-rc-more" href="{{ route('sale.day') }}">Все продажи за день →</a>
+        @if(Route::has('certificates.index'))<a class="ns-rc-more" href="{{ route('certificates.index') }}">Продать подарочный сертификат →</a>@endif
     </div>
 </aside>
 </div>
@@ -177,7 +178,15 @@
         <div class="ns-sb-row">
             <div class="ns-field"><label>Кол-во</label><div class="ns-step"><button type="button" data-d="-1" aria-label="Меньше">−</button><input name="qty" id="nsSbQ" type="number" value="1" min="1"><button type="button" data-d="1" aria-label="Больше">+</button></div></div>
             <div class="ns-field"><label>Цена за пару, ₽</label><input name="price" id="nsSbP" type="number" step="0.01" min="0" inputmode="decimal"></div>
-            <div class="ns-field"><label>Оплата</label><div class="ns-seg" id="nsSbPay">@foreach(\App\Models\Deal::PAYMENT_METHODS as $pv => $pl)<button type="button" data-v="{{ $pv }}">{{ $pl }}</button>@endforeach</div></div>
+            <div class="ns-field"><label>Оплата</label><div class="ns-seg" id="nsSbPay">@foreach(\App\Models\Deal::PAYMENT_METHODS as $pv => $pl)@if($pv !== 'certificate' || $certNominals)<button type="button" data-v="{{ $pv }}">{{ $pl }}</button>@endif @endforeach</div></div>
+        </div>
+        {{-- оплата подарочным сертификатом: какие номиналы принёс клиент; дороже — доплата, дешевле — остаток сгорает --}}
+        <div class="ns-sb-cert" id="nsSbCert" hidden>
+            <div class="ns-field" style="margin:0"><label>Какими сертификатами платит клиент</label>
+                <div class="ns-cert-noms">@foreach($certNominals as $nom)<span class="ns-cert-nom" data-nom="{{ $nom }}">{{ $n($nom) }} ₽<button type="button" data-d="-1" aria-label="Меньше">−</button><i>0</i><button type="button" data-d="1" aria-label="Больше">+</button><input type="hidden" name="cert[{{ $nom }}]" value="0"></span>@endforeach</div></div>
+            <div class="ns-sb-cert-s" id="nsSbCertS"></div>
+            <div class="ns-field" id="nsSbExtra" hidden><label>Доплата</label><input type="hidden" name="pay_extra" id="nsSbExtraV">
+                <div class="ns-seg" id="nsSbExtraSeg">@foreach(\App\Support\Sales\GiftCertificates::moneyMethods() as $pv => $pl)<button type="button" data-v="{{ $pv }}">{{ $pl }}</button>@endforeach</div></div>
         </div>
         <div class="ns-field"><label>Откуда клиент</label><div class="ns-srcs" id="nsSbSrc">
             <button class="ns-chipf ns-sm ns-on" type="button" data-v="">Не важно</button>
@@ -288,6 +297,29 @@
     const bar = $('nsSellbar'), qi = $('nsSbQ'), pi = $('nsSbP'), go = $('nsSbGo');
     const payBtns = [...bar.querySelectorAll('#nsSbPay button')], srcBtns = [...bar.querySelectorAll('#nsSbSrc button')];
     let tile = null;
+    /* оплата сертификатом: номиналы × штук, доплата сверх них или сгорающий остаток */
+    const certBox = $('nsSbCert'), certNoms = [...bar.querySelectorAll('.ns-cert-nom')], extraBtns = [...bar.querySelectorAll('#nsSbExtraSeg button')];
+    const byCert = () => $('nsSbPayV').value === 'certificate';
+    const certValue = () => certNoms.reduce((t, el) => t + (+el.dataset.nom) * (+el.querySelector('input').value || 0), 0);
+    const certInfo = (total) => {
+        certBox.hidden = !byCert();
+        if (!byCert()) { $('nsSbExtra').hidden = true; return ''; }
+        const v = certValue(), rest = total - v;
+        $('nsSbExtra').hidden = !(v > 0 && rest > 0.009);
+        $('nsSbCertS').innerHTML = !v ? 'Отметьте номиналы сертификатов клиента'
+            : (rest > 0.009 ? 'Сертификатами <b>' + rub(v) + '</b> · доплата <b>' + rub(rest) + '</b>'
+                : 'Сертификаты покрывают всю сумму' + (rest < -0.009 ? ' · остаток <b>' + rub(-rest) + '</b> сгорает, сдачи нет' : ''));
+        return !v ? '' : '<br>сертификатами ' + rub(Math.min(v, total)) + (rest > 0.009 ? ' + доплата ' + rub(rest) : '');
+    };
+    certNoms.forEach((el) => el.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+        const inp = el.querySelector('input'), k = Math.max(0, Math.min(20, (+inp.value || 0) + (+b.dataset.d)));
+        inp.value = k; el.querySelector('i').textContent = k; el.classList.toggle('ns-on', k > 0);
+        upd();
+    })));
+    extraBtns.forEach((b) => b.addEventListener('click', () => {
+        extraBtns.forEach((x) => x.classList.toggle('ns-on', x === b));
+        $('nsSbExtraV').value = b.dataset.v;
+    }));
     const onlyWhite = () => tile && +tile.dataset.white > 0 && +tile.dataset.other <= 0;
     const upd = () => {
         if (!tile) return;
@@ -302,6 +334,7 @@
         } else if (!price) {
             html += '<br><span class="ns-tag ns-warn">укажите цену</span>';
         }
+        html += certInfo(total);
         $('nsSbSum').innerHTML = html;
         go.innerHTML = '<svg class="ns-icon ns-sm" viewBox="0 0 24 24"><path d="M5 12l5 5 9-11"/></svg>' + (price ? 'Продать за ' + rub(total) : 'Продать');
         go.disabled = onlyWhite();
@@ -320,6 +353,7 @@
         $('nsSbAvail').textContent = t.dataset.avail + ' шт';
         $('nsSbArt').textContent = row.querySelector('.ns-mono')?.textContent || '';
         qi.value = 1; qi.max = t.dataset.avail;
+        certNoms.forEach((el) => { el.querySelector('input').value = 0; el.querySelector('i').textContent = 0; el.classList.remove('ns-on'); });
         pi.value = t.dataset.price || '';
         $('wNote').hidden = !onlyWhite();
         const mixed = $('nsSbMixed');
@@ -342,6 +376,7 @@
         const on = !b.classList.contains('ns-on');
         payBtns.forEach((x) => x.classList.toggle('ns-on', on && x === b));
         $('nsSbPayV').value = on ? b.dataset.v : '';
+        upd();
     }));
     srcBtns.forEach((b) => b.addEventListener('click', () => {
         srcBtns.forEach((x) => x.classList.toggle('ns-on', x === b));
@@ -351,6 +386,8 @@
         if (!$('nsSbItem').value) { e.preventDefault(); return; }
         if (onlyWhite()) { e.preventDefault(); ns.toast('Белая пара продаётся через 1С (чек на кассе), а не в CRM'); return; }
         if (!(parseFloat(pi.value) > 0)) { e.preventDefault(); ns.toast('Укажите цену за пару'); pi.focus(); return; }
+        if (byCert() && !certValue()) { e.preventDefault(); ns.toast('Отметьте, какими сертификатами платит клиент'); return; }
+        if (byCert() && !$('nsSbExtra').hidden && !$('nsSbExtraV').value) { e.preventDefault(); ns.toast('Выберите, как клиент доплатил'); return; }
         go.disabled = true;
     });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !bar.hidden && !document.getElementById('nsScrim').classList.contains('ns-on')) closeSell(); });
