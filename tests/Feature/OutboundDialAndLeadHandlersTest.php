@@ -77,6 +77,41 @@ class OutboundDialAndLeadHandlersTest extends TestCase
         $this->actingAs($op)->postJson(route('deals.move', $id), ['to_stage_id' => $this->stage['dial']])->assertOk()->assertJson(['ok' => true]);
     }
 
+    /** Дозвон завершённому клиенту (12.11.2026): звонок ложится в его завершённую сделку, новая карточка не появляется. */
+    public function test_outgoing_call_to_a_finished_client_stays_in_the_finished_deal(): void
+    {
+        $this->user('Admin', 'admin');
+        $contact = DB::table('contacts')->insertGetId(['account_id' => $this->acc, 'name' => 'Ирина', 'phone' => '+7 (912) 742-04-40', 'created_at' => now(), 'updated_at' => now()]);
+        $done = DB::table('deals')->insertGetId(['account_id' => $this->acc, 'pipeline_id' => $this->pipeline, 'stage_id' => $this->stage['done'], 'title' => 'Ирина — замер', 'contact_id' => $contact,
+            'closed_at' => '2026-11-10 12:00:00', 'closed_result' => 'won', 'is_unread' => 0, 'created_at' => '2026-11-09 10:00:00', 'updated_at' => '2026-11-10 12:00:00']);
+
+        // исходящий: OUTGOING, «принят»/«завершён» с direction=out, событие без направления, история
+        $this->vats(['cmd' => 'event', 'type' => 'OUTGOING', 'direction' => 'out', 'callid' => 'r1', 'phone' => '79127420440', 'diversion' => '79225090014']);
+        $this->vats(['cmd' => 'event', 'type' => 'ACCEPTED', 'direction' => 'out', 'callid' => 'r1', 'phone' => '79127420440', 'diversion' => '79225090014']);
+        $this->vats(['cmd' => 'event', 'type' => 'COMPLETED', 'callid' => 'r1', 'phone' => '79127420440', 'diversion' => '79225090014']);
+        $this->vats(['cmd' => 'history', 'type' => 'out', 'callid' => 'r1', 'phone' => '79127420440', 'diversion' => '79225090014', 'duration' => '40', 'start' => '20261112T080000Z']);
+
+        $this->assertSame(1, DB::table('deals')->where('account_id', $this->acc)->count(), 'новой сделки нет');
+        $this->assertSame(4, DB::table('deal_activities')->where('deal_id', $done)->where('type', 'call')->count());
+        $row = DB::table('deals')->find($done);
+        $this->assertSame(['2026-11-10 12:00:00', 0, '2026-11-10 12:00:00'], [(string) $row->closed_at, (int) $row->is_unread, (string) $row->updated_at], 'не открылась и не всплыла');
+
+        // клиент из завершённого чата Авито, номер написал в переписке, — дозвон туда, а не «новый лид»
+        $chatDeal = DB::table('deals')->insertGetId(['account_id' => $this->acc, 'pipeline_id' => $this->pipeline, 'stage_id' => $this->stage['done'], 'title' => 'Ольга — Avito',
+            'closed_at' => '2026-11-09 18:00:00', 'closed_result' => 'won', 'created_at' => '2026-11-09 10:00:00', 'updated_at' => '2026-11-09 18:00:00']);
+        $conv = DB::table('conversations')->insertGetId(['account_id' => $this->acc, 'deal_id' => $chatDeal, 'channel' => 'avito', 'external_id' => 'u2i-'.uniqid(), 'status' => 'open', 'unread_count' => 0, 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('messages')->insert(['account_id' => $this->acc, 'conversation_id' => $conv, 'direction' => 'in', 'author' => 'Ольга', 'body' => 'Мой номер 8 (912) 555-63-24', 'status' => 'ok', 'created_at' => now()->subDay(), 'updated_at' => now()->subDay()]);
+        $this->vats(['cmd' => 'event', 'type' => 'OUTGOING', 'direction' => 'out', 'callid' => 'r2', 'phone' => '79125556324', 'diversion' => '79225090014']);
+        $this->assertSame(2, DB::table('deals')->where('account_id', $this->acc)->count());
+        $this->assertSame(1, DB::table('deal_activities')->where('deal_id', $chatDeal)->where('type', 'call')->count());
+
+        // клиент сам позвонил снова — новое обращение, как раньше: «Поступил лид»
+        $this->vats(['cmd' => 'event', 'type' => 'INCOMING', 'callid' => 'r3', 'phone' => '79127420440', 'diversion' => '79225090014']);
+        $new = DB::table('deals')->where('account_id', $this->acc)->whereNull('closed_at')->first();
+        $this->assertNotNull($new);
+        $this->assertSame([$this->stage['lead'], 1], [(int) $new->stage_id, (int) $new->is_unread]);
+    }
+
     /** «Отчёты»: отказ засчитывается тому, кто первым взял лид, а не тому, кто закрыл сделку. */
     public function test_refusal_goes_to_whoever_took_the_lead(): void
     {

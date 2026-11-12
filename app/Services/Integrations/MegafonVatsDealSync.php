@@ -69,6 +69,17 @@ class MegafonVatsDealSync
                 return $existing;
             }
 
+            // Исходящий звонок клиенту, чья сделка уже завершена (подтвердить замер, уточнить адрес), — в ту же сделку, без
+            // новой карточки: раньше на каждый такой звонок заводилась «Звонки: …», и завершённый клиент всплывал снова
+            // (12.11.2026). Сделка не открывается и не подсвечивается — звонок только ложится в её ленту. Остальные события
+            // этого звонка («принят», «завершён», история) — туда же, куда легло первое.
+            if ($sameCall = self::closedDealOfCall($accountId, $clientPhone, $p)) {
+                return $sameCall;
+            }
+            if (self::isOutgoingCall($p) && ($closed = self::findClosedDealByPhone($accountId, $clientPhone, $knownContact?->id))) {
+                return $closed;
+            }
+
             $stage = PipelineStage::query()
                 ->where('account_id', $accountId)
                 ->orderBy('sort')
@@ -238,8 +249,9 @@ class MegafonVatsDealSync
             }
         }
 
-        // дозвоны в скрытой колонке не подсвечиваем: «принят» и «завершён» приходят и по исходящим
-        if (! $inDialStage && Deal::isIncomingClientCallPayload(is_array($payload) ? $payload : [])) {
+        // дозвоны в скрытой колонке не подсвечиваем: «принят» и «завершён» приходят и по исходящим;
+        // завершённую сделку (дозвон завершённому клиенту) — тоже: звонок только ложится в её ленту
+        if (! $inDialStage && $deal->closed_at === null && Deal::isIncomingClientCallPayload(is_array($payload) ? $payload : [])) {
             $deal->is_unread = true;
             $deal->save();
         }
@@ -281,6 +293,69 @@ class MegafonVatsDealSync
         return $contacts->first(function (Contact $contact) use ($clientPhone) {
             return self::normalizePhone((string) ($contact->phone ?? '')) === $clientPhone;
         });
+    }
+
+    /** Звонок оператора: «исходящий» в типе события или направлении (у «принят»/«завершён» исходящего — direction=out). */
+    private static function isOutgoingCall(array $p): bool
+    {
+        return in_array(strtolower(trim((string) ($p['type'] ?? ''))), ['out', 'outgoing'], true)
+            || strtolower(trim((string) ($p['direction'] ?? ''))) === 'out';
+    }
+
+    /**
+     * Последняя завершённая сделка клиента: по контакту с этим номером, по названию «Звонки: номер» или чат, где клиент
+     * написал номер (последние 90 дней).
+     */
+    private static function findClosedDealByPhone(int $accountId, string $clientPhone, ?int $contactId = null): ?Deal
+    {
+        // номер в контакте бывает записан как угодно («+7 (912) 742-04-40») — сравниваем цифры
+        $contactIds = Contact::query()
+            ->where('account_id', $accountId)
+            ->whereRaw("REGEXP_REPLACE(phone, '[^0-9]', '') LIKE ?", ['%'.substr($clientPhone, -10)])
+            ->get(['id', 'phone'])
+            ->filter(fn (Contact $c) => self::normalizePhone((string) $c->phone) === $clientPhone)
+            ->pluck('id')->push($contactId)->filter()->unique()->values()->all();
+
+        $ids = Deal::query()
+            ->where('account_id', $accountId)
+            ->whereNotNull('closed_at')
+            ->where(function ($query) use ($contactIds, $clientPhone) {
+                $query->where('title', 'Звонки: '.$clientPhone);
+                if ($contactIds !== []) {
+                    $query->orWhereIn('contact_id', $contactIds);
+                }
+            })
+            ->pluck('id')->all();
+        $chatDealIds = \Illuminate\Support\Facades\DB::table('messages')
+            ->join('conversations', 'conversations.id', '=', 'messages.conversation_id')
+            ->join('deals', 'deals.id', '=', 'conversations.deal_id')
+            ->where('messages.account_id', $accountId)->where('messages.direction', 'in')
+            ->where('messages.created_at', '>=', now()->subDays(90))
+            ->whereNotNull('deals.closed_at')
+            ->whereRaw("REGEXP_REPLACE(messages.body, '[^0-9]', '') LIKE ?", ['%'.substr($clientPhone, -10).'%'])
+            ->distinct()->pluck('deals.id')->all();
+        $ids = array_merge($ids, $chatDealIds);
+
+        return $ids === [] ? null : Deal::query()->whereIn('id', $ids)->orderByDesc('closed_at')->orderByDesc('id')->first();
+    }
+
+    /** Завершённая сделка, в которую уже легло другое событие этого же звонка (тот же callid и номер, последние 3 часа). */
+    private static function closedDealOfCall(int $accountId, string $clientPhone, array $p): ?Deal
+    {
+        $callId = self::firstString($p, ['callid', 'call_id', 'callId']);
+        if ($callId === null) {
+            return null;
+        }
+        $dealIds = DealActivity::query()
+            ->where('account_id', $accountId)
+            ->where('type', 'call')
+            ->where('created_at', '>=', now()->subHours(3))
+            ->whereRaw("JSON_UNQUOTE(JSON_EXTRACT(payload, '$.callid')) = ?", [$callId])
+            ->get(['deal_id', 'payload'])
+            ->filter(fn (DealActivity $a) => self::normalizePhone((string) (($a->payload ?? [])['phone'] ?? '')) === $clientPhone)
+            ->pluck('deal_id')->unique()->all();
+
+        return $dealIds === [] ? null : Deal::query()->whereIn('id', $dealIds)->whereNotNull('closed_at')->orderByDesc('id')->first();
     }
 
     private static function findOpenDealByPhone(int $accountId, string $clientPhone, ?int $contactId = null): ?Deal
