@@ -46,7 +46,7 @@ class OutboundDialAndLeadHandlersTest extends TestCase
     private function vats(array $payload): void
     {
         $conn = IntegrationConnection::firstOrCreate(['account_id' => $this->acc, 'provider' => 'megafon_vats'], ['status' => 'active', 'settings' => ['crm_webhook_token' => 'dial']]);
-        $event = IntegrationEvent::create(['account_id' => $this->acc, 'provider' => 'megafon_vats', 'direction' => 'in', 'event_type' => 'event:'.$payload['type'], 'external_id' => $payload['callid'], 'payload' => $payload, 'received_at' => now()]);
+        $event = IntegrationEvent::create(['account_id' => $this->acc, 'provider' => 'megafon_vats', 'direction' => 'in', 'event_type' => ($payload['cmd'] ?? 'event').':'.($payload['type'] ?? ''), 'external_id' => $payload['callid'], 'payload' => $payload, 'received_at' => now()]);
         MegafonVatsDealSync::handle($conn, $event);
     }
 
@@ -105,11 +105,38 @@ class OutboundDialAndLeadHandlersTest extends TestCase
         $this->assertSame(2, DB::table('deals')->where('account_id', $this->acc)->count());
         $this->assertSame(1, DB::table('deal_activities')->where('deal_id', $chatDeal)->where('type', 'call')->count());
 
-        // клиент сам позвонил снова — новое обращение, как раньше: «Поступил лид»
-        $this->vats(['cmd' => 'event', 'type' => 'INCOMING', 'callid' => 'r3', 'phone' => '79127420440', 'diversion' => '79225090014']);
+        // клиент с успешной завершённой сделкой сам позвонил (уточнить замер) — туда же, не новый лид (13.11.2026)
+        $in = ['phone' => '79127420440', 'diversion' => '79225070404'];
+        $this->vats(['cmd' => 'contact', 'callid' => 'r3'] + $in);
+        $this->vats(['cmd' => 'event', 'type' => 'INCOMING', 'direction' => 'in', 'callid' => 'r3', 'user' => 'anna'] + $in);
+        $this->vats(['cmd' => 'event', 'type' => 'ACCEPTED', 'direction' => 'in', 'callid' => 'r3', 'user' => 'anna'] + $in);
+        $this->vats(['cmd' => 'history', 'type' => 'in', 'status' => 'Success', 'callid' => 'r3', 'duration' => '31', 'start' => '20261113T060000Z'] + $in);
+        $this->assertSame(2, DB::table('deals')->where('account_id', $this->acc)->count(), 'новой сделки нет');
+        $this->assertSame(8, DB::table('deal_activities')->where('deal_id', $done)->where('type', 'call')->count());
+        $row = DB::table('deals')->find($done);
+        $this->assertSame(['2026-11-10 12:00:00', 0, '2026-11-10 12:00:00'], [(string) $row->closed_at, (int) $row->is_unread, (string) $row->updated_at]);
+
+        // пропущенный входящий не прячем в завершённой: карточка в «Поступил лид», события звонка — в ней
+        $this->vats(['cmd' => 'event', 'type' => 'INCOMING', 'direction' => 'in', 'callid' => 'r4', 'user' => 'anna'] + $in);
+        $this->vats(['cmd' => 'event', 'type' => 'CANCELLED', 'direction' => 'in', 'callid' => 'r4', 'user' => 'anna'] + $in);
+        $this->assertSame(10, DB::table('deal_activities')->where('deal_id', $done)->where('type', 'call')->count());
+        $this->vats(['cmd' => 'history', 'type' => 'in', 'status' => 'missed', 'callid' => 'r4', 'duration' => '0', 'start' => '20261113T070000Z'] + $in);
         $new = DB::table('deals')->where('account_id', $this->acc)->whereNull('closed_at')->first();
         $this->assertNotNull($new);
         $this->assertSame([$this->stage['lead'], 1], [(int) $new->stage_id, (int) $new->is_unread]);
+        $this->assertSame(3, DB::table('deal_activities')->where('deal_id', $new->id)->where('type', 'call')->count());
+        $this->assertSame(8, DB::table('deal_activities')->where('deal_id', $done)->where('type', 'call')->count());
+        $this->assertStringContainsString('Пропущенный звонок', DB::table('deal_activities')->where('deal_id', $new->id)->where('type', 'system')->value('body'));
+        $this->assertSame($new->id, DB::table('call_recordings')->where('account_id', $this->acc)->where('callid', 'r4')->value('deal_id'));
+
+        // последняя сделка закрыта как нецелевая / отказ — звонок клиента это новое обращение, как раньше
+        $nt = DB::table('contacts')->insertGetId(['account_id' => $this->acc, 'name' => 'Олег', 'phone' => '79120001122', 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('deals')->insert(['account_id' => $this->acc, 'pipeline_id' => $this->pipeline, 'stage_id' => $this->stage['done'], 'title' => 'Олег', 'contact_id' => $nt,
+            'closed_at' => '2026-11-01 12:00:00', 'closed_result' => 'extra_non_target', 'created_at' => '2026-11-01 10:00:00', 'updated_at' => '2026-11-01 12:00:00']);
+        $this->vats(['cmd' => 'event', 'type' => 'INCOMING', 'direction' => 'in', 'callid' => 'r5', 'phone' => '79120001122', 'diversion' => '79225070404']);
+        $lead = DB::table('deals')->where('account_id', $this->acc)->whereNull('closed_at')->where('contact_id', $nt)->first();
+        $this->assertNotNull($lead);
+        $this->assertSame([$this->stage['lead'], 1], [(int) $lead->stage_id, (int) $lead->is_unread]);
     }
 
     /** «Отчёты»: отказ засчитывается тому, кто первым взял лид, а не тому, кто закрыл сделку. */

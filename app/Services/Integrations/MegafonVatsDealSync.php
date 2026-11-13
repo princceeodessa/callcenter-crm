@@ -73,11 +73,28 @@ class MegafonVatsDealSync
             // новой карточки: раньше на каждый такой звонок заводилась «Звонки: …», и завершённый клиент всплывал снова
             // (12.11.2026). Сделка не открывается и не подсвечивается — звонок только ложится в её ленту. Остальные события
             // этого звонка («принят», «завершён», история) — туда же, куда легло первое.
+            // Клиент, чья последняя сделка завершена успешно (замер записан), позвонил сам — тоже в неё: это вопрос по
+            // заказу, а не новый лид — такие карточки операторы почти всегда уносили в «Нецелевое» (13.11.2026). Нужен
+            // новый замер — оператор переносит завершённую сделку на этап, она открывается. Отказ / нецелевое — новое
+            // обращение, как раньше. Пропущенный входящий в завершённой сделке не прячем: новая карточка в «Поступил лид»,
+            // события звонка переезжают в неё — чтобы перезвонили.
+            $missedIn = self::isMissedIncomingCall($p);
+            $missedFrom = null;
             if ($sameCall = self::closedDealOfCall($accountId, $clientPhone, $p)) {
-                return $sameCall;
-            }
-            if (self::isOutgoingCall($p) && ($closed = self::findClosedDealByPhone($accountId, $clientPhone, $knownContact?->id))) {
-                return $closed;
+                if (! $missedIn) {
+                    return $sameCall;
+                }
+                $missedFrom = $sameCall;
+            } elseif ($closed = self::findClosedDealByPhone($accountId, $clientPhone, $knownContact?->id)) {
+                if (self::isOutgoingCall($p)) {
+                    return $closed;
+                }
+                if ($closed->closed_result === 'won') {
+                    if (! $missedIn) {
+                        return $closed;
+                    }
+                    $missedFrom = $closed;
+                }
             }
 
             $stage = PipelineStage::query()
@@ -137,12 +154,19 @@ class MegafonVatsDealSync
                 'author_user_id' => null,
                 'type' => 'system',
                 'body' => match (true) {
+                    $missedFrom !== null => 'Пропущенный звонок от клиента с завершённой сделкой #'.$missedFrom->id.' — перезвоните.',
                     $ourLead => 'Сделка создана из исходящего звонка (МегаФон ВАТС): номер новый — клиент оставил его, первыми позвонили мы.',
                     $dialStageId !== null => 'Сделка создана автоматически из исходящего звонка (МегаФон ВАТС) — этап «Нецелевое дозвон».',
                     default => 'Сделка создана автоматически из звонка (МегаФон ВАТС).',
                 },
                 'payload' => $ourLead ? ['outbound_lead' => true] : null,
             ]);
+
+            if ($missedFrom !== null) {
+                // события этого звонка, уже легшие в завершённую сделку, — в новую карточку
+                DealActivity::query()->whereIn('id', self::callActivitiesIn((int) $missedFrom->id, $clientPhone, $p))
+                    ->update(['deal_id' => $created->id]);
+            }
 
             return $created;
         });
@@ -342,20 +366,41 @@ class MegafonVatsDealSync
     /** Завершённая сделка, в которую уже легло другое событие этого же звонка (тот же callid и номер, последние 3 часа). */
     private static function closedDealOfCall(int $accountId, string $clientPhone, array $p): ?Deal
     {
-        $callId = self::firstString($p, ['callid', 'call_id', 'callId']);
-        if ($callId === null) {
-            return null;
-        }
-        $dealIds = DealActivity::query()
-            ->where('account_id', $accountId)
-            ->where('type', 'call')
-            ->where('created_at', '>=', now()->subHours(3))
-            ->whereRaw("JSON_UNQUOTE(JSON_EXTRACT(payload, '$.callid')) = ?", [$callId])
-            ->get(['deal_id', 'payload'])
-            ->filter(fn (DealActivity $a) => self::normalizePhone((string) (($a->payload ?? [])['phone'] ?? '')) === $clientPhone)
+        $dealIds = self::callActivities($clientPhone, $p, fn ($q) => $q->where('account_id', $accountId))
             ->pluck('deal_id')->unique()->all();
 
         return $dealIds === [] ? null : Deal::query()->whereIn('id', $dealIds)->whereNotNull('closed_at')->orderByDesc('id')->first();
+    }
+
+    /** id событий этого звонка в сделке. */
+    private static function callActivitiesIn(int $dealId, string $clientPhone, array $p): array
+    {
+        return self::callActivities($clientPhone, $p, fn ($q) => $q->where('deal_id', $dealId))->pluck('id')->all();
+    }
+
+    /** События звонка за последние 3 часа: тот же callid и тот же номер клиента (МегаФон повторяет callid у разных звонков). */
+    private static function callActivities(string $clientPhone, array $p, \Closure $scope): \Illuminate\Support\Collection
+    {
+        $callId = self::firstString($p, ['callid', 'call_id', 'callId']);
+        if ($callId === null) {
+            return collect();
+        }
+
+        return $scope(DealActivity::query())
+            ->where('type', 'call')
+            ->where('created_at', '>=', now()->subHours(3))
+            ->whereRaw("JSON_UNQUOTE(JSON_EXTRACT(payload, '$.callid')) = ?", [$callId])
+            ->get(['id', 'deal_id', 'payload'])
+            ->filter(fn (DealActivity $a) => self::normalizePhone((string) (($a->payload ?? [])['phone'] ?? '')) === $clientPhone)
+            ->values();
+    }
+
+    /** Итог входящего звонка (история): никто не ответил. */
+    private static function isMissedIncomingCall(array $p): bool
+    {
+        return strtolower(trim((string) ($p['cmd'] ?? ''))) === 'history'
+            && in_array(strtolower(trim((string) ($p['type'] ?? ''))), ['in', 'incoming'], true)
+            && ! in_array(strtolower(trim((string) ($p['status'] ?? ''))), ['', 'success'], true);
     }
 
     private static function findOpenDealByPhone(int $accountId, string $clientPhone, ?int $contactId = null): ?Deal
