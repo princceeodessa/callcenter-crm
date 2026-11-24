@@ -31,10 +31,12 @@
     @if($showChart)
         <a href="#days"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M8 17V11M13 17V7M18 17v-4"/></svg> {{ $byMonth ? 'По месяцам' : 'По дням' }}</a>
     @endif
+    <a href="#expenses"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 7V5a1 1 0 00-1-1H5a2 2 0 00-2 2v12a2 2 0 002 2h14a1 1 0 001-1v-3"/><path d="M3 6a2 2 0 002 2h14a1 1 0 011 1v3h-4a2 2 0 000 4h4"/></svg> Расходы и чистыми</a>
     <a href="#models"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l9 5-9 5-9-5 9-5z"/><path d="M3 12l9 5 9-5M3 17l9 5 9-5"/></svg> Модели и источники</a>
     <a href="#sales"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1.4"/><circle cx="18" cy="21" r="1.4"/><path d="M1 1h4l2.7 13.4a2 2 0 002 1.6h9.7a2 2 0 002-1.6L23 6H6"/></svg> Все продажи</a>
     <span class="lbl">{{ $isOwner ? 'Ещё' : 'CRM' }}</span>
     <a href="{{ route('sale.day') }}" class="sub" title="Продажи кроссовок за день"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/></svg> Продажи за день</a>
+    <a href="{{ route('expenses.index') }}" class="sub" title="Траты магазина: все сотрудники, чеки, к возврату"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 7V5a1 1 0 00-1-1H5a2 2 0 00-2 2v12a2 2 0 002 2h14a1 1 0 001-1v-3"/><path d="M3 6a2 2 0 002 2h14a1 1 0 011 1v3h-4a2 2 0 000 4h4"/></svg> Расходы</a>
     <a href="{{ route('owner.smm', ['business' => 'sneakers']) }}" class="sub"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="M10 8l5 4-5 4V8z"/></svg> SMM-контент</a>
     @unless($isOwner)
         <a href="{{ route('sale.quick') }}" class="sub"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg> Вернуться в CRM</a>
@@ -65,7 +67,7 @@
             @if($showChart)<div class="kpi-chart"><canvas id="sp-rev" data-on-accent="1" data-spark="{{ $spark('revenue', '₽') }}"></canvas></div>@endif
         </div>
         <div class="card kpi {{ $showChart ? '' : 'no-chart' }}">
-            <div class="top"><span class="lbl">Чистая прибыль</span>
+            <div class="top"><span class="lbl">Прибыль с продаж</span>
                 <span class="ic"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg></span>
             </div>
             <div class="val num" style="{{ $profit < 0 ? 'color:var(--neg)' : '' }}">{{ $money($profit) }} ₽</div>
@@ -95,6 +97,42 @@
             <div class="st">Прибыль посчитана не по всем заказам</div>
             <ul><li>У {{ $noCostCount }} заказ(ов) не указана закупочная цена — их прибыль в расчёт не вошла и показана как «—».
                 Проставьте закуп на складе (⚙️ Управление товаром → Цены), чтобы прибыль считалась полностью.</li></ul>
+        </div>
+    @endif
+
+    {{-- Расходы магазина (24.11.2026): вносят сотрудники на странице «Расходы»; чистыми = прибыль с продаж − расходы --}}
+    @php $net = $profit - $expenses['total']; $expCats = \App\Support\Sales\ShopExpenses::CATEGORIES; @endphp
+    <div class="sec" id="expenses"><h2>Расходы и чистыми</h2><span class="note">расходы вносят сотрудники в CRM — вкладка «Расходы»</span></div>
+    <div class="kpis4">
+        <div class="card mini"><div class="lbl">Прибыль с продаж</div><div class="val num">{{ $money($profit) }} ₽</div><div class="lbl">выручка − закуп проданных пар</div></div>
+        <div class="card mini"><div class="lbl">Расходы магазина</div><div class="val num" style="{{ $expenses['total'] > 0 ? 'color:var(--neg)' : '' }}">{{ $expenses['total'] > 0 ? '−' : '' }}{{ $money($expenses['total']) }} ₽</div><div class="lbl">{{ $expenses['count'] }} шт. за период</div></div>
+        <div class="card mini"><div class="lbl">Чистыми останется</div><div class="val num" style="color:{{ $net >= 0 ? 'var(--pos)' : 'var(--neg)' }}">{{ $money($net) }} ₽</div><div class="lbl">прибыль с продаж − расходы</div></div>
+        <div class="card mini"><div class="lbl">К возврату сотрудникам</div><div class="val num">{{ $money($expenses['owed']) }} ₽</div><div class="lbl">{{ $expenses['owed_count'] > 0 ? 'своими деньгами: '.$expenses['owed_count'].' шт.' : 'всем всё вернули' }}</div></div>
+    </div>
+    @if($expenses['count'] > 0)
+        <div class="grid2">
+            <div class="card tbl-card">
+                <div class="tbl-head"><h2>Расходы по категориям</h2><a class="note" href="{{ route('expenses.index', ['period' => 'custom', 'from' => $fromValue, 'to' => $toValue]) }}">все траты →</a></div>
+                <div class="tbl-wrap"><table class="t">
+                    <thead><tr><th>Категория</th><th class="num">Сумма</th><th class="num">Доля</th></tr></thead>
+                    <tbody>
+                    @foreach($expenses['by_category'] as $k => $sum)
+                        <tr><td>{{ $expCats[$k] ?? $k }}</td><td class="num">{{ $money($sum) }} ₽</td><td class="num muted">{{ round($sum / max(1, $expenses['total']) * 100) }}%</td></tr>
+                    @endforeach
+                    </tbody>
+                </table></div>
+            </div>
+            <div class="card tbl-card">
+                <div class="tbl-head"><h2>Последние траты</h2><span class="note">кто и на что</span></div>
+                <div class="tbl-wrap"><table class="t">
+                    <thead><tr><th>Дата</th><th>На что</th><th>Кто</th><th class="num">Сумма</th></tr></thead>
+                    <tbody>
+                    @foreach($expensesRecent as $e)
+                        <tr><td class="muted">{{ $e->spent_on->format('d.m') }}</td><td class="wrap">{{ $e->description }}</td><td class="muted">{{ $e->user?->name ?? '—' }}</td><td class="num">{{ $money($e->amount) }} ₽</td></tr>
+                    @endforeach
+                    </tbody>
+                </table></div>
+            </div>
         </div>
     @endif
 

@@ -129,6 +129,11 @@ class OwnerDashboardController extends Controller
             'series' => ['by' => $byMonth ? 'month' : 'day', 'rows' => array_values($series)],
             // подарочные сертификаты: продажа — не выручка (выручка, когда ими платят за пару)
             'certs' => \App\Support\Sales\GiftCertificates::summary($accId, $start, $end),
+            // «Расходы» магазина (24.11.2026): чистыми = прибыль с продаж − расходы за период
+            'expenses' => \App\Support\Sales\ShopExpenses::summary($accId, $start, $end),
+            'expensesRecent' => \App\Models\ShopExpense::where('account_id', $accId)
+                ->whereBetween('spent_on', [$start->toDateString(), $end->toDateString()])
+                ->with('user:id,name')->orderByDesc('spent_on')->orderByDesc('id')->limit(8)->get(),
         ]);
     }
 

@@ -173,6 +173,14 @@ Route::middleware('auth')->group(function () {
         Route::post('/certificates/sell', [\App\Http\Controllers\GiftCertificateController::class, 'sell'])->name('certificates.sell');
         Route::post('/certificates/stock', [\App\Http\Controllers\GiftCertificateController::class, 'stock'])->name('certificates.stock');
         Route::post('/certificates/{sale}/cancel', [\App\Http\Controllers\GiftCertificateController::class, 'cancel'])->name('certificates.cancel');
+        // «Расходы» (24.11.2026): траты магазина — вносят все роли кроссовок, руководство видит все
+        Route::withoutMiddleware('purchases')->middleware(\App\Http\Middleware\RequireSneakerAccess::class)->group(function () {
+            Route::get('/expenses', [\App\Http\Controllers\ShopExpenseController::class, 'index'])->name('expenses.index');
+            Route::post('/expenses', [\App\Http\Controllers\ShopExpenseController::class, 'store'])->name('expenses.store');
+            Route::delete('/expenses/{expense}', [\App\Http\Controllers\ShopExpenseController::class, 'destroy'])->name('expenses.destroy');
+            Route::post('/expenses/{expense}/reimburse', [\App\Http\Controllers\ShopExpenseController::class, 'reimburse'])->name('expenses.reimburse');
+            Route::get('/expenses/{expense}/receipt', [\App\Http\Controllers\ShopExpenseController::class, 'receipt'])->name('expenses.receipt');
+        });
         // «Продажи за день» — и владельцу (он видит только отчёты), поэтому не 'purchases', а все роли кроссовок
         Route::get('/sale/day', [SneakerDailySalesController::class, 'index'])
             ->withoutMiddleware('purchases')->middleware(\App\Http\Middleware\RequireSneakerAccess::class)

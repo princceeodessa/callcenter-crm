@@ -320,3 +320,27 @@ a.ns-btn.ns-dis{pointer-events:none}
 .ns-sb-cert-s b{color:var(--ink)}
 .ns-sb-cert .ns-field{margin:10px 0 0}
 @media (max-width:640px){.ns-cert-sell .ns-sb-row{grid-template-columns:1fr}}
+
+/* «Расходы» (24.11.2026) */
+.ns-exp-filter{flex-wrap:wrap;align-items:center}
+.ns-exp-dates{display:inline-flex;gap:6px}
+.ns-exp-dates[hidden]{display:none}
+.ns-exp-dates input{width:140px}
+.ns-exp-form{padding:16px 18px;margin-bottom:18px}
+.ns-exp-row{display:grid;grid-template-columns:150px 1fr 170px;gap:12px}
+.ns-exp-row2{grid-template-columns:1fr 1fr}
+.ns-exp-row .ns-field{min-width:0}
+.ns-exp-paid button{font-size:12.5px;padding:7px 10px}
+a.ns-kpi.ns-exp-owed{text-decoration:none;color:inherit}
+a.ns-kpi.ns-exp-owed:hover{border-color:var(--accent)}
+.ns-exp-grid{margin-bottom:6px}
+.ns-exp-grid .ns-panel-pad{padding:12px 16px 4px}
+.ns-exp-grid a,.ns-exp-tbl a{color:var(--ink);text-decoration:none}
+.ns-exp-grid a:hover,.ns-exp-tbl a:hover{color:var(--accent)}
+.ns-exp-barc{width:38%}
+.ns-exp-bar{display:block;height:8px;border-radius:99px;background:var(--accent)}
+.ns-exp-d{min-width:200px;white-space:normal}
+.ns-exp-inl{display:inline-block;margin:0 0 0 6px}
+.ns-exp-tbl tfoot td{border-top:1px solid var(--line);font-weight:600}
+@media (max-width:900px){.ns-exp-row{grid-template-columns:1fr 1fr}.ns-exp-what{grid-column:1/-1}}
+@media (max-width:560px){.ns-exp-row,.ns-exp-row2{grid-template-columns:1fr}.ns-exp-paid{flex-direction:column;height:auto!important}}
