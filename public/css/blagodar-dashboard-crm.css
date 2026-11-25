@@ -53,6 +53,9 @@ table.t td a:hover{text-decoration:underline}
 .src .warn{color:var(--neg)}
 .src .rw{gap:8px}
 .src .rw b{white-space:nowrap}
+/* «Источник не указан» — замеры в «Сумме» таблицы без проставленного источника: спокойнее остальных */
+.src.src-none .cnt{color:var(--muted)}
+.src.src-none .note{margin-top:10px;font-size:12.5px;color:var(--muted);line-height:1.4}
 
 /* плотные таблицы: исходы по категориям (много колонок) и незаключённые (три таблицы в ряд) */
 table.t.compact th,table.t.compact td{padding:9px 8px}

@@ -114,6 +114,12 @@
     $sourceCards = [];
     if ($useSheet) {
         foreach ($ms['by_source'] as $gkey => $list) {
+            // ВК: «ВК» и «ВК Лид формы» — одна карточка (один расход VK Рекламы, цена замера — на оба)
+            if ($gkey === 'vk') {
+                $parts = array_filter($list, fn ($v, $k) => $v > 0 && mb_strtolower($k) !== 'вк', ARRAY_FILTER_USE_BOTH);
+                if (array_sum($list) > 0) $sourceCards[] = ['name' => 'ВК', 'cnt' => array_sum($list), 'paid' => 'vk', 'parts' => $parts];
+                continue;
+            }
             foreach ($list as $name => $cnt) {
                 if ($cnt <= 0) continue;
                 $paidKey = $primary[mb_strtolower($name)] ?? null;
@@ -127,6 +133,11 @@
         }
     }
     usort($sourceCards, fn ($a, $b) => $b['cnt'] <=> $a['cnt']);
+    // в «Сумме» таблицы замеров есть, а источник ещё не проставлен (таблицу за день заполняют по ходу дня) —
+    // отдельной карточкой в конце, чтобы карточки сходились с плиткой «Замеры»
+    if ($useSheet && ($ms['unassigned'] ?? 0) > 0) {
+        $sourceCards[] = ['name' => 'Источник не указан', 'cnt' => (int) $ms['unassigned'], 'paid' => null, 'unassigned' => true];
+    }
     $avDirs = $ads['avito_dirs'];
     $avApi = str_starts_with((string) ($ads['spend']['avito']['from'] ?? ''), 'API Авито');
     foreach ($sourceCards as &$c) {
@@ -156,9 +167,20 @@
     if ($ads['avito_shared'] > 0) $avRest[] = 'тариф и прочее '.$money($ads['avito_shared']);
     $avCabinet = (float) ($av['spend'] ?? 0);
 
-    // VK: подписки = вступления в сообщество; группы объявлений (в кампании «Клипы» группа — это клип)
+    // VK: группы объявлений (в кампании «Клипы» группа — это клип). С 20.11.2026 кампания — на лид-форму: главный
+    // результат карточки — замеры с ВК («ВК» + «ВК Лид формы» по таблице замеров) и цена замера; просмотры клипов
+    // и вступления — только если они за период были.
     $vkGroups = $ads['vk_groups'];
-    $vkHasLeads = collect($vkGroups)->contains(fn ($g) => $g['leadads']);
+    $vkHasLeads = collect($vkGroups)->contains(fn ($g) => $g['leadads']) || (int) ($vk['goals'] ?? 0) > 0;
+    $vkClips = (int) ($vk['views3'] ?? 0) > 0 || collect($vkGroups)->contains(fn ($g) => ($g['views3'] ?? 0) > 0);
+    $vkJoins = (int) ($vk['joins'] ?? 0) > 0 || collect($vkGroups)->contains(fn ($g) => ($g['joins'] ?? 0) > 0);
+    $vkSpent = isset($vk['spent']) ? (float) $vk['spent'] : ($ads['spend']['vk']['value'] ?? null);
+    $vkMeasures = $useSheet ? (int) ($ms['by_group']['vk'] ?? 0) : (int) ($groups['vk']['booked'] ?? 0);
+    $vkNote = array_filter([
+        $vkClips ? 'в кампании «Клипы» группа — это клип' : null,
+        $vkJoins ? 'вступления — в сообщество ВК' : null,
+        $vkHasLeads ? 'лиды с формы — по данным VK Рекламы, замеры таблица по группам не делит' : null,
+    ]);
 
     $periodLabel = $kpi['from']->format('d.m.Y').($days > 1 ? ' — '.$kpi['to']->copy()->subDay()->format('d.m.Y') : '');
 @endphp
@@ -329,11 +351,16 @@
     @else
         <div class="bento">
             @foreach($sourceCards as $c)
-                <div class="card src">
+                <div class="card src{{ ($c['unassigned'] ?? false) ? ' src-none' : '' }}">
                     <div class="nm">@include('owner._src_logo', ['name' => $c['name']]){{ $c['name'] }}</div>
                     <div class="cnt num">{{ $n($c['cnt']) }} <small>{{ $plural((int) $c['cnt'], 'замер', 'замера', 'замеров') }}</small></div>
-                    @if($c['paid'])
+                    @if($c['unassigned'] ?? false)
+                        <div class="note">в таблице замеров они уже в «Сумме», а источник пока не проставлен</div>
+                    @elseif($c['paid'])
                         <div class="rows">
+                            @foreach($c['parts'] ?? [] as $pn => $pv)
+                                <div class="rw"><span>из них {{ str_contains(mb_strtolower($pn), 'лид') ? 'с лид-формы' : '«'.$pn.'»' }}</span><b class="num">{{ $n($pv) }}</b></div>
+                            @endforeach
                             <div class="rw"><span>обратились</span><b class="num">{{ $n($c['leads']) }}</b></div>
                             <div class="rw"><span>нецелевые</span><b class="num">{{ $n($c['non_target']) }}</b></div>
                             @if($c['spend'])
@@ -372,18 +399,25 @@
         </div>
         <div class="card">
             <div class="lbl nm">@include('owner._src_logo', ['name' => 'ВК']) VK Реклама</div>
-            <div class="val num">{{ $money($vk['spent'] ?? null) }}</div>
+            <div class="val num">{{ $money($vkSpent) }}</div>
             <div class="rows">
                 <div class="rw"><span>показы</span><b class="num">{{ $n($vk['shows'] ?? 0) }}</b></div>
-                <div class="rw"><span>просмотры 3с</span><b class="num">{{ $n($vk['views3'] ?? 0) }} <span class="muted">· {{ $per($vk['spent'] ?? null, (int) ($vk['views3'] ?? 0)) }}</span></b></div>
-                <div class="rw"><span>досмотры</span><b class="num">{{ $n($vk['views100'] ?? 0) }}</b></div>
-
-                <div class="rw"><span>клики</span><b class="num">{{ $n($vk['clicks'] ?? 0) }}</b></div>
+                <div class="rw"><span>клики</span><b class="num">{{ $n($vk['clicks'] ?? 0) }} <span class="muted">· {{ $per($vkSpent, (int) ($vk['clicks'] ?? 0)) }}</span></b></div>
+                @if($vkHasLeads)
+                    <div class="rw"><span>лиды с формы</span><b class="num">{{ $n($vk['goals'] ?? 0) }} <span class="muted">· {{ $per($vkSpent, (int) ($vk['goals'] ?? 0)) }}</span></b></div>
+                @endif
+                @if($vkClips)
+                    <div class="rw"><span>просмотры 3с</span><b class="num">{{ $n($vk['views3'] ?? 0) }} <span class="muted">· {{ $per($vkSpent, (int) ($vk['views3'] ?? 0)) }}</span></b></div>
+                    <div class="rw"><span>досмотры</span><b class="num">{{ $n($vk['views100'] ?? 0) }}</b></div>
+                @endif
+                @if($vkJoins)
+                    <div class="rw"><span>вступили в сообщество</span><b class="num">{{ $n($vk['joins'] ?? 0) }} <span class="muted">· {{ $per($vkSpent, (int) ($vk['joins'] ?? 0)) }}</span></b></div>
+                @endif
             </div>
-            {{-- вступления в сообщество — главный результат клипов, отдельно и заметно --}}
-            <div class="vk-joins">
-                <div><span class="vj-lbl">Вступили в сообщество</span><b class="num">{{ $n($vk['joins'] ?? 0) }}</b></div>
-                <div><span class="vj-lbl">цена вступления</span><b class="num">{{ $per($vk['spent'] ?? null, (int) ($vk['joins'] ?? 0)) }}</b></div>
+            {{-- главный результат рекламы VK — замеры (с 20.11.2026 кампания на лид-форму), отдельно и заметно --}}
+            <div class="vk-joins" title="{{ $useSheet ? 'по таблице замеров: «ВК» + «ВК Лид формы»' : 'по CRM — в таблице замеров за период пусто' }}">
+                <div><span class="vj-lbl">Замеры с ВК</span><b class="num">{{ $n($vkMeasures) }}</b></div>
+                <div><span class="vj-lbl">цена замера</span><b class="num">{{ $per($vkSpent, $vkMeasures) }}</b></div>
             </div>
         </div>
         <div class="card">
@@ -402,9 +436,12 @@
 
     @if(count($vkGroups) > 0)
         <div class="card tbl-card" id="clips">
-            <div class="tbl-head"><h2>VK Реклама — группы объявлений</h2><span class="note">в кампании «Клипы» группа — это клип · вступления — в сообщество ВК</span></div>
+            <div class="tbl-head"><h2>VK Реклама — группы объявлений</h2>@if($vkNote)<span class="note">{{ implode(' · ', $vkNote) }}</span>@endif</div>
             <div class="tbl-wrap"><table class="t">
-                <thead><tr><th>Группа</th><th class="num">Расход</th><th class="num">Показы</th><th class="num">Просмотры 3с</th><th class="num">Цена просм.</th><th class="num">Досмотры</th><th class="num vj-col">Вступления</th><th class="num vj-col">Цена вступления</th>@if($vkHasLeads)<th class="num">Лиды с формы</th>@endif</tr></thead>
+                <thead><tr><th>Группа</th><th class="num">Расход</th><th class="num">Показы</th><th class="num">Клики</th>
+                    @if($vkClips)<th class="num">Просмотры 3с</th><th class="num">Цена просм.</th><th class="num">Досмотры</th>@endif
+                    @if($vkJoins)<th class="num vj-col">Вступления</th><th class="num vj-col">Цена вступления</th>@endif
+                    @if($vkHasLeads)<th class="num vj-col">Лиды с формы</th><th class="num vj-col">Цена лида</th>@endif</tr></thead>
                 <tbody>
                 @foreach($vkGroups as $g)
                     <tr>
@@ -418,12 +455,20 @@
                         </td>
                         <td class="num">{{ $money($g['spent'] ?? 0) }}</td>
                         <td class="num">{{ $n($g['shows'] ?? 0) }}</td>
-                        <td class="num">{{ $n($g['views3'] ?? 0) }}</td>
-                        <td class="num">{{ $per($g['spent'] ?? null, (int) ($g['views3'] ?? 0)) }}</td>
-                        <td class="num">{{ $n($g['views100'] ?? 0) }}</td>
-                        <td class="num vj-col"><b>{{ $n($g['joins'] ?? 0) }}</b></td>
-                        <td class="num vj-col">{{ $per($g['spent'] ?? null, (int) ($g['joins'] ?? 0)) }}</td>
-                        @if($vkHasLeads)<td class="num">{{ $g['leadads'] ? $n($g['goals'] ?? 0) : '—' }}</td>@endif
+                        <td class="num">{{ $n($g['clicks'] ?? 0) }}</td>
+                        @if($vkClips)
+                            <td class="num">{{ $n($g['views3'] ?? 0) }}</td>
+                            <td class="num">{{ $per($g['spent'] ?? null, (int) ($g['views3'] ?? 0)) }}</td>
+                            <td class="num">{{ $n($g['views100'] ?? 0) }}</td>
+                        @endif
+                        @if($vkJoins)
+                            <td class="num vj-col"><b>{{ $n($g['joins'] ?? 0) }}</b></td>
+                            <td class="num vj-col">{{ $per($g['spent'] ?? null, (int) ($g['joins'] ?? 0)) }}</td>
+                        @endif
+                        @if($vkHasLeads)
+                            <td class="num vj-col">@if($g['leadads'])<b>{{ $n($g['goals'] ?? 0) }}</b>@else—@endif</td>
+                            <td class="num vj-col">{{ $g['leadads'] ? $per($g['spent'] ?? null, (int) ($g['goals'] ?? 0)) : '—' }}</td>
+                        @endif
                     </tr>
                 @endforeach
                 </tbody>

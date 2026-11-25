@@ -16,12 +16,15 @@ class MarketingStats
     /** Источник из таблицы замеров → группа каналов CRM (CeilingsKpi::GROUPS). */
     public static function sheetGroup(string $name): string
     {
-        return match (mb_strtolower(self::cleanName($name))) {
-            'директ' => 'direct',
-            'авито', 'авито частник' => 'avito',
-            'вк' => 'vk',
-            'радио' => 'radio',
-            'тв' => 'tv',
+        $low = mb_strtolower(self::cleanName($name));
+
+        return match (true) {
+            $low === 'директ' => 'direct',
+            in_array($low, ['авито', 'авито частник'], true) => 'avito',
+            // «ВК» и «ВК Лид формы» (кампания на лид-форму с 20.11.2026) — оба канала VK Рекламы
+            $low === 'вк' || str_starts_with($low, 'вк ') => 'vk',
+            $low === 'радио' => 'radio',
+            $low === 'тв' => 'tv',
             default => 'other',
         };
     }
@@ -33,7 +36,8 @@ class MarketingStats
 
     /**
      * Замеры по таблице за период [from, to): всего, по дням, по группам и источникам, прошлый период той же длины
-     * и сколько дней периода в таблице есть (листа за месяц может не быть).
+     * и сколько дней периода в таблице есть (листа за месяц может не быть). `unassigned` — замеры, что в «Сумме» дня
+     * есть, а по источникам ещё не расписаны (таблицу за день заполняют по ходу дня: 25.11.2026 «Сумма» 6, источник — у 1).
      */
     public static function measurements(Carbon $from, Carbon $to): array
     {
@@ -46,11 +50,13 @@ class MarketingStats
         $byDay = [];
         $byGroup = [];
         $bySource = [];
+        $unassigned = 0;
         foreach ($read($from, $to) as $r) {
             $m = json_decode((string) $r->metrics, true) ?: [];
             $day = substr((string) $r->day, 0, 10);
             $byDay[$day] = (int) round((float) ($m['total'] ?? 0));
             $total += $byDay[$day];
+            $dayAssigned = 0;
             foreach ((array) ($m['sources'] ?? []) as $name => $v) {
                 $v = (int) round((float) $v);
                 if ($v <= 0) {
@@ -60,7 +66,9 @@ class MarketingStats
                 $g = self::sheetGroup($clean);
                 $byGroup[$g] = ($byGroup[$g] ?? 0) + $v;
                 $bySource[$g][$clean] = ($bySource[$g][$clean] ?? 0) + $v;
+                $dayAssigned += $v;
             }
+            $unassigned += max(0, $byDay[$day] - $dayAssigned);
         }
         foreach ($bySource as &$list) {
             arsort($list);
@@ -80,6 +88,7 @@ class MarketingStats
             'by_day' => $byDay,
             'by_group' => $byGroup,
             'by_source' => $bySource,
+            'unassigned' => $unassigned,
             'days' => count($byDay),
             'period_days' => $periodDays,
             // сравнение честно только если прошлый период в таблице есть целиком (листа за месяц может не быть)

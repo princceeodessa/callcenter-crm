@@ -333,6 +333,54 @@ class OwnerMarketingTest extends TestCase
         $one->assertOk()->assertDontSee('По дням');
     }
 
+    /**
+     * 25.11.2026: в таблице замеров за день «Сумма» 6, а источник проставлен у одного — карточки источников не сходились
+     * с плиткой «Замеры». Остаток — карточкой «Источник не указан». Кампания VK — на лид-форму: в карточке VK
+     * замеры с ВК («ВК» + «ВК Лид формы») и цена замера, без нулевых просмотров клипов и вступлений.
+     */
+    public function test_unassigned_measures_and_vk_lead_campaign_card(): void
+    {
+        $day = fn (string $src, string $d, array $m) => DB::table('owner_marketing_daily')->insert(['source' => $src, 'day' => $d, 'metrics' => json_encode($m, JSON_UNESCAPED_UNICODE), 'created_at' => now(), 'updated_at' => now()]);
+        $day('sheet', '2026-10-08', ['total' => 10, 'sources' => ['Директ' => 4, 'ВК' => 1, 'ВК Лид формы' => 2, 'Офис' => 3], 'spend' => []]);
+        $day('sheet', '2026-10-09', ['total' => 6, 'sources' => ['Директ' => 1, 'ВК' => 0, 'ВК Лид формы' => 0], 'spend' => []]);
+        $day('vk', '2026-10-08', ['spent' => 1200, 'shows' => 9000, 'clicks' => 40, 'views3' => 0, 'views100' => 0, 'joins' => 0, 'goals' => 3,
+            'groups' => [77 => ['spent' => 1200, 'shows' => 9000, 'clicks' => 40, 'views3' => 0, 'views100' => 0, 'joins' => 0, 'goals' => 3]]]);
+        $day('vk', '2026-10-09', ['spent' => 600, 'shows' => 3000, 'clicks' => 17, 'views3' => 0, 'views100' => 0, 'joins' => 0, 'goals' => 0,
+            'groups' => [77 => ['spent' => 600, 'shows' => 3000, 'clicks' => 17, 'views3' => 0, 'views100' => 0, 'joins' => 0, 'goals' => 0]]]);
+        DB::table('owner_marketing_sources')->insert(['source' => 'vk', 'last_ok_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+            'meta' => json_encode(['groups' => [77 => ['name' => 'Потолки — лид-форма', 'status' => 'active', 'plan_status' => 'active', 'leadads' => true]]], JSON_UNESCAPED_UNICODE)]);
+
+        $m = MarketingStats::measurements(Carbon::parse('2026-10-08'), Carbon::parse('2026-10-10'));
+        $this->assertSame(16, $m['total']);
+        $this->assertSame(5, $m['unassigned']);                                   // 09.10: 6 в «Сумме», источник у 1
+        $this->assertSame(3, $m['by_group']['vk']);                               // «ВК Лид формы» — тоже VK
+        $this->assertSame(['ВК Лид формы' => 2, 'ВК' => 1], $m['by_source']['vk']);
+
+        $acc = Account::create(['name' => 'Потолки (тест VK)'])->id;
+        config(['owner.ceilings_account_id' => $acc]);
+        $owner = User::create(['account_id' => User::where('role', 'sneaker_head')->firstOrFail()->account_id, 'name' => 'Владелец (тест)',
+            'email' => 'owner_vk_'.uniqid(), 'password' => Hash::make('password'), 'role' => 'sneaker_owner', 'is_active' => true]);
+        $owner->forceFill(['all_businesses' => true])->save();
+        $res = $this->actingAs($owner)->get(route('owner.ceilings', ['period' => 'custom', 'from' => '2026-10-08', 'to' => '2026-10-09']))->assertOk();
+        $html = $res->getContent();
+        // карточки: Директ 5, ВК 3 (одна на «ВК» и лид-форму), Офис 3 и в конце «Источник не указан» 5 — в сумме 16, как плитка
+        $this->assertSame(4, substr_count($html, 'class="card src'));
+        $this->assertMatchesRegularExpression('~Источник не указан</div>\s*<div class="cnt num">5 <small>замеров</small>~u', $html);
+        $this->assertGreaterThan(strpos($html, '>Офис</div>'), strpos($html, 'Источник не указан'));
+        $res->assertSee('из них с лид-формы');
+        $this->assertDoesNotMatchRegularExpression('~<div class="nm">\s*ВК Лид формы~u', $html);
+        // карточка VK: замеры с ВК 3, цена замера 1 800 / 3 = 600 ₽, лиды с формы 3 · 600 ₽; клипов и вступлений нет
+        $this->assertMatchesRegularExpression('~Замеры с ВК</span><b class="num">3</b>~u', $html);
+        $this->assertMatchesRegularExpression('~цена замера</span><b class="num">600 ₽</b>~u', $html);
+        $res->assertSee('лиды с формы');
+        $res->assertDontSee('Вступили в сообщество');
+        $res->assertDontSee('вступили в сообщество');
+        $res->assertDontSee('просмотры 3с');
+        $res->assertDontSee('Просмотры 3с');
+        $res->assertSee('Цена лида');
+        $res->assertDontSee('заяв');
+    }
+
     public function test_avito_spend_falls_back_to_the_sheet_when_api_is_not_collected(): void
     {
         $this->fakeAll(avitoFails: true);
