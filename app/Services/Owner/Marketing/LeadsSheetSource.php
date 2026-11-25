@@ -3,13 +3,16 @@
 namespace App\Services\Owner\Marketing;
 
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use RuntimeException;
 
 /**
  * Google-таблица замеров БлагоДар: лист на месяц «ИЖ <Месяц> <Год>», строка на день:
- * дата | тип | Сумма | <Источник> | <Источник> затраты | <Источник> цена лида | … Открыта по ссылке, читаем gviz-CSV
- * по названию листа (как leads.py дашборда). Затраты в таблице вносят вручную; сводка берёт их, только когда API
- * площадки не собирается.
+ * дата | тип | Сумма | <Источник> | <Источник> затраты | <Источник> цена лида | … Открыта по ссылке. Читаем обычной
+ * выгрузкой CSV листа (export по gid; gid — по названию листа со страницы таблицы), запасной путь — gviz-CSV по названию.
+ * gviz подбирает тип колонки и молча теряет ячейки «чужого» типа: 25.11.2026 из строки дня пропали Авито 3, Повторный 1,
+ * «Повторник, пришедший с сайта» 1 (в таблице они были) — сводка показала 5 замеров «без источника».
+ * Затраты в таблице вносят вручную; сводка берёт их, только когда API площадки не собирается.
  */
 class LeadsSheetSource
 {
@@ -58,7 +61,69 @@ class LeadsSheetSource
 
     private function fetch(string $name): ?array
     {
-        $url = 'https://docs.google.com/spreadsheets/d/'.$this->cfg['id'].'/gviz/tq?'.http_build_query(['tqx' => 'out:csv', 'sheet' => $name]);
+        $base = 'https://docs.google.com/spreadsheets/d/'.$this->cfg['id'];
+        $gid = $this->gid($name);
+        if ($gid !== null) {
+            $rows = $this->csv($base.'/export?'.http_build_query(['format' => 'csv', 'gid' => $gid]));
+            if ($rows !== null) {
+                return $rows;
+            }
+        }
+
+        return $this->csv($base.'/gviz/tq?'.http_build_query(['tqx' => 'out:csv', 'sheet' => $name]));
+    }
+
+    /**
+     * gid листа по названию — со страницы таблицы (там перечислены все листы). Список кэшируется на 30 мин; листа нет
+     * (новый месяц ещё не завели) — страницу перечитываем не чаще раза в 10 мин.
+     */
+    private function gid(string $name): ?string
+    {
+        $key = 'owner:leads-sheet-gids:'.md5((string) $this->cfg['id']);
+        $map = Cache::get($key);
+        if (! is_array($map) || (! array_key_exists($name, $map) && ! Cache::has($key.':fresh'))) {
+            $loaded = $this->loadGids();
+            if ($loaded !== null) {
+                $map = $loaded;
+                Cache::put($key, $map, now()->addMinutes(30));
+                Cache::put($key.':fresh', 1, now()->addMinutes(10));
+            }
+        }
+
+        return is_array($map) ? ($map[$name] ?? null) : null;
+    }
+
+    /** @return array<string, string>|null название листа => gid */
+    private function loadGids(): ?array
+    {
+        try {
+            [$status, $html] = Http::request('GET', 'https://docs.google.com/spreadsheets/d/'.$this->cfg['id'].'/edit', ['User-Agent' => 'Mozilla/5.0'], null, 40);
+        } catch (\Throwable) {
+            return null;
+        }
+        if ($status !== 200) {
+            return null;
+        }
+
+        return self::parseGids($html);
+    }
+
+    /** Листы со страницы таблицы: в её данных они идут как [n,0,"gid",[{"1":[[0,0,"Название" (кавычки бывают экранированы). */
+    public static function parseGids(string $html): ?array
+    {
+        if (! preg_match_all('/\[\d+,0,\\\\?"(\d+)\\\\?",\[\{\\\\?"1\\\\?":\[\[0,0,\\\\?"([^"\\\\]+)\\\\?"/u', $html, $mm, PREG_SET_ORDER)) {
+            return null;
+        }
+        $map = [];
+        foreach ($mm as $m) {
+            $map[$m[2]] ??= $m[1];
+        }
+
+        return $map;
+    }
+
+    private function csv(string $url): ?array
+    {
         try {
             [$status, $text, $type] = Http::withRetry('GET', $url, ['User-Agent' => 'Mozilla/5.0'], null, 40);
         } catch (\Throwable) {

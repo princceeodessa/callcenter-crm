@@ -207,6 +207,39 @@ class OwnerMarketingTest extends TestCase
         $this->assertSame(['spent' => 10.5, 'shows' => 3, 'clicks' => 1, 'views3' => 4, 'views100' => 0, 'joins' => 1, 'goals' => 2], $vk);
     }
 
+    public function test_sheet_is_read_by_plain_csv_export_not_gviz(): void
+    {
+        // gviz подбирает тип колонки и теряет ячейки «чужого» типа (25.11.2026 из строки дня пропали Авито 3, Повторный 1,
+        // «Повторник» 1 — сводка показала 5 замеров «без источника»). Читаем обычный CSV листа по gid; gviz — запасной путь.
+        $gvizLost = str_replace('"08.10.26","Замер","9","4","4 000","1000","3"', '"08.10.26","Замер","9","4","4 000","1000",""', self::SHEET_CSV);
+        $this->assertNotSame(self::SHEET_CSV, $gvizLost);
+        $pageCalls = 0;
+        Http::$fake = function (string $method, string $url) use ($gvizLost, &$pageCalls) {
+            if (str_ends_with($url, '/spreadsheets/d/SHEET/edit')) {
+                $pageCalls++;
+
+                return [200, 'x="[0,0,\"1\",[{\"1\":[[0,0,\"ИЖ Сентябрь 2026\"]]}]],[1,0,\"777\",[{\"1\":[[0,0,\"ИЖ Октябрь 2026\"]]}]]"', 'text/html'];
+            }
+            if (str_contains($url, '/spreadsheets/d/SHEET/export?format=csv&gid=777')) {
+                return [200, self::SHEET_CSV, 'text/csv; charset=utf-8'];
+            }
+            if (str_contains($url, '/spreadsheets/d/SHEET/gviz/tq')) {
+                return str_contains(urldecode($url), 'ИЖ Октябрь 2026') ? [200, $gvizLost, 'text/csv; charset=utf-8'] : [404, 'not found', 'text/html'];
+            }
+
+            return [404, 'unexpected '.$url, 'text/html'];
+        };
+
+        $this->assertStringStartsWith('ok', (new MarketingCollector())->run(14, ['sheet'])['sheet']);
+        $m = json_decode((string) DB::table('owner_marketing_daily')->where('source', 'sheet')->where('day', '2026-10-08')->value('metrics'), true);
+        $this->assertEquals(3, $m['sources']['Авито']);
+        $this->assertSame(0, MarketingStats::measurements(Carbon::parse('2026-10-08'), Carbon::parse('2026-10-10'))['unassigned']);
+        $this->assertSame(1, $pageCalls);   // список листов — со страницы таблицы один раз, дальше из кэша
+
+        $this->assertSame(['ИЖ Сентябрь 2026' => '1', 'ИЖ Октябрь 2026' => '777'], LeadsSheetSource::parseGids('[0,0,"1",[{"1":[[0,0,"ИЖ Сентябрь 2026"]]}]],[1,0,"777",[{"1":[[0,0,"ИЖ Октябрь 2026"'));
+        $this->assertNull(LeadsSheetSource::parseGids('<html>нет листов</html>'));
+    }
+
     public function test_collector_stores_days_and_keeps_going_when_one_source_fails(): void
     {
         $this->fakeAll(avitoFails: true);
