@@ -171,6 +171,7 @@ Route::middleware('auth')->group(function () {
         // подарочные сертификаты (10.11.2026)
         Route::get('/certificates', [\App\Http\Controllers\GiftCertificateController::class, 'index'])->name('certificates.index');
         Route::post('/certificates/sell', [\App\Http\Controllers\GiftCertificateController::class, 'sell'])->name('certificates.sell');
+        Route::post('/certificates/cashout', [\App\Http\Controllers\GiftCertificateController::class, 'cashout'])->name('certificates.cashout');
         Route::post('/certificates/stock', [\App\Http\Controllers\GiftCertificateController::class, 'stock'])->name('certificates.stock');
         Route::post('/certificates/{sale}/cancel', [\App\Http\Controllers\GiftCertificateController::class, 'cancel'])->name('certificates.cancel');
         // «Расходы» (24.11.2026): траты магазина — вносят все роли кроссовок, руководство видит все

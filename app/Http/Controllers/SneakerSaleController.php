@@ -177,7 +177,8 @@ class SneakerSaleController extends Controller
             : ($item->sale_price !== null ? (float) $item->sale_price : null);
         $amount = $price !== null ? round($price * $qty, 2) : null;
 
-        // подарочный сертификат: сколько номиналов принесли; дороже — доплата деньгами, дешевле — остаток сгорает
+        // подарочный сертификат: сколько номиналов принесли; дороже — доплата деньгами; дешевле — сдача (как выдали,
+        // 26.11.2026) или, если способ сдачи не выбран, остаток сгорает. Выручка и маржа — от цены пары.
         $certValue = null;
         $payExtra = null;
         if (($data['payment'] ?? null) === 'certificate') {
@@ -190,6 +191,8 @@ class SneakerSaleController extends Controller
                 if (! $payExtra) {
                     return redirect()->route('sale.quick', ['item' => $item->id])->withInput()->withErrors(['pay_extra' => 'Сертификатов меньше суммы — выберите, как клиент доплатил.']);
                 }
+            } elseif ((float) $amount < $certValue - 0.009) {
+                $payExtra = $data['pay_extra'] ?? null;   // способ сдачи; пусто — остаток сгорает
             }
         }
 
@@ -287,6 +290,10 @@ class SneakerSaleController extends Controller
             'low' => $deal->warehouseItem && $deal->warehouseItem->available <= 0,
             'profit' => $seesCost ? $deal->sale_profit : null,
             'margin' => $seesCost ? $deal->sale_margin_percent : null,
+            // сертификат дороже пары — напомнить продавцу выдать сдачу
+            'change' => GiftCertificates::change($deal),
+            'change_how' => GiftCertificates::change($deal) > 0 ? GiftCertificates::changeWord($deal->pay_extra_method) : null,
+            'burned' => GiftCertificates::burned($deal),
         ];
     }
 }

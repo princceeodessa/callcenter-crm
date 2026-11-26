@@ -15,8 +15,8 @@ use Tests\TestCase;
 
 /**
  * Подарочные сертификаты кроссовок (10.11.2026): продажа сертификата — не выручка, остаток номинала уменьшается;
- * оплата пары сертификатом: дороже — доплата, дешевле — остаток сгорает; из 1С — сумма сертификата и строка самого
- * сертификата не становится парой.
+ * оплата пары сертификатом: дороже — доплата, дешевле — сдача (26.11.2026) или остаток сгорает; обналичивание
+ * сертификата; выручка и маржа — от цены пары; из 1С — сумма сертификата и строка самого сертификата не становится парой.
  */
 class GiftCertificatesTest extends TestCase
 {
@@ -86,6 +86,7 @@ class GiftCertificatesTest extends TestCase
 
     public function test_paying_for_a_pair_with_a_certificate(): void
     {
+        $s0 = GiftCertificates::summary($this->acc, now()->startOfDay(), now()->endOfDay());
         $page = $this->actingAs($this->op)->get(route('sale.quick'))->assertOk()->getContent();
         $this->assertStringContainsString('data-v="certificate"', $page);
         $this->assertStringContainsString('name="cert[10000]"', $page);
@@ -105,13 +106,28 @@ class GiftCertificatesTest extends TestCase
         $this->assertSame(13000.0, (float) $deal->amount, 'выручка — полная цена пары');
         $this->assertSame('Сертификат 10 000 ₽ + карта 3 000 ₽', GiftCertificates::dealLabel($deal));
 
-        // дешевле сертификата — доплаты нет, остаток сгорает
+        // дешевле сертификата — сдача клиенту (26.11.2026): выручка и маржа — от цены пары, сдача в них не входит
         $cheap = $this->grey(8000);
         $this->actingAs($this->op)->post(route('sale.quick.store'), ['warehouse_item_id' => $cheap->id, 'qty' => 1, 'price' => 8000, 'payment' => 'certificate', 'cert' => [10000 => 1], 'pay_extra' => 'cash'])
             ->assertRedirect();
         $d2 = Deal::where('warehouse_item_id', $cheap->id)->latest('id')->firstOrFail();
-        $this->assertNull($d2->pay_extra_method);
-        $this->assertSame('Сертификат 10 000 ₽ (сгорело 2 000 ₽)', GiftCertificates::dealLabel($d2));
+        $this->assertSame('cash', $d2->pay_extra_method);
+        $this->assertSame('Сертификат 10 000 ₽ · сдача наличными 2 000 ₽', GiftCertificates::dealLabel($d2));
+        $this->assertSame(8000.0, (float) $d2->amount);
+        $this->assertSame(3000.0, $d2->sale_profit, 'маржа — цена пары 8 000 − закуп 5 000');
+        $this->assertSame(2000.0, GiftCertificates::change($d2));
+        $this->assertSame(0.0, GiftCertificates::burned($d2));
+        $this->actingAs($this->op)->get(route('sale.quick', ['sold' => $d2->id]))->assertOk()
+            ->assertSee('Выдайте клиенту сдачу с сертификата: <b>2 000 ₽</b> наличными', false);
+
+        // способ сдачи не выбрали («Сгорает») — остаток сгорает
+        $burn = $this->grey(8000);
+        $this->actingAs($this->op)->post(route('sale.quick.store'), ['warehouse_item_id' => $burn->id, 'qty' => 1, 'price' => 8000, 'payment' => 'certificate', 'cert' => [10000 => 1], 'pay_extra' => ''])
+            ->assertRedirect();
+        $dBurn = Deal::where('warehouse_item_id', $burn->id)->latest('id')->firstOrFail();
+        $this->assertNull($dBurn->pay_extra_method);
+        $this->assertSame('Сертификат 10 000 ₽ (сгорело 2 000 ₽)', GiftCertificates::dealLabel($dBurn));
+        $this->assertSame(2000.0, GiftCertificates::burned($dBurn));
 
         $before = GiftCertificates::summary($this->acc, now()->startOfDay(), now()->endOfDay());
         GiftCertificateSale::create(['account_id' => $this->acc, 'nominal' => 10000, 'qty' => 3, 'amount' => 30000, 'payment_method' => 'cash', 'user_id' => $this->op->id, 'sold_at' => now()]);
@@ -119,13 +135,22 @@ class GiftCertificatesTest extends TestCase
         $this->assertSame(3, $sum['sold_qty'] - $before['sold_qty']);
         $this->assertSame(30000.0, $sum['sold_amount'] - $before['sold_amount']);
         $this->assertSame(30000.0, $sum['outstanding'] - $before['outstanding']);
-        $this->assertGreaterThanOrEqual(20000.0, $sum['redeemed']);
-        $this->assertGreaterThanOrEqual(2000.0, $sum['burned']);
+        // три пары за сертификаты: номиналы 30 000, выручка 13 000 + 8 000 + 8 000, маржа 8 000 + 3 000 + 3 000
+        $this->assertSame(3, $sum['redeemed_count'] - $s0['redeemed_count']);
+        $this->assertEqualsWithDelta(30000.0, $sum['redeemed'] - $s0['redeemed'], 0.001);
+        $this->assertEqualsWithDelta(29000.0, $sum['revenue'] - $s0['revenue'], 0.001);
+        $this->assertEqualsWithDelta(14000.0, $sum['profit'] - $s0['profit'], 0.001);
+        $this->assertEqualsWithDelta(2000.0, $sum['change'] - $s0['change'], 0.001);
+        $this->assertEqualsWithDelta(2000.0, $sum['burned'] - $s0['burned'], 0.001);
 
         // «Продажи за день»: сертификаты — отдельным блоком, у пары — как оплатили
         $day = $this->actingAs($this->head)->get(route('sale.day'))->assertOk()->getContent();
         $this->assertStringContainsString('Подарочные сертификаты', $day);
         $this->assertStringContainsString('Сертификат 10 000 ₽ + карта 3 000 ₽', $day);
+        $this->assertStringContainsString('сдача с сертификатов −', $day);
+        // руководителю на «Сертификатах» — выручка и маржа пар, оплаченных сертификатами; продавцу маржи нет
+        $this->actingAs($this->head)->get(route('certificates.index'))->assertOk()->assertSee('Пары за сертификаты за месяц');
+        $this->actingAs($this->op)->get(route('certificates.index'))->assertOk()->assertDontSee('Пары за сертификаты за месяц');
 
         // карточка сделки: сменить оплату на сертификат с доплатой переводом
         $d3 = $this->grey(15000);
@@ -135,6 +160,51 @@ class GiftCertificatesTest extends TestCase
         $this->assertSame('Сертификат 10 000 ₽ + перевод 5 000 ₽', GiftCertificates::dealLabel($deal3->fresh()));
         $this->actingAs($this->op)->post(route('deals.sale-flags', $deal3), ['payment' => 'cash'])->assertRedirect();
         $this->assertNull($deal3->fresh()->cert_value);
+    }
+
+    public function test_cashing_out_a_certificate(): void
+    {
+        // в транзакции теста: на руках у клиентов — только то, что продадим здесь
+        GiftCertificateSale::withoutGlobalScopes()->where('account_id', $this->acc)->delete();
+        Deal::withoutGlobalScopes()->where('account_id', $this->acc)->where('payment_method', 'certificate')->update(['payment_method' => 'cash']);
+        $deals = Deal::withoutGlobalScopes()->count();
+
+        // сертификаты клиентам не продавали — обналичить нечего
+        $this->actingAs($this->op)->post(route('certificates.cashout'), ['nominal' => 10000, 'qty' => 1, 'payment' => 'cash'])->assertSessionHasErrors('cashout');
+        $this->actingAs($this->op)->post(route('certificates.cashout'), ['nominal' => 10000, 'qty' => 1])->assertSessionHasErrors('payment');
+
+        $this->actingAs($this->op)->post(route('certificates.sell'), ['nominal' => 15000, 'qty' => 1, 'payment' => 'card'])->assertRedirect();
+        $this->assertSame(99, $this->stock(15000));
+        $this->assertSame(15000.0, GiftCertificates::outstanding($this->acc));
+        // два по 15 000 — больше, чем на руках
+        $this->actingAs($this->op)->post(route('certificates.cashout'), ['nominal' => 15000, 'qty' => 2, 'payment' => 'cash'])->assertSessionHasErrors('cashout');
+
+        $r = $this->actingAs($this->op)->post(route('certificates.cashout'), ['nominal' => 15000, 'qty' => 1, 'payment' => 'cash', 'client_name' => 'Олег']);
+        $row = GiftCertificateSale::withoutGlobalScopes()->where('account_id', $this->acc)->latest('id')->firstOrFail();
+        $r->assertRedirect(route('certificates.index', ['sold' => $row->id]));
+        $this->assertTrue($row->isCashout());
+        $this->assertSame(100, $this->stock(15000), 'сданный сертификат — снова в остатке');
+        $this->assertSame(0.0, GiftCertificates::outstanding($this->acc));
+        $this->assertSame($deals, Deal::withoutGlobalScopes()->count(), 'обналичивание — не продажа и не выручка');
+        $sum = GiftCertificates::summary($this->acc, now()->startOfDay(), now()->endOfDay());
+        $this->assertSame([15000.0, 1, 15000.0, 1], [$sum['sold_amount'], $sum['sold_qty'], $sum['cashed_amount'], $sum['cashed_qty']]);
+        // руководителю — уведомление со ссылкой на «Сертификаты»
+        $n = \App\Models\UserNotification::withoutGlobalScopes()->where('user_id', $this->head->id)->where('type', 'certificate_cashout')->where('source_id', $row->id)->firstOrFail();
+        $this->assertStringContainsString('выдано наличными 15 000 ₽ · Олег', $n->body);
+        $this->assertSame(route('certificates.index'), $n->payload['context_url']);
+
+        $page = $this->actingAs($this->op)->get(route('certificates.index', ['sold' => $row->id]))->assertOk()->getContent();
+        $this->assertStringContainsString('Обналичен сертификат 15 000 ₽ — выдано наличными 15 000 ₽', $page);
+        $this->assertStringContainsString('Обналичили', $page);
+        $this->assertStringContainsString('−15 000 ₽', $page);
+        $day = $this->actingAs($this->head)->get(route('sale.day'))->assertOk()->getContent();
+        $this->assertStringContainsString('обналичили 1 шт · −15 000 ₽', $day);
+
+        // ошибка — отмена: сертификат снова у клиента, из остатка уходит, уведомление убирается
+        $this->actingAs($this->op)->post(route('certificates.cancel', $row))->assertRedirect();
+        $this->assertSame(99, $this->stock(15000));
+        $this->assertSame(15000.0, GiftCertificates::outstanding($this->acc));
+        $this->assertFalse(\App\Models\UserNotification::withoutGlobalScopes()->where('type', 'certificate_cashout')->where('source_id', $row->id)->exists());
     }
 
     public function test_certificate_payment_and_certificate_rows_from_1c(): void

@@ -156,22 +156,33 @@
     @endif
 </div>
 
-@if($certSales->isNotEmpty())
+@php
+    // сертификаты за день: продажи (деньги в кассу) и обналичивания (из кассы) — не выручка; сдача с сертификатов — из кассы
+    $certSold = $certSales->reject->isCashout();
+    $certCashed = $certSales->filter->isCashout();
+    $certChange = $sales->sum(fn ($d) => \App\Support\Sales\GiftCertificates::change($d));
+@endphp
+@if($certSales->isNotEmpty() || $certChange > 0)
     <div class="ns-gap"></div>
     <div class="ns-panel" style="overflow:hidden">
-        <div class="ns-panel-pad" style="padding-bottom:6px"><div class="ns-sec-h">Подарочные сертификаты <span class="ns-tag">{{ (int) $certSales->sum('qty') }} шт · {{ $rub($certSales->sum('amount')) }}</span>
-            <span class="ns-sm ns-muted" style="font-weight:500">деньги в кассе, в выручку не входят — выручка, когда ими заплатят за пару</span></div></div>
+        <div class="ns-panel-pad" style="padding-bottom:6px"><div class="ns-sec-h">Подарочные сертификаты
+            @if($certSold->isNotEmpty())<span class="ns-tag">продано {{ (int) $certSold->sum('qty') }} шт · {{ $rub($certSold->sum('amount')) }}</span>@endif
+            @if($certCashed->isNotEmpty())<span class="ns-tag ns-bad">обналичили {{ (int) $certCashed->sum('qty') }} шт · −{{ $rub($certCashed->sum('amount')) }}</span>@endif
+            @if($certChange > 0)<span class="ns-tag ns-bad">сдача с сертификатов −{{ $rub($certChange) }}</span>@endif
+            <span class="ns-sm ns-muted" style="font-weight:500">в выручку не входят — выручка, когда сертификатом платят за пару (по цене пары)</span></div></div>
+        @if($certSales->isNotEmpty())
         <table class="ns-tbl"><tbody>
             @foreach($certSales as $cs)
                 <tr>
                     <td class="ns-muted" style="width:70px">{{ $cs->sold_at->format('H:i') }}</td>
-                    <td class="ns-tname">Сертификат {{ $rub($cs->nominal) }}{{ $cs->qty > 1 ? ' × '.$cs->qty : '' }}</td>
-                    <td class="ns-num"><b>{{ $rub($cs->amount) }}</b></td>
-                    <td class="ns-muted">{{ $pay[$cs->payment_method] ?? '—' }}</td>
+                    <td class="ns-tname">{{ $cs->isCashout() ? 'Обналичили сертификат' : 'Сертификат' }} {{ $rub($cs->nominal) }}{{ $cs->qty > 1 ? ' × '.$cs->qty : '' }}</td>
+                    <td class="ns-num"><b>{{ $cs->isCashout() ? '−' : '' }}{{ $rub($cs->amount) }}</b></td>
+                    <td class="ns-muted">{{ $cs->isCashout() ? 'выдали '.\App\Support\Sales\GiftCertificates::changeWord($cs->payment_method) : ($pay[$cs->payment_method] ?? '—') }}</td>
                     <td class="ns-muted">{{ $cs->user?->name ?? '—' }}</td>
                 </tr>
             @endforeach
         </tbody></table>
+        @endif
     </div>
 @endif
 

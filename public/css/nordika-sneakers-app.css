@@ -344,3 +344,9 @@ a.ns-kpi.ns-exp-owed:hover{border-color:var(--accent)}
 .ns-exp-tbl tfoot td{border-top:1px solid var(--line);font-weight:600}
 @media (max-width:900px){.ns-exp-row{grid-template-columns:1fr 1fr}.ns-exp-what{grid-column:1/-1}}
 @media (max-width:560px){.ns-exp-row,.ns-exp-row2{grid-template-columns:1fr}.ns-exp-paid{flex-direction:column;height:auto!important}}
+/* обналичивание сертификата (26.11.2026): раскрывается по заголовку, кнопка — не основная */
+.ns-cert-co{margin-bottom:6px}
+.ns-cert-co>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px}
+.ns-cert-co>summary::-webkit-details-marker{display:none}
+.ns-cert-co>summary::before{content:'▸';color:var(--muted);font-size:12px;transition:transform .15s}
+.ns-cert-co[open]>summary::before{transform:rotate(90deg)}

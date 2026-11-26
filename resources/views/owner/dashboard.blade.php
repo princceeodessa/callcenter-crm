@@ -137,13 +137,16 @@
     @endif
 
     {{-- Подарочные сертификаты (10.11.2026): деньги за проданные — не выручка; выручка, когда ими платят за пару --}}
-    @if(($certs['sold_qty'] ?? 0) > 0 || ($certs['redeemed_count'] ?? 0) > 0 || abs($certs['outstanding'] ?? 0) > 0)
-        <div class="sec" id="certs"><h2>Подарочные сертификаты</h2><span class="note">продажа сертификата не входит в выручку — выручка, когда им платят за пару</span></div>
+    {{-- 26.11.2026: сдача с сертификата и обналичивание — деньги из кассы, не выручка; пары за сертификаты — по цене пары, с маржой --}}
+    @if(($certs['sold_qty'] ?? 0) > 0 || ($certs['redeemed_count'] ?? 0) > 0 || ($certs['cashed_qty'] ?? 0) > 0 || abs($certs['outstanding'] ?? 0) > 0)
+        <div class="sec" id="certs"><h2>Подарочные сертификаты</h2><span class="note">продажа сертификата не входит в выручку — выручка, когда им платят за пару, по цене пары</span></div>
         <div class="kpis4">
             <div class="card mini"><div class="lbl">Продано за период</div><div class="val num">{{ $money($certs['sold_amount']) }} ₽</div><div class="lbl">{{ $certs['sold_qty'] }} шт</div></div>
-            <div class="card mini"><div class="lbl">Оплатили ими пары</div><div class="val num">{{ $money($certs['redeemed']) }} ₽</div><div class="lbl">{{ $certs['redeemed_count'] }} продаж</div></div>
-            <div class="card mini"><div class="lbl">Сгорело остатков</div><div class="val num">{{ $money($certs['burned']) }} ₽</div></div>
-            <div class="card mini"><div class="lbl">На руках у клиентов</div><div class="val num">{{ $money(max(0, $certs['outstanding'])) }} ₽</div><div class="lbl">проданы, не потрачены</div></div>
+            <div class="card mini"><div class="lbl">Пары за сертификаты</div><div class="val num">{{ $money($certs['revenue']) }} ₽</div>
+                <div class="lbl">{{ $certs['redeemed_count'] }} продаж · маржа {{ $money($certs['profit']) }} ₽@if($certs['revenue'] > 0 && $certs['no_cost'] === 0) · {{ number_format($certs['profit'] / $certs['revenue'] * 100, 1, ',', ' ') }}%@endif @if($certs['no_cost'] > 0) · без закупа {{ $certs['no_cost'] }}@endif</div></div>
+            <div class="card mini"><div class="lbl">Выдано деньгами</div><div class="val num">{{ $money($certs['change'] + $certs['cashed_amount']) }} ₽</div>
+                <div class="lbl">сдача {{ $money($certs['change']) }} ₽ · обналичили {{ $money($certs['cashed_amount']) }} ₽@if($certs['burned'] > 0) · сгорело {{ $money($certs['burned']) }} ₽@endif</div></div>
+            <div class="card mini"><div class="lbl">На руках у клиентов</div><div class="val num">{{ $money(max(0, $certs['outstanding'])) }} ₽</div><div class="lbl">проданы, не потрачены и не обналичены</div></div>
         </div>
     @endif
 

@@ -84,13 +84,14 @@
             @endforeach
           </select>
         </div>
-        {{-- подарочный сертификат: на какую сумму принесли (остаток сверх цены сгорает) и чем доплатили --}}
+        {{-- подарочный сертификат: на какую сумму принесли; пара дороже — чем доплатили, дешевле — как выдали сдачу
+             (пусто — остаток сгорел) --}}
         <div class="nd-field nd-cert-f" @if($deal->payment_method !== 'certificate') hidden @endif><label>Сертификатами, ₽</label>
           <input name="cert_value" type="number" min="0" step="100" value="{{ $deal->cert_value !== null ? (int) $deal->cert_value : '' }}" placeholder="{{ (int) $deal->amount }}">
         </div>
-        <div class="nd-field nd-cert-f" @if($deal->payment_method !== 'certificate') hidden @endif><label>Доплата</label>
-          <select name="pay_extra">
-            <option value="">— без доплаты —</option>
+        <div class="nd-field nd-cert-f" @if($deal->payment_method !== 'certificate') hidden @endif><label>Доплата или сдача</label>
+          <select name="pay_extra" title="Пара дороже сертификата — чем клиент доплатил; дешевле — как выдали сдачу">
+            <option value="">— нет (остаток сгорел) —</option>
             @foreach(\App\Support\Sales\GiftCertificates::moneyMethods() as $pv => $pl)
               <option value="{{ $pv }}" @selected($deal->pay_extra_method === $pv)>{{ $pl }}</option>
             @endforeach
