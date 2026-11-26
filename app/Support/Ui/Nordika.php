@@ -63,6 +63,7 @@ class Nordika
                 $desk ? ['chats.index', 'Чаты', 'chats', 'chats.*'] : null,
                 $desk || $role === 'measurer' ? ['calendar.index', 'Календарь', 'calendar', 'calendar.*'] : null,
                 $desk || $docs ? ['nonclosures.index', 'Документы', 'docs', 'nonclosures.*'] : null,
+                $desk || $docs ? ['contracts.index', 'Договоры 1С', 'contract', 'contracts.*'] : null,
                 in_array($role, ['admin', 'constructor'], true) ? ['ceiling-projects.index', 'Проектировка', 'project', 'ceiling-projects.*'] : null,
             ],
             'Система' => [
@@ -89,6 +90,7 @@ class Nordika
             'chats.*' => ['Чаты', ''],
             'calendar.*' => ['Календарь', '— замеры'],
             'nonclosures.*' => ['Документы', ''],
+            'contracts.*' => ['Договоры 1С', '— поиск во всех базах'],
             'ceiling-projects.*' => ['Проектировка', ''],
             'settings.integrations.*' => ['Интеграции', ''],
             'settings.imports.*' => ['Импорт Bitrix', ''],
@@ -261,6 +263,7 @@ class Nordika
         'chats' => '<path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>',
         'calendar' => '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
         'docs' => '<path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5"/>',
+        'contract' => '<path d="M13 3H6a2 2 0 00-2 2v14a2 2 0 002 2h5"/><path d="M13 3v5h5v3"/><circle cx="16.5" cy="16.5" r="3.5"/><path d="M19 19l2.5 2.5"/>',
         'project' => '<path d="M3 21v-5l11-11 5 5L8 21z"/><path d="M12 7l5 5"/>',
         'integrations' => '<path d="M12 2l3 5 5 .5-3.5 3.5 1 5L12 18l-5.5 3 1-5L4 12.5 9 12z"/>',
         'import' => '<path d="M12 3v12M7 10l5 5 5-5M4 21h16"/>',

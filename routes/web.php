@@ -307,6 +307,10 @@ Route::middleware('auth')->group(function () {
 
     // Non-closures table (admin + call-center)
     Route::middleware('nonclosure')->group(function () {
+        // «Договоры 1С» (26.11.2026): поиск договоров во всех базах 1С через CRM «БлагоДар», без сканов
+        Route::get('/contracts', [\App\Http\Controllers\ContractSearchController::class, 'index'])->name('contracts.index');
+        Route::post('/contracts/searches', [\App\Http\Controllers\ContractSearchController::class, 'start'])->middleware(\Illuminate\Routing\Middleware\ThrottleRequests::class.':20,1')->name('contracts.start');
+        Route::get('/contracts/searches/{id}', [\App\Http\Controllers\ContractSearchController::class, 'status'])->middleware(\Illuminate\Routing\Middleware\ThrottleRequests::class.':120,1')->name('contracts.status');
         Route::get('/nonclosures', [NonClosureController::class, 'index'])->name('nonclosures.index');
         Route::get('/nonclosures/sheets/{sheet}', [NonClosureController::class, 'showSheet'])->name('nonclosures.sheets.show');
         Route::post('/nonclosures/sheets/{sheet}/rows', [NonClosureController::class, 'storeRow'])->name('nonclosures.sheets.rows.store');

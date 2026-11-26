@@ -64,6 +64,10 @@
           <button type="button" class="nd-act" data-stage-id="{{ $ndMeasureStage->id }}">{!! $ndSvg(\App\Support\Ui\Nordika::ICONS['calendar']) !!}Записать на замер</button>
         @endif
         <a class="nd-act" href="#ndTasks">{!! $ndSvg(\App\Support\Ui\Nordika::ICONS['tasks']) !!}Дело</a>
+        {{-- договоры клиента во всех базах 1С (26.11.2026): телефон — после #, в адрес запроса и журналы сервера не попадает --}}
+        @if($ndPhone && empty($isSneakerSpace) && \App\Http\Controllers\ContractSearchController::allowed(auth()->user()))
+          <a class="nd-act" href="{{ route('contracts.index') }}#q={{ $ndTel }}" target="_blank" rel="noopener">{!! $ndSvg(\App\Support\Ui\Nordika::ICONS['contract']) !!}Договор в 1С</a>
+        @endif
         @if(!$deal->closed_at)
           <a class="nd-act" href="#ndClose" data-nd-close="lost">{!! $ndSvg('<path d="M18 6L6 18M6 6l12 12"/>') !!}Отказ</a>
         @endif
