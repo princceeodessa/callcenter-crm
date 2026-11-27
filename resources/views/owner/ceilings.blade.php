@@ -197,6 +197,7 @@
     <a href="#sources"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l9 5-9 5-9-5 9-5z"/><path d="M3 12l9 5 9-5M3 17l9 5 9-5"/></svg> Источники</a>
     <a href="#ads"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20M6 15h4"/></svg> Реклама</a>
     <a href="#profit"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg> Прибыль договоров</a>
+    <a href="#terminations"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M9.5 12.5l5 5M14.5 12.5l-5 5"/></svg> Расторжения</a>
     <a href="#months" data-months-open><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 9h18M8 2v4M16 2v4M7 14h4M7 18h7"/></svg> Отчёт по месяцам</a>
     <a href="#nonclosures"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h4"/></svg> Незаключённые</a>
     <a href="#headwork"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 01-2.2 2 19.8 19.8 0 01-8.6-3 19.5 19.5 0 01-6-6 19.8 19.8 0 01-3-8.6A2 2 0 014.1 2h3a2 2 0 012 1.7c.1.9.4 1.8.7 2.7a2 2 0 01-.5 2.1L8.1 9.9a16 16 0 006 6"/></svg> Главный по замерщикам</a>
@@ -484,6 +485,14 @@
         <div class="bd-lazy" data-lazy-src="{{ request()->fullUrlWithQuery(['part' => 'profit']) }}">
             <div class="sec" id="profit"><h2>Прибыль договоров</h2><span class="note">итоги CRM БлагоДар</span></div>
             <div class="card empty-card">Загружаю итоги из CRM БлагоДар…</div>
+        </div>
+    @endif
+    @if($terminations !== null)
+        @include('owner._terminations')
+    @else
+        <div class="bd-lazy" data-lazy-src="{{ request()->fullUrlWithQuery(['part' => 'terminations']) }}">
+            <div class="sec" id="terminations"><h2>Расторжения договоров</h2><span class="note">из 1С через CRM БлагоДар</span></div>
+            <div class="card empty-card">Загружаю расторжения из CRM БлагоДар…</div>
         </div>
     @endif
     @if($nonclosures !== null)

@@ -79,4 +79,11 @@ return [
         'url' => env('BLAGODAR_HEAD_WORK_URL'),
         'token' => env('BLAGODAR_HEAD_WORK_TOKEN'),
     ],
+
+    // Расторжения договоров (потолки) — из 1С через CRM БлагоДар (27.11.2026, решение владельца: только автоматически).
+    // Адрес — тот же, что у прибыли договоров; ключ свой, только в .env. Что просили у них — docs/agent/blagodar-contract-terminations.md.
+    'terminations' => [
+        'url' => env('BLAGODAR_TERMINATIONS_URL', env('BLAGODAR_PROFIT_URL')),
+        'token' => env('BLAGODAR_TERMINATIONS_TOKEN'),
+    ],
 ];

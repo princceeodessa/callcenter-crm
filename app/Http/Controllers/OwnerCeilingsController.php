@@ -6,6 +6,7 @@ use App\Http\Controllers\Concerns\OwnerPeriod;
 use App\Services\Owner\CeilingsKpi;
 use App\Services\Owner\ContractProfit;
 use App\Services\Owner\ContractProfitFill;
+use App\Services\Owner\ContractTerminations;
 use App\Services\Owner\HeadWork;
 use App\Services\Owner\Marketing\MarketingStats;
 use App\Services\Owner\NonClosureSummary;
@@ -46,6 +47,8 @@ class OwnerCeilingsController extends Controller
                 return view('owner._contract_profit', ['profit' => ContractProfitFill::apply(ContractProfit::forPeriod($from, $to), $from, $to), 'overhead' => self::overhead($from, $to)]);
             case 'nonclosures':
                 return view('owner._nonclosures', ['nonclosures' => NonClosureSummary::forPeriod($from, $to)]);
+            case 'terminations':
+                return view('owner._terminations', ['terminations' => ContractTerminations::forPeriod($from, $to)]);
             case 'headwork':
                 return view('owner._head_work', ['headwork' => HeadWork::forPeriod($from, $to)]);
             case 'blagodar':
@@ -55,6 +58,7 @@ class OwnerCeilingsController extends Controller
         $profit = ContractProfitFill::apply(ContractProfit::cached($from, $to), $from, $to);
         $nonclosures = NonClosureSummary::cached($from, $to);
         $headwork = HeadWork::cached($from, $to);
+        $terminations = ContractTerminations::cached($from, $to);
         $kpi = (new CeilingsKpi((int) config('owner.ceilings_account_id')))->compute($from, $to);
         $ads = MarketingStats::forPeriod($from, $to);
 
@@ -70,6 +74,8 @@ class OwnerCeilingsController extends Controller
             'headwork' => $headwork,
             // прибыль договоров — готовые итоги CRM БлагоДар (страница и так только владельца всех бизнесов)
             'profit' => $profit,
+            // расторжения договоров — из 1С через CRM БлагоДар (под прибылью договоров)
+            'terminations' => $terminations,
             'period' => $period,
             'periods' => self::PERIODS,
             'fromValue' => $from->format('Y-m-d'),
