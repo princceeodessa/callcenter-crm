@@ -17,13 +17,18 @@ use Illuminate\Support\Facades\Log;
  * → {updated:{onec}, stale:[...], period:{from,to}, totals:{contracts, amount, paid, refunded, kept, unmarked},
  *    by_measurer:[{measurer, contracts, amount}], items:[{base, label, number, contractDate, terminatedAt, dateKnown, amount,
  *    paid, refunded, reason, comment, measurer, url}], url}. Деньги — строки с точкой или null. 401 — нет ключа, 403 — выключено.
- * Что просили у CRM БлагоДар — docs/agent/blagodar-contract-terminations.md.
+ * Что просили у CRM БлагоДар — docs/agent/blagodar-contract-terminations.md, их ответ — …-answer.md (27.11.2026): paid/refunded/
+ * kept пока null (возвратов в выгрузке 1С нет) — на плитках «нет данных»; история только с 01.08.2026, у неё dateKnown:false
+ * (день последнего заказа), новые — день, когда CRM БлагоДар увидела договор отменённым целиком.
  */
 class ContractTerminations
 {
     private const DOWN = 'Расторжения договоров считает CRM БлагоДар по 1С';
 
     private const OFF = self::DOWN.' — здесь они появятся, когда будет подключена их выдача.';
+
+    /** С этого дня CRM БлагоДар везёт заказы из 1С (тот же срез, что у «Прибыли договоров»): раньше расторжений не видно. */
+    public const HISTORY_SINCE = '2026-08-01';
 
     /** Ответ без запроса в БлагоДар: из кэша (или «не настроено»); null — в кэше нет, нужен forPeriod(). */
     public static function cached(Carbon $from, Carbon $toExclusive): ?array
@@ -50,6 +55,9 @@ class ContractTerminations
 
         $cfg = (array) config('owner.terminations');
         $result = self::fetch(rtrim((string) $cfg['url'], '/'), (string) $cfg['token'], $from, $toExclusive->copy()->subDay());
+        if ($result['state'] === 'ok') {
+            $result['data']['before_history'] = $from->lt(Carbon::parse(self::HISTORY_SINCE));
+        }
         Cache::put($key, $result, $result['state'] === 'ok' ? 600 : 60);
 
         return $result;
@@ -108,7 +116,8 @@ class ContractTerminations
             'amount' => $money($i['amount'] ?? null),
             'paid' => $money($i['paid'] ?? null),
             'refunded' => $money($i['refunded'] ?? null),
-            'reason' => $str($i['reason'] ?? '', 120),
+            // как написано в 1С: в «Закиров новая» — «расторжение» со строчной
+            'reason' => ($r = $str($i['reason'] ?? '', 120)) === '' ? '' : mb_strtoupper(mb_substr($r, 0, 1)).mb_substr($r, 1),
             'comment' => $str($i['comment'] ?? '', 200),
             'measurer' => $str($i['measurer'] ?? '', 120),
             'url' => $link($i['url'] ?? null),

@@ -100,7 +100,8 @@ class OwnerTerminationsTest extends TestCase
             ->assertSee('href="https://blagodar.test/deals/abc"', false)->assertSee('№ 2296')->assertSee('Закирова 2026 · от 29.09.2026')
             ->assertSee('20.11.2026')->assertSee('переехали, ремонт отменили')
             ->assertSee('03.11.2026 <span class="muted" title="точного дня в 1С нет">≈</span>', false)
-            ->assertSee('href="https://blagodar.test/reports/terminations?from=2026-11-01&amp;to=2026-11-26"', false);
+            ->assertSee('href="https://blagodar.test/reports/terminations?from=2026-11-01&amp;to=2026-11-26"', false)
+            ->assertSee('<th class="num">Заплатили</th>', false)->assertDontSee('нет данных')->assertDontSee('расторжения видны с');
         $this->assertLessThan(strpos($html, '№ 1877'), strpos($html, '№ 2296'), 'свежие расторжения — первыми');
         $this->assertStringNotContainsString('secret-term-xyz', $html);
         $this->assertStringNotContainsString('заявк', mb_strtolower($html));
@@ -116,6 +117,33 @@ class OwnerTerminationsTest extends TestCase
         Http::$fake = fn () => [200, $this->answer(['totals' => ['contracts' => 0, 'amount' => '0.00', 'unmarked' => 1], 'by_measurer' => [], 'items' => []])];
         $this->part($owner)->assertSee('За выбранный период расторжений нет. Но 1 договор в 1С отменён целиком без причины «Расторжение».')
             ->assertDontSee('Вернули заказчикам');
+    }
+
+    /** Как отвечает CRM БлагоДар с 27.11.2026: возвратов в выгрузке 1С нет (null), история — «примерно», причина со строчной. */
+    public function test_answer_without_refunds(): void
+    {
+        $key = 'owner.terminations.2026-07-01.2026-10-31';
+        Cache::forget($key);
+        config(['owner.terminations' => ['url' => 'https://blagodar.test', 'token' => 't']]);
+        $item = ['base' => 'unf_10', 'label' => 'Закиров новая', 'number' => '2310', 'contractDate' => '2026-10-02', 'terminatedAt' => '2026-10-02', 'dateKnown' => false,
+            'amount' => '38000.00', 'paid' => null, 'refunded' => null, 'reason' => 'расторжение', 'comment' => str_repeat('высота 2,6 м ', 20), 'measurer' => 'Костюнин Федя',
+            'url' => 'https://blagodar.test/reports/contract-profit?from=2026-10-02&to=2026-10-02'];
+        Http::$fake = fn () => [200, $this->answer([
+            'stale' => ['Оплачено и возвращено заказчику пока не считаются: возвратов в выгрузке из 1С ещё нет'],
+            'totals' => ['contracts' => 1, 'amount' => '38000.00', 'paid' => null, 'refunded' => null, 'kept' => null, 'unmarked' => 12],
+            'by_measurer' => [['measurer' => 'Костюнин Федя', 'contracts' => 1, 'amount' => '38000.00']],
+            'items' => [$item], 'url' => null,
+        ])];
+        $res = $this->actingAs($this->owner())->get(route('owner.ceilings', ['period' => 'custom', 'from' => '2026-07-01', 'to' => '2026-10-31', 'part' => 'terminations']))->assertOk();
+        $html = $res->getContent();
+        $res->assertSee('38 000 ₽')->assertSee('нет данных')->assertSee('возвратов в выгрузке 1С пока нет')
+            ->assertSee('Оплачено и возвращено заказчику пока не считаются: возвратов в выгрузке из 1С ещё нет')
+            ->assertDontSee('Данные могут быть устаревшими')->assertDontSee('<th class="num">Заплатили</th>', false)
+            ->assertSee('<td class="wrap tm-reason">Расторжение', false)->assertSee('≈ — точного дня расторжения в 1С нет')
+            ->assertSee('расторжения видны с 01.08.2026')->assertDontSee('полный отчёт')
+            ->assertSee('Ещё 12 договоров в 1С отменены целиком');
+        $this->assertStringNotContainsString(str_repeat('высота 2,6 м ', 20), $html, 'длинный комментарий заказа — обрезан');
+        Cache::forget($key);
     }
 
     public function test_no_totals_means_words_not_zeros(): void

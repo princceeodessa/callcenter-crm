@@ -15,17 +15,18 @@
     $tmState = $terminations['state'] ?? 'off';
     $tm = $terminations['data'] ?? null;
     $tmT = $tm['totals'] ?? null;
+    // возвратов в выгрузке 1С пока нет (27.11.2026) — CRM БлагоДар отдаёт null: плитки словами, столбцы денег не рисуем
+    $tmPaidCols = $tm && collect($tm['items'])->contains(fn ($i) => $i['paid'] !== null || $i['refunded'] !== null);
+    $tmApprox = $tm && collect($tm['items'])->contains(fn ($i) => $i['terminated_at'] && ! $i['date_known']);
 @endphp
 <div class="sec" id="terminations"><h2>Расторжения договоров</h2>
     <span class="note">по дню расторжения · из 1С через CRM БлагоДар@if($tm && $tm['updated']) · 1С на {{ $tm['updated']->format($tm['updated']->isToday() ? 'H:i' : 'd.m H:i') }}@endif
+        @if($tm && ($tm['before_history'] ?? false)) · расторжения видны с {{ \Carbon\Carbon::parse(\App\Services\Owner\ContractTerminations::HISTORY_SINCE)->format('d.m.Y') }}@endif
         @if($tm && $tm['url']) · <a href="{{ $tm['url'] }}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">полный отчёт →</a>@endif</span>
 </div>
 @if($tmState !== 'ok')
     <div class="card empty-card {{ $tmState === 'error' ? 'bad' : '' }}">{{ $terminations['message'] }}</div>
 @else
-    @foreach($tm['stale'] as $warn)
-        <div class="card empty-card bad">Данные могут быть устаревшими: {{ $warn }}</div>
-    @endforeach
     @if($tmT['contracts'] === 0)
         <div class="card empty-card">За выбранный период расторжений нет.@if($tmT['unmarked'] > 0) Но {{ $n($tmT['unmarked']) }} {{ $plural($tmT['unmarked'], 'договор', 'договора', 'договоров') }} в 1С {{ $plural($tmT['unmarked'], 'отменён', 'отменены', 'отменены') }} целиком без причины «Расторжение».@endif</div>
     @else
@@ -42,15 +43,28 @@
             </div>
             <div class="card mini">
                 <div class="lbl">Вернули заказчикам</div>
-                <div class="val num">{{ $money($tmT['refunded']) }}</div>
-                <div class="sub">@if($tmT['paid'] !== null)заплатили по ним {{ $money($tmT['paid']) }}@else оплаты в 1С не видно@endif</div>
+                @if($tmT['refunded'] === null)
+                    <div class="val muted">нет данных</div>
+                    <div class="sub">возвратов в выгрузке 1С пока нет</div>
+                @else
+                    <div class="val num">{{ $money($tmT['refunded']) }}</div>
+                    <div class="sub">@if($tmT['paid'] !== null)заплатили по ним {{ $money($tmT['paid']) }}@else оплаты в 1С не видно@endif</div>
+                @endif
             </div>
             <div class="card mini">
                 <div class="lbl">Осталось у нас</div>
-                <div class="val num">{{ $money($tmT['kept']) }}</div>
-                <div class="sub">заплатили минус вернули</div>
+                @if($tmT['kept'] === null)
+                    <div class="val muted">нет данных</div>
+                    <div class="sub">посчитаем, когда будут возвраты</div>
+                @else
+                    <div class="val num">{{ $money($tmT['kept']) }}</div>
+                    <div class="sub">заплатили минус вернули</div>
+                @endif
             </div>
         </div>
+        @foreach($tm['stale'] as $warn)
+            <p class="foot-note tm-note">{{ $warn }}</p>
+        @endforeach
         @if($tmT['unmarked'] > 0)
             <p class="foot-note tm-note">Ещё {{ $n($tmT['unmarked']) }} {{ $plural($tmT['unmarked'], 'договор', 'договора', 'договоров') }} в 1С {{ $plural($tmT['unmarked'], 'отменён', 'отменены', 'отменены') }} целиком, но без причины «Расторжение» — в расторжения не {{ $plural($tmT['unmarked'], 'входит', 'входят', 'входят') }}.</p>
         @endif
@@ -71,7 +85,7 @@
             <div class="card tbl-card">
                 <div class="tbl-head"><h2>Договоры</h2><span class="note">свежие первыми</span></div>
                 <div class="tbl-wrap tbl-scroll"><table class="t">
-                    <thead><tr><th>Договор</th><th>Расторгнут</th><th class="num">Сумма</th><th class="num">Заплатили</th><th class="num">Вернули</th><th>Замерщик</th><th>Причина</th></tr></thead>
+                    <thead><tr><th>Договор</th><th>Расторгнут</th><th class="num">Сумма</th>@if($tmPaidCols)<th class="num">Заплатили</th><th class="num">Вернули</th>@endif<th>Замерщик</th><th>Причина</th></tr></thead>
                     <tbody>
                     @foreach($tm['items'] as $i)
                         <tr>
@@ -81,14 +95,19 @@
                             </td>
                             <td>@if($i['terminated_at']){{ $i['terminated_at']->format('d.m.Y') }}@if(! $i['date_known']) <span class="muted" title="точного дня в 1С нет">≈</span>@endif @else<span class="muted">—</span>@endif</td>
                             <td class="num">{{ $money($i['amount']) }}</td>
-                            <td class="num">{{ $money($i['paid']) }}</td>
-                            <td class="num">{{ $money($i['refunded']) }}</td>
+                            @if($tmPaidCols)
+                                <td class="num">{{ $money($i['paid']) }}</td>
+                                <td class="num">{{ $money($i['refunded']) }}</td>
+                            @endif
                             <td>{{ $i['measurer'] ?: '—' }}</td>
-                            <td>{{ $i['reason'] ?: '—' }}@if($i['comment'] !== '')<div class="muted tm-sub">{{ $i['comment'] }}</div>@endif</td>
+                            <td class="wrap tm-reason">{{ $i['reason'] ?: '—' }}@if($i['comment'] !== '')<div class="muted tm-sub" title="{{ $i['comment'] }}">{{ \Illuminate\Support\Str::limit($i['comment'], 110) }}</div>@endif</td>
                         </tr>
                     @endforeach
                     </tbody>
                 </table></div>
+                @if($tmApprox)
+                    <p class="foot-note tm-foot">≈ — точного дня расторжения в 1С нет: стоит день последнего заказа договора.</p>
+                @endif
             </div>
         </div>
     @endif

@@ -384,4 +384,7 @@ button.export{border:0;cursor:pointer;font-family:inherit}
 .tm-grid>.tbl-card:only-child{grid-column:1/-1}
 .tm-sub{font-size:12px;line-height:1.35;margin-top:2px}
 .tm-link{color:var(--accent);font-weight:700;text-decoration:none}
+.tm-foot{margin:10px 16px 14px}
+table.t td.tm-reason{min-width:140px;max-width:300px}
+.tm-kpis .val.muted{font-size:19px;font-weight:700;line-height:31px;letter-spacing:0}
 @media(max-width:1360px){.tm-grid{grid-template-columns:minmax(0,1fr)}}
