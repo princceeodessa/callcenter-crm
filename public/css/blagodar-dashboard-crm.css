@@ -387,6 +387,41 @@ button.export{border:0;cursor:pointer;font-family:inherit}
 .tm-foot{margin:10px 16px 14px}
 .tm-months{margin-bottom:16px}
 .tm-months table.t th:last-child{white-space:normal;min-width:120px}
+/* расторжения: месяц раскрывает свои договоры, «Подробно за год» (28.11.2026) */
+.tm-months .tbl-head .note{margin-right:auto}
+.tm-more{color:var(--accent);font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap}
+.tm-more:hover{text-decoration:underline}
+.tm-mt tr.tm-can{cursor:pointer}
+.tm-mt tr.tm-can:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.tm-chev{display:inline-block;width:7px;height:7px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(-45deg);margin:0 10px 2px 0;transition:transform .15s}
+.tm-mt tr.tm-open .tm-chev{transform:rotate(45deg)}
+.tm-mt tr.tm-open>td{background:var(--tile);font-weight:700}
+table.t.tm-mt tr.tm-mdet:hover{background:transparent}
+table.t.tm-mt tr.tm-mdet>td{padding:0;border-top:0;background:var(--tile)}
+.tm-det{padding:2px 14px 14px 30px}
+.tm-det .tbl-wrap{background:var(--card);border-radius:12px;border:1px solid var(--line)}
+.tm-det table.t tr:first-child th{border-top:0}
+.tm-period{display:inline-block;margin-top:9px;color:var(--accent);font-size:12.5px;font-weight:600;text-decoration:none}
+.tm-period:hover{text-decoration:underline}
+table.t tr.tm-total td{font-weight:700;background:var(--tile)}
+.tm-warn{color:#b26b00;font-weight:600}
+.tm-barh{width:22%}
+table.t td.tm-barc{min-width:90px;padding-left:4px}
+.tm-bar{display:block;height:8px;border-radius:4px;background:var(--neg);opacity:.75}
+table.t.tm-matrix th,table.t.tm-matrix td{padding-left:9px;padding-right:9px}
+table.t.tm-matrix th:first-child,table.t.tm-matrix td:first-child{padding-left:16px}
+table.t.tm-matrix td.tm-hit{font-weight:800;color:var(--neg)}
+table.t td a.tm-who{color:inherit;font-weight:600}
+.tm-split{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-bottom:26px;align-items:start}
+.tm-split>.tbl-card{margin-bottom:0}
+.tm-filters{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:0 20px 14px}
+.tm-filters select{padding:7px 10px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;font-size:13px;max-width:100%}
+.tm-filters select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.tm-reset{border:0;background:transparent;color:var(--accent);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+table.t.tm-list tr.tm-mhead td{background:var(--tile);padding-top:9px;padding-bottom:9px}
+table.t.tm-list tr.tm-mhead b{margin-right:8px;font-size:13.5px}
+@media(max-width:1180px){.tm-split{grid-template-columns:1fr}}
+@media(max-width:900px){.tm-det{padding:2px 8px 12px}}
 table.t td .tm-neg{color:var(--neg)}
 .tm-months tr.tm-cur td{background:var(--accent-soft)}
 table.t td.tm-reason{min-width:140px;max-width:300px}

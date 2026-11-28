@@ -598,6 +598,28 @@
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !m.hidden) close(); });
 })();
 (function () {
+    // «Расторжения» по месяцам: месяц раскрывает свои договоры; раскрытые переживают автообновление сводки и догрузку блока
+    var open = {};
+    function apply() {
+        document.querySelectorAll('[data-tm-toggle]').forEach(function (tr) {
+            var k = tr.dataset.tmToggle, on = !!open[k], det = document.querySelector('[data-tm-det="' + k + '"]');
+            tr.classList.toggle('tm-open', on);
+            tr.setAttribute('aria-expanded', on ? 'true' : 'false');
+            if (det) det.hidden = !on;
+        });
+    }
+    function toggle(tr) { open[tr.dataset.tmToggle] = !open[tr.dataset.tmToggle]; apply(); }
+    document.addEventListener('click', function (e) {
+        var tr = e.target.closest('[data-tm-toggle]');
+        if (tr && !e.target.closest('a')) toggle(tr);
+    });
+    document.addEventListener('keydown', function (e) {
+        var tr = e.target.closest && e.target.closest('[data-tm-toggle]');
+        if (tr && e.target === tr && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggle(tr); }
+    });
+    window.bdTmApply = apply;
+})();
+(function () {
     var busy = false;
     // блоки CRM БлагоДар, которых не было в кэше: страница уже открыта, они догружаются отдельным запросом
     function lazyBlocks() {
@@ -612,6 +634,7 @@
                     box.replaceWith(tpl.content);
                     window.bdCharts.draw();
                     window.bdSortable();
+                    window.bdTmApply();
                 })
                 .catch(function () { delete box.dataset.loading; box.querySelectorAll('.empty-card').forEach(function (e) { e.textContent = 'CRM БлагоДар пока не ответила — попробую при следующем обновлении страницы.'; }); });
         });
@@ -628,7 +651,7 @@
                 if (!html) return;
                 var doc = new DOMParser().parseFromString(html, 'text/html');
                 var fresh = doc.getElementById('dash'), cur = document.getElementById('dash');
-                if (fresh && cur) { cur.replaceWith(fresh); window.bdCharts.draw(); window.bdDateRange.init(); window.bdSortable(); lazyBlocks(); }
+                if (fresh && cur) { cur.replaceWith(fresh); window.bdCharts.draw(); window.bdDateRange.init(); window.bdSortable(); window.bdTmApply(); lazyBlocks(); }
                 var sub = doc.querySelector('.hsub'), curSub = document.querySelector('.hsub');
                 if (sub && curSub) curSub.textContent = sub.textContent;
             })

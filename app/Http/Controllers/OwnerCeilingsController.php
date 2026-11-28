@@ -41,6 +41,13 @@ class OwnerCeilingsController extends Controller
                 'periodLabel' => $from->format('d.m.Y').' — '.$to->copy()->subDay()->format('d.m.Y'),
             ]);
         }
+        // расторжения договоров за весь год подробно: месяцы, замерщики по месяцам, причины, базы, все договоры с фильтрами
+        if ($request->query('report') === 'terminations') {
+            return view('owner.terminations', [
+                'year' => ContractTerminations::year(),
+                'back' => route('owner.ceilings', $request->only(['period', 'from', 'to'])),
+            ]);
+        }
         // блоки CRM БлагоДар по одному (страница догружает их параллельно); blagodar — оба, для уже открытых страниц
         switch ($request->query('part')) {
             case 'profit':

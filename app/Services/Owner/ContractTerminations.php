@@ -18,8 +18,10 @@ use Illuminate\Support\Facades\Log;
  *    by_measurer:[{measurer, contracts, amount}], items:[{base, label, number, contractDate, terminatedAt, dateKnown, amount,
  *    paid, refunded, reason, comment, measurer, url}], url}. Деньги — строки с точкой или null. 401 — нет ключа, 403 — выключено.
  * Что просили у CRM БлагоДар — docs/agent/blagodar-contract-terminations.md, их ответ — …-answer.md (27.11.2026): paid/refunded/
- * kept пока null (возвратов в выгрузке 1С нет) — на плитках «нет данных»; история только с 01.08.2026, у неё dateKnown:false
- * (день последнего заказа), новые — день, когда CRM БлагоДар увидела договор отменённым целиком.
+ * kept пока null (возвратов в выгрузке 1С нет) — на плитках «нет данных». Второе задание — …-dates.md, ответ — …-dates-answer.md
+ * (28.11.2026): день расторжения — последняя отмена заказа договора по истории версий 1С (dateKnown:true), весь 2026 год,
+ * «Отказ» по подписанному договору — тоже расторжение (решение владельца), комментарий заказа не приходит (бывают адреса),
+ * url договора — «Договоры в 1С» CRM БлагоДар по номеру.
  */
 class ContractTerminations
 {
@@ -27,8 +29,16 @@ class ContractTerminations
 
     private const OFF = self::DOWN.' — здесь они появятся, когда будет подключена их выдача.';
 
-    /** С этого дня CRM БлагоДар везёт заказы из 1С (тот же срез, что у «Прибыли договоров»): раньше расторжений не видно. */
-    public const HISTORY_SINCE = '2026-08-01';
+    /** С этого дня CRM БлагоДар считает расторжения по дням отмены в 1С (срез «отмены договоров», 28.11.2026) — весь 2026 год. */
+    public const HISTORY_SINCE = '2026-01-01';
+
+    /**
+     * Пока у CRM БлагоДар не выкачено второе задание, их выдача видит только договоры с заказами с 01.08.2026 и датирует их
+     * последним заказом — узнаём по ссылке договора на «Прибыль договоров». Тогда месяцы — с 01.08, а не нули с января.
+     */
+    private const LEGACY_SINCE = '2026-08-01';
+
+    private const LEGACY_URL = '/reports/contract-profit';
 
     /** Ответ без запроса в БлагоДар: из кэша (или «не настроено»); null — в кэше нет, нужен forPeriod(). */
     public static function cached(Carbon $from, Carbon $toExclusive): ?array
@@ -55,9 +65,6 @@ class ContractTerminations
 
         $cfg = (array) config('owner.terminations');
         $result = self::fetch(rtrim((string) $cfg['url'], '/'), (string) $cfg['token'], $from, $toExclusive->copy()->subDay());
-        if ($result['state'] === 'ok') {
-            $result['data']['before_history'] = $from->lt(Carbon::parse(self::HISTORY_SINCE));
-        }
         Cache::put($key, $result, $result['state'] === 'ok' ? 600 : 60);
 
         return $result;
@@ -65,10 +72,12 @@ class ContractTerminations
 
     /**
      * По каждому месяцу с HISTORY_SINCE до текущего, новые сверху (28.11.2026, «надо отдельно по каждому месяцу») — от выбранного
-     * периода не зависит. Каждый месяц — свой запрос (CRM БлагоДар отвечает за ~60 мс) и свой кэш: так видно и «без причины»
-     * помесячно. $fetch=false — только из кэша; null — какого-то месяца в кэше нет (блок тогда догружается отдельно).
+     * периода не зависит. Каждый месяц — свой запрос (CRM БлагоДар отвечает за ~60 мс) и свой кэш: так видно и «по другой причине»
+     * помесячно, и договоры каждого месяца. $fetch=false — только из кэша; null — какого-то месяца в кэше нет (блок тогда
+     * догружается отдельно). Последний месяц списка — с него расторжения видны.
      *
-     * @return list<array{from: Carbon, to: Carbon, ok: bool, contracts: ?int, amount: ?float, unmarked: ?int, approx: bool}>|null
+     * @return list<array{key: string, from: Carbon, to: Carbon, ok: bool, contracts: ?int, amount: ?float, unmarked: ?int, refusals: int,
+     *     approx: bool, items: list<array>, stale: list<string>, updated: ?Carbon, message: ?string}>|null
      */
     public static function months(bool $fetch = true): ?array
     {
@@ -82,15 +91,60 @@ class ContractTerminations
             }
             $ok = $r['state'] === 'ok';
             $t = $ok ? $r['data']['totals'] : null;
+            $items = $ok ? $r['data']['items'] : [];
             $rows[] = [
-                'from' => $m->copy(), 'to' => $end, 'ok' => $ok,
+                'key' => $m->format('Y-m'), 'from' => $m->copy(), 'to' => $end, 'ok' => $ok,
                 'contracts' => $t['contracts'] ?? null, 'amount' => $t['amount'] ?? null, 'unmarked' => $t['unmarked'] ?? null,
-                // день расторжения примерный (история: месяц последнего заказа договора)
-                'approx' => $ok && collect($r['data']['items'])->contains(fn ($i) => ! $i['date_known']),
+                'refusals' => collect($items)->where('kind', 'Отказ')->count(),
+                // день расторжения примерный (в 1С нет версии заказа — день последнего заказа договора)
+                'approx' => collect($items)->contains(fn ($i) => ! $i['date_known']),
+                'items' => $items,
+                'stale' => $ok ? $r['data']['stale'] : [],
+                'updated' => $ok ? $r['data']['updated'] : null,
+                'message' => $ok ? null : $r['message'],
             ];
         }
+        $legacy = collect($rows)->flatMap(fn ($r) => $r['items'])->contains(fn ($i) => str_contains((string) $i['url'], self::LEGACY_URL));
 
-        return $rows;
+        return $legacy ? array_values(array_filter($rows, fn ($r) => $r['from']->gte(Carbon::parse(self::LEGACY_SINCE)))) : $rows;
+    }
+
+    /**
+     * Весь год для страницы «Расторжения подробно» (28.11.2026, «желательно с возможностью прям подробно показать»): месяцы,
+     * все договоры (у каждого — его месяц), итоги и разрезы по замерщикам (с месяцами), причинам и базам 1С. null — нет месяца в кэше.
+     */
+    public static function year(bool $fetch = true): ?array
+    {
+        $months = self::months($fetch);
+        if ($months === null) {
+            return null;
+        }
+        $ok = collect($months)->where('ok', true);
+        $items = $ok->flatMap(fn ($m) => array_map(fn ($i) => $i + ['month' => $m['key']], $m['items']))
+            ->sortByDesc(fn ($i) => $i['terminated_at']?->timestamp ?? 0)->values();
+        $group = fn (string $field) => $items->groupBy(fn ($i) => $i[$field] !== '' ? $i[$field] : '—')
+            ->map(fn ($g, $name) => ['name' => (string) $name, 'contracts' => $g->count(), 'amount' => (float) $g->sum('amount'), 'months' => $g->countBy('month')->all()])
+            ->sortByDesc(fn ($r) => [$r['contracts'], $r['amount']])->values()->all();
+        $days = $items->pluck('days')->filter(fn ($d) => $d !== null)->values();
+
+        return [
+            'months' => $months,
+            'since' => $months ? end($months)['from'] : Carbon::parse(self::HISTORY_SINCE),
+            'items' => $items->all(),
+            'totals' => [
+                'contracts' => (int) $ok->sum('contracts'), 'amount' => (float) $ok->sum('amount'), 'unmarked' => (int) $ok->sum('unmarked'),
+                'refusals' => $items->where('kind', 'Отказ')->count(),
+                // обычно через столько дней после договора его расторгают (медиана)
+                'days' => $days->isEmpty() ? null : (int) round($days->median()),
+            ],
+            'by_measurer' => $group('measurer'),
+            'by_kind' => $group('kind'),
+            'by_base' => $group('label'),
+            'failed' => collect($months)->where('ok', false)->count(),
+            'message' => collect($months)->firstWhere('ok', false)['message'] ?? null,
+            'stale' => $ok->flatMap(fn ($m) => $m['stale'])->unique()->values()->all(),
+            'updated' => $ok->pluck('updated')->filter()->sortByDesc(fn ($d) => $d->timestamp)->first(),
+        ];
     }
 
     private static function configured(): bool
@@ -137,21 +191,31 @@ class ContractTerminations
         };
         $link = fn ($v) => is_string($v) && str_starts_with($v, 'https://') ? $v : null;
 
-        $items = collect($data['items'])->filter(fn ($i) => is_array($i))->map(fn (array $i) => [
-            'label' => $str($i['label'] ?? '') ?: $str($i['base'] ?? '', 40),
-            'number' => $str($i['number'] ?? '', 40),
-            'contract_date' => $day($i['contractDate'] ?? null),
-            'terminated_at' => $day($i['terminatedAt'] ?? null),
-            'date_known' => (bool) ($i['dateKnown'] ?? true),
-            'amount' => $money($i['amount'] ?? null),
-            'paid' => $money($i['paid'] ?? null),
-            'refunded' => $money($i['refunded'] ?? null),
+        $items = collect($data['items'])->filter(fn ($i) => is_array($i))->map(function (array $i) use ($str, $day, $money, $link) {
+            $signed = $day($i['contractDate'] ?? null);
+            $at = $day($i['terminatedAt'] ?? null);
             // как написано в 1С: в «Закиров новая» — «расторжение» со строчной
-            'reason' => ($r = $str($i['reason'] ?? '', 120)) === '' ? '' : mb_strtoupper(mb_substr($r, 0, 1)).mb_substr($r, 1),
-            'comment' => $str($i['comment'] ?? '', 200),
-            'measurer' => $str($i['measurer'] ?? '', 120),
-            'url' => $link($i['url'] ?? null),
-        ])
+            $reason = ($r = $str($i['reason'] ?? '', 120)) === '' ? '' : mb_strtoupper(mb_substr($r, 0, 1)).mb_substr($r, 1);
+
+            // комментарий заказа не показываем (в нём бывают адреса) — CRM БлагоДар с 28.11.2026 его и не отдаёт
+            return [
+                'label' => $str($i['label'] ?? '') ?: $str($i['base'] ?? '', 40),
+                'number' => $str($i['number'] ?? '', 40),
+                'contract_date' => $signed,
+                'terminated_at' => $at,
+                'date_known' => (bool) ($i['dateKnown'] ?? true),
+                // через сколько дней после договора расторгли
+                'days' => $signed && $at && $at->gte($signed) ? (int) $signed->diffInDays($at) : null,
+                'amount' => $money($i['amount'] ?? null),
+                'paid' => $money($i['paid'] ?? null),
+                'refunded' => $money($i['refunded'] ?? null),
+                'reason' => $reason,
+                // «Отказ» по подписанному договору — тоже расторжение (владелец 28.11.2026); остальное — «Расторжение»
+                'kind' => preg_match('/отказ/iu', $reason) ? 'Отказ' : 'Расторжение',
+                'measurer' => $str($i['measurer'] ?? '', 120),
+                'url' => $link($i['url'] ?? null),
+            ];
+        })
             // свежие расторжения первыми; без дня — в конце
             ->sortByDesc(fn ($i) => $i['terminated_at']?->timestamp ?? 0)->values()->all();
 

@@ -1,6 +1,8 @@
 {{--
     «Расторжения договоров» (потолки) — готовые итоги CRM БлагоДар по 1С (App\Services\Owner\ContractTerminations), только на
-    странице владельца. Расторгнутый — все заказы договора в 1С «Отменен» с причиной «Расторжение». Нет итогов — слова, а не нули.
+    странице владельца. Расторгнутый — все заказы договора в 1С «Отменен» с причиной «Расторжение» или «Отказ» (владелец 28.11.2026),
+    день — последняя отмена заказа по истории версий 1С. Нет итогов — слова, а не нули.
+    Сверху — каждый месяц года (месяц раскрывает свои договоры), ниже — выбранный период; «Подробно» — страница за весь год.
     Рисуется внутри owner/ceilings или отдельно (?part=terminations) — тогда помощники форматирования свои.
 --}}
 @php
@@ -18,43 +20,76 @@
     // возвратов в выгрузке 1С пока нет (27.11.2026) — CRM БлагоДар отдаёт null: плитки словами, столбцы денег не рисуем
     $tmPaidCols = $tm && collect($tm['items'])->contains(fn ($i) => $i['paid'] !== null || $i['refunded'] !== null);
     $tmApprox = $tm && collect($tm['items'])->contains(fn ($i) => $i['terminated_at'] && ! $i['date_known']);
+    $tmMonths = $terminationMonths ?? [];
+    // с этого месяца расторжения видны: весь 2026 год (пока CRM БлагоДар не выкатила дни отмены из 1С — с 01.08.2026)
+    $tmSince = $tmMonths ? end($tmMonths)['from'] : \Carbon\Carbon::parse(\App\Services\Owner\ContractTerminations::HISTORY_SINCE);
+    $tmPartial = $tmSince->gt(\Carbon\Carbon::parse(\App\Services\Owner\ContractTerminations::HISTORY_SINCE));
+    $tmOk = collect($tmMonths)->where('ok', true);
+    $tmSum = ['contracts' => $tmOk->sum('contracts'), 'amount' => $tmOk->sum('amount'), 'unmarked' => $tmOk->sum('unmarked'), 'refusals' => $tmOk->sum('refusals')];
+    $tmReport = route('owner.ceilings', ['report' => 'terminations'] + request()->only(['period', 'from', 'to']));
+    $tmHead = '<thead><tr><th>Договор</th><th>Договор от</th><th>Расторгнут</th><th class="num" title="сколько дней прошло от договора до расторжения">Через</th><th class="num">Сумма</th>'
+        .($tmPaidCols ? '<th class="num">Заплатили</th><th class="num">Вернули</th>' : '').'<th>Замерщик</th><th>Причина в 1С</th></tr></thead>';
 @endphp
 <div class="sec" id="terminations"><h2>Расторжения договоров</h2>
-    <span class="note">по дню расторжения · из 1С через CRM БлагоДар@if($tm && $tm['updated']) · 1С на {{ $tm['updated']->format($tm['updated']->isToday() ? 'H:i' : 'd.m H:i') }}@endif
-        @if($tm && ($tm['before_history'] ?? false)) · расторжения видны с {{ \Carbon\Carbon::parse(\App\Services\Owner\ContractTerminations::HISTORY_SINCE)->format('d.m.Y') }}@endif
+    <span class="note">по дню отмены в 1С · из 1С через CRM БлагоДар@if($tm && $tm['updated']) · 1С на {{ $tm['updated']->format($tm['updated']->isToday() ? 'H:i' : 'd.m H:i') }}@endif
+        @if($tm && ($fromValue ?? '') !== '' && $fromValue < $tmSince->toDateString()) · расторжения видны с {{ $tmSince->format('d.m.Y') }}@endif
         @if($tm && $tm['url']) · <a href="{{ $tm['url'] }}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">полный отчёт →</a>@endif</span>
 </div>
 @if($tmState !== 'ok')
     <div class="card empty-card {{ $tmState === 'error' ? 'bad' : '' }}">{{ $terminations['message'] }}</div>
 @else
-    @if(! empty($terminationMonths))
-        {{-- по каждому месяцу с 01.08.2026 — от выбранного периода не зависит; месяц — ссылка на период этого месяца --}}
+    @if($tmMonths)
+        {{-- каждый месяц года — от выбранного периода не зависит; месяц раскрывает свои договоры прямо здесь --}}
         <div class="card tbl-card tm-months">
-            <div class="tbl-head"><h2>По месяцам</h2><span class="note">по дню расторжения · нажмите месяц — ниже будут его договоры</span></div>
-            <div class="tbl-wrap"><table class="t">
-                <thead><tr><th>Месяц</th><th class="num">Расторгнуто</th><th class="num">На сумму</th><th class="num">Отменены без причины «Расторжение»</th></tr></thead>
+            <div class="tbl-head"><h2>По месяцам</h2><span class="note">нажмите месяц — откроются его договоры</span>
+                <a class="tm-more" href="{{ $tmReport }}">Подробно за год →</a></div>
+            <div class="tbl-wrap"><table class="t tm-mt">
+                <thead><tr><th>Месяц</th><th class="num">Расторгнуто</th><th class="num">из них «Отказ»</th><th class="num">На сумму</th>
+                    <th class="num" title="отменены в 1С целиком, но причина не «Расторжение» и не «Отказ» — в расторжения не входят">Отменены по другой причине</th></tr></thead>
                 <tbody>
-                @foreach($terminationMonths as $m)
-                    <tr @class(['tm-cur' => ($fromValue ?? null) === $m['from']->toDateString() && ($toValue ?? null) === $m['to']->copy()->subDay()->toDateString()])>
-                        <td><a href="{{ route('owner.ceilings', ['period' => 'custom', 'from' => $m['from']->toDateString(), 'to' => $m['to']->copy()->subDay()->toDateString()]) }}#terminations">{{ \Illuminate\Support\Str::ucfirst($m['from']->translatedFormat('F Y')) }}</a></td>
+                @foreach($tmMonths as $m)
+                    @php $tmCan = $m['ok'] && count($m['items']) > 0; @endphp
+                    <tr @class(['tm-mrow', 'tm-can' => $tmCan, 'tm-cur' => ($fromValue ?? null) === $m['from']->toDateString() && ($toValue ?? null) === $m['to']->copy()->subDay()->toDateString()])
+                        @if($tmCan) data-tm-toggle="{{ $m['key'] }}" tabindex="0" role="button" aria-expanded="false" @endif>
+                        <td>@if($tmCan)<span class="tm-chev" aria-hidden="true"></span>@endif{{ \Illuminate\Support\Str::ucfirst($m['from']->translatedFormat('F Y')) }}</td>
                         @if($m['ok'])
-                            <td class="num"><b class="{{ $m['contracts'] > 0 ? 'tm-neg' : 'muted' }}">{{ $n($m['contracts']) }}</b>@if($m['approx']) <span class="muted" title="точного дня расторжения нет — месяц последнего заказа договора">≈</span>@endif</td>
+                            <td class="num"><b class="{{ $m['contracts'] > 0 ? 'tm-neg' : 'muted' }}">{{ $n($m['contracts']) }}</b>@if($m['approx']) <span class="muted" title="у части договоров точного дня отмены нет — день последнего заказа">≈</span>@endif</td>
+                            <td class="num">{{ $m['refusals'] > 0 ? $n($m['refusals']) : '—' }}</td>
                             <td class="num">{{ $m['contracts'] > 0 ? $money($m['amount']) : '—' }}</td>
                             <td class="num">{{ $m['unmarked'] > 0 ? $n($m['unmarked']) : '—' }}</td>
                         @else
-                            <td class="num muted" colspan="3">данные не пришли</td>
+                            <td class="num muted" colspan="4">данные не пришли</td>
                         @endif
                     </tr>
+                    @if($tmCan)
+                        <tr class="tm-mdet" data-tm-det="{{ $m['key'] }}" hidden><td colspan="5"><div class="tm-det">
+                            <div class="tbl-wrap"><table class="t tm-dt">{!! $tmHead !!}<tbody>
+                                @foreach($m['items'] as $i)
+                                    @include('owner._tm_contract')
+                                @endforeach
+                            </tbody></table></div>
+                            <a class="tm-period" href="{{ route('owner.ceilings', ['period' => 'custom', 'from' => $m['from']->toDateString(), 'to' => $m['to']->copy()->subDay()->toDateString()]) }}#terminations">сводка за этот месяц →</a>
+                        </div></td></tr>
+                    @endif
                 @endforeach
                 </tbody>
+                <tfoot><tr class="tm-total">
+                    <td>{{ $tmSince->month === 1 && $tmSince->year === now()->year ? 'Итого за '.$tmSince->year : 'Итого с '.$tmSince->format('d.m.Y') }}</td>
+                    <td class="num"><b class="{{ $tmSum['contracts'] > 0 ? 'tm-neg' : '' }}">{{ $n($tmSum['contracts']) }}</b></td>
+                    <td class="num">{{ $tmSum['refusals'] > 0 ? $n($tmSum['refusals']) : '—' }}</td>
+                    <td class="num">{{ $tmSum['contracts'] > 0 ? $money($tmSum['amount']) : '—' }}</td>
+                    <td class="num">{{ $tmSum['unmarked'] > 0 ? $n($tmSum['unmarked']) : '—' }}</td>
+                </tr></tfoot>
             </table></div>
-            @if(collect($terminationMonths)->contains('approx', true))
-                <p class="foot-note tm-foot">≈ — точного дня расторжения пока нет: договор стоит в месяце своего последнего заказа. Видны договоры с заказами с {{ \Carbon\Carbon::parse(\App\Services\Owner\ContractTerminations::HISTORY_SINCE)->format('d.m.Y') }}.</p>
+            @if($tmPartial)
+                <p class="foot-note tm-foot">CRM БлагоДар пока отдаёт расторжения только по договорам с заказами с {{ $tmSince->format('d.m.Y') }} и с примерным днём (≈ — день последнего заказа договора). Весь год с настоящими днями отмены появится здесь сам, когда они обновятся.</p>
+            @elseif($tmOk->contains('approx', true))
+                <p class="foot-note tm-foot">≈ — у части договоров точного дня отмены в 1С нет: стоит день последнего заказа договора.</p>
             @endif
         </div>
     @endif
     @if($tmT['contracts'] === 0)
-        <div class="card empty-card">За выбранный период расторжений нет.@if($tmT['unmarked'] > 0) Но {{ $n($tmT['unmarked']) }} {{ $plural($tmT['unmarked'], 'договор', 'договора', 'договоров') }} в 1С {{ $plural($tmT['unmarked'], 'отменён', 'отменены', 'отменены') }} целиком без причины «Расторжение».@endif</div>
+        <div class="card empty-card">За выбранный период расторжений нет.@if($tmT['unmarked'] > 0) Но {{ $n($tmT['unmarked']) }} {{ $plural($tmT['unmarked'], 'договор', 'договора', 'договоров') }} в 1С {{ $plural($tmT['unmarked'], 'отменён', 'отменены', 'отменены') }} целиком по другой причине.@endif</div>
     @else
         <div class="kpis4 tm-kpis">
             <div class="card mini">
@@ -92,7 +127,7 @@
             <p class="foot-note tm-note">{{ $warn }}</p>
         @endforeach
         @if($tmT['unmarked'] > 0)
-            <p class="foot-note tm-note">Ещё {{ $n($tmT['unmarked']) }} {{ $plural($tmT['unmarked'], 'договор', 'договора', 'договоров') }} в 1С {{ $plural($tmT['unmarked'], 'отменён', 'отменены', 'отменены') }} целиком, но без причины «Расторжение» — в расторжения не {{ $plural($tmT['unmarked'], 'входит', 'входят', 'входят') }}.</p>
+            <p class="foot-note tm-note">Ещё {{ $n($tmT['unmarked']) }} {{ $plural($tmT['unmarked'], 'договор', 'договора', 'договоров') }} в 1С {{ $plural($tmT['unmarked'], 'отменён', 'отменены', 'отменены') }} целиком по другой причине (не «Расторжение» и не «Отказ») — в расторжения не {{ $plural($tmT['unmarked'], 'входит', 'входят', 'входят') }}.</p>
         @endif
         <div class="tm-grid">
             @if($tm['by_measurer'])
@@ -110,29 +145,15 @@
             @endif
             <div class="card tbl-card">
                 <div class="tbl-head"><h2>Договоры</h2><span class="note">свежие первыми</span></div>
-                <div class="tbl-wrap tbl-scroll"><table class="t">
-                    <thead><tr><th>Договор</th><th>Расторгнут</th><th class="num">Сумма</th>@if($tmPaidCols)<th class="num">Заплатили</th><th class="num">Вернули</th>@endif<th>Замерщик</th><th>Причина</th></tr></thead>
+                <div class="tbl-wrap tbl-scroll"><table class="t">{!! $tmHead !!}
                     <tbody>
                     @foreach($tm['items'] as $i)
-                        <tr>
-                            <td>
-                                @if($i['url'])<a href="{{ $i['url'] }}" target="_blank" rel="noopener" class="tm-link">№ {{ $i['number'] ?: '—' }}</a>@else<b>№ {{ $i['number'] ?: '—' }}</b>@endif
-                                <div class="muted tm-sub">{{ $i['label'] }}@if($i['contract_date']) · от {{ $i['contract_date']->format('d.m.Y') }}@endif</div>
-                            </td>
-                            <td>@if($i['terminated_at']){{ $i['terminated_at']->format('d.m.Y') }}@if(! $i['date_known']) <span class="muted" title="точного дня в 1С нет">≈</span>@endif @else<span class="muted">—</span>@endif</td>
-                            <td class="num">{{ $money($i['amount']) }}</td>
-                            @if($tmPaidCols)
-                                <td class="num">{{ $money($i['paid']) }}</td>
-                                <td class="num">{{ $money($i['refunded']) }}</td>
-                            @endif
-                            <td>{{ $i['measurer'] ?: '—' }}</td>
-                            <td class="wrap tm-reason">{{ $i['reason'] ?: '—' }}@if($i['comment'] !== '')<div class="muted tm-sub" title="{{ $i['comment'] }}">{{ \Illuminate\Support\Str::limit($i['comment'], 110) }}</div>@endif</td>
-                        </tr>
+                        @include('owner._tm_contract')
                     @endforeach
                     </tbody>
                 </table></div>
                 @if($tmApprox)
-                    <p class="foot-note tm-foot">≈ — точного дня расторжения в 1С нет: стоит день последнего заказа договора.</p>
+                    <p class="foot-note tm-foot">≈ — точного дня отмены в 1С нет: стоит день последнего заказа договора.</p>
                 @endif
             </div>
         </div>
