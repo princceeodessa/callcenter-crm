@@ -194,6 +194,7 @@ class ContractTerminations
         $items = collect($data['items'])->filter(fn ($i) => is_array($i))->map(function (array $i) use ($str, $day, $money, $link) {
             $signed = $day($i['contractDate'] ?? null);
             $at = $day($i['terminatedAt'] ?? null);
+            $known = (bool) ($i['dateKnown'] ?? true);
             // как написано в 1С: в «Закиров новая» — «расторжение» со строчной
             $reason = ($r = $str($i['reason'] ?? '', 120)) === '' ? '' : mb_strtoupper(mb_substr($r, 0, 1)).mb_substr($r, 1);
 
@@ -203,9 +204,9 @@ class ContractTerminations
                 'number' => $str($i['number'] ?? '', 40),
                 'contract_date' => $signed,
                 'terminated_at' => $at,
-                'date_known' => (bool) ($i['dateKnown'] ?? true),
-                // через сколько дней после договора расторгли
-                'days' => $signed && $at && $at->gte($signed) ? (int) $signed->diffInDays($at) : null,
+                'date_known' => $known,
+                // через сколько дней после договора расторгли; день примерный (≈ день последнего заказа) — не считаем
+                'days' => $known && $signed && $at && $at->gte($signed) ? (int) $signed->diffInDays($at) : null,
                 'amount' => $money($i['amount'] ?? null),
                 'paid' => $money($i['paid'] ?? null),
                 'refunded' => $money($i['refunded'] ?? null),

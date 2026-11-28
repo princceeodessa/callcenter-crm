@@ -85,7 +85,7 @@
             <div class="lbl">Обычно через</div>
             @if($T['days'] === null)
                 <div class="val muted">—</div>
-                <div class="sub">нет дней договора</div>
+                <div class="sub">точных дней отмены пока нет</div>
             @else
                 <div class="val num">{{ $n($T['days']) }} {{ $plural($T['days'], 'день', 'дня', 'дней') }}</div>
                 <div class="sub">после договора — у половины раньше, у половины позже</div>
