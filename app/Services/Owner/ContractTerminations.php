@@ -63,6 +63,36 @@ class ContractTerminations
         return $result;
     }
 
+    /**
+     * По каждому месяцу с HISTORY_SINCE до текущего, новые сверху (28.11.2026, «надо отдельно по каждому месяцу») — от выбранного
+     * периода не зависит. Каждый месяц — свой запрос (CRM БлагоДар отвечает за ~60 мс) и свой кэш: так видно и «без причины»
+     * помесячно. $fetch=false — только из кэша; null — какого-то месяца в кэше нет (блок тогда догружается отдельно).
+     *
+     * @return list<array{from: Carbon, to: Carbon, ok: bool, contracts: ?int, amount: ?float, unmarked: ?int, approx: bool}>|null
+     */
+    public static function months(bool $fetch = true): ?array
+    {
+        $rows = [];
+        $first = Carbon::parse(self::HISTORY_SINCE)->startOfMonth();
+        for ($m = now()->startOfMonth(); $m->gte($first); $m = $m->copy()->subMonthNoOverflow()) {
+            $end = $m->copy()->addMonthNoOverflow();
+            $r = $fetch ? self::forPeriod($m, $end) : self::cached($m, $end);
+            if ($r === null) {
+                return null;
+            }
+            $ok = $r['state'] === 'ok';
+            $t = $ok ? $r['data']['totals'] : null;
+            $rows[] = [
+                'from' => $m->copy(), 'to' => $end, 'ok' => $ok,
+                'contracts' => $t['contracts'] ?? null, 'amount' => $t['amount'] ?? null, 'unmarked' => $t['unmarked'] ?? null,
+                // день расторжения примерный (история: месяц последнего заказа договора)
+                'approx' => $ok && collect($r['data']['items'])->contains(fn ($i) => ! $i['date_known']),
+            ];
+        }
+
+        return $rows;
+    }
+
     private static function configured(): bool
     {
         $cfg = (array) config('owner.terminations');

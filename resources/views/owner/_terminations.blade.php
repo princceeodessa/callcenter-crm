@@ -27,6 +27,32 @@
 @if($tmState !== 'ok')
     <div class="card empty-card {{ $tmState === 'error' ? 'bad' : '' }}">{{ $terminations['message'] }}</div>
 @else
+    @if(! empty($terminationMonths))
+        {{-- по каждому месяцу с 01.08.2026 — от выбранного периода не зависит; месяц — ссылка на период этого месяца --}}
+        <div class="card tbl-card tm-months">
+            <div class="tbl-head"><h2>По месяцам</h2><span class="note">по дню расторжения · нажмите месяц — ниже будут его договоры</span></div>
+            <div class="tbl-wrap"><table class="t">
+                <thead><tr><th>Месяц</th><th class="num">Расторгнуто</th><th class="num">На сумму</th><th class="num">Отменены без причины «Расторжение»</th></tr></thead>
+                <tbody>
+                @foreach($terminationMonths as $m)
+                    <tr @class(['tm-cur' => ($fromValue ?? null) === $m['from']->toDateString() && ($toValue ?? null) === $m['to']->copy()->subDay()->toDateString()])>
+                        <td><a href="{{ route('owner.ceilings', ['period' => 'custom', 'from' => $m['from']->toDateString(), 'to' => $m['to']->copy()->subDay()->toDateString()]) }}#terminations">{{ \Illuminate\Support\Str::ucfirst($m['from']->translatedFormat('F Y')) }}</a></td>
+                        @if($m['ok'])
+                            <td class="num"><b class="{{ $m['contracts'] > 0 ? 'tm-neg' : 'muted' }}">{{ $n($m['contracts']) }}</b>@if($m['approx']) <span class="muted" title="точного дня расторжения нет — месяц последнего заказа договора">≈</span>@endif</td>
+                            <td class="num">{{ $m['contracts'] > 0 ? $money($m['amount']) : '—' }}</td>
+                            <td class="num">{{ $m['unmarked'] > 0 ? $n($m['unmarked']) : '—' }}</td>
+                        @else
+                            <td class="num muted" colspan="3">данные не пришли</td>
+                        @endif
+                    </tr>
+                @endforeach
+                </tbody>
+            </table></div>
+            @if(collect($terminationMonths)->contains('approx', true))
+                <p class="foot-note tm-foot">≈ — точного дня расторжения пока нет: договор стоит в месяце своего последнего заказа. Видны договоры с заказами с {{ \Carbon\Carbon::parse(\App\Services\Owner\ContractTerminations::HISTORY_SINCE)->format('d.m.Y') }}.</p>
+            @endif
+        </div>
+    @endif
     @if($tmT['contracts'] === 0)
         <div class="card empty-card">За выбранный период расторжений нет.@if($tmT['unmarked'] > 0) Но {{ $n($tmT['unmarked']) }} {{ $plural($tmT['unmarked'], 'договор', 'договора', 'договоров') }} в 1С {{ $plural($tmT['unmarked'], 'отменён', 'отменены', 'отменены') }} целиком без причины «Расторжение».@endif</div>
     @else

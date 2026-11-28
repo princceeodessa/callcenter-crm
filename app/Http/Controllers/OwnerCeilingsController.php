@@ -48,7 +48,10 @@ class OwnerCeilingsController extends Controller
             case 'nonclosures':
                 return view('owner._nonclosures', ['nonclosures' => NonClosureSummary::forPeriod($from, $to)]);
             case 'terminations':
-                return view('owner._terminations', ['terminations' => ContractTerminations::forPeriod($from, $to)]);
+                $terminations = ContractTerminations::forPeriod($from, $to);
+
+                return view('owner._terminations', ['terminations' => $terminations, 'terminationMonths' => $terminations['state'] === 'ok' ? ContractTerminations::months() : null,
+                    'fromValue' => $from->format('Y-m-d'), 'toValue' => $to->copy()->subDay()->format('Y-m-d')]);
             case 'headwork':
                 return view('owner._head_work', ['headwork' => HeadWork::forPeriod($from, $to)]);
             case 'blagodar':
@@ -59,6 +62,11 @@ class OwnerCeilingsController extends Controller
         $nonclosures = NonClosureSummary::cached($from, $to);
         $headwork = HeadWork::cached($from, $to);
         $terminations = ContractTerminations::cached($from, $to);
+        // помесячная таблица — только целиком из кэша; чего-то нет — блок догрузится вместе с ней
+        $terminationMonths = ($terminations['state'] ?? null) === 'ok' ? ContractTerminations::months(false) : null;
+        if ($terminationMonths === null && ($terminations['state'] ?? null) === 'ok') {
+            $terminations = null;
+        }
         $kpi = (new CeilingsKpi((int) config('owner.ceilings_account_id')))->compute($from, $to);
         $ads = MarketingStats::forPeriod($from, $to);
 
@@ -76,6 +84,7 @@ class OwnerCeilingsController extends Controller
             'profit' => $profit,
             // расторжения договоров — из 1С через CRM БлагоДар (под прибылью договоров)
             'terminations' => $terminations,
+            'terminationMonths' => $terminationMonths,
             'period' => $period,
             'periods' => self::PERIODS,
             'fromValue' => $from->format('Y-m-d'),

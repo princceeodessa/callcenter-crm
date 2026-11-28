@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Account;
 use App\Models\User;
 use App\Services\Owner\Marketing\Http;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -30,15 +31,28 @@ class OwnerTerminationsTest extends TestCase
         DB::table('pipeline_stages')->insert(['account_id' => $acc, 'pipeline_id' => $pipeline, 'name' => 'Замер назначен', 'sort' => 40, 'is_final' => 0, 'created_at' => now(), 'updated_at' => now()]);
         config(['owner.ceilings_account_id' => $acc, 'owner.nonclosures' => ['url' => null, 'token' => null],
             'owner.contract_profit' => ['url' => null, 'token' => null], 'owner.head_work' => ['url' => null, 'token' => null]]);
-        Cache::forget(self::KEY);
+        // помесячная таблица — с 01.08.2026 до текущего месяца: август … ноябрь
+        Carbon::setTestNow('2026-11-26 12:00:00');
+        $this->flush();
     }
 
     protected function tearDown(): void
     {
         Http::$fake = null;
-        Cache::forget(self::KEY);
+        $this->flush();
+        Carbon::setTestNow();
         parent::tearDown();
     }
+
+    private function flush(): void
+    {
+        foreach ([self::KEY, ...self::MONTH_KEYS, 'owner.terminations.2026-07-01.2026-10-31'] as $k) {
+            Cache::forget($k);
+        }
+    }
+
+    private const MONTH_KEYS = ['owner.terminations.2026-08-01.2026-08-31', 'owner.terminations.2026-09-01.2026-09-30',
+        'owner.terminations.2026-10-01.2026-10-31', 'owner.terminations.2026-11-01.2026-11-30'];
 
     private function owner(): User
     {
@@ -81,13 +95,26 @@ class OwnerTerminationsTest extends TestCase
     public function test_block_from_blagodar_totals(): void
     {
         config(['owner.terminations' => ['url' => 'https://blagodar.test/', 'token' => 'secret-term-xyz']]);
-        $calls = 0;
-        Http::$fake = function (string $method, string $url, array $headers) use (&$calls) {
-            $calls++;
-            $this->assertSame('https://blagodar.test/api/reports/contract-terminations/summary?from=2026-11-01&to=2026-11-26', $url);
+        $calls = [];
+        $empty = ['totals' => ['contracts' => 0, 'amount' => '0.00', 'unmarked' => 0], 'by_measurer' => [], 'items' => []];
+        $months = [
+            '2026-08-01&to=2026-08-31' => ['totals' => ['contracts' => 4, 'amount' => '208395.00', 'unmarked' => 5], 'items' => [
+                ['number' => '1813', 'terminatedAt' => '2026-08-19', 'dateKnown' => false, 'amount' => '49230.00', 'reason' => 'расторжение']]],
+            '2026-09-01&to=2026-09-30' => $empty,
+            '2026-10-01&to=2026-10-31' => ['totals' => ['contracts' => 0, 'amount' => '0.00', 'unmarked' => 4], 'by_measurer' => [], 'items' => []],
+            '2026-11-01&to=2026-11-30' => ['totals' => ['contracts' => 1, 'amount' => '185000.00', 'unmarked' => 1], 'items' => [
+                ['number' => '2296', 'terminatedAt' => '2026-11-20', 'dateKnown' => true, 'amount' => '185000.00', 'reason' => 'Расторжение']]],
+        ];
+        Http::$fake = function (string $method, string $url, array $headers) use (&$calls, $months) {
             $this->assertSame('Bearer secret-term-xyz', $headers['Authorization']);
+            $q = str_replace('https://blagodar.test/api/reports/contract-terminations/summary?from=', '', $url);
+            $calls[] = $q;
+            if ($q === '2026-11-01&to=2026-11-26') {
+                return [200, $this->answer()];
+            }
+            $this->assertArrayHasKey($q, $months, 'лишний запрос: '.$url);
 
-            return [200, $this->answer()];
+            return [200, $this->answer($months[$q])];
         };
         $owner = $this->owner();
         $res = $this->part($owner);
@@ -106,11 +133,24 @@ class OwnerTerminationsTest extends TestCase
         $this->assertStringNotContainsString('secret-term-xyz', $html);
         $this->assertStringNotContainsString('заявк', mb_strtolower($html));
 
-        // 10 минут — из памяти; на самой странице блок сразу и пункт меню
+        // по каждому месяцу с августа — новые сверху; месяц — ссылка на свой период; ≈ — где день расторжения примерный
+        $res->assertSee('По месяцам')->assertSeeInOrder(['Ноябрь 2026', 'Октябрь 2026', 'Сентябрь 2026', 'Август 2026'])
+            ->assertSee('from=2026-08-01&amp;to=2026-08-31#terminations', false)->assertDontSee('class="tm-cur"', false)
+            ->assertSee('<b class="tm-neg">4</b> <span class="muted" title="точного дня расторжения нет — месяц последнего заказа договора">≈</span>', false)
+            ->assertSee('208 395 ₽')->assertSee('<b class="tm-neg">1</b></td>', false)
+            ->assertSee('≈ — точного дня расторжения пока нет: договор стоит в месяце своего последнего заказа. Видны договоры с заказами с 01.08.2026.');
+        $this->assertSame(5, count($calls), 'период и четыре месяца: '.implode(', ', $calls));
+
+        // 10 минут — из памяти; на самой странице блок сразу (с месяцами) и пункт меню
         $this->part($owner);
-        $this->assertSame(1, $calls);
+        $this->assertSame(5, count($calls));
         $this->actingAs($owner)->get(route('owner.ceilings', ['period' => 'custom', 'from' => '2026-11-01', 'to' => '2026-11-26']))
-            ->assertOk()->assertSee('№ 2296')->assertSee('href="#terminations"', false)->assertDontSee('part=terminations', false);
+            ->assertOk()->assertSee('№ 2296')->assertSee('Август 2026')->assertSee('href="#terminations"', false)->assertDontSee('part=terminations', false);
+        // месяца нет в кэше — блок догружается целиком, а не без месяцев
+        Cache::forget(self::MONTH_KEYS[0]);
+        $this->actingAs($owner)->get(route('owner.ceilings', ['period' => 'custom', 'from' => '2026-11-01', 'to' => '2026-11-26']))
+            ->assertOk()->assertSee('part=terminations', false)->assertDontSee('№ 2296');
+        $this->assertSame(5, count($calls));
 
         // за период ничего — словами, и про отменённые без причины
         Cache::forget(self::KEY);
